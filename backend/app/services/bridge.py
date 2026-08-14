@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.models import UpstreamAccount
 from app.providers import openai_api_base
 from app.services.credentials import require_upstream_credential
+from app.services.reasoning import extract_reasoning_from_delta, extract_reasoning_text
 
 
 def _passthrough_keys(body: dict[str, Any]) -> dict[str, Any]:
@@ -49,59 +50,118 @@ def flatten_anthropic_system(system: Any) -> str | None:
     return str(system)
 
 
-async def call_anthropic(
-    account: UpstreamAccount,
-    body: dict[str, Any],
-    stream: bool,
-    api_key: str,
-) -> Any:
-    settings = get_settings()
-    kwargs: dict[str, Any] = {
-        "model": f"openai/{body.get('model')}",
-        "messages": body.get("messages") or [],
-        "max_tokens": int(body.get("max_tokens") or 4096),
-        "api_key": api_key,
-        "api_base": openai_api_base(account.provider, account.base_url),
-        "custom_llm_provider": "openai",
-        "stream": stream,
-        "timeout": settings.request_timeout_seconds,
-        "drop_params": True,
-    }
-    system = flatten_anthropic_system(body.get("system"))
-    if system:
-        kwargs["system"] = system
-    # thinking / cache_control / top_k 是 Anthropic 专用，OpenAI 兼容上游不认，交给 LiteLLM drop
-    for key in ("tools", "tool_choice", "temperature", "top_p"):
+def flatten_tool_result_content(content: Any) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        texts: list[str] = []
+        for part in content:
+            if isinstance(part, str):
+                texts.append(part)
+            elif isinstance(part, dict) and part.get("type") == "text":
+                texts.append(str(part.get("text") or ""))
+            elif isinstance(part, dict) and "text" in part:
+                texts.append(str(part.get("text") or ""))
+        if texts:
+            return "".join(texts)
+    return json.dumps(content, ensure_ascii=False)
+
+
+def _parts_to_content(parts: list[dict[str, Any]]) -> Any:
+    if not parts:
+        return ""
+    if all(part.get("type") == "text" for part in parts):
+        return "".join(str(part.get("text") or "") for part in parts)
+    return parts
+
+
+def anthropic_tools_to_openai(tools: list[Any]) -> list[dict[str, Any]]:
+    converted: list[dict[str, Any]] = []
+    for tool in tools:
+        if not isinstance(tool, dict):
+            continue
+        if tool.get("type") == "function" and isinstance(tool.get("function"), dict):
+            converted.append(tool)
+            continue
+        name = tool.get("name")
+        if not name:
+            continue
+        function: dict[str, Any] = {"name": name}
+        if tool.get("description"):
+            function["description"] = tool["description"]
+        schema = tool.get("input_schema")
+        if schema is None:
+            schema = tool.get("parameters")
+        if schema is not None:
+            function["parameters"] = schema
+        converted.append({"type": "function", "function": function})
+    return converted
+
+
+def anthropic_tool_choice_to_openai(tool_choice: Any) -> Any:
+    if isinstance(tool_choice, str):
+        if tool_choice == "any":
+            return "required"
+        return tool_choice
+    if not isinstance(tool_choice, dict):
+        return None
+    choice_type = tool_choice.get("type")
+    if choice_type == "any":
+        return "required"
+    if choice_type in {"auto", "none"}:
+        return choice_type
+    if choice_type == "tool" and tool_choice.get("name"):
+        return {"type": "function", "function": {"name": tool_choice["name"]}}
+    return None
+
+
+def anthropic_extra_to_openai(body: dict[str, Any]) -> dict[str, Any]:
+    extra: dict[str, Any] = {}
+    if body.get("max_tokens") is not None:
+        extra["max_tokens"] = int(body["max_tokens"])
+    for key in ("temperature", "top_p"):
         if body.get(key) is not None:
-            kwargs[key] = body[key]
+            extra[key] = body[key]
     if body.get("stop_sequences"):
-        kwargs["stop_sequences"] = body["stop_sequences"]
-    elif body.get("stop"):
-        stop = body["stop"]
-        kwargs["stop_sequences"] = stop if isinstance(stop, list) else [stop]
-    return await litellm.anthropic_messages(**kwargs)
+        extra["stop"] = body["stop_sequences"]
+    elif body.get("stop") is not None:
+        extra["stop"] = body["stop"]
+    tools = body.get("tools")
+    if tools:
+        extra["tools"] = anthropic_tools_to_openai(tools)
+    mapped_choice = anthropic_tool_choice_to_openai(body.get("tool_choice"))
+    if mapped_choice is not None:
+        extra["tool_choice"] = mapped_choice
+    return extra
 
 
 def anthropic_to_openai_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
-    system = body.get("system")
+    system = flatten_anthropic_system(body.get("system"))
     if system:
-        if isinstance(system, list):
-            text = "".join(part.get("text", "") for part in system if isinstance(part, dict))
-        else:
-            text = str(system)
-        if text:
-            messages.append({"role": "system", "content": text})
+        messages.append({"role": "system", "content": system})
     for item in body.get("messages") or []:
+        if not isinstance(item, dict):
+            continue
         content = item.get("content")
         role = item.get("role") or "user"
         if isinstance(content, list):
             parts: list[dict[str, Any]] = []
             tool_calls = []
+            thinking_parts: list[str] = []
+            tool_messages: list[dict[str, Any]] = []
             for part in content:
+                if not isinstance(part, dict):
+                    continue
                 part_type = part.get("type")
                 if part_type == "text":
                     parts.append({"type": "text", "text": part.get("text", "")})
+                elif part_type in {"thinking", "redacted_thinking"}:
+                    thinking_text = part.get("thinking") or part.get("data") or ""
+                    if thinking_text:
+                        thinking_parts.append(str(thinking_text))
                 elif part_type == "image":
                     source = part.get("source") or {}
                     if source.get("type") == "url":
@@ -128,31 +188,31 @@ def anthropic_to_openai_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
                         }
                     )
                 elif part_type == "tool_result":
-                    messages.append(
+                    tool_messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": part.get("tool_use_id"),
-                            "content": part.get("content")
-                            if isinstance(part.get("content"), str)
-                            else json.dumps(part.get("content"), ensure_ascii=False),
+                            "content": flatten_tool_result_content(part.get("content")),
                         }
                     )
-            message: dict[str, Any] = {"role": "assistant" if tool_calls else role}
-            if parts:
-                message["content"] = parts if role != "assistant" or not tool_calls else parts
-            elif not tool_calls:
-                message["content"] = ""
-            if tool_calls:
-                message["role"] = "assistant"
-                message["tool_calls"] = tool_calls
-                if "content" not in message:
-                    message["content"] = None
-            if message.get("role") == "tool":
-                continue
-            if parts or tool_calls or message.get("content") is not None:
+            if parts or tool_calls or thinking_parts:
+                message: dict[str, Any] = {"role": "assistant" if tool_calls else role}
+                message["content"] = _parts_to_content(parts) if parts else ""
+                if tool_calls:
+                    message["role"] = "assistant"
+                    message["tool_calls"] = tool_calls
+                if thinking_parts:
+                    message["reasoning_content"] = "".join(thinking_parts)
                 messages.append(message)
+            messages.extend(tool_messages)
         else:
-            messages.append({"role": role, "content": content})
+            outbound = {"role": role, "content": content}
+            reasoning = extract_reasoning_text(item)
+            if reasoning:
+                outbound["reasoning_content"] = reasoning
+            if item.get("tool_calls"):
+                outbound["tool_calls"] = item["tool_calls"]
+            messages.append(outbound)
     return messages
 
 
@@ -166,6 +226,9 @@ def openai_response_to_anthropic(response: Any, model: str) -> dict[str, Any]:
     choice = (data.get("choices") or [{}])[0]
     message = choice.get("message") or {}
     content_blocks: list[dict[str, Any]] = []
+    reasoning = extract_reasoning_text(message)
+    if reasoning:
+        content_blocks.append({"type": "thinking", "thinking": reasoning})
     text = message.get("content")
     if isinstance(text, str) and text:
         content_blocks.append({"type": "text", "text": text})
@@ -329,6 +392,245 @@ def extract_text_from_openai_chunk(chunk: dict[str, Any]) -> str:
     delta = choices[0].get("delta") or {}
     content = delta.get("content")
     return content if isinstance(content, str) else ""
+
+
+def extract_reasoning_from_openai_chunk(chunk: dict[str, Any]) -> str:
+    choices = chunk.get("choices") or []
+    if not choices:
+        return ""
+    return extract_reasoning_from_delta(choices[0].get("delta") or {})
+
+
+def openai_finish_to_anthropic(finish: str | None) -> str:
+    return {
+        "stop": "end_turn",
+        "length": "max_tokens",
+        "tool_calls": "tool_use",
+        "content_filter": "end_turn",
+    }.get(finish or "", "end_turn")
+
+
+def sse_event(event: str, data: dict[str, Any]) -> bytes:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode()
+
+
+class AnthropicStreamTranslator:
+    def __init__(self, message_id: str, model: str) -> None:
+        self.message_id = message_id
+        self.model = model
+        self.block_index = -1
+        self.open_kind: str | None = None
+        self.reasoning = ""
+        self.text = ""
+        self.tools: list[dict[str, Any]] = []
+        self.tool_by_openai_index: dict[int, int] = {}
+        self.stop_reason = "end_turn"
+        self.usage: tuple[int | None, int | None, int | None] = (None, None, None)
+
+    def start(self) -> list[bytes]:
+        return [
+            sse_event(
+                "message_start",
+                {
+                    "type": "message_start",
+                    "message": {
+                        "id": self.message_id,
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [],
+                        "model": self.model,
+                        "stop_reason": None,
+                        "stop_sequence": None,
+                        "usage": {"input_tokens": 0, "output_tokens": 0},
+                    },
+                },
+            )
+        ]
+
+    def feed(self, chunk: dict[str, Any]) -> list[bytes]:
+        events: list[bytes] = []
+        usage_candidate = extract_usage(chunk)
+        if any(part is not None for part in usage_candidate):
+            self.usage = usage_candidate
+        choices = chunk.get("choices") or []
+        if not choices:
+            return events
+        choice = choices[0] if isinstance(choices[0], dict) else {}
+        delta = choice.get("delta") or {}
+        finish = choice.get("finish_reason")
+        reasoning = extract_reasoning_from_delta(delta)
+        content = delta.get("content")
+        if reasoning:
+            events.extend(self._ensure_block("thinking"))
+            self.reasoning += reasoning
+            events.append(
+                sse_event(
+                    "content_block_delta",
+                    {
+                        "type": "content_block_delta",
+                        "index": self.block_index,
+                        "delta": {"type": "thinking_delta", "thinking": reasoning},
+                    },
+                )
+            )
+        if isinstance(content, str) and content:
+            events.extend(self._ensure_block("text"))
+            self.text += content
+            events.append(
+                sse_event(
+                    "content_block_delta",
+                    {
+                        "type": "content_block_delta",
+                        "index": self.block_index,
+                        "delta": {"type": "text_delta", "text": content},
+                    },
+                )
+            )
+        for tool in delta.get("tool_calls") or []:
+            if isinstance(tool, dict):
+                events.extend(self._feed_tool(tool))
+        if finish:
+            self.stop_reason = openai_finish_to_anthropic(str(finish))
+            events.extend(self._close_open())
+        return events
+
+    def finish(self) -> list[bytes]:
+        events = self._close_open()
+        events.append(
+            sse_event(
+                "message_delta",
+                {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": self.stop_reason, "stop_sequence": None},
+                    "usage": {
+                        "input_tokens": self.usage[0] or 0,
+                        "output_tokens": self.usage[1] or 0,
+                    },
+                },
+            )
+        )
+        events.append(sse_event("message_stop", {"type": "message_stop"}))
+        return events
+
+    def payload(self) -> dict[str, Any]:
+        content: list[dict[str, Any]] = []
+        if self.reasoning:
+            content.append({"type": "thinking", "thinking": self.reasoning})
+        if self.text:
+            content.append({"type": "text", "text": self.text})
+        for tool in self.tools:
+            raw_arguments = tool.get("arguments") or ""
+            try:
+                parsed = json.loads(raw_arguments) if raw_arguments else {}
+            except json.JSONDecodeError:
+                parsed = {"raw": raw_arguments}
+            content.append(
+                {
+                    "type": "tool_use",
+                    "id": tool.get("id"),
+                    "name": tool.get("name"),
+                    "input": parsed,
+                }
+            )
+        if not content:
+            content = [{"type": "text", "text": ""}]
+        return {
+            "id": self.message_id,
+            "type": "message",
+            "role": "assistant",
+            "content": content,
+            "model": self.model,
+            "stop_reason": self.stop_reason,
+            "stop_sequence": None,
+            "usage": {
+                "input_tokens": self.usage[0] or 0,
+                "output_tokens": self.usage[1] or 0,
+            },
+        }
+
+    def reasoning_map(self) -> dict[str, str]:
+        if not self.reasoning:
+            return {}
+        return {str(tool["id"]): self.reasoning for tool in self.tools if tool.get("id")}
+
+    def _ensure_block(self, kind: str) -> list[bytes]:
+        if self.open_kind == kind:
+            return []
+        events = self._close_open()
+        self.block_index += 1
+        self.open_kind = kind
+        block = {"type": "thinking", "thinking": ""} if kind == "thinking" else {"type": "text", "text": ""}
+        events.append(
+            sse_event(
+                "content_block_start",
+                {
+                    "type": "content_block_start",
+                    "index": self.block_index,
+                    "content_block": block,
+                },
+            )
+        )
+        return events
+
+    def _feed_tool(self, tool: dict[str, Any]) -> list[bytes]:
+        events: list[bytes] = []
+        openai_index = int(tool.get("index") or 0)
+        function = tool.get("function") or {}
+        if openai_index not in self.tool_by_openai_index:
+            events.extend(self._close_open())
+            self.block_index += 1
+            self.open_kind = "tool"
+            tool_id = tool.get("id") or f"call_{uuid.uuid4().hex[:8]}"
+            name = function.get("name") or ""
+            record = {
+                "id": tool_id,
+                "name": name,
+                "arguments": "",
+                "block_index": self.block_index,
+            }
+            self.tool_by_openai_index[openai_index] = len(self.tools)
+            self.tools.append(record)
+            events.append(
+                sse_event(
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": self.block_index,
+                        "content_block": {
+                            "type": "tool_use",
+                            "id": tool_id,
+                            "name": name,
+                            "input": {},
+                        },
+                    },
+                )
+            )
+        record = self.tools[self.tool_by_openai_index[openai_index]]
+        if function.get("name") and not record["name"]:
+            record["name"] = function["name"]
+        if tool.get("id"):
+            record["id"] = tool["id"]
+        arguments_piece = function.get("arguments") or ""
+        if arguments_piece:
+            record["arguments"] += arguments_piece
+            events.append(
+                sse_event(
+                    "content_block_delta",
+                    {
+                        "type": "content_block_delta",
+                        "index": record["block_index"],
+                        "delta": {"type": "input_json_delta", "partial_json": arguments_piece},
+                    },
+                )
+            )
+        return events
+
+    def _close_open(self) -> list[bytes]:
+        if self.open_kind is None:
+            return []
+        events = [sse_event("content_block_stop", {"type": "content_block_stop", "index": self.block_index})]
+        self.open_kind = None
+        return events
 
 
 async def prepare_credential(account: UpstreamAccount, db) -> str:  # type: ignore[no-untyped-def]

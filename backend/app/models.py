@@ -105,5 +105,6 @@ class RequestLog(Base):
     request_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     response_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     session_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    reasoning_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True, nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -16,21 +16,33 @@ from app.errors import protocol_error
 from app.models import ApiKey, RequestLog, UpstreamAccount
 from app.providers import PRESETS
 from app.services.bridge import (
+    AnthropicStreamTranslator,
+    anthropic_extra_to_openai,
     anthropic_to_openai_messages,
-    call_anthropic,
     call_chat,
     count_openai_tokens,
+    extract_reasoning_from_openai_chunk,
     extract_text_from_openai_chunk,
     extract_usage,
     input_to_messages,
     openai_response_to_anthropic,
     prepare_credential,
     responses_from_chat,
+    sse_event,
     stream_openai_chunks,
     _passthrough_keys,
 )
 from app.services.conversation import extract_session_key, find_continuation_log
 from app.services.credentials import CredentialError
+from app.services.reasoning import (
+    dump_reasoning_json,
+    inject_reasoning_into_messages,
+    load_reasoning_map,
+    merge_reasoning_maps,
+    parse_reasoning_json,
+    reasoning_map_from_messages,
+    reasoning_map_from_openai_payload,
+)
 
 
 def dump_json(value: Any) -> str:
@@ -39,6 +51,7 @@ def dump_json(value: Any) -> str:
 
 def reconstruct_anthropic_from_sse(sse_text: str, model: str) -> dict[str, Any]:
     text_parts: list[str] = []
+    thinking_parts: list[str] = []
     tool_blocks: list[dict[str, Any]] = []
     usage: dict[str, Any] = {}
     stop_reason = "end_turn"
@@ -64,7 +77,9 @@ def reconstruct_anthropic_from_sse(sse_text: str, model: str) -> dict[str, Any]:
                 }
         elif event_type == "content_block_delta":
             delta = event.get("delta") or {}
-            if delta.get("type") == "text_delta":
+            if delta.get("type") == "thinking_delta":
+                thinking_parts.append(delta.get("thinking") or "")
+            elif delta.get("type") == "text_delta":
                 text_parts.append(delta.get("text") or "")
             elif delta.get("type") == "input_json_delta" and current_tool is not None:
                 current_tool["_json"] = str(current_tool.get("_json") or "") + (delta.get("partial_json") or "")
@@ -84,6 +99,9 @@ def reconstruct_anthropic_from_sse(sse_text: str, model: str) -> dict[str, Any]:
             if event.get("usage"):
                 usage = event["usage"]
     content: list[dict[str, Any]] = []
+    thinking = "".join(thinking_parts)
+    if thinking:
+        content.append({"type": "thinking", "thinking": thinking})
     text = "".join(text_parts)
     if text:
         content.append({"type": "text", "text": text})
@@ -127,6 +145,7 @@ def save_log(
     request_body: Any,
     response_body: Any,
     request_headers: dict[str, str] | None = None,
+    reasoning_map: dict[str, str] | None = None,
 ) -> RequestLog:
     prompt, completion, total = usage
     now = datetime.utcnow()
@@ -159,6 +178,10 @@ def save_log(
         existing.updated_at = now
         if session_key:
             existing.session_key = session_key
+        if reasoning_map:
+            existing.reasoning_json = dump_reasoning_json(
+                merge_reasoning_maps(parse_reasoning_json(existing.reasoning_json), reasoning_map)
+            )
         db.flush()
         return existing
     log = RequestLog(
@@ -179,130 +202,11 @@ def save_log(
         created_at=now,
         updated_at=now,
         session_key=session_key,
+        reasoning_json=dump_reasoning_json(reasoning_map or {}),
     )
     db.add(log)
     db.flush()
     return log
-
-
-async def handle_anthropic(
-    db: Session,
-    api_key: ApiKey,
-    account: UpstreamAccount,
-    body: dict[str, Any],
-    model: str,
-    stream: bool,
-    credential: str,
-    started: float,
-    request_headers: dict[str, str] | None = None,
-) -> JSONResponse | StreamingResponse:
-    try:
-        result = await call_anthropic(account, body, stream, credential)
-    except Exception as error:
-        return _fail(db, api_key, account, body, "anthropic_messages", model, stream, started, error)
-
-    if stream:
-        return _stream_anthropic(db, api_key, account, body, model, result, started, request_headers)
-
-    if hasattr(result, "model_dump"):
-        payload = result.model_dump()
-    elif isinstance(result, dict):
-        payload = result
-    else:
-        payload = {"type": "message", "role": "assistant", "content": [{"type": "text", "text": str(result)}]}
-    usage = extract_usage(
-        {
-            "usage": {
-                "prompt_tokens": (payload.get("usage") or {}).get("input_tokens"),
-                "completion_tokens": (payload.get("usage") or {}).get("output_tokens"),
-            }
-        }
-    )
-    save_log(
-        db,
-        account_id=account.id,
-        api_key_id=api_key.id,
-        protocol="anthropic_messages",
-        model=model,
-        stream=False,
-        status="success",
-        http_status=200,
-        error_message=None,
-        usage=usage,
-        latency_ms=int((time.perf_counter() - started) * 1000),
-        request_body=body,
-        response_body=payload,
-        request_headers=request_headers,
-    )
-    api_key.last_used_at = datetime.utcnow()
-    return JSONResponse(payload)
-
-
-def _stream_anthropic(
-    db: Session,
-    api_key: ApiKey,
-    account: UpstreamAccount,
-    body: dict[str, Any],
-    model: str,
-    result: Any,
-    started: float,
-    request_headers: dict[str, str] | None = None,
-) -> StreamingResponse:
-    account_id = account.id
-    api_key_id = api_key.id
-
-    async def event_source():
-        chunks: list[bytes] = []
-        error_text = None
-        status = "success"
-        http_status = 200
-        try:
-            async for chunk in result:
-                data = chunk if isinstance(chunk, bytes) else str(chunk).encode("utf-8")
-                chunks.append(data)
-                yield data
-        except Exception as error:
-            status = "error"
-            http_status = 502
-            error_text = str(error)
-            payload = json.dumps(
-                {"type": "error", "error": {"type": "api_error", "message": error_text}},
-                ensure_ascii=False,
-            )
-            yield f"event: error\ndata: {payload}\n\n".encode()
-        finally:
-            session = get_session_factory()()
-            try:
-                sse_text = b"".join(chunks).decode("utf-8", errors="replace")
-                payload = reconstruct_anthropic_from_sse(sse_text, model)
-                save_log(
-                    session,
-                    account_id=account_id,
-                    api_key_id=api_key_id,
-                    protocol="anthropic_messages",
-                    model=model,
-                    stream=True,
-                    status=status,
-                    http_status=http_status,
-                    error_message=error_text,
-                    usage=(
-                        payload.get("usage", {}).get("input_tokens"),
-                        payload.get("usage", {}).get("output_tokens"),
-                        None,
-                    ),
-                    latency_ms=int((time.perf_counter() - started) * 1000),
-                    request_body=body,
-                    response_body=payload,
-                    request_headers=request_headers,
-                )
-                stored_key = session.get(ApiKey, api_key_id)
-                if stored_key is not None:
-                    stored_key.last_used_at = datetime.utcnow()
-                session.commit()
-            finally:
-                session.close()
-
-    return StreamingResponse(event_source(), media_type="text/event-stream")
 
 
 async def handle_chat(
@@ -339,22 +243,39 @@ async def handle_chat(
         return protocol_error(protocol, status_code, str(error))
 
     if protocol == "anthropic_messages":
-        return await handle_anthropic(
-            db, api_key, account, body, model, stream, credential, started, request_headers
-        )
-
-    if protocol == "openai_responses":
+        messages = anthropic_to_openai_messages(body)
+        extra = anthropic_extra_to_openai(body)
+    elif protocol == "openai_responses":
         messages = input_to_messages(body)
         extra = _passthrough_keys(body)
     else:
-        messages = body.get("messages") or []
+        messages = [dict(item) if isinstance(item, dict) else item for item in (body.get("messages") or [])]
         extra = _passthrough_keys(body)
 
     extra.pop("stream", None)
+    extra.pop("thinking", None)
+    session_key = extract_session_key(body, request_headers)
+    inbound_reasoning = reasoning_map_from_messages(messages)
+    stored_reasoning = merge_reasoning_maps(
+        load_reasoning_map(db, api_key.id, session_key),
+        inbound_reasoning,
+    )
+    inject_reasoning_into_messages(messages, stored_reasoning)
 
     if stream:
         return await _stream_response(
-            db, api_key, account, body, protocol, model, messages, extra, credential, started, request_headers
+            db,
+            api_key,
+            account,
+            body,
+            protocol,
+            model,
+            messages,
+            extra,
+            credential,
+            started,
+            request_headers,
+            inbound_reasoning,
         )
 
     try:
@@ -374,10 +295,7 @@ async def handle_chat(
     else:
         payload = openai_payload
 
-    usage = extract_usage(openai_payload if protocol != "anthropic_messages" else {"usage": {
-        "prompt_tokens": payload.get("usage", {}).get("input_tokens"),
-        "completion_tokens": payload.get("usage", {}).get("output_tokens"),
-    }})
+    usage = extract_usage(openai_payload)
     save_log(
         db,
         account_id=account.id,
@@ -393,6 +311,7 @@ async def handle_chat(
         request_body=body,
         response_body=payload,
         request_headers=request_headers,
+        reasoning_map=merge_reasoning_maps(inbound_reasoning, reasoning_map_from_openai_payload(openai_payload)),
     )
     api_key.last_used_at = datetime.utcnow()
     return JSONResponse(payload)
@@ -410,6 +329,7 @@ async def _stream_response(
     credential: str,
     started: float,
     request_headers: dict[str, str] | None = None,
+    inbound_reasoning: dict[str, str] | None = None,
 ) -> StreamingResponse | JSONResponse:
     try:
         result = await call_chat(account, messages, model, True, extra, credential)
@@ -421,54 +341,28 @@ async def _stream_response(
     api_key_id = api_key.id
 
     async def event_source() -> AsyncIterator[bytes]:
-        collected = ""
+        collector = OpenAIStreamCollector()
+        translator = AnthropicStreamTranslator(message_id, model)
         usage = (None, None, None)
         error_text: str | None = None
         status = "success"
         http_status = 200
         response_body: Any = None
+        response_map: dict[str, str] = {}
         try:
             if protocol == "anthropic_messages":
-                yield _sse(
-                    "message_start",
-                    {
-                        "type": "message_start",
-                        "message": {
-                            "id": message_id,
-                            "type": "message",
-                            "role": "assistant",
-                            "content": [],
-                            "model": model,
-                            "stop_reason": None,
-                            "usage": {"input_tokens": 0, "output_tokens": 0},
-                        },
-                    },
-                )
-                yield _sse(
-                    "content_block_start",
-                    {
-                        "type": "content_block_start",
-                        "index": 0,
-                        "content_block": {"type": "text", "text": ""},
-                    },
-                )
+                for event in translator.start():
+                    yield event
             async for chunk in stream_openai_chunks(result):
                 usage_candidate = extract_usage(chunk)
                 if any(part is not None for part in usage_candidate):
                     usage = usage_candidate
-                text = extract_text_from_openai_chunk(chunk)
-                collected += text
+                collector.feed(chunk)
                 if protocol == "anthropic_messages":
-                    if text:
-                        yield _sse(
-                            "content_block_delta",
-                            {
-                                "type": "content_block_delta",
-                                "index": 0,
-                                "delta": {"type": "text_delta", "text": text},
-                            },
-                        )
+                    for event in translator.feed(chunk):
+                        yield event
                 elif protocol == "openai_responses":
+                    text = extract_text_from_openai_chunk(chunk)
                     if text:
                         event = {
                             "type": "response.output_text.delta",
@@ -478,30 +372,11 @@ async def _stream_response(
                 else:
                     yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode()
             if protocol == "anthropic_messages":
-                yield _sse("content_block_stop", {"type": "content_block_stop", "index": 0})
-                yield _sse(
-                    "message_delta",
-                    {
-                        "type": "message_delta",
-                        "delta": {"stop_reason": "end_turn", "stop_sequence": None},
-                        "usage": {
-                            "output_tokens": usage[1] or 0,
-                        },
-                    },
-                )
-                yield _sse("message_stop", {"type": "message_stop"})
-                response_body = {
-                    "id": message_id,
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": collected}],
-                    "model": model,
-                    "stop_reason": "end_turn",
-                    "usage": {
-                        "input_tokens": usage[0] or 0,
-                        "output_tokens": usage[1] or 0,
-                    },
-                }
+                for event in translator.finish():
+                    yield event
+                response_body = translator.payload()
+                response_map = translator.reasoning_map()
+                usage = translator.usage
             elif protocol == "openai_responses":
                 completed = {
                     "type": "response.completed",
@@ -509,20 +384,21 @@ async def _stream_response(
                         "id": f"resp_{uuid.uuid4().hex}",
                         "status": "completed",
                         "model": model,
-                        "output_text": collected,
+                        "output_text": collector.text,
                     },
                 }
                 yield f"data: {json.dumps(completed, ensure_ascii=False)}\n\n".encode()
                 response_body = completed["response"]
             else:
                 yield b"data: [DONE]\n\n"
-                response_body = {"choices": [{"message": {"role": "assistant", "content": collected}}]}
+                response_body = {"choices": [{"message": collector.message()}]}
+                response_map = collector.reasoning_map()
         except Exception as error:
             status = "error"
             http_status = 502
             error_text = str(error)
             if protocol == "anthropic_messages":
-                yield _sse(
+                yield sse_event(
                     "error",
                     {"type": "error", "error": {"type": "api_error", "message": error_text}},
                 )
@@ -546,6 +422,7 @@ async def _stream_response(
                     request_body=body,
                     response_body=response_body,
                     request_headers=request_headers,
+                    reasoning_map=merge_reasoning_maps(inbound_reasoning or {}, response_map),
                 )
                 stored_key = session.get(ApiKey, api_key_id)
                 if stored_key is not None:
@@ -557,8 +434,44 @@ async def _stream_response(
     return StreamingResponse(event_source(), media_type="text/event-stream")
 
 
-def _sse(event: str, data: dict[str, Any]) -> bytes:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode()
+class OpenAIStreamCollector:
+    def __init__(self) -> None:
+        self.text = ""
+        self.reasoning = ""
+        self.tools: dict[int, dict[str, Any]] = {}
+
+    def feed(self, chunk: dict[str, Any]) -> None:
+        self.text += extract_text_from_openai_chunk(chunk)
+        self.reasoning += extract_reasoning_from_openai_chunk(chunk)
+        choices = chunk.get("choices") or []
+        if not choices:
+            return
+        delta = (choices[0] or {}).get("delta") or {}
+        for tool in delta.get("tool_calls") or []:
+            if not isinstance(tool, dict):
+                continue
+            index = int(tool.get("index") or 0)
+            record = self.tools.setdefault(index, {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+            if tool.get("id"):
+                record["id"] = tool["id"]
+            function = tool.get("function") or {}
+            if function.get("name"):
+                record["function"]["name"] = function["name"]
+            if function.get("arguments"):
+                record["function"]["arguments"] += function["arguments"]
+
+    def message(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"role": "assistant", "content": self.text}
+        if self.reasoning:
+            payload["reasoning_content"] = self.reasoning
+        if self.tools:
+            payload["tool_calls"] = [self.tools[index] for index in sorted(self.tools)]
+        return payload
+
+    def reasoning_map(self) -> dict[str, str]:
+        if not self.reasoning:
+            return {}
+        return {str(tool["id"]): self.reasoning for tool in self.tools.values() if tool.get("id")}
 
 
 def _fail(

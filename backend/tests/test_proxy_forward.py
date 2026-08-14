@@ -96,7 +96,7 @@ def test_claude_session_id_merges_same_length_turns(client: TestClient, auth_hea
     metadata = {
         "user_id": '{"device_id":"dev","account_uuid":"","session_id":"11111111-2222-3333-4444-555555555555"}'
     }
-    with patch("app.services.proxy.call_anthropic", new=AsyncMock(return_value=FakeAnthropicResponse())):
+    with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=FakeResponse())):
         first = client.post(
             "/v1/messages",
             headers={"Authorization": f"Bearer {key}", "x-api-key": key},
@@ -136,48 +136,66 @@ def test_claude_session_id_merges_same_length_turns(client: TestClient, auth_hea
     assert listed["total"] == 2
 
 
-class FakeAnthropicResponse:
+class FakeToolResponse:
     def model_dump(self) -> dict:
         return {
-            "id": "msg_test",
-            "type": "message",
-            "role": "assistant",
-            "content": [{"type": "text", "text": "你好"}],
-            "model": "deepseek-chat",
-            "stop_reason": "end_turn",
-            "usage": {"input_tokens": 3, "output_tokens": 2},
+            "id": "chatcmpl-tool",
+            "object": "chat.completion",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "reasoning_content": "逐步思考后决定读文件",
+                        "tool_calls": [
+                            {
+                                "id": "call_abc",
+                                "type": "function",
+                                "function": {"name": "Read", "arguments": '{"path":"/tmp"}'},
+                            }
+                        ],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
+            "usage": {"prompt_tokens": 8, "completion_tokens": 12, "total_tokens": 20},
         }
 
 
-def test_anthropic_tools_passed_to_litellm(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_anthropic_tools_converted_to_openai(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
     captured: dict = {}
 
-    async def fake_anthropic(_account, body, _stream, _credential):
-        captured["tools"] = body.get("tools")
-        return FakeAnthropicResponse()
+    async def fake_chat(_account, _messages, _model, _stream, extra, _credential):
+        captured["extra"] = extra
+        return FakeResponse()
 
-    with patch("app.services.proxy.call_anthropic", new=fake_anthropic):
+    with patch("app.services.proxy.call_chat", new=fake_chat):
         response = client.post(
             "/v1/messages",
             headers={"x-api-key": key},
             json={
                 "model": "deepseek-v4-flash",
                 "max_tokens": 32,
+                "thinking": {"type": "adaptive"},
                 "messages": [{"role": "user", "content": "hi"}],
                 "tools": [
                     {
                         "name": "Agent",
                         "description": "launch agent",
                         "input_schema": {"type": "object", "properties": {"prompt": {"type": "string"}}},
+                        "cache_control": {"type": "ephemeral"},
                     }
                 ],
             },
         )
     assert response.status_code == 200
-    assert captured["tools"][0]["name"] == "Agent"
-    assert "input_schema" in captured["tools"][0]
-    assert "function" not in captured["tools"][0]
+    assert "thinking" not in captured["extra"]
+    assert captured["extra"]["tools"][0]["type"] == "function"
+    assert captured["extra"]["tools"][0]["function"]["name"] == "Agent"
+    assert "cache_control" not in captured["extra"]["tools"][0]
+    assert "cache_control" not in captured["extra"]["tools"][0]["function"]
 
 
 def test_reconstruct_anthropic_from_sse() -> None:
@@ -200,49 +218,30 @@ data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {
     assert payload["usage"]["output_tokens"] == 2
 
 
-def test_call_anthropic_drops_thinking(monkeypatch) -> None:
-    from app.models import UpstreamAccount
-    from app.services import bridge
+def test_reconstruct_anthropic_from_sse_thinking() -> None:
+    from app.services.proxy import reconstruct_anthropic_from_sse
 
-    captured: dict = {}
+    sse = """event: content_block_delta
+data: {"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": "想"}}
 
-    async def fake_messages(**kwargs):
-        captured.update(kwargs)
-        return FakeAnthropicResponse()
+event: content_block_start
+data: {"type": "content_block_start", "content_block": {"type": "tool_use", "id": "call_1", "name": "Read", "input": {}}}
 
-    monkeypatch.setattr(bridge.litellm, "anthropic_messages", fake_messages)
-    account = UpstreamAccount(
-        name="oc",
-        provider="opencode_go",
-        auth_type="api_key",
-        base_url="https://opencode.ai/zen/go",
-        status="active",
-    )
+event: content_block_delta
+data: {"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": "{\\"p\\":1}"}}
 
-    import asyncio
-
-    asyncio.run(
-        bridge.call_anthropic(
-            account,
-            {
-                "model": "deepseek-v4-flash",
-                "max_tokens": 32,
-                "messages": [{"role": "user", "content": "hi"}],
-                "thinking": {"type": "enabled", "budget_tokens": 8000},
-                "tools": [{"name": "Agent", "input_schema": {"type": "object", "properties": {}}}],
-            },
-            False,
-            "sk-up",
-        )
-    )
-    assert "thinking" not in captured
-    assert captured["drop_params"] is True
-    assert captured["tools"][0]["name"] == "Agent"
+event: content_block_stop
+data: {"type": "content_block_stop"}
+"""
+    payload = reconstruct_anthropic_from_sse(sse, "deepseek-v4-flash")
+    assert payload["content"][0] == {"type": "thinking", "thinking": "想"}
+    assert payload["content"][1]["id"] == "call_1"
+    assert payload["content"][1]["input"] == {"p": 1}
 
 
 def test_anthropic_forward_converts(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
-    with patch("app.services.proxy.call_anthropic", new=AsyncMock(return_value=FakeAnthropicResponse())):
+    with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=FakeResponse())):
         response = client.post(
             "/v1/messages",
             headers={"x-api-key": key},
@@ -299,3 +298,199 @@ def test_models_endpoint(client: TestClient, auth_headers: dict[str, str]) -> No
     assert response.status_code == 200
     ids = {item["id"] for item in response.json()["data"]}
     assert "deepseek-chat" in ids
+
+
+def test_anthropic_followup_injects_stored_reasoning(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+    captured: list[list] = []
+
+    async def fake_chat(_account, messages, _model, _stream, _extra, _credential):
+        captured.append(messages)
+        if len(captured) == 1:
+            return FakeToolResponse()
+        return FakeResponse()
+
+    metadata = {"user_id": '{"device_id":"dev","account_uuid":"","session_id":"sess-reason-1"}'}
+    with patch("app.services.proxy.call_chat", new=fake_chat):
+        first = client.post(
+            "/v1/messages",
+            headers={"x-api-key": key},
+            json={
+                "model": "deepseek-v4-flash",
+                "max_tokens": 64,
+                "metadata": metadata,
+                "messages": [{"role": "user", "content": "读一下"}],
+                "tools": [{"name": "Read", "input_schema": {"type": "object", "properties": {}}}],
+            },
+        )
+        assert first.status_code == 200
+        assert first.json()["content"][0]["type"] == "thinking"
+        assert first.json()["content"][0]["thinking"] == "逐步思考后决定读文件"
+        second = client.post(
+            "/v1/messages",
+            headers={"x-api-key": key},
+            json={
+                "model": "deepseek-v4-flash",
+                "max_tokens": 64,
+                "metadata": metadata,
+                "messages": [
+                    {"role": "user", "content": "读一下"},
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "call_abc",
+                                "name": "Read",
+                                "input": {"path": "/tmp"},
+                            }
+                        ],
+                    },
+                    {
+                        "role": "user",
+                        "content": [{"type": "tool_result", "tool_use_id": "call_abc", "content": "ok"}],
+                    },
+                ],
+                "tools": [{"name": "Read", "input_schema": {"type": "object", "properties": {}}}],
+            },
+        )
+    assert second.status_code == 200
+    assistant = next(item for item in captured[1] if item.get("tool_calls"))
+    assert assistant["reasoning_content"] == "逐步思考后决定读文件"
+
+
+def test_openai_followup_injects_stored_reasoning(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+    captured: list[list] = []
+
+    async def fake_chat(_account, messages, _model, _stream, _extra, _credential):
+        captured.append(messages)
+        if len(captured) == 1:
+            return FakeToolResponse()
+        return FakeResponse()
+
+    with patch("app.services.proxy.call_chat", new=fake_chat):
+        first = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={
+                "model": "deepseek-chat",
+                "messages": [{"role": "user", "content": "读一下"}],
+                "tools": [{"type": "function", "function": {"name": "Read", "parameters": {}}}],
+            },
+        )
+        assert first.status_code == 200
+        second = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={
+                "model": "deepseek-chat",
+                "messages": [
+                    {"role": "user", "content": "读一下"},
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_abc",
+                                "type": "function",
+                                "function": {"name": "Read", "arguments": '{"path":"/tmp"}'},
+                            }
+                        ],
+                    },
+                    {"role": "tool", "tool_call_id": "call_abc", "content": "ok"},
+                ],
+            },
+        )
+    assert second.status_code == 200
+    assistant = next(item for item in captured[1] if item.get("tool_calls"))
+    assert assistant["reasoning_content"] == "逐步思考后决定读文件"
+
+
+def test_anthropic_stream_thinking_and_tools(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+
+    async def fake_stream(*_args, **_kwargs):
+        async def chunks():
+            yield {"choices": [{"delta": {"reasoning_content": "想"}, "index": 0}]}
+            yield {"choices": [{"delta": {"content": "好"}, "index": 0}]}
+            yield {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {"name": "Read", "arguments": '{"p":1}'},
+                                }
+                            ]
+                        },
+                        "index": 0,
+                        "finish_reason": "tool_calls",
+                    }
+                ]
+            }
+
+        return chunks()
+
+    with patch("app.services.proxy.call_chat", new=AsyncMock(side_effect=fake_stream)):
+        with client.stream(
+            "POST",
+            "/v1/messages",
+            headers={"x-api-key": key},
+            json={
+                "model": "deepseek-v4-flash",
+                "max_tokens": 32,
+                "stream": True,
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        ) as response:
+            text = "".join(response.iter_text())
+    assert "thinking_delta" in text
+    assert "text_delta" in text
+    assert "tool_use" in text
+    logs = client.get("/api/admin/logs", headers=auth_headers).json()
+    detail = client.get(f"/api/admin/logs/{logs['items'][0]['id']}", headers=auth_headers).json()
+    types = [block["type"] for block in detail["response_body"]["content"]]
+    assert types == ["thinking", "text", "tool_use"]
+
+
+def test_missing_reasoning_uses_placeholder(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+    captured: list[list] = []
+
+    async def fake_chat(_account, messages, _model, _stream, _extra, _credential):
+        captured.append(messages)
+        return FakeResponse()
+
+    with patch("app.services.proxy.call_chat", new=fake_chat):
+        response = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={
+                "model": "deepseek-chat",
+                "messages": [
+                    {"role": "user", "content": "hi"},
+                    {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "call_unknown",
+                                "type": "function",
+                                "function": {"name": "Read", "arguments": "{}"},
+                            }
+                        ],
+                    },
+                    {"role": "tool", "tool_call_id": "call_unknown", "content": "ok"},
+                ],
+            },
+        )
+    assert response.status_code == 200
+    assistant = next(item for item in captured[0] if item.get("tool_calls"))
+    assert assistant["reasoning_content"] == " "
+    logs = client.get("/api/admin/logs", headers=auth_headers).json()
+    detail = client.get(f"/api/admin/logs/{logs['items'][0]['id']}", headers=auth_headers).json()
+    logged_assistant = next(item for item in detail["request_body"]["messages"] if item.get("tool_calls"))
+    assert "reasoning_content" not in logged_assistant

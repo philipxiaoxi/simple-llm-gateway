@@ -61,6 +61,8 @@ def _ensure_columns(engine: Engine) -> None:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN updated_at DATETIME"))
         if "session_key" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN session_key VARCHAR(128)"))
+        if "reasoning_json" not in log_columns:
+            connection.execute(text("ALTER TABLE request_logs ADD COLUMN reasoning_json TEXT"))
 
 
 def reset_db_runtime() -> None:
