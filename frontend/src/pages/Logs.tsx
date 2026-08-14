@@ -79,6 +79,8 @@ export function LogsPage() {
         <table className="w-full text-left text-sm">
           <thead className="bg-panel-2 text-mist">
             <tr>
+              <th className="px-3 py-2 font-medium">Key</th>
+              <th className="px-3 py-2 font-medium">上游账号</th>
               <th className="px-3 py-2 font-medium">时间</th>
               <th className="px-3 py-2 font-medium">模型</th>
               <th className="px-3 py-2 font-medium">协议</th>
@@ -92,9 +94,11 @@ export function LogsPage() {
               <tr key={item.id} className="border-t border-line hover:bg-white/5">
                 <td className="px-3 py-2">
                   <Link to={`/logs/${item.id}`} className="text-paper hover:text-signal">
-                    {formatTime(item.updated_at || item.created_at)}
+                    {item.api_key_name || '—'}
                   </Link>
                 </td>
+                <td className="px-3 py-2">{item.account_name || '—'}</td>
+                <td className="px-3 py-2 text-mist">{formatTime(item.updated_at || item.created_at)}</td>
                 <td className="px-3 py-2 font-mono text-xs">{item.model}</td>
                 <td className="px-3 py-2">{protocolLabel[item.protocol] || item.protocol}</td>
                 <td className="px-3 py-2">
@@ -112,12 +116,13 @@ export function LogsPage() {
           <Link key={item.id} to={`/logs/${item.id}`}>
             <Card>
               <div className="flex items-center justify-between">
-                <div className="font-mono text-xs">{item.model}</div>
+                <div className="font-medium">{item.api_key_name || '—'}</div>
                 <Badge tone={item.status === 'success' ? 'ok' : 'bad'}>{item.status}</Badge>
               </div>
+              <div className="mt-1 text-sm text-mist">{item.account_name || '—'}</div>
               <div className="mt-2 text-sm">{formatTime(item.updated_at || item.created_at)}</div>
               <div className="mt-1 text-xs text-mist">
-                {protocolLabel[item.protocol]} · {item.latency_ms}ms
+                {item.model} · {protocolLabel[item.protocol]} · {item.latency_ms}ms
               </div>
             </Card>
           </Link>

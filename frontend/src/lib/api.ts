@@ -126,7 +126,9 @@ export type ApiKeyItem = {
 export type LogItem = {
   id: number
   account_id: number
+  account_name?: string
   api_key_id: number
+  api_key_name?: string
   protocol: string
   model: string | null
   stream: boolean

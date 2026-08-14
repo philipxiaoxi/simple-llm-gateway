@@ -108,3 +108,6 @@ class RequestLog(Base):
     reasoning_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True, nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    account: Mapped[UpstreamAccount] = relationship(foreign_keys=[account_id])
+    api_key: Mapped[ApiKey] = relationship(foreign_keys=[api_key_id])

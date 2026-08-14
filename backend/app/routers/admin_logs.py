@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.db import get_db
 from app.deps import get_current_admin
@@ -44,10 +44,11 @@ def list_logs(
     total = db.scalar(select(func.count()).select_from(filters.subquery())) or 0
     offset = (page - 1) * page_size
     rows = db.scalars(
-        filters.order_by(func.coalesce(RequestLog.updated_at, RequestLog.created_at).desc(), RequestLog.id.desc())
+        filters.options(joinedload(RequestLog.api_key), joinedload(RequestLog.account))
+        .order_by(func.coalesce(RequestLog.updated_at, RequestLog.created_at).desc(), RequestLog.id.desc())
         .offset(offset)
         .limit(page_size)
-    ).all()
+    ).unique().all()
     return LogListOut(items=[log_to_out(row) for row in rows], total=total, page=page, page_size=page_size)
 
 

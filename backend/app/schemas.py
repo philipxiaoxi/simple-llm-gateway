@@ -86,7 +86,9 @@ class KeyOut(BaseModel):
 class LogOut(BaseModel):
     id: int
     account_id: int
+    account_name: str = ""
     api_key_id: int
+    api_key_name: str = ""
     protocol: str
     model: str | None
     stream: bool

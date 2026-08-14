@@ -66,3 +66,5 @@ def test_logs_are_paginated(client: TestClient, auth_headers: dict[str, str]) ->
     assert len(second.json()["items"]) == 1
     ids = {item["id"] for item in body["items"] + second.json()["items"]}
     assert len(ids) == 3
+    assert body["items"][0]["api_key_name"] == "k"
+    assert body["items"][0]["account_name"] == "DS"
