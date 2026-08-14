@@ -62,3 +62,27 @@ export function Field({ label, children }: { label: string; children: ReactNode 
     </label>
   )
 }
+
+export function Dialog({
+  title,
+  children,
+  onClose,
+}: {
+  title: string
+  children: ReactNode
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
+      <div className="w-full max-w-lg rounded-xl border border-line bg-panel p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <button type="button" className="text-mist hover:text-paper" onClick={onClose}>
+            关闭
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}

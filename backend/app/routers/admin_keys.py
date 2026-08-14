@@ -3,12 +3,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
-from app.crypto import encrypt_secret, generate_api_key, hash_api_key, key_prefix
+from app.crypto import decrypt_secret, encrypt_secret, generate_api_key, hash_api_key, key_prefix
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import ApiKey, UpstreamAccount
-from app.schemas import KeyCreate, KeyOut, KeyUpdate
+from app.schemas import CcSwitchBuildRequest, KeyCreate, KeyOut, KeyUpdate
 from app.serializers import key_to_out
+from app.services.ccswitch import (
+    CCS_SWITCH_TARGETS,
+    build_ccswitch_url_for_app,
+    describe_ccswitch_targets,
+    parse_models_json,
+)
 
 router = APIRouter(prefix="/api/admin/keys", tags=["admin-keys"], dependencies=[Depends(get_current_admin)])
 
@@ -46,6 +52,47 @@ def create_key(payload: KeyCreate, db: Session = Depends(get_db)) -> KeyOut:
 def get_key(key_id: int, db: Session = Depends(get_db)) -> KeyOut:
     item = _get_key(db, key_id)
     return key_to_out(item, reveal=True)
+
+
+@router.get("/{key_id}/cc-switch")
+def cc_switch_links(key_id: int, db: Session = Depends(get_db)) -> dict:
+    item = _get_key(db, key_id)
+    settings = get_settings()
+    plaintext = decrypt_secret(item.key_encrypted, settings.app_secret_key)
+    display_name = f"{item.name} · {item.account.name}" if item.account else item.name
+    models = parse_models_json(item.account.models_json if item.account else None)
+    return {
+        "display_name": display_name,
+        "models": models,
+        "targets": describe_ccswitch_targets(settings.app_base_url, display_name, plaintext, models),
+    }
+
+
+@router.post("/{key_id}/cc-switch")
+def cc_switch_build(key_id: int, payload: CcSwitchBuildRequest, db: Session = Depends(get_db)) -> dict:
+    item = _get_key(db, key_id)
+    allowed = {item[0] for item in CCS_SWITCH_TARGETS}
+    if payload.app not in allowed:
+        raise HTTPException(status_code=400, detail="不支持的 CC Switch 应用")
+    settings = get_settings()
+    plaintext = decrypt_secret(item.key_encrypted, settings.app_secret_key)
+    display_name = f"{item.name} · {item.account.name}" if item.account else item.name
+    models = parse_models_json(item.account.models_json if item.account else None)
+    try:
+        url = build_ccswitch_url_for_app(
+            app=payload.app,
+            app_base_url=settings.app_base_url,
+            display_name=display_name,
+            api_key=plaintext,
+            models=models,
+            model=payload.model,
+            haiku_model=payload.haiku_model,
+            sonnet_model=payload.sonnet_model,
+            opus_model=payload.opus_model,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return {"url": url}
 
 
 @router.patch("/{key_id}", response_model=KeyOut)

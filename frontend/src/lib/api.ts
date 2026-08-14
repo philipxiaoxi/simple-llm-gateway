@@ -75,6 +75,13 @@ export type Account = {
   created_at: string
 }
 
+export type CcSwitchTarget = {
+  app: string
+  label: string
+  needs_dialog: boolean
+  url?: string
+}
+
 export type ApiKeyItem = {
   id: number
   name: string
@@ -142,6 +149,12 @@ export const api = {
   createKey: (payload: { name: string; account_id: number }) =>
     request<ApiKeyItem>('/api/admin/keys', { method: 'POST', body: JSON.stringify(payload) }),
   key: (id: number) => request<ApiKeyItem>(`/api/admin/keys/${id}`),
+  ccSwitch: (id: number) =>
+    request<{ display_name: string; models: string[]; targets: CcSwitchTarget[] }>(`/api/admin/keys/${id}/cc-switch`),
+  ccSwitchBuild: (
+    id: number,
+    payload: { app: string; model?: string; haiku_model?: string; sonnet_model?: string; opus_model?: string },
+  ) => request<{ url: string }>(`/api/admin/keys/${id}/cc-switch`, { method: 'POST', body: JSON.stringify(payload) }),
   updateKey: (id: number, payload: Record<string, unknown>) =>
     request<ApiKeyItem>(`/api/admin/keys/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteKey: (id: number) => request<{ ok: boolean }>(`/api/admin/keys/${id}`, { method: 'DELETE' }),

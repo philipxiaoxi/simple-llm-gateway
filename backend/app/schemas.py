@@ -52,6 +52,14 @@ class AccountOut(BaseModel):
     created_at: datetime
 
 
+class CcSwitchBuildRequest(BaseModel):
+    app: str
+    model: str | None = None
+    haiku_model: str | None = None
+    sonnet_model: str | None = None
+    opus_model: str | None = None
+
+
 class KeyCreate(BaseModel):
     name: str
     account_id: int
