@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -16,6 +17,7 @@ from app.models import ApiKey, RequestLog, UpstreamAccount
 from app.providers import PRESETS
 from app.services.bridge import (
     anthropic_to_openai_messages,
+    call_anthropic,
     call_chat,
     count_openai_tokens,
     extract_text_from_openai_chunk,
@@ -32,6 +34,71 @@ from app.services.credentials import CredentialError
 
 def dump_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def reconstruct_anthropic_from_sse(sse_text: str, model: str) -> dict[str, Any]:
+    text_parts: list[str] = []
+    tool_blocks: list[dict[str, Any]] = []
+    usage: dict[str, Any] = {}
+    stop_reason = "end_turn"
+    message_id = None
+    current_tool: dict[str, Any] | None = None
+    for match in re.finditer(r"data:\s*(\{.*\})", sse_text):
+        try:
+            event = json.loads(match.group(1))
+        except json.JSONDecodeError:
+            continue
+        event_type = event.get("type")
+        if event_type == "message_start":
+            message_id = (event.get("message") or {}).get("id")
+        elif event_type == "content_block_start":
+            block = event.get("content_block") or {}
+            if block.get("type") == "tool_use":
+                current_tool = {
+                    "type": "tool_use",
+                    "id": block.get("id"),
+                    "name": block.get("name"),
+                    "input": block.get("input") or {},
+                    "_json": "",
+                }
+        elif event_type == "content_block_delta":
+            delta = event.get("delta") or {}
+            if delta.get("type") == "text_delta":
+                text_parts.append(delta.get("text") or "")
+            elif delta.get("type") == "input_json_delta" and current_tool is not None:
+                current_tool["_json"] = str(current_tool.get("_json") or "") + (delta.get("partial_json") or "")
+        elif event_type == "content_block_stop" and current_tool is not None:
+            raw_json = current_tool.pop("_json", "")
+            if raw_json:
+                try:
+                    current_tool["input"] = json.loads(raw_json)
+                except json.JSONDecodeError:
+                    current_tool["input"] = {"raw": raw_json}
+            tool_blocks.append(current_tool)
+            current_tool = None
+        elif event_type == "message_delta":
+            delta = event.get("delta") or {}
+            if delta.get("stop_reason"):
+                stop_reason = delta["stop_reason"]
+            if event.get("usage"):
+                usage = event["usage"]
+    content: list[dict[str, Any]] = []
+    text = "".join(text_parts)
+    if text:
+        content.append({"type": "text", "text": text})
+    content.extend(tool_blocks)
+    return {
+        "id": message_id,
+        "type": "message",
+        "role": "assistant",
+        "content": content,
+        "model": model,
+        "stop_reason": stop_reason,
+        "usage": {
+            "input_tokens": usage.get("input_tokens") or 0,
+            "output_tokens": usage.get("output_tokens") or 0,
+        },
+    }
 
 
 def parse_json(value: str | None) -> Any:
@@ -81,6 +148,122 @@ def save_log(
     return log
 
 
+async def handle_anthropic(
+    db: Session,
+    api_key: ApiKey,
+    account: UpstreamAccount,
+    body: dict[str, Any],
+    model: str,
+    stream: bool,
+    credential: str,
+    started: float,
+) -> JSONResponse | StreamingResponse:
+    try:
+        result = await call_anthropic(account, body, stream, credential)
+    except Exception as error:
+        return _fail(db, api_key, account, body, "anthropic_messages", model, stream, started, error)
+
+    if stream:
+        return _stream_anthropic(db, api_key, account, body, model, result, started)
+
+    if hasattr(result, "model_dump"):
+        payload = result.model_dump()
+    elif isinstance(result, dict):
+        payload = result
+    else:
+        payload = {"type": "message", "role": "assistant", "content": [{"type": "text", "text": str(result)}]}
+    usage = extract_usage(
+        {
+            "usage": {
+                "prompt_tokens": (payload.get("usage") or {}).get("input_tokens"),
+                "completion_tokens": (payload.get("usage") or {}).get("output_tokens"),
+            }
+        }
+    )
+    save_log(
+        db,
+        account_id=account.id,
+        api_key_id=api_key.id,
+        protocol="anthropic_messages",
+        model=model,
+        stream=False,
+        status="success",
+        http_status=200,
+        error_message=None,
+        usage=usage,
+        latency_ms=int((time.perf_counter() - started) * 1000),
+        request_body=body,
+        response_body=payload,
+    )
+    api_key.last_used_at = datetime.utcnow()
+    return JSONResponse(payload)
+
+
+def _stream_anthropic(
+    db: Session,
+    api_key: ApiKey,
+    account: UpstreamAccount,
+    body: dict[str, Any],
+    model: str,
+    result: Any,
+    started: float,
+) -> StreamingResponse:
+    account_id = account.id
+    api_key_id = api_key.id
+
+    async def event_source():
+        chunks: list[bytes] = []
+        error_text = None
+        status = "success"
+        http_status = 200
+        try:
+            async for chunk in result:
+                data = chunk if isinstance(chunk, bytes) else str(chunk).encode("utf-8")
+                chunks.append(data)
+                yield data
+        except Exception as error:
+            status = "error"
+            http_status = 502
+            error_text = str(error)
+            payload = json.dumps(
+                {"type": "error", "error": {"type": "api_error", "message": error_text}},
+                ensure_ascii=False,
+            )
+            yield f"event: error\ndata: {payload}\n\n".encode()
+        finally:
+            session = get_session_factory()()
+            try:
+                sse_text = b"".join(chunks).decode("utf-8", errors="replace")
+                payload = reconstruct_anthropic_from_sse(sse_text, model)
+                save_log(
+                    session,
+                    account_id=account_id,
+                    api_key_id=api_key_id,
+                    protocol="anthropic_messages",
+                    model=model,
+                    stream=True,
+                    status=status,
+                    http_status=http_status,
+                    error_message=error_text,
+                    usage=(
+                        payload.get("usage", {}).get("input_tokens"),
+                        payload.get("usage", {}).get("output_tokens"),
+                        None,
+                    ),
+                    latency_ms=int((time.perf_counter() - started) * 1000),
+                    request_body=body,
+                    response_body=payload,
+                )
+                stored_key = session.get(ApiKey, api_key_id)
+                if stored_key is not None:
+                    stored_key.last_used_at = datetime.utcnow()
+                session.commit()
+            finally:
+                session.close()
+
+    return StreamingResponse(event_source(), media_type="text/event-stream")
+
+
 async def handle_chat(
     db: Session,
     api_key: ApiKey,
@@ -113,11 +296,9 @@ async def handle_chat(
         return protocol_error(protocol, status_code, str(error))
 
     if protocol == "anthropic_messages":
-        messages = anthropic_to_openai_messages(body)
-        extra = _passthrough_keys(body)
-        if "max_tokens" not in extra and body.get("max_tokens"):
-            extra["max_tokens"] = body["max_tokens"]
-    elif protocol == "openai_responses":
+        return await handle_anthropic(db, api_key, account, body, model, stream, credential, started)
+
+    if protocol == "openai_responses":
         messages = input_to_messages(body)
         extra = _passthrough_keys(body)
     else:

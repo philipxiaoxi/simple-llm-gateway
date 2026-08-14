@@ -39,7 +39,22 @@ function extractMessages(log: { request_body?: unknown; response_body?: unknown;
   }
   if (log.protocol === 'anthropic_messages') {
     const content = response.content
-    messages.push({ role: 'assistant', content })
+    if (content) {
+      messages.push({ role: 'assistant', content })
+    } else if (typeof response.raw_sse === 'string') {
+      const texts = [...response.raw_sse.matchAll(/"text_delta"[^}]*"text":\s*"((?:\\.|[^"\\])*)"/g)].map(
+        (match) => {
+          try {
+            return JSON.parse(`"${match[1]}"`)
+          } catch {
+            return match[1]
+          }
+        },
+      )
+      messages.push({ role: 'assistant', content: texts.join('') })
+    } else {
+      messages.push({ role: 'assistant', content: '' })
+    }
   } else if (log.protocol === 'openai_responses') {
     messages.push({ role: 'assistant', content: response.output_text || response.output })
   } else {

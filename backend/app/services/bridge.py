@@ -8,6 +8,8 @@ from typing import Any
 
 import litellm
 
+litellm.drop_params = True
+
 from app.config import get_settings
 from app.models import UpstreamAccount
 from app.providers import openai_api_base
@@ -34,6 +36,50 @@ def _passthrough_keys(body: dict[str, Any]) -> dict[str, Any]:
         if key in body and body[key] is not None:
             extra[key] = body[key]
     return extra
+
+
+def flatten_anthropic_system(system: Any) -> str | None:
+    if system is None:
+        return None
+    if isinstance(system, str):
+        return system
+    if isinstance(system, list):
+        text = "".join(part.get("text", "") for part in system if isinstance(part, dict))
+        return text or None
+    return str(system)
+
+
+async def call_anthropic(
+    account: UpstreamAccount,
+    body: dict[str, Any],
+    stream: bool,
+    api_key: str,
+) -> Any:
+    settings = get_settings()
+    kwargs: dict[str, Any] = {
+        "model": f"openai/{body.get('model')}",
+        "messages": body.get("messages") or [],
+        "max_tokens": int(body.get("max_tokens") or 4096),
+        "api_key": api_key,
+        "api_base": openai_api_base(account.provider, account.base_url),
+        "custom_llm_provider": "openai",
+        "stream": stream,
+        "timeout": settings.request_timeout_seconds,
+        "drop_params": True,
+    }
+    system = flatten_anthropic_system(body.get("system"))
+    if system:
+        kwargs["system"] = system
+    # thinking / cache_control / top_k 是 Anthropic 专用，OpenAI 兼容上游不认，交给 LiteLLM drop
+    for key in ("tools", "tool_choice", "temperature", "top_p"):
+        if body.get(key) is not None:
+            kwargs[key] = body[key]
+    if body.get("stop_sequences"):
+        kwargs["stop_sequences"] = body["stop_sequences"]
+    elif body.get("stop"):
+        stop = body["stop"]
+        kwargs["stop_sequences"] = stop if isinstance(stop, list) else [stop]
+    return await litellm.anthropic_messages(**kwargs)
 
 
 def anthropic_to_openai_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
@@ -237,6 +283,7 @@ async def call_chat(
         api_base=api_base,
         stream=stream,
         timeout=settings.request_timeout_seconds,
+        drop_params=True,
         **extra,
     )
 
