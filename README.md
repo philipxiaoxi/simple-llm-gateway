@@ -17,8 +17,10 @@ cp .env.example .env
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
-uvicorn app.main:app --reload --app-dir backend --port 8000
+./scripts/dev-backend.sh
 ```
+
+`dev-backend.sh` 只监视 `backend/app`，改代码会自动热更新，不会把 `.venv` 扫进去。不要在仓库根目录裸跑 `uvicorn --reload`。
 
 另开一个终端：
 
