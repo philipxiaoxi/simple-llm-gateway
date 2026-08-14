@@ -22,7 +22,7 @@ export function Layout() {
   }
 
   return (
-    <div className="min-h-svh lg:grid lg:grid-cols-[240px_1fr]">
+    <div className="min-h-svh lg:h-svh lg:overflow-hidden lg:grid lg:grid-cols-[240px_1fr]">
       <header className="flex items-center justify-between border-b border-line px-4 py-3 lg:hidden">
         <div className="font-mono text-sm tracking-[0.2em] text-signal">中转台</div>
         <button onClick={() => setOpen((value) => !value)} className="text-paper">
@@ -31,15 +31,15 @@ export function Layout() {
       </header>
       <aside
         className={cn(
-          'border-line bg-panel/80 lg:block lg:min-h-svh lg:border-r',
-          open ? 'block' : 'hidden',
+          'border-line bg-panel/80 lg:flex lg:h-svh lg:flex-col lg:border-r lg:overflow-hidden',
+          open ? 'block' : 'hidden lg:flex',
         )}
       >
         <div className="hidden border-b border-line px-5 py-6 lg:block">
           <div className="font-mono text-xs tracking-[0.28em] text-signal">SIGNAL DESK</div>
           <div className="mt-1 text-lg font-semibold">中转台</div>
         </div>
-        <nav className="flex flex-col gap-1 p-3">
+        <nav className="flex flex-col gap-1 p-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
           {links.map((link) => (
             <NavLink
               key={link.to}
@@ -58,13 +58,13 @@ export function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="p-3 lg:absolute lg:bottom-0 lg:w-[240px]">
+        <div className="p-3">
           <Button variant="ghost" className="w-full justify-start text-mist" onClick={logout}>
             退出登录
           </Button>
         </div>
       </aside>
-      <main className="px-4 py-6 lg:px-8">
+      <main className="px-4 py-6 lg:h-svh lg:overflow-y-auto lg:px-8">
         <Outlet />
       </main>
     </div>
