@@ -6,10 +6,16 @@ from typing import Any
 
 import httpx
 
+from sqlalchemy.orm import object_session
+
 from app.config import get_settings
 from app.models import UpstreamAccount
 from app.providers import openai_api_base
 from app.services.credentials import get_upstream_credential
+from app.services.grok_oauth import refresh_if_needed
+
+GROK_WEEKLY_BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
+GROK_CLI_VERSION = "0.2.114"
 
 
 async def refresh_quota(account: UpstreamAccount) -> dict[str, Any]:
@@ -123,50 +129,97 @@ async def _deepseek_balance(account: UpstreamAccount, token: str) -> dict[str, A
     return {"supported": True, "ok": True, "provider": "deepseek", "raw": body}
 
 
+def parse_grok_weekly_windows(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    config = raw.get("config")
+    if not isinstance(config, dict):
+        return []
+    percent = config.get("creditUsagePercent")
+    if percent is None:
+        products = config.get("productUsage")
+        if isinstance(products, list):
+            for item in products:
+                if isinstance(item, dict) and item.get("usagePercent") is not None:
+                    percent = item.get("usagePercent")
+                    break
+    try:
+        percent_value = float(percent)
+    except (TypeError, ValueError):
+        return []
+    period = config.get("currentPeriod") if isinstance(config.get("currentPeriod"), dict) else {}
+    resets_at = (period or {}).get("end") or config.get("billingPeriodEnd")
+    return [
+        {
+            "id": "weekly",
+            "label": "周限制",
+            "percent": percent_value,
+            "limit_usd": None,
+            "used_usd": None,
+            "resets_at": resets_at,
+            "status": "ok",
+        }
+    ]
+
+
+def _grok_billing_headers(token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "x-xai-token-auth": "xai-grok-cli",
+        "x-grok-client-version": GROK_CLI_VERSION,
+        "User-Agent": f"grok-pager/{GROK_CLI_VERSION} grok-shell/{GROK_CLI_VERSION} (macos; aarch64)",
+    }
+
+
+async def _grok_access_token(account: UpstreamAccount, token: str) -> str:
+    session = object_session(account)
+    if session is None:
+        return token
+    try:
+        return await refresh_if_needed(session, account)
+    except ValueError:
+        return token
+
+
 async def _grok_quota(account: UpstreamAccount, token: str) -> dict[str, Any]:
     settings = get_settings()
-    base = openai_api_base(account.provider, account.base_url)
-    headers = {"Authorization": f"Bearer {token}"}
-    candidates = [
-        f"{base}/api-key",
-        f"{account.base_url.rstrip('/')}/v1/api-keys",
-        f"{base}/models",
-    ]
+    access_token = await _grok_access_token(account, token)
     async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
-        for url in candidates:
-            try:
-                response = await client.get(url, headers=headers)
-            except httpx.HTTPError:
-                continue
-            if response.status_code >= 400:
-                continue
-            remaining = {
-                key: value
-                for key, value in response.headers.items()
-                if "limit" in key.lower() or "remaining" in key.lower() or "quota" in key.lower()
-            }
-            try:
-                raw = response.json()
-            except ValueError:
-                raw = None
-            if remaining or (isinstance(raw, dict) and any(key in raw for key in ("usage", "quota", "limit"))):
-                return {
-                    "supported": True,
-                    "ok": True,
-                    "provider": "grok",
-                    "headers": remaining,
-                    "raw": raw,
-                    "message": "来自 xAI 响应头或接口的尽力结果",
-                }
-            if url.endswith("/models") and response.status_code < 400:
-                return {
-                    "supported": False,
-                    "ok": True,
-                    "provider": "grok",
-                    "headers": remaining,
-                    "message": "xAI 未返回可用余额字段，仅确认凭证有效",
-                }
-    return {"supported": False, "ok": False, "message": "未能从 xAI 读到额度"}
+        try:
+            response = await client.get(GROK_WEEKLY_BILLING_URL, headers=_grok_billing_headers(access_token))
+        except httpx.HTTPError as error:
+            return {"supported": True, "ok": False, "provider": "grok", "message": str(error)}
+    if response.status_code == 401:
+        return {"supported": True, "ok": False, "provider": "grok", "message": "Grok 授权失效，请重新授权"}
+    if response.status_code >= 400:
+        return {
+            "supported": True,
+            "ok": False,
+            "provider": "grok",
+            "message": f"{response.status_code} {response.text[:300]}",
+        }
+    try:
+        raw = response.json()
+    except ValueError:
+        return {"supported": True, "ok": False, "provider": "grok", "message": "上游返回的不是 JSON"}
+    if not isinstance(raw, dict):
+        return {"supported": True, "ok": False, "provider": "grok", "message": "额度格式无法识别"}
+    windows = parse_grok_weekly_windows(raw)
+    if not windows:
+        return {
+            "supported": True,
+            "ok": False,
+            "provider": "grok",
+            "raw": raw,
+            "message": "没有解析到周额度",
+        }
+    return {
+        "supported": True,
+        "ok": True,
+        "provider": "grok",
+        "windows": windows,
+        "raw": raw,
+    }
 
 
 async def _generic_quota(account: UpstreamAccount, token: str) -> dict[str, Any]:

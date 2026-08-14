@@ -126,7 +126,7 @@ export function AccountsPage() {
     setBusyId(id)
     try {
       const result = await api.quota(id)
-      if (result.provider !== 'opencode_go') {
+      if (result.provider !== 'opencode_go' && result.provider !== 'grok') {
         setQuotaText((current) => ({ ...current, [id]: JSON.stringify(result, null, 2) }))
       }
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
@@ -262,7 +262,7 @@ export function AccountsPage() {
                 {account.status === 'active' ? '停用' : '启用'}
               </Button>
             </div>
-            {account.provider === 'opencode_go' ? (
+            {account.provider === 'opencode_go' || account.provider === 'grok' ? (
               <div>
                 <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
                   额度{account.quota_updated_at ? ` · ${formatTime(account.quota_updated_at)}` : ''}
@@ -271,7 +271,10 @@ export function AccountsPage() {
                   <QuotaBars windows={quotaWindows(account.quota)} />
                 ) : (
                   <div className="text-sm text-mist">
-                    {account.quota?.message || '还没有额度，点「刷新额度」从 OpenCode 拉取 5 小时 / 周 / 月限制。'}
+                    {account.quota?.message ||
+                      (account.provider === 'grok'
+                        ? '还没有额度，点「刷新额度」拉取 Grok 周限制。'
+                        : '还没有额度，点「刷新额度」从 OpenCode 拉取 5 小时 / 周 / 月限制。')}
                   </div>
                 )}
               </div>
