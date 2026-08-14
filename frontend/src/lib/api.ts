@@ -54,6 +54,25 @@ export type Provider = {
   models: string[]
 }
 
+export type QuotaWindow = {
+  id: string
+  label: string
+  percent: number
+  limit_usd?: number | null
+  used_usd?: number | null
+  resets_at?: string | null
+  status?: string
+}
+
+export type AccountQuota = {
+  supported?: boolean
+  ok?: boolean
+  provider?: string
+  message?: string
+  windows?: QuotaWindow[]
+  raw?: unknown
+}
+
 export type Account = {
   id: number
   name: string
@@ -67,7 +86,7 @@ export type Account = {
   last_probe_latency_ms: number | null
   last_probe_message: string | null
   last_probe_at: string | null
-  quota: unknown
+  quota: AccountQuota | null
   quota_updated_at: string | null
   models: string[]
   models_updated_at: string | null
@@ -139,7 +158,7 @@ export const api = {
     request<Account>(`/api/admin/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteAccount: (id: number) => request<{ ok: boolean }>(`/api/admin/accounts/${id}`, { method: 'DELETE' }),
   probe: (id: number) => request<{ ok: boolean; latency_ms: number; message: string }>(`/api/admin/accounts/${id}/probe`, { method: 'POST' }),
-  quota: (id: number) => request<Record<string, unknown>>(`/api/admin/accounts/${id}/quota`, { method: 'POST' }),
+  quota: (id: number) => request<AccountQuota>(`/api/admin/accounts/${id}/quota`, { method: 'POST' }),
   models: (id: number) =>
     request<{ ok: boolean; models: string[]; message?: string; source?: string }>(`/api/admin/accounts/${id}/models`, {
       method: 'POST',

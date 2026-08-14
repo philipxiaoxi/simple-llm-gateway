@@ -2,8 +2,67 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Field, Input } from '../components/ui'
-import { api, type Account } from '../lib/api'
+import { api, type Account, type AccountQuota, type QuotaWindow } from '../lib/api'
 import { formatTime } from '../lib/utils'
+
+const OPENCODE_WINDOW_META: { id: string; label: string; limitUsd: number }[] = [
+  { id: 'rolling', label: '5 小时限额', limitUsd: 12 },
+  { id: 'weekly', label: '周限制', limitUsd: 30 },
+  { id: 'monthly', label: '月限制', limitUsd: 60 },
+]
+
+function quotaWindows(quota: AccountQuota | null | undefined): QuotaWindow[] {
+  if (quota?.windows?.length) return quota.windows
+  const raw = quota?.raw
+  const usage =
+    raw && typeof raw === 'object' && raw !== null && 'usage' in raw
+      ? (raw as { usage?: Record<string, { percent?: number; resetsAt?: string; status?: string }> }).usage
+      : undefined
+  if (!usage) return []
+  return OPENCODE_WINDOW_META.flatMap((meta) => {
+    const item = usage[meta.id]
+    if (!item || typeof item.percent !== 'number') return []
+    return [
+      {
+        id: meta.id,
+        label: meta.label,
+        percent: item.percent,
+        limit_usd: meta.limitUsd,
+        used_usd: Math.round(meta.limitUsd * item.percent) / 100,
+        resets_at: item.resetsAt,
+        status: item.status,
+      },
+    ]
+  })
+}
+
+function QuotaBars({ windows }: { windows: QuotaWindow[] }) {
+  return (
+    <div className="space-y-3">
+      {windows.map((window) => {
+        const used = Math.min(Math.max(window.percent, 0), 100)
+        const tone = used >= 90 ? 'bg-danger' : used >= 70 ? 'bg-warn' : 'bg-signal'
+        return (
+          <div key={window.id} className="space-y-1.5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+              <span>{window.label}</span>
+              <span className="font-mono text-xs text-mist">
+                {window.used_usd != null && window.limit_usd != null
+                  ? `$${window.used_usd} / $${window.limit_usd}`
+                  : `${used}%`}
+                {window.status && window.status !== 'ok' ? ` · ${window.status}` : ''}
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-ink">
+              <div className={`h-full rounded-full ${tone}`} style={{ width: `${used}%` }} />
+            </div>
+            <div className="text-xs text-mist">重置时间：{formatTime(window.resets_at)}</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export function AccountsPage() {
   const queryClient = useQueryClient()
@@ -67,8 +126,11 @@ export function AccountsPage() {
     setBusyId(id)
     try {
       const result = await api.quota(id)
-      setQuotaText((current) => ({ ...current, [id]: JSON.stringify(result, null, 2) }))
+      if (result.provider !== 'opencode_go') {
+        setQuotaText((current) => ({ ...current, [id]: JSON.stringify(result, null, 2) }))
+      }
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      setMessage(result.ok === false ? result.message || '额度查询失败' : '额度已更新')
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '额度查询失败')
     } finally {
@@ -200,6 +262,20 @@ export function AccountsPage() {
                 {account.status === 'active' ? '停用' : '启用'}
               </Button>
             </div>
+            {account.provider === 'opencode_go' ? (
+              <div>
+                <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
+                  额度{account.quota_updated_at ? ` · ${formatTime(account.quota_updated_at)}` : ''}
+                </div>
+                {quotaWindows(account.quota).length ? (
+                  <QuotaBars windows={quotaWindows(account.quota)} />
+                ) : (
+                  <div className="text-sm text-mist">
+                    {account.quota?.message || '还没有额度，点「刷新额度」从 OpenCode 拉取 5 小时 / 周 / 月限制。'}
+                  </div>
+                )}
+              </div>
+            ) : null}
             <div>
               <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
                 模型{account.models_updated_at ? ` · ${formatTime(account.models_updated_at)}` : ''}

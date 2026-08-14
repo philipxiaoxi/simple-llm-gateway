@@ -24,12 +24,88 @@ async def refresh_quota(account: UpstreamAccount) -> dict[str, Any]:
         payload = await _deepseek_balance(account, token)
     elif account.provider == "grok":
         payload = await _grok_quota(account, token)
+    elif account.provider == "opencode_go":
+        payload = await _opencode_go_quota(account, token)
     else:
         payload = await _generic_quota(account, token)
 
     account.quota_json = json.dumps(payload, ensure_ascii=False)
     account.quota_updated_at = datetime.utcnow()
     return payload
+
+
+OPENCODE_GO_WINDOWS: tuple[tuple[str, str, float], ...] = (
+    ("rolling", "5 小时限额", 12.0),
+    ("weekly", "周限制", 30.0),
+    ("monthly", "月限制", 60.0),
+)
+
+
+def parse_opencode_go_windows(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    usage = raw.get("usage")
+    if not isinstance(usage, dict):
+        return []
+    windows: list[dict[str, Any]] = []
+    for window_id, label, limit_usd in OPENCODE_GO_WINDOWS:
+        item = usage.get(window_id)
+        if not isinstance(item, dict):
+            continue
+        percent = item.get("percent")
+        try:
+            percent_value = float(percent)
+        except (TypeError, ValueError):
+            continue
+        windows.append(
+            {
+                "id": window_id,
+                "label": label,
+                "percent": percent_value,
+                "limit_usd": limit_usd,
+                "used_usd": round(limit_usd * percent_value / 100, 2),
+                "resets_at": item.get("resetsAt") or item.get("resets_at"),
+                "status": str(item.get("status") or "ok"),
+            }
+        )
+    return windows
+
+
+async def _opencode_go_quota(account: UpstreamAccount, token: str) -> dict[str, Any]:
+    settings = get_settings()
+    url = openai_api_base(account.provider, account.base_url).rstrip("/") + "/usage"
+    async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+        try:
+            response = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+        except httpx.HTTPError as error:
+            return {"supported": True, "ok": False, "provider": "opencode_go", "message": str(error)}
+    if response.status_code >= 400:
+        return {
+            "supported": True,
+            "ok": False,
+            "provider": "opencode_go",
+            "message": f"{response.status_code} {response.text[:300]}",
+        }
+    try:
+        raw = response.json()
+    except ValueError:
+        return {"supported": True, "ok": False, "provider": "opencode_go", "message": "上游返回的不是 JSON"}
+    if not isinstance(raw, dict):
+        return {"supported": True, "ok": False, "provider": "opencode_go", "message": "额度格式无法识别"}
+    windows = parse_opencode_go_windows(raw)
+    if not windows:
+        return {
+            "supported": True,
+            "ok": False,
+            "provider": "opencode_go",
+            "raw": raw,
+            "message": "没有解析到 5 小时 / 周 / 月额度",
+        }
+    return {
+        "supported": True,
+        "ok": True,
+        "provider": "opencode_go",
+        "windows": windows,
+        "raw": raw,
+    }
 
 
 async def _deepseek_balance(account: UpstreamAccount, token: str) -> dict[str, Any]:
