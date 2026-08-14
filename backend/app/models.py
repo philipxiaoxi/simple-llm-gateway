@@ -36,6 +36,8 @@ class UpstreamAccount(Base):
     last_probe_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     quota_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     quota_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    models_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    models_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 

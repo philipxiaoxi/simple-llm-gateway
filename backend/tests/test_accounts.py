@@ -80,3 +80,32 @@ def test_quota_deepseek(client: TestClient, auth_headers: dict[str, str]) -> Non
     assert response.status_code == 200
     assert response.json()["supported"] is True
     assert response.json()["raw"]["is_available"] is True
+
+
+def test_list_account_models(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    account_id = created.json()["id"]
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {"data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}]}
+
+    with patch("app.services.probe.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        response = client.post(f"/api/admin/accounts/{account_id}/models", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["models"] == ["deepseek-chat", "deepseek-reasoner"]
+    stored = client.get(f"/api/admin/accounts/{account_id}", headers=auth_headers)
+    assert stored.json()["models"] == ["deepseek-chat", "deepseek-reasoner"]

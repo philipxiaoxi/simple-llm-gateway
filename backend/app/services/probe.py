@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 import httpx
@@ -59,3 +60,55 @@ async def probe_account(account: UpstreamAccount) -> dict:
     account.last_probe_message = last_error
     account.last_probe_at = datetime.utcnow()
     return {"ok": False, "latency_ms": latency, "message": last_error}
+
+
+def _extract_model_ids(payload: object) -> list[str]:
+    names: list[str] = []
+    if isinstance(payload, dict):
+        items = payload.get("data") or payload.get("models") or payload.get("items") or []
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, str):
+                    names.append(item)
+                elif isinstance(item, dict):
+                    model_id = item.get("id") or item.get("name") or item.get("model")
+                    if model_id:
+                        names.append(str(model_id))
+    elif isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, str):
+                names.append(item)
+            elif isinstance(item, dict):
+                model_id = item.get("id") or item.get("name") or item.get("model")
+                if model_id:
+                    names.append(str(model_id))
+    return names
+
+
+async def list_account_models(account: UpstreamAccount) -> dict:
+    settings = get_settings()
+    token = get_upstream_credential(account, allow_expired=True)
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    last_error = "未发起请求"
+    async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+        for url in _candidate_urls(account):
+            try:
+                response = await client.get(url, headers=headers)
+            except httpx.HTTPError as error:
+                last_error = str(error)
+                continue
+            if response.status_code >= 400:
+                last_error = f"{response.status_code} {response.text[:300]}"
+                continue
+            try:
+                payload = response.json()
+            except ValueError:
+                last_error = "上游返回的不是 JSON"
+                continue
+            models = _extract_model_ids(payload)
+            if models:
+                account.models_json = json.dumps(models, ensure_ascii=False)
+                account.models_updated_at = datetime.utcnow()
+                return {"ok": True, "models": models, "source": url}
+            last_error = f"{url} 没有解析到模型"
+    return {"ok": False, "models": [], "message": last_error}

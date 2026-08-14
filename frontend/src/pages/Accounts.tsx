@@ -60,6 +60,23 @@ export function AccountsPage() {
     }
   }
 
+  async function runModels(id: number) {
+    setBusyId(id)
+    try {
+      const result = await api.models(id)
+      if (!result.ok) {
+        setMessage(result.message || '未能拉取模型列表')
+        return
+      }
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      setMessage(`已入库 ${result.models.length} 个模型`)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '拉取模型失败')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   async function startOauth(id: number) {
     const result = await api.oauthStart(id)
     window.location.href = result.authorize_url
@@ -144,6 +161,9 @@ export function AccountsPage() {
               <Button variant="line" disabled={busyId === account.id} onClick={() => runQuota(account.id)}>
                 刷新额度
               </Button>
+              <Button type="button" variant="line" disabled={busyId === account.id} onClick={() => runModels(account.id)}>
+                获取模型
+              </Button>
               {account.provider === 'grok' ? (
                 <Button variant="line" onClick={() => startOauth(account.id)}>
                   去授权
@@ -152,6 +172,22 @@ export function AccountsPage() {
               <Button variant="ghost" onClick={() => toggle(account)}>
                 {account.status === 'active' ? '停用' : '启用'}
               </Button>
+            </div>
+            <div>
+              <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
+                模型{account.models_updated_at ? ` · ${formatTime(account.models_updated_at)}` : ''}
+              </div>
+              {account.models?.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {account.models.map((modelName) => (
+                    <Badge key={modelName} tone="info">
+                      {modelName}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-mist">还没有模型，点「获取模型」从上游拉取并入库。</div>
+              )}
             </div>
             {quotaText[account.id] ? (
               <pre className="overflow-auto rounded-md bg-ink p-3 font-mono text-xs text-mist">{quotaText[account.id]}</pre>

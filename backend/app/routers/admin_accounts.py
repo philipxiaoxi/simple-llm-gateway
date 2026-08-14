@@ -14,7 +14,7 @@ from app.models import Admin, UpstreamAccount
 from app.providers import PRESETS, get_preset
 from app.schemas import AccountCreate, AccountOut, AccountUpdate, ProviderOut
 from app.serializers import account_to_out
-from app.services.probe import probe_account
+from app.services.probe import list_account_models, probe_account
 from app.services.quota import refresh_quota
 
 router = APIRouter(prefix="/api/admin", tags=["admin-accounts"], dependencies=[Depends(get_current_admin)])
@@ -117,6 +117,12 @@ async def probe(account_id: int, db: Session = Depends(get_db)) -> dict:
 async def quota(account_id: int, db: Session = Depends(get_db)) -> dict:
     account = _get_account(db, account_id)
     return await refresh_quota(account)
+
+
+@router.post("/accounts/{account_id}/models")
+async def models(account_id: int, db: Session = Depends(get_db)) -> dict:
+    account = _get_account(db, account_id)
+    return await list_account_models(account)
 
 
 def _get_account(db: Session, account_id: int) -> UpstreamAccount:

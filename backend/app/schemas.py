@@ -46,6 +46,8 @@ class AccountOut(BaseModel):
     last_probe_at: datetime | None
     quota: Any | None = None
     quota_updated_at: datetime | None
+    models: list[str] = Field(default_factory=list)
+    models_updated_at: datetime | None = None
     oauth_expires_at: datetime | None = None
     created_at: datetime
 

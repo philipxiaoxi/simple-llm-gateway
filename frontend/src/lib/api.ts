@@ -69,6 +69,8 @@ export type Account = {
   last_probe_at: string | null
   quota: unknown
   quota_updated_at: string | null
+  models: string[]
+  models_updated_at: string | null
   oauth_expires_at: string | null
   created_at: string
 }
@@ -131,6 +133,10 @@ export const api = {
   deleteAccount: (id: number) => request<{ ok: boolean }>(`/api/admin/accounts/${id}`, { method: 'DELETE' }),
   probe: (id: number) => request<{ ok: boolean; latency_ms: number; message: string }>(`/api/admin/accounts/${id}/probe`, { method: 'POST' }),
   quota: (id: number) => request<Record<string, unknown>>(`/api/admin/accounts/${id}/quota`, { method: 'POST' }),
+  models: (id: number) =>
+    request<{ ok: boolean; models: string[]; message?: string; source?: string }>(`/api/admin/accounts/${id}/models`, {
+      method: 'POST',
+    }),
   oauthStart: (id: number) => request<{ authorize_url: string }>(`/api/admin/accounts/${id}/oauth/start`),
   keys: () => request<ApiKeyItem[]>('/api/admin/keys'),
   createKey: (payload: { name: string; account_id: number }) =>

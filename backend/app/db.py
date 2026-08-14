@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -39,7 +39,23 @@ def get_session_factory() -> sessionmaker[Session]:
 
 
 def init_db() -> None:
-    Base.metadata.create_all(bind=get_engine())
+    engine = get_engine()
+    Base.metadata.create_all(bind=engine)
+    _ensure_columns(engine)
+
+
+def _ensure_columns(engine: Engine) -> None:
+    statements = {
+        "models_json": "ALTER TABLE upstream_accounts ADD COLUMN models_json TEXT",
+        "models_updated_at": "ALTER TABLE upstream_accounts ADD COLUMN models_updated_at DATETIME",
+    }
+    with engine.begin() as connection:
+        existing = {
+            row[1] for row in connection.execute(text("PRAGMA table_info(upstream_accounts)"))
+        }
+        for column, statement in statements.items():
+            if column not in existing:
+                connection.execute(text(statement))
 
 
 def reset_db_runtime() -> None:

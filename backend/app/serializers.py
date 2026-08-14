@@ -21,6 +21,14 @@ def account_to_out(account: UpstreamAccount, reveal: bool = False) -> AccountOut
             quota = json.loads(account.quota_json)
         except json.JSONDecodeError:
             quota = account.quota_json
+    models: list[str] = []
+    if account.models_json:
+        try:
+            parsed = json.loads(account.models_json)
+            if isinstance(parsed, list):
+                models = [str(item) for item in parsed]
+        except json.JSONDecodeError:
+            models = []
     has_credential = bool(account.api_key_encrypted) or (
         account.oauth_token is not None and bool(account.oauth_token.access_token_encrypted)
     )
@@ -39,6 +47,8 @@ def account_to_out(account: UpstreamAccount, reveal: bool = False) -> AccountOut
         last_probe_at=account.last_probe_at,
         quota=quota,
         quota_updated_at=account.quota_updated_at,
+        models=models,
+        models_updated_at=account.models_updated_at,
         oauth_expires_at=account.oauth_token.expires_at if account.oauth_token else None,
         created_at=account.created_at,
     )
