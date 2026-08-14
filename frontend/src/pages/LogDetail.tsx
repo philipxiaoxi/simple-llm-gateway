@@ -82,7 +82,7 @@ export function LogDetailPage() {
         <div>
           <h1 className="text-2xl font-semibold">记录 #{data.id}</h1>
           <div className="mt-1 text-sm text-mist">
-            {formatTime(data.created_at)} · {data.model} · {data.latency_ms}ms
+            {formatTime(data.updated_at || data.created_at)} · {data.model} · {data.latency_ms}ms
           </div>
         </div>
         <Badge tone={data.status === 'success' ? 'ok' : 'bad'}>{data.status}</Badge>

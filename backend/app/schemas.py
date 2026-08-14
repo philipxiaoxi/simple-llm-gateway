@@ -98,6 +98,7 @@ class LogOut(BaseModel):
     total_tokens: int | None
     latency_ms: int
     created_at: datetime
+    updated_at: datetime | None = None
     request_body: Any | None = None
     response_body: Any | None = None
 

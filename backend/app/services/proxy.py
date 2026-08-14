@@ -29,6 +29,7 @@ from app.services.bridge import (
     stream_openai_chunks,
     _passthrough_keys,
 )
+from app.services.conversation import extract_session_key, find_continuation_log
 from app.services.credentials import CredentialError
 
 
@@ -125,8 +126,41 @@ def save_log(
     latency_ms: int,
     request_body: Any,
     response_body: Any,
+    request_headers: dict[str, str] | None = None,
 ) -> RequestLog:
     prompt, completion, total = usage
+    now = datetime.utcnow()
+    existing = None
+    session_key = extract_session_key(request_body if isinstance(request_body, dict) else None, request_headers)
+    if isinstance(request_body, dict):
+        existing = find_continuation_log(
+            db,
+            api_key_id=api_key_id,
+            protocol=protocol,
+            request_body=request_body,
+            session_key=session_key,
+        )
+    if existing is not None:
+        existing.model = model
+        existing.stream = stream
+        existing.status = status
+        existing.http_status = http_status
+        existing.error_message = error_message
+        existing.prompt_tokens = prompt
+        if completion is not None:
+            existing.completion_tokens = (existing.completion_tokens or 0) + completion
+        if prompt is not None or existing.completion_tokens is not None:
+            existing.total_tokens = (prompt or 0) + (existing.completion_tokens or 0)
+        elif total is not None:
+            existing.total_tokens = total
+        existing.latency_ms = (existing.latency_ms or 0) + latency_ms
+        existing.request_body = dump_json(request_body)
+        existing.response_body = dump_json(response_body) if response_body is not None else existing.response_body
+        existing.updated_at = now
+        if session_key:
+            existing.session_key = session_key
+        db.flush()
+        return existing
     log = RequestLog(
         account_id=account_id,
         api_key_id=api_key_id,
@@ -142,6 +176,9 @@ def save_log(
         latency_ms=latency_ms,
         request_body=dump_json(request_body) if request_body is not None else None,
         response_body=dump_json(response_body) if response_body is not None else None,
+        created_at=now,
+        updated_at=now,
+        session_key=session_key,
     )
     db.add(log)
     db.flush()
@@ -157,6 +194,7 @@ async def handle_anthropic(
     stream: bool,
     credential: str,
     started: float,
+    request_headers: dict[str, str] | None = None,
 ) -> JSONResponse | StreamingResponse:
     try:
         result = await call_anthropic(account, body, stream, credential)
@@ -164,7 +202,7 @@ async def handle_anthropic(
         return _fail(db, api_key, account, body, "anthropic_messages", model, stream, started, error)
 
     if stream:
-        return _stream_anthropic(db, api_key, account, body, model, result, started)
+        return _stream_anthropic(db, api_key, account, body, model, result, started, request_headers)
 
     if hasattr(result, "model_dump"):
         payload = result.model_dump()
@@ -194,6 +232,7 @@ async def handle_anthropic(
         latency_ms=int((time.perf_counter() - started) * 1000),
         request_body=body,
         response_body=payload,
+        request_headers=request_headers,
     )
     api_key.last_used_at = datetime.utcnow()
     return JSONResponse(payload)
@@ -207,6 +246,7 @@ def _stream_anthropic(
     model: str,
     result: Any,
     started: float,
+    request_headers: dict[str, str] | None = None,
 ) -> StreamingResponse:
     account_id = account.id
     api_key_id = api_key.id
@@ -253,6 +293,7 @@ def _stream_anthropic(
                     latency_ms=int((time.perf_counter() - started) * 1000),
                     request_body=body,
                     response_body=payload,
+                    request_headers=request_headers,
                 )
                 stored_key = session.get(ApiKey, api_key_id)
                 if stored_key is not None:
@@ -270,6 +311,7 @@ async def handle_chat(
     account: UpstreamAccount,
     body: dict[str, Any],
     protocol: str,
+    request_headers: dict[str, str] | None = None,
 ) -> JSONResponse | StreamingResponse:
     started = time.perf_counter()
     stream = bool(body.get("stream"))
@@ -292,11 +334,14 @@ async def handle_chat(
             latency_ms=int((time.perf_counter() - started) * 1000),
             request_body=body,
             response_body=None,
+            request_headers=request_headers,
         )
         return protocol_error(protocol, status_code, str(error))
 
     if protocol == "anthropic_messages":
-        return await handle_anthropic(db, api_key, account, body, model, stream, credential, started)
+        return await handle_anthropic(
+            db, api_key, account, body, model, stream, credential, started, request_headers
+        )
 
     if protocol == "openai_responses":
         messages = input_to_messages(body)
@@ -309,13 +354,13 @@ async def handle_chat(
 
     if stream:
         return await _stream_response(
-            db, api_key, account, body, protocol, model, messages, extra, credential, started
+            db, api_key, account, body, protocol, model, messages, extra, credential, started, request_headers
         )
 
     try:
         result = await call_chat(account, messages, model, False, extra, credential)
     except Exception as error:
-        return _fail(db, api_key, account, body, protocol, model, stream, started, error)
+        return _fail(db, api_key, account, body, protocol, model, stream, started, error, request_headers)
 
     if hasattr(result, "model_dump"):
         openai_payload = result.model_dump()
@@ -347,6 +392,7 @@ async def handle_chat(
         latency_ms=int((time.perf_counter() - started) * 1000),
         request_body=body,
         response_body=payload,
+        request_headers=request_headers,
     )
     api_key.last_used_at = datetime.utcnow()
     return JSONResponse(payload)
@@ -363,11 +409,12 @@ async def _stream_response(
     extra: dict[str, Any],
     credential: str,
     started: float,
+    request_headers: dict[str, str] | None = None,
 ) -> StreamingResponse | JSONResponse:
     try:
         result = await call_chat(account, messages, model, True, extra, credential)
     except Exception as error:
-        return _fail(db, api_key, account, body, protocol, model, True, started, error)
+        return _fail(db, api_key, account, body, protocol, model, True, started, error, request_headers)
 
     message_id = f"msg_{uuid.uuid4().hex}"
     account_id = account.id
@@ -498,6 +545,7 @@ async def _stream_response(
                     latency_ms=int((time.perf_counter() - started) * 1000),
                     request_body=body,
                     response_body=response_body,
+                    request_headers=request_headers,
                 )
                 stored_key = session.get(ApiKey, api_key_id)
                 if stored_key is not None:
@@ -523,6 +571,7 @@ def _fail(
     stream: bool,
     started: float,
     error: Exception,
+    request_headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     message = str(error)
     status_code = 504 if "timeout" in message.lower() else 502
@@ -540,6 +589,7 @@ def _fail(
         latency_ms=int((time.perf_counter() - started) * 1000),
         request_body=body,
         response_body=None,
+        request_headers=request_headers,
     )
     return protocol_error(protocol, status_code, message)
 

@@ -45,17 +45,22 @@ def init_db() -> None:
 
 
 def _ensure_columns(engine: Engine) -> None:
-    statements = {
+    account_statements = {
         "models_json": "ALTER TABLE upstream_accounts ADD COLUMN models_json TEXT",
         "models_updated_at": "ALTER TABLE upstream_accounts ADD COLUMN models_updated_at DATETIME",
     }
     with engine.begin() as connection:
-        existing = {
+        account_columns = {
             row[1] for row in connection.execute(text("PRAGMA table_info(upstream_accounts)"))
         }
-        for column, statement in statements.items():
-            if column not in existing:
+        for column, statement in account_statements.items():
+            if column not in account_columns:
                 connection.execute(text(statement))
+        log_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(request_logs)"))}
+        if "updated_at" not in log_columns:
+            connection.execute(text("ALTER TABLE request_logs ADD COLUMN updated_at DATETIME"))
+        if "session_key" not in log_columns:
+            connection.execute(text("ALTER TABLE request_logs ADD COLUMN session_key VARCHAR(128)"))
 
 
 def reset_db_runtime() -> None:

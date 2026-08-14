@@ -43,7 +43,11 @@ def list_logs(
         filters = filters.where(RequestLog.created_at <= until)
     total = db.scalar(select(func.count()).select_from(filters.subquery())) or 0
     offset = (page - 1) * page_size
-    rows = db.scalars(filters.order_by(RequestLog.id.desc()).offset(offset).limit(page_size)).all()
+    rows = db.scalars(
+        filters.order_by(func.coalesce(RequestLog.updated_at, RequestLog.created_at).desc(), RequestLog.id.desc())
+        .offset(offset)
+        .limit(page_size)
+    ).all()
     return LogListOut(items=[log_to_out(row) for row in rows], total=total, page=page, page_size=page_size)
 
 

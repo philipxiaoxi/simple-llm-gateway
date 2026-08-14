@@ -45,7 +45,7 @@ async def chat_completions(
         return error
     api_key, account = resolved
     body = await request.json()
-    return await handle_chat(db, api_key, account, body, protocol)
+    return await handle_chat(db, api_key, account, body, protocol, dict(request.headers))
 
 
 @router.api_route("/v1/responses", methods=["POST"], response_model=None)
@@ -62,7 +62,7 @@ async def responses(
         return error
     api_key, account = resolved
     body = await request.json()
-    return await handle_chat(db, api_key, account, body, protocol)
+    return await handle_chat(db, api_key, account, body, protocol, dict(request.headers))
 
 
 @router.api_route("/v1/messages", methods=["POST"], response_model=None)
@@ -79,7 +79,7 @@ async def messages(
         return error
     api_key, account = resolved
     body = await request.json()
-    return await handle_chat(db, api_key, account, body, protocol)
+    return await handle_chat(db, api_key, account, body, protocol, dict(request.headers))
 
 
 @router.api_route("/v1/messages/count_tokens", methods=["POST"], response_model=None)

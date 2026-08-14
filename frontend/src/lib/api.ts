@@ -138,6 +138,7 @@ export type LogItem = {
   total_tokens: number | null
   latency_ms: number
   created_at: string
+  updated_at?: string | null
   request_body?: unknown
   response_body?: unknown
 }

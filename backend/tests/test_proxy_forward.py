@@ -51,6 +51,91 @@ def test_openai_forward_and_log(client: TestClient, auth_headers: dict[str, str]
     assert detail.json()["response_body"]["choices"][0]["message"]["content"] == "你好"
 
 
+def test_follow_up_reuses_same_log(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+    with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=FakeResponse())):
+        first = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": "deepseek-chat", "messages": [{"role": "user", "content": "hi"}]},
+        )
+        assert first.status_code == 200
+        second = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={
+                "model": "deepseek-chat",
+                "messages": [
+                    {"role": "user", "content": "hi"},
+                    {"role": "assistant", "content": "你好"},
+                    {"role": "user", "content": "再来一句"},
+                ],
+            },
+        )
+        assert second.status_code == 200
+        third = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": "deepseek-chat", "messages": [{"role": "user", "content": "新开的对话"}]},
+        )
+        assert third.status_code == 200
+
+    listed = client.get("/api/admin/logs", headers=auth_headers).json()
+    assert listed["total"] == 2
+    details = [client.get(f"/api/admin/logs/{item['id']}", headers=auth_headers).json() for item in listed["items"]]
+    continued_detail = next(item for item in details if len((item["request_body"] or {}).get("messages") or []) == 3)
+    fresh_detail = next(
+        item for item in details if (item["request_body"] or {}).get("messages", [{}])[0].get("content") == "新开的对话"
+    )
+    assert continued_detail["request_body"]["messages"][-1]["content"] == "再来一句"
+    assert fresh_detail["id"] != continued_detail["id"]
+
+
+def test_claude_session_id_merges_same_length_turns(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+    metadata = {
+        "user_id": '{"device_id":"dev","account_uuid":"","session_id":"11111111-2222-3333-4444-555555555555"}'
+    }
+    with patch("app.services.proxy.call_anthropic", new=AsyncMock(return_value=FakeAnthropicResponse())):
+        first = client.post(
+            "/v1/messages",
+            headers={"Authorization": f"Bearer {key}", "x-api-key": key},
+            json={
+                "model": "glm-5.3",
+                "max_tokens": 32,
+                "metadata": metadata,
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
+        second = client.post(
+            "/v1/messages",
+            headers={"Authorization": f"Bearer {key}", "x-api-key": key},
+            json={
+                "model": "glm-5.3",
+                "max_tokens": 32,
+                "metadata": metadata,
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
+        third = client.post(
+            "/v1/messages",
+            headers={"Authorization": f"Bearer {key}", "x-api-key": key},
+            json={
+                "model": "glm-5.3",
+                "max_tokens": 32,
+                "metadata": {
+                    "user_id": '{"device_id":"dev","account_uuid":"","session_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}'
+                },
+                "messages": [{"role": "user", "content": "another chat"}],
+            },
+        )
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 200
+    listed = client.get("/api/admin/logs", headers=auth_headers).json()
+    assert listed["total"] == 2
+
+
 class FakeAnthropicResponse:
     def model_dump(self) -> dict:
         return {

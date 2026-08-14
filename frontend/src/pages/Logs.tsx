@@ -92,7 +92,7 @@ export function LogsPage() {
               <tr key={item.id} className="border-t border-line hover:bg-white/5">
                 <td className="px-3 py-2">
                   <Link to={`/logs/${item.id}`} className="text-paper hover:text-signal">
-                    {formatTime(item.created_at)}
+                    {formatTime(item.updated_at || item.created_at)}
                   </Link>
                 </td>
                 <td className="px-3 py-2 font-mono text-xs">{item.model}</td>
@@ -115,7 +115,7 @@ export function LogsPage() {
                 <div className="font-mono text-xs">{item.model}</div>
                 <Badge tone={item.status === 'success' ? 'ok' : 'bad'}>{item.status}</Badge>
               </div>
-              <div className="mt-2 text-sm">{formatTime(item.created_at)}</div>
+              <div className="mt-2 text-sm">{formatTime(item.updated_at || item.created_at)}</div>
               <div className="mt-1 text-xs text-mist">
                 {protocolLabel[item.protocol]} · {item.latency_ms}ms
               </div>

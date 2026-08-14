@@ -89,6 +89,7 @@ def log_to_out(item: RequestLog, include_bodies: bool = False) -> LogOut:
         total_tokens=item.total_tokens,
         latency_ms=item.latency_ms,
         created_at=item.created_at,
+        updated_at=item.updated_at or item.created_at,
         request_body=parse_json(item.request_body) if include_bodies else None,
         response_body=parse_json(item.response_body) if include_bodies else None,
     )
