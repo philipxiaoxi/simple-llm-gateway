@@ -64,12 +64,21 @@ export type QuotaWindow = {
   status?: string
 }
 
+export type QuotaBalance = {
+  currency: string
+  total: number
+  granted?: number
+  topped_up?: number
+}
+
 export type AccountQuota = {
   supported?: boolean
   ok?: boolean
   provider?: string
   message?: string
+  available?: boolean
   windows?: QuotaWindow[]
+  balances?: QuotaBalance[]
   raw?: unknown
 }
 

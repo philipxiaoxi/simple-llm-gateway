@@ -78,8 +78,15 @@ def test_quota_deepseek(client: TestClient, auth_headers: dict[str, str]) -> Non
         response = client.post(f"/api/admin/accounts/{account_id}/quota", headers=auth_headers)
 
     assert response.status_code == 200
-    assert response.json()["supported"] is True
-    assert response.json()["raw"]["is_available"] is True
+    body = response.json()
+    assert body["supported"] is True
+    assert body["ok"] is True
+    assert body["available"] is True
+    assert body["balances"] == [
+        {"currency": "USD", "total": 9.9, "granted": 0.0, "topped_up": 0.0},
+    ]
+    stored = client.get(f"/api/admin/accounts/{account_id}", headers=auth_headers)
+    assert stored.json()["quota"]["balances"][0]["total"] == 9.9
 
 
 def test_quota_opencode_go_windows(client: TestClient, auth_headers: dict[str, str]) -> None:

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Field, Input } from '../components/ui'
-import { api, type Account, type AccountQuota, type QuotaWindow } from '../lib/api'
+import { api, type Account, type AccountQuota, type QuotaBalance, type QuotaWindow } from '../lib/api'
 import { formatTime } from '../lib/utils'
 
 const OPENCODE_WINDOW_META: { id: string; label: string; limitUsd: number }[] = [
@@ -34,6 +34,50 @@ function quotaWindows(quota: AccountQuota | null | undefined): QuotaWindow[] {
       },
     ]
   })
+}
+
+function formatMoney(currency: string, amount: number) {
+  const symbol = currency === 'CNY' ? '¥' : currency === 'USD' ? '$' : `${currency} `
+  return `${symbol}${amount.toFixed(2)}`
+}
+
+function quotaBalances(quota: AccountQuota | null | undefined): QuotaBalance[] {
+  if (quota?.balances?.length) return quota.balances
+  const raw = quota?.raw
+  const infos =
+    raw && typeof raw === 'object' && raw !== null && 'balance_infos' in raw
+      ? (raw as { balance_infos?: { currency?: string; total_balance?: string; granted_balance?: string; topped_up_balance?: string }[] })
+          .balance_infos
+      : undefined
+  if (!infos) return []
+  return infos.flatMap((item) => {
+    const total = Number(item.total_balance)
+    if (!Number.isFinite(total)) return []
+    return [
+      {
+        currency: item.currency || 'USD',
+        total,
+        granted: Number(item.granted_balance) || 0,
+        topped_up: Number(item.topped_up_balance) || 0,
+      },
+    ]
+  })
+}
+
+function BalancePanel({ balances, available }: { balances: QuotaBalance[]; available?: boolean }) {
+  return (
+    <div className="space-y-2">
+      {balances.map((item) => (
+        <div key={item.currency} className="flex flex-wrap items-baseline justify-between gap-2">
+          <div className="text-lg font-medium">{formatMoney(item.currency, item.total)}</div>
+          <div className="text-xs text-mist">
+            赠送 {formatMoney(item.currency, item.granted ?? 0)} · 充值 {formatMoney(item.currency, item.topped_up ?? 0)}
+          </div>
+        </div>
+      ))}
+      {available === false ? <Badge tone="warn">余额不足，可能无法继续调用</Badge> : null}
+    </div>
+  )
 }
 
 function QuotaBars({ windows }: { windows: QuotaWindow[] }) {
@@ -126,7 +170,7 @@ export function AccountsPage() {
     setBusyId(id)
     try {
       const result = await api.quota(id)
-      if (result.provider !== 'opencode_go' && result.provider !== 'grok') {
+      if (result.provider !== 'opencode_go' && result.provider !== 'grok' && result.provider !== 'deepseek') {
         setQuotaText((current) => ({ ...current, [id]: JSON.stringify(result, null, 2) }))
       }
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
@@ -262,12 +306,20 @@ export function AccountsPage() {
                 {account.status === 'active' ? '停用' : '启用'}
               </Button>
             </div>
-            {account.provider === 'opencode_go' || account.provider === 'grok' ? (
+            {account.provider === 'opencode_go' || account.provider === 'grok' || account.provider === 'deepseek' ? (
               <div>
                 <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
                   额度{account.quota_updated_at ? ` · ${formatTime(account.quota_updated_at)}` : ''}
                 </div>
-                {quotaWindows(account.quota).length ? (
+                {account.provider === 'deepseek' ? (
+                  quotaBalances(account.quota).length ? (
+                    <BalancePanel balances={quotaBalances(account.quota)} available={account.quota?.available} />
+                  ) : (
+                    <div className="text-sm text-mist">
+                      {account.quota?.message || '还没有余额，点「刷新额度」从 DeepSeek 拉取。'}
+                    </div>
+                  )
+                ) : quotaWindows(account.quota).length ? (
                   <QuotaBars windows={quotaWindows(account.quota)} />
                 ) : (
                   <div className="text-sm text-mist">

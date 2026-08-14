@@ -114,19 +114,74 @@ async def _opencode_go_quota(account: UpstreamAccount, token: str) -> dict[str, 
     }
 
 
+def parse_deepseek_balances(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    items = raw.get("balance_infos")
+    if not isinstance(items, list):
+        return []
+    balances: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        currency = str(item.get("currency") or "").strip() or "USD"
+        try:
+            total = float(item.get("total_balance"))
+        except (TypeError, ValueError):
+            continue
+        def _money(field_name: str) -> float:
+            try:
+                return float(item.get(field_name) or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        balances.append(
+            {
+                "currency": currency,
+                "total": total,
+                "granted": _money("granted_balance"),
+                "topped_up": _money("topped_up_balance"),
+            }
+        )
+    return balances
+
+
 async def _deepseek_balance(account: UpstreamAccount, token: str) -> dict[str, Any]:
     settings = get_settings()
     url = account.base_url.rstrip("/") + "/user/balance"
     async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
-        response = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+        try:
+            response = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+        except httpx.HTTPError as error:
+            return {"supported": True, "ok": False, "provider": "deepseek", "message": str(error)}
     if response.status_code >= 400:
         return {
             "supported": True,
             "ok": False,
+            "provider": "deepseek",
             "message": f"{response.status_code} {response.text[:300]}",
         }
-    body = response.json()
-    return {"supported": True, "ok": True, "provider": "deepseek", "raw": body}
+    try:
+        body = response.json()
+    except ValueError:
+        return {"supported": True, "ok": False, "provider": "deepseek", "message": "上游返回的不是 JSON"}
+    if not isinstance(body, dict):
+        return {"supported": True, "ok": False, "provider": "deepseek", "message": "余额格式无法识别"}
+    balances = parse_deepseek_balances(body)
+    if not balances:
+        return {
+            "supported": True,
+            "ok": False,
+            "provider": "deepseek",
+            "raw": body,
+            "message": "没有解析到余额",
+        }
+    return {
+        "supported": True,
+        "ok": True,
+        "provider": "deepseek",
+        "available": bool(body.get("is_available", True)),
+        "balances": balances,
+        "raw": body,
+    }
 
 
 def parse_grok_weekly_windows(raw: dict[str, Any]) -> list[dict[str, Any]]:
