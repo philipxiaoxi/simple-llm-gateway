@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Field, Input } from '../components/ui'
 import { api, type Account } from '../lib/api'
 import { formatTime } from '../lib/utils'
@@ -15,8 +16,23 @@ export function AccountsPage() {
   const [message, setMessage] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
   const [quotaText, setQuotaText] = useState<Record<number, string>>({})
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const preset = useMemo(() => providers.find((item) => item.id === provider), [providers, provider])
+
+  useEffect(() => {
+    const oauth = searchParams.get('oauth')
+    if (!oauth) return
+    if (oauth === 'ok') {
+      setMessage('Grok 授权成功，凭证已保存。')
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+    } else {
+      setMessage(`Grok 授权失败：${searchParams.get('reason') || '未知原因'}`)
+    }
+    searchParams.delete('oauth')
+    searchParams.delete('reason')
+    setSearchParams(searchParams, { replace: true })
+  }, [queryClient, searchParams, setSearchParams])
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -78,8 +94,19 @@ export function AccountsPage() {
   }
 
   async function startOauth(id: number) {
-    const result = await api.oauthStart(id)
-    window.location.href = result.authorize_url
+    setBusyId(id)
+    try {
+      const result = await api.oauthStart(id)
+      setMessage('正在打开 xAI 授权页。若没有跳转，请允许弹窗或点下面的链接。')
+      const opened = window.open(result.authorize_url, '_blank', 'noopener,noreferrer')
+      if (!opened) {
+        window.location.href = result.authorize_url
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '无法开始授权')
+    } finally {
+      setBusyId(null)
+    }
   }
 
   async function toggle(account: Account) {
@@ -165,7 +192,7 @@ export function AccountsPage() {
                 获取模型
               </Button>
               {account.provider === 'grok' ? (
-                <Button variant="line" onClick={() => startOauth(account.id)}>
+                <Button type="button" variant="line" disabled={busyId === account.id} onClick={() => startOauth(account.id)}>
                   去授权
                 </Button>
               ) : null}

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import secrets
+import threading
 from datetime import datetime, timedelta
-from urllib.parse import urlencode
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 from sqlalchemy import select
@@ -12,7 +15,11 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.crypto import decrypt_secret, encrypt_secret
+from app.db import get_session_factory
 from app.models import OAuthState, OAuthToken, UpstreamAccount
+
+_listener_lock = threading.Lock()
+_listener_started = False
 
 
 def _pkce_pair() -> tuple[str, str]:
@@ -34,12 +41,12 @@ def build_authorize_url(db: Session, account: UpstreamAccount) -> str:
             expires_at=datetime.utcnow() + timedelta(minutes=15),
         )
     )
-    redirect_uri = settings.app_base_url.rstrip("/") + "/api/admin/oauth/grok/callback"
+    ensure_loopback_listener()
     query = urlencode(
         {
             "response_type": "code",
             "client_id": settings.xai_oauth_client_id,
-            "redirect_uri": redirect_uri,
+            "redirect_uri": settings.xai_oauth_redirect_uri,
             "scope": settings.xai_oauth_scope,
             "state": state,
             "code_challenge": challenge,
@@ -57,14 +64,13 @@ async def exchange_code(db: Session, code: str, state: str) -> UpstreamAccount:
     account = db.get(UpstreamAccount, record.account_id)
     if account is None:
         raise ValueError("授权对应的账号不存在")
-    redirect_uri = settings.app_base_url.rstrip("/") + "/api/admin/oauth/grok/callback"
     async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
         response = await client.post(
             settings.xai_oauth_token_url,
             data={
                 "grant_type": "authorization_code",
                 "code": code,
-                "redirect_uri": redirect_uri,
+                "redirect_uri": settings.xai_oauth_redirect_uri,
                 "client_id": settings.xai_oauth_client_id,
                 "code_verifier": record.code_verifier,
             },
@@ -121,3 +127,61 @@ def _store_tokens(db: Session, account: UpstreamAccount, payload: dict) -> None:
     account.oauth_token.expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
     account.oauth_token.scope = payload.get("scope")
     account.oauth_token.updated_at = datetime.utcnow()
+
+
+def ensure_loopback_listener() -> None:
+    global _listener_started
+    with _listener_lock:
+        if _listener_started:
+            return
+        parsed = urlparse(get_settings().xai_oauth_redirect_uri)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or 56121
+        try:
+            server = HTTPServer((host, port), _LoopbackHandler)
+        except OSError:
+            _listener_started = True
+            return
+        thread = threading.Thread(target=server.serve_forever, name="grok-oauth-loopback", daemon=True)
+        thread.start()
+        _listener_started = True
+
+
+class _LoopbackHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path.rstrip("/") != "/callback":
+            self.send_error(404)
+            return
+        query = parse_qs(parsed.query)
+        code = (query.get("code") or [None])[0]
+        state = (query.get("state") or [None])[0]
+        error = (query.get("error") or [None])[0]
+        frontend = get_settings().app_base_url.rstrip("/")
+        if error or not code or not state:
+            location = f"{frontend}/accounts?oauth=error&reason={error or 'missing'}"
+            self._redirect(location)
+            return
+        session = get_session_factory()()
+        try:
+            asyncio.run(exchange_code(session, code, state))
+            session.commit()
+            location = f"{frontend}/accounts?oauth=ok"
+        except Exception:
+            session.rollback()
+            location = f"{frontend}/accounts?oauth=error&reason=exchange"
+        finally:
+            session.close()
+        self._redirect(location)
+
+    def _redirect(self, location: str) -> None:
+        body = f'<html><body>授权完成，<a href="{location}">返回中转台</a></body></html>'.encode("utf-8")
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: object) -> None:
+        return

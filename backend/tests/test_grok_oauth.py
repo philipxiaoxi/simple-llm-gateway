@@ -12,7 +12,9 @@ def test_oauth_start_returns_url(client: TestClient, auth_headers: dict[str, str
     response = client.get(f"/api/admin/accounts/{account['id']}/oauth/start", headers=auth_headers)
     assert response.status_code == 200
     url = response.json()["authorize_url"]
-    assert "accounts.x.ai" in url
+    assert url.startswith("https://auth.x.ai/oauth2/authorize")
+    assert "client_id=b1a00492-073a-47ea-816f-4c329264a828" in url
+    assert "redirect_uri=http%3A%2F%2F127.0.0.1%3A56121%2Fcallback" in url
     assert "code_challenge=" in url
     assert "state=" in url
 

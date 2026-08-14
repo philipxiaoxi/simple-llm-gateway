@@ -15,9 +15,10 @@ class Settings(BaseSettings):
     request_timeout_seconds: int = 120
     jwt_expire_days: int = 7
     frontend_dist: str = ""
-    xai_oauth_client_id: str = "grok-cli"
-    xai_oauth_authorize_url: str = "https://accounts.x.ai/oauth/authorize"
-    xai_oauth_token_url: str = "https://accounts.x.ai/oauth/token"
+    xai_oauth_client_id: str = "b1a00492-073a-47ea-816f-4c329264a828"
+    xai_oauth_authorize_url: str = "https://auth.x.ai/oauth2/authorize"
+    xai_oauth_token_url: str = "https://auth.x.ai/oauth2/token"
+    xai_oauth_redirect_uri: str = "http://127.0.0.1:56121/callback"
     xai_oauth_scope: str = "openid profile email offline_access grok-cli:access api:access"
 
     @property
