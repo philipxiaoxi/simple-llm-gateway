@@ -45,8 +45,8 @@ def test_openai_forward_and_log(client: TestClient, auth_headers: dict[str, str]
 
     logs = client.get("/api/admin/logs", headers=auth_headers)
     assert logs.status_code == 200
-    assert logs.json()[0]["status"] == "success"
-    detail = client.get(f"/api/admin/logs/{logs.json()[0]['id']}", headers=auth_headers)
+    assert logs.json()["items"][0]["status"] == "success"
+    detail = client.get(f"/api/admin/logs/{logs.json()['items'][0]['id']}", headers=auth_headers)
     assert detail.json()["request_body"]["messages"][0]["content"] == "hi"
     assert detail.json()["response_body"]["choices"][0]["message"]["content"] == "你好"
 
@@ -203,7 +203,7 @@ def test_stream_reconstructs_log(client: TestClient, auth_headers: dict[str, str
             text = "".join(response.iter_text())
     assert "data:" in text
     logs = client.get("/api/admin/logs", headers=auth_headers).json()
-    detail = client.get(f"/api/admin/logs/{logs[0]['id']}", headers=auth_headers).json()
+    detail = client.get(f"/api/admin/logs/{logs['items'][0]['id']}", headers=auth_headers).json()
     assert detail["stream"] is True
     assert detail["response_body"]["choices"][0]["message"]["content"] == "你好"
 

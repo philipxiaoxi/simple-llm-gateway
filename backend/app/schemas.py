@@ -102,6 +102,13 @@ class LogOut(BaseModel):
     response_body: Any | None = None
 
 
+class LogListOut(BaseModel):
+    items: list[LogOut]
+    total: int
+    page: int
+    page_size: int
+
+
 class DashboardOut(BaseModel):
     account_count: int
     unhealthy_count: int

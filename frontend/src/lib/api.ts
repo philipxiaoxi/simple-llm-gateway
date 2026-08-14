@@ -192,7 +192,7 @@ export const api = {
       if (value !== undefined && value !== '') params.set(key, String(value))
     })
     const suffix = params.toString() ? `?${params}` : ''
-    return request<LogItem[]>(`/api/admin/logs${suffix}`)
+    return request<{ items: LogItem[]; total: number; page: number; page_size: number }>(`/api/admin/logs${suffix}`)
   },
   log: (id: number) => request<LogItem>(`/api/admin/logs/${id}`),
 }

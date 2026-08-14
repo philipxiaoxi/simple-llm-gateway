@@ -1,19 +1,19 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import RequestLog
-from app.schemas import LogOut
+from app.schemas import LogListOut, LogOut
 from app.serializers import log_to_out
 
 router = APIRouter(prefix="/api/admin/logs", tags=["admin-logs"], dependencies=[Depends(get_current_admin)])
 
 
-@router.get("", response_model=list[LogOut])
+@router.get("", response_model=LogListOut)
 def list_logs(
     account_id: int | None = None,
     api_key_id: int | None = None,
@@ -22,25 +22,29 @@ def list_logs(
     model: str | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
-    limit: int = Query(default=50, le=200),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
-) -> list[LogOut]:
-    statement = select(RequestLog).order_by(RequestLog.id.desc()).limit(limit)
+) -> LogListOut:
+    filters = select(RequestLog)
     if account_id is not None:
-        statement = statement.where(RequestLog.account_id == account_id)
+        filters = filters.where(RequestLog.account_id == account_id)
     if api_key_id is not None:
-        statement = statement.where(RequestLog.api_key_id == api_key_id)
+        filters = filters.where(RequestLog.api_key_id == api_key_id)
     if protocol:
-        statement = statement.where(RequestLog.protocol == protocol)
+        filters = filters.where(RequestLog.protocol == protocol)
     if status:
-        statement = statement.where(RequestLog.status == status)
+        filters = filters.where(RequestLog.status == status)
     if model:
-        statement = statement.where(RequestLog.model == model)
+        filters = filters.where(RequestLog.model == model)
     if since:
-        statement = statement.where(RequestLog.created_at >= since)
+        filters = filters.where(RequestLog.created_at >= since)
     if until:
-        statement = statement.where(RequestLog.created_at <= until)
-    return [log_to_out(row) for row in db.scalars(statement).all()]
+        filters = filters.where(RequestLog.created_at <= until)
+    total = db.scalar(select(func.count()).select_from(filters.subquery())) or 0
+    offset = (page - 1) * page_size
+    rows = db.scalars(filters.order_by(RequestLog.id.desc()).offset(offset).limit(page_size)).all()
+    return LogListOut(items=[log_to_out(row) for row in rows], total=total, page=page, page_size=page_size)
 
 
 @router.get("/{log_id}", response_model=LogOut)

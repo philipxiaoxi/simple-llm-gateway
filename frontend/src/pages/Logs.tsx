@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Badge, Card } from '../components/ui'
+import { Badge, Button, Card } from '../components/ui'
 import { api } from '../lib/api'
 import { formatTime } from '../lib/utils'
 
@@ -18,13 +18,27 @@ export function LogsPage() {
   const [keyId, setKeyId] = useState('')
   const [protocol, setProtocol] = useState('')
   const [status, setStatus] = useState('')
+  const [page, setPage] = useState(1)
+  const pageSize = 20
   const query = {
     account_id: accountId ? Number(accountId) : undefined,
     api_key_id: keyId ? Number(keyId) : undefined,
     protocol: protocol || undefined,
     status: status || undefined,
+    page,
+    page_size: pageSize,
   }
-  const { data: logs = [] } = useQuery({ queryKey: ['logs', query], queryFn: () => api.logs(query) })
+  const { data } = useQuery({ queryKey: ['logs', query], queryFn: () => api.logs(query) })
+  const logs = data?.items ?? []
+  const total = data?.total ?? 0
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+
+  function changeFilter(setter: (value: string) => void) {
+    return (event: { target: { value: string } }) => {
+      setter(event.target.value)
+      setPage(1)
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -33,7 +47,7 @@ export function LogsPage() {
         <p className="mt-1 text-sm text-mist">按账号、Key、协议和状态筛选请求。</p>
       </div>
       <Card className="grid gap-3 md:grid-cols-4">
-        <select className="rounded-md border border-line bg-ink px-3 py-2 text-sm" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+        <select className="rounded-md border border-line bg-ink px-3 py-2 text-sm" value={accountId} onChange={changeFilter(setAccountId)}>
           <option value="">全部账号</option>
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
@@ -41,7 +55,7 @@ export function LogsPage() {
             </option>
           ))}
         </select>
-        <select className="rounded-md border border-line bg-ink px-3 py-2 text-sm" value={keyId} onChange={(event) => setKeyId(event.target.value)}>
+        <select className="rounded-md border border-line bg-ink px-3 py-2 text-sm" value={keyId} onChange={changeFilter(setKeyId)}>
           <option value="">全部 Key</option>
           {keys.map((item) => (
             <option key={item.id} value={item.id}>
@@ -49,13 +63,13 @@ export function LogsPage() {
             </option>
           ))}
         </select>
-        <select className="rounded-md border border-line bg-ink px-3 py-2 text-sm" value={protocol} onChange={(event) => setProtocol(event.target.value)}>
+        <select className="rounded-md border border-line bg-ink px-3 py-2 text-sm" value={protocol} onChange={changeFilter(setProtocol)}>
           <option value="">全部协议</option>
           <option value="openai_chat">OpenAI Chat</option>
           <option value="openai_responses">Responses</option>
           <option value="anthropic_messages">Anthropic</option>
         </select>
-        <select className="rounded-md border border-line bg-ink px-3 py-2 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}>
+        <select className="rounded-md border border-line bg-ink px-3 py-2 text-sm" value={status} onChange={changeFilter(setStatus)}>
           <option value="">全部状态</option>
           <option value="success">成功</option>
           <option value="error">失败</option>
@@ -108,6 +122,24 @@ export function LogsPage() {
             </Card>
           </Link>
         ))}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-mist">
+          共 {total} 条 · 第 {page} / {pageCount} 页
+        </div>
+        <div className="flex gap-2">
+          <Button type="button" variant="line" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>
+            上一页
+          </Button>
+          <Button
+            type="button"
+            variant="line"
+            disabled={page >= pageCount}
+            onClick={() => setPage((current) => current + 1)}
+          >
+            下一页
+          </Button>
+        </div>
       </div>
     </div>
   )
