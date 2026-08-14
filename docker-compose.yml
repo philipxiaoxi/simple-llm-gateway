@@ -1,0 +1,13 @@
+services:
+  gateway:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_PATH: /data/gateway.db
+      FRONTEND_DIST: /app/frontend/dist
+      APP_BASE_URL: ${APP_BASE_URL:-http://127.0.0.1:8000}
+    volumes:
+      - ./data:/data
