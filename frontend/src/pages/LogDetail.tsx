@@ -1,9 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Badge, Button, Card } from '../components/ui'
 import { api } from '../lib/api'
-import { formatTime } from '../lib/utils'
+import { cn, formatTime } from '../lib/utils'
+
+const COLLAPSE_CHAR_LIMIT = 400
+const COLLAPSE_LINE_LIMIT = 8
+
+function isLongText(text: string): boolean {
+  return text.length > COLLAPSE_CHAR_LIMIT || text.split('\n').length > COLLAPSE_LINE_LIMIT
+}
 
 type Message = { role: string; content: unknown }
 
@@ -65,11 +72,56 @@ function extractMessages(log: { request_body?: unknown; response_body?: unknown;
   return messages
 }
 
+function MessageBubble({
+  role,
+  content,
+  expanded,
+  onToggle,
+}: {
+  role: string
+  content: unknown
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const text = asText(content) || '（空）'
+  const long = isLongText(text)
+  const assistant = role === 'assistant'
+  return (
+    <div className={assistant ? 'md:pl-8' : 'md:pr-8'}>
+      <div className="mb-1 text-xs uppercase tracking-[0.16em] text-mist">{role}</div>
+      <div
+        className={
+          assistant
+            ? 'rounded-2xl rounded-tl-sm border border-line bg-panel p-4'
+            : 'rounded-2xl rounded-tr-sm bg-signal/10 p-4'
+        }
+      >
+        {long && expanded ? (
+          <button type="button" className="mb-3 text-xs text-signal hover:underline" onClick={onToggle}>
+            收起
+          </button>
+        ) : null}
+        <div className={cn('whitespace-pre-wrap', long && !expanded && 'line-clamp-8')}>{text}</div>
+        {long ? (
+          <button type="button" className="mt-3 text-xs text-signal hover:underline" onClick={onToggle}>
+            {expanded ? '收起' : '展开全部'}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 export function LogDetailPage() {
   const params = useParams()
   const id = Number(params.id)
   const { data } = useQuery({ queryKey: ['log', id], queryFn: () => api.log(id), enabled: Number.isFinite(id) })
   const [raw, setRaw] = useState(false)
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({})
+  useEffect(() => {
+    setExpanded({})
+    setRaw(false)
+  }, [id])
   if (!data) return <div className="text-mist">加载中…</div>
   const messages = extractMessages(data)
 
@@ -90,18 +142,15 @@ export function LogDetailPage() {
       {data.error_message ? <Card className="text-sm text-danger">{data.error_message}</Card> : null}
       <div className="space-y-3">
         {messages.map((message, index) => (
-          <div key={index} className={message.role === 'assistant' ? 'md:pl-8' : 'md:pr-8'}>
-            <div className="mb-1 text-xs uppercase tracking-[0.16em] text-mist">{message.role}</div>
-            <div
-              className={
-                message.role === 'assistant'
-                  ? 'rounded-2xl rounded-tl-sm border border-line bg-panel p-4 whitespace-pre-wrap'
-                  : 'rounded-2xl rounded-tr-sm bg-signal/10 p-4 whitespace-pre-wrap'
-              }
-            >
-              {asText(message.content) || '（空）'}
-            </div>
-          </div>
+          <MessageBubble
+            key={index}
+            role={message.role}
+            content={message.content}
+            expanded={Boolean(expanded[index])}
+            onToggle={() =>
+              setExpanded((current) => ({ ...current, [index]: !current[index] }))
+            }
+          />
         ))}
       </div>
       <Button variant="line" onClick={() => setRaw((value) => !value)}>
