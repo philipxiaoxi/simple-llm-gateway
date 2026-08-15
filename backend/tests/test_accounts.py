@@ -29,6 +29,62 @@ def test_create_account_encrypts_key(client: TestClient, auth_headers: dict[str,
     assert revealed.json()["api_key"] == "sk-upstream-secret"
 
 
+def test_create_account_custom_base_url(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up", "base_url": " https://proxy.example/ds "},
+    )
+    assert created.status_code == 200
+    assert created.json()["base_url"] == "https://proxy.example/ds"
+
+
+def test_update_account_base_url(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    account_id = created.json()["id"]
+    updated = client.patch(
+        f"/api/admin/accounts/{account_id}",
+        headers=auth_headers,
+        json={"base_url": " https://proxy.example/v1 "},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["base_url"] == "https://proxy.example/v1"
+
+
+def test_delete_account(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    account_id = created.json()["id"]
+    deleted = client.delete(f"/api/admin/accounts/{account_id}", headers=auth_headers)
+    assert deleted.status_code == 200
+    listed = client.get("/api/admin/accounts", headers=auth_headers)
+    assert listed.json() == []
+
+
+def test_delete_account_blocked_when_keys_exist(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    account_id = created.json()["id"]
+    client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "k", "account_id": account_id},
+    )
+    deleted = client.delete(f"/api/admin/accounts/{account_id}", headers=auth_headers)
+    assert deleted.status_code == 400
+    assert "API Key" in deleted.json()["detail"]
+
+
 def test_probe_updates_account(client: TestClient, auth_headers: dict[str, str]) -> None:
     created = client.post(
         "/api/admin/accounts",

@@ -27,7 +27,7 @@
 | OAuth | 不做成通用授权框架。Grok 协议留在 `grok_oauth.py`，供应商只暴露 `auth_type` 和 `prepare_credential`。 |
 | 注册方式 | 代码里的类 + registry，不是数据库或配置文件。 |
 | `default_models` | 仍留在类上，给 `GET /api/admin/providers` 看。下游 `GET /v1/models` 不用它。 |
-| 创建账号改 `base_url` | 后端本来就支持，前端表单本次不动。 |
+| 创建账号改 `base_url` | 支持。表单预填预设，可改；已有账号卡片上也能改并保存。空/空白回落到预设。 |
 
 ## 3. 结构
 

@@ -38,7 +38,7 @@ backend/tests/test_keys.py
 backend/tests/test_share.py
 ```
 
-不改：`grok_oauth.py` 协议细节、协议转换、日志、reasoning、CC Switch 业务、创建账号表单的 Base URL。
+不改：`grok_oauth.py` 协议细节、协议转换、日志、reasoning、CC Switch 业务。Base URL 前端可自定义（预填预设，已有账号可改）。
 
 ---
 

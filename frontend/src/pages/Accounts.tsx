@@ -1,9 +1,128 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Badge, Button, Card, Field, Input } from '../components/ui'
-import { api, type Account, type QuotaItem } from '../lib/api'
+import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
+import { api, type Account, type Provider, type QuotaItem } from '../lib/api'
 import { formatTime } from '../lib/utils'
+
+function AccountEditor({
+  account,
+  providers,
+  onClose,
+  onSaved,
+}: {
+  account: Account | null
+  providers: Provider[]
+  onClose: () => void
+  onSaved: (message: string) => void
+}) {
+  const editing = account !== null
+  const [name, setName] = useState(account?.name ?? '')
+  const [provider, setProvider] = useState(account?.provider ?? 'deepseek')
+  const [baseUrl, setBaseUrl] = useState(account?.base_url ?? '')
+  const [apiKey, setApiKey] = useState('')
+  const [error, setError] = useState('')
+  const [pending, setPending] = useState(false)
+
+  const preset = useMemo(() => providers.find((item) => item.id === provider), [providers, provider])
+  const authType = editing ? account.auth_type : preset?.auth_type
+
+  useEffect(() => {
+    if (editing) return
+    if (preset?.base_url) setBaseUrl(preset.base_url)
+  }, [editing, preset?.base_url])
+
+  async function save() {
+    const trimmedName = name.trim()
+    const trimmedUrl = baseUrl.trim()
+    if (!trimmedName) {
+      setError('请填写显示名')
+      return
+    }
+    setPending(true)
+    setError('')
+    try {
+      if (editing) {
+        await api.updateAccount(account.id, {
+          name: trimmedName,
+          base_url: trimmedUrl || undefined,
+          api_key: authType === 'api_key' && apiKey.trim() ? apiKey.trim() : undefined,
+        })
+        onSaved('账号已更新')
+      } else {
+        await api.createAccount({
+          name: trimmedName,
+          provider,
+          base_url: trimmedUrl || undefined,
+          api_key: authType === 'api_key' ? apiKey : undefined,
+        })
+        onSaved('账号已创建')
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '保存失败')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <Dialog title={editing ? '编辑账号' : '新建账号'} onClose={onClose}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="显示名">
+          <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="DeepSeek 主号" />
+        </Field>
+        <Field label="供应商">
+          <select
+            className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm disabled:opacity-60"
+            value={provider}
+            disabled={editing}
+            onChange={(event) => setProvider(event.target.value)}
+          >
+            {providers.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <div className="sm:col-span-2">
+          <Field label="Base URL">
+            <Input
+              className="font-mono"
+              value={baseUrl}
+              onChange={(event) => setBaseUrl(event.target.value)}
+              placeholder={preset?.base_url || 'https://...'}
+            />
+          </Field>
+        </div>
+        {authType === 'api_key' ? (
+          <div className="sm:col-span-2">
+            <Field label="API Key">
+              <Input
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                placeholder={editing ? '不改请留空' : 'sk-...'}
+              />
+            </Field>
+          </div>
+        ) : (
+          <div className="sm:col-span-2 text-sm text-warn">
+            {editing ? 'OAuth 授权请在卡片上点「去授权」。' : '创建后点「去授权」完成 Grok OAuth。'}
+          </div>
+        )}
+        {error ? <div className="sm:col-span-2 text-sm text-danger">{error}</div> : null}
+        <div className="flex justify-end gap-2 sm:col-span-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" disabled={!name.trim() || pending} onClick={() => void save()}>
+            保存
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
 
 function QuotaItems({ items }: { items: QuotaItem[] }) {
   return (
@@ -39,15 +158,10 @@ export function AccountsPage() {
   const queryClient = useQueryClient()
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: api.providers })
   const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: api.accounts })
-  const [creating, setCreating] = useState(false)
-  const [name, setName] = useState('')
-  const [provider, setProvider] = useState('deepseek')
-  const [apiKey, setApiKey] = useState('')
+  const [editor, setEditor] = useState<Account | 'new' | null>(null)
   const [message, setMessage] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
-
-  const preset = useMemo(() => providers.find((item) => item.id === provider), [providers, provider])
 
   useEffect(() => {
     const oauth = searchParams.get('oauth')
@@ -62,22 +176,6 @@ export function AccountsPage() {
     searchParams.delete('reason')
     setSearchParams(searchParams, { replace: true })
   }, [queryClient, searchParams, setSearchParams])
-
-  const createMutation = useMutation({
-    mutationFn: () =>
-      api.createAccount({
-        name,
-        provider,
-        api_key: preset?.auth_type === 'api_key' ? apiKey : undefined,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      setCreating(false)
-      setName('')
-      setApiKey('')
-    },
-    onError: (error: Error) => setMessage(error.message),
-  })
 
   async function runProbe(id: number) {
     setBusyId(id)
@@ -143,6 +241,19 @@ export function AccountsPage() {
     queryClient.invalidateQueries({ queryKey: ['accounts'] })
   }
 
+  async function removeAccount(account: Account) {
+    setBusyId(account.id)
+    try {
+      await api.deleteAccount(account.id)
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      setMessage(`已删除 ${account.name}`)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '删除失败')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -150,42 +261,9 @@ export function AccountsPage() {
           <h1 className="text-2xl font-semibold">上游账号</h1>
           <p className="mt-1 text-sm text-mist">预设 OpenCode Go、Grok、DeepSeek。探测只在你点的时候发生。</p>
         </div>
-        <Button onClick={() => setCreating((value) => !value)}>{creating ? '收起' : '新建账号'}</Button>
+        <Button onClick={() => setEditor('new')}>新建账号</Button>
       </div>
       {message ? <div className="text-sm text-info">{message}</div> : null}
-      {creating ? (
-        <Card className="grid gap-3 md:grid-cols-2">
-          <Field label="显示名">
-            <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="DeepSeek 主号" />
-          </Field>
-          <Field label="供应商">
-            <select
-              className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm"
-              value={provider}
-              onChange={(event) => setProvider(event.target.value)}
-            >
-              {providers.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <div className="md:col-span-2 text-sm text-mist">Base URL：{preset?.base_url}</div>
-          {preset?.auth_type === 'api_key' ? (
-            <Field label="API Key">
-              <Input value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-..." />
-            </Field>
-          ) : (
-            <div className="text-sm text-warn">创建后点「去授权」完成 Grok OAuth。</div>
-          )}
-          <div className="md:col-span-2">
-            <Button disabled={!name || createMutation.isPending} onClick={() => createMutation.mutate()}>
-              保存
-            </Button>
-          </div>
-        </Card>
-      ) : null}
       <div className="grid gap-3">
         {accounts.map((account) => (
           <Card key={account.id} className="space-y-3">
@@ -225,8 +303,14 @@ export function AccountsPage() {
                   去授权
                 </Button>
               ) : null}
+              <Button variant="line" onClick={() => setEditor(account)}>
+                编辑
+              </Button>
               <Button variant="ghost" onClick={() => toggle(account)}>
                 {account.status === 'active' ? '停用' : '启用'}
+              </Button>
+              <Button variant="danger" disabled={busyId === account.id} onClick={() => void removeAccount(account)}>
+                删除
               </Button>
             </div>
             <div>
@@ -258,6 +342,18 @@ export function AccountsPage() {
           </Card>
         ))}
       </div>
+      {editor !== null ? (
+        <AccountEditor
+          account={editor === 'new' ? null : editor}
+          providers={providers}
+          onClose={() => setEditor(null)}
+          onSaved={(text) => {
+            queryClient.invalidateQueries({ queryKey: ['accounts'] })
+            setEditor(null)
+            setMessage(text)
+          }}
+        />
+      ) : null}
     </div>
   )
 }
