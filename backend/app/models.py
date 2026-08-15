@@ -111,3 +111,22 @@ class RequestLog(Base):
 
     account: Mapped[UpstreamAccount] = relationship(foreign_keys=[account_id])
     api_key: Mapped[ApiKey] = relationship(foreign_keys=[api_key_id])
+    messages: Mapped[list[RequestLogMessage]] = relationship(
+        back_populates="log",
+        cascade="all, delete-orphan",
+        order_by="RequestLogMessage.seq",
+    )
+
+
+class RequestLogMessage(Base):
+    __tablename__ = "request_log_messages"
+    __table_args__ = (UniqueConstraint("log_id", "seq"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    log_id: Mapped[int] = mapped_column(ForeignKey("request_logs.id", ondelete="CASCADE"), index=True, nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    content_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    log: Mapped[RequestLog] = relationship(back_populates="messages")

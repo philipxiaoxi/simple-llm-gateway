@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import RequestLog
+from app.models import RequestLog, RequestLogMessage
 
 SESSION_HEADER_NAMES = (
     "x-session-id",
@@ -104,40 +105,140 @@ def is_continuation(previous_request: dict[str, Any], new_request: dict[str, Any
     return current[: len(previous)] == previous
 
 
-def extract_log_messages(protocol: str, request_body: Any, response_body: Any) -> list[dict[str, Any]]:
+def extract_request_messages(request_body: Any) -> list[dict[str, Any]]:
     request = request_body if isinstance(request_body, dict) else {}
-    response = response_body if isinstance(response_body, dict) else {}
-    messages: list[dict[str, Any]] = []
     raw_messages = request.get("messages")
+    messages: list[dict[str, Any]] = []
     if isinstance(raw_messages, list):
         for item in raw_messages:
-            if isinstance(item, dict) and item.get("role"):
-                messages.append({"role": str(item["role"]), "content": item.get("content")})
+            if not isinstance(item, dict) or not item.get("role"):
+                continue
+            entry: dict[str, Any] = {"role": str(item["role"]), "content": item.get("content")}
+            if item.get("tool_calls"):
+                entry["tool_calls"] = item["tool_calls"]
+            messages.append(entry)
     elif isinstance(request.get("input"), str):
         messages.append({"role": "user", "content": request["input"]})
+    return messages
+
+
+def extract_assistant_message(protocol: str, response_body: Any) -> dict[str, Any] | None:
+    response = response_body if isinstance(response_body, dict) else {}
     if protocol == "anthropic_messages":
         content = response.get("content")
         if content:
-            messages.append({"role": "assistant", "content": content})
-        elif isinstance(response.get("raw_sse"), str):
+            return {"role": "assistant", "content": content}
+        if isinstance(response.get("raw_sse"), str):
             texts: list[str] = []
             for match in re.finditer(r'"text_delta"[^}]*"text":\s*"((?:\\.|[^"\\])*)"', response["raw_sse"]):
                 try:
                     texts.append(json.loads(f'"{match.group(1)}"'))
                 except json.JSONDecodeError:
                     texts.append(match.group(1))
-            messages.append({"role": "assistant", "content": "".join(texts)})
-        else:
-            messages.append({"role": "assistant", "content": ""})
-    elif protocol == "openai_responses":
-        messages.append({"role": "assistant", "content": response.get("output_text") or response.get("output")})
-    else:
-        choices = response.get("choices")
-        first = choices[0] if isinstance(choices, list) and choices else None
-        message = first.get("message") if isinstance(first, dict) else None
-        if isinstance(message, dict):
-            messages.append({"role": "assistant", "content": message.get("content")})
+            return {"role": "assistant", "content": "".join(texts)}
+        return None
+    if protocol == "openai_responses":
+        output = response.get("output_text") or response.get("output")
+        if output is None:
+            return None
+        return {"role": "assistant", "content": output}
+    choices = response.get("choices")
+    first = choices[0] if isinstance(choices, list) and choices else None
+    message = first.get("message") if isinstance(first, dict) else None
+    if not isinstance(message, dict):
+        return None
+    entry: dict[str, Any] = {"role": "assistant", "content": message.get("content")}
+    if message.get("tool_calls"):
+        entry["tool_calls"] = message["tool_calls"]
+    return entry
+
+
+def extract_log_messages(protocol: str, request_body: Any, response_body: Any) -> list[dict[str, Any]]:
+    messages = extract_request_messages(request_body)
+    assistant = extract_assistant_message(protocol, response_body)
+    if assistant is not None:
+        messages.append(assistant)
     return messages
+
+
+def message_fingerprint(message: dict[str, Any]) -> tuple[str, str]:
+    extra = ""
+    if message.get("tool_calls"):
+        extra = json.dumps(message["tool_calls"], sort_keys=True, ensure_ascii=False)
+    return (str(message.get("role") or ""), _content_key(message.get("content")) + extra)
+
+
+def common_prefix_len(stored: list[dict[str, Any]], inbound: list[dict[str, Any]]) -> int:
+    length = 0
+    for left, right in zip(stored, inbound):
+        if message_fingerprint(left) != message_fingerprint(right):
+            break
+        length += 1
+    return length
+
+
+def new_messages_to_store(
+    stored: list[dict[str, Any]],
+    inbound: list[dict[str, Any]],
+    assistant: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    prefix = common_prefix_len(stored, inbound)
+    added = [dict(item) for item in inbound[prefix:]]
+    if assistant is None:
+        return added
+    if added and message_fingerprint(added[-1]) == message_fingerprint(assistant):
+        return added
+    if not added and stored and message_fingerprint(stored[-1]) == message_fingerprint(assistant):
+        return []
+    added.append(dict(assistant))
+    return added
+
+
+def decode_stored_message(row: RequestLogMessage) -> dict[str, Any]:
+    content = None
+    if row.content_json:
+        try:
+            content = json.loads(row.content_json)
+        except json.JSONDecodeError:
+            content = row.content_json
+    if isinstance(content, dict) and "content" in content and "role" not in content:
+        entry = {"role": row.role, "content": content.get("content")}
+        if content.get("tool_calls"):
+            entry["tool_calls"] = content["tool_calls"]
+        return entry
+    return {"role": row.role, "content": content}
+
+
+def encode_message_content(message: dict[str, Any]) -> str:
+    payload: dict[str, Any] = {"content": message.get("content")}
+    if message.get("tool_calls"):
+        payload["tool_calls"] = message["tool_calls"]
+    return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def load_log_messages(db: Session, log_id: int) -> list[dict[str, Any]]:
+    rows = db.scalars(
+        select(RequestLogMessage).where(RequestLogMessage.log_id == log_id).order_by(RequestLogMessage.seq)
+    ).all()
+    return [decode_stored_message(row) for row in rows]
+
+
+def append_log_messages(db: Session, log_id: int, messages: list[dict[str, Any]]) -> None:
+    if not messages:
+        return
+    last_seq = db.scalar(select(func.max(RequestLogMessage.seq)).where(RequestLogMessage.log_id == log_id))
+    next_seq = (last_seq if last_seq is not None else -1) + 1
+    now = datetime.utcnow()
+    for offset, message in enumerate(messages):
+        db.add(
+            RequestLogMessage(
+                log_id=log_id,
+                seq=next_seq + offset,
+                role=str(message.get("role") or "user"),
+                content_json=encode_message_content(message),
+                created_at=now,
+            )
+        )
 
 
 def find_continuation_log(
@@ -155,6 +256,9 @@ def find_continuation_log(
             .order_by(RequestLog.id.desc())
             .limit(1)
         )
+    inbound = extract_request_messages(request_body)
+    if not inbound:
+        return None
     candidates = db.scalars(
         select(RequestLog)
         .where(RequestLog.api_key_id == api_key_id, RequestLog.protocol == protocol)
@@ -162,12 +266,16 @@ def find_continuation_log(
         .limit(20)
     ).all()
     for log in candidates:
-        if not log.request_body:
+        stored = load_log_messages(db, log.id)
+        if not stored:
             continue
-        try:
-            previous = json.loads(log.request_body)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(previous, dict) and is_continuation(previous, request_body, protocol):
+        prefix = common_prefix_len(stored, inbound)
+        if prefix == len(stored) and len(inbound) > prefix:
+            return log
+        if (
+            prefix == len(stored) - 1
+            and stored[-1].get("role") == "assistant"
+            and len(inbound) > prefix
+        ):
             return log
     return None

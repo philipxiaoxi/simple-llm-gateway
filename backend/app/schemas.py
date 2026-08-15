@@ -123,6 +123,7 @@ class LogListOut(BaseModel):
 class LogMessageOut(BaseModel):
     role: str
     content: Any = None
+    tool_calls: Any = None
 
 
 class LogMessageListOut(BaseModel):

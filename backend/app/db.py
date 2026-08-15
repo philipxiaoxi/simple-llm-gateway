@@ -63,6 +63,14 @@ def _ensure_columns(engine: Engine) -> None:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN session_key VARCHAR(128)"))
         if "reasoning_json" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN reasoning_json TEXT"))
+        tables = {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))}
+        if "request_log_messages" in tables:
+            message_count = connection.execute(text("SELECT COUNT(*) FROM request_log_messages")).scalar() or 0
+            has_old_bodies = connection.execute(
+                text("SELECT 1 FROM request_logs WHERE request_body IS NOT NULL LIMIT 1")
+            ).first()
+            if message_count == 0 and has_old_bodies is not None:
+                connection.execute(text("DELETE FROM request_logs"))
 
 
 def reset_db_runtime() -> None:

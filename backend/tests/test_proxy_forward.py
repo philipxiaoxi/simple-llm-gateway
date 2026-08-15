@@ -3,6 +3,14 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 
+def _messages(client: TestClient, auth_headers: dict[str, str], log_id: int) -> dict:
+    return client.get(
+        f"/api/admin/logs/{log_id}/messages",
+        headers=auth_headers,
+        params={"page": 1, "page_size": 100},
+    ).json()
+
+
 def _make_key(client: TestClient, auth_headers: dict[str, str], provider: str = "deepseek") -> str:
     account = client.post(
         "/api/admin/accounts",
@@ -46,9 +54,9 @@ def test_openai_forward_and_log(client: TestClient, auth_headers: dict[str, str]
     logs = client.get("/api/admin/logs", headers=auth_headers)
     assert logs.status_code == 200
     assert logs.json()["items"][0]["status"] == "success"
-    detail = client.get(f"/api/admin/logs/{logs.json()['items'][0]['id']}", headers=auth_headers)
-    assert detail.json()["request_body"]["messages"][0]["content"] == "hi"
-    assert detail.json()["response_body"]["choices"][0]["message"]["content"] == "你好"
+    items = _messages(client, auth_headers, logs.json()["items"][0]["id"])["items"]
+    assert items[0]["content"] == "你好"
+    assert items[1]["content"] == "hi"
 
 
 def test_follow_up_reuses_same_log(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -82,13 +90,12 @@ def test_follow_up_reuses_same_log(client: TestClient, auth_headers: dict[str, s
 
     listed = client.get("/api/admin/logs", headers=auth_headers).json()
     assert listed["total"] == 2
-    details = [client.get(f"/api/admin/logs/{item['id']}", headers=auth_headers).json() for item in listed["items"]]
-    continued_detail = next(item for item in details if len((item["request_body"] or {}).get("messages") or []) == 3)
-    fresh_detail = next(
-        item for item in details if (item["request_body"] or {}).get("messages", [{}])[0].get("content") == "新开的对话"
-    )
-    assert continued_detail["request_body"]["messages"][-1]["content"] == "再来一句"
-    assert fresh_detail["id"] != continued_detail["id"]
+    by_id = {item["id"]: _messages(client, auth_headers, item["id"]) for item in listed["items"]}
+    continued_id = next(log_id for log_id, body in by_id.items() if body["total"] == 4)
+    fresh_id = next(log_id for log_id, body in by_id.items() if body["total"] == 2)
+    assert any(item["content"] == "再来一句" for item in by_id[continued_id]["items"])
+    assert any(item["content"] == "新开的对话" for item in by_id[fresh_id]["items"])
+    assert fresh_id != continued_id
 
 
 def test_claude_session_id_merges_same_length_turns(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -413,7 +420,8 @@ def test_stream_reconstructs_log(client: TestClient, auth_headers: dict[str, str
     logs = client.get("/api/admin/logs", headers=auth_headers).json()
     detail = client.get(f"/api/admin/logs/{logs['items'][0]['id']}", headers=auth_headers).json()
     assert detail["stream"] is True
-    assert detail["response_body"]["choices"][0]["message"]["content"] == "你好"
+    items = _messages(client, auth_headers, logs["items"][0]["id"])["items"]
+    assert items[0]["content"] == "你好"
 
 
 def test_models_endpoint(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -605,8 +613,8 @@ def test_anthropic_stream_thinking_and_tools(client: TestClient, auth_headers: d
     assert "text_delta" in text
     assert "tool_use" in text
     logs = client.get("/api/admin/logs", headers=auth_headers).json()
-    detail = client.get(f"/api/admin/logs/{logs['items'][0]['id']}", headers=auth_headers).json()
-    types = [block["type"] for block in detail["response_body"]["content"]]
+    items = _messages(client, auth_headers, logs["items"][0]["id"])["items"]
+    types = [block["type"] for block in items[0]["content"]]
     assert types == ["thinking", "text", "tool_use"]
 
 
@@ -643,9 +651,10 @@ def test_missing_reasoning_uses_placeholder(client: TestClient, auth_headers: di
     assert response.status_code == 200
     assistant = next(item for item in captured[0] if item.get("tool_calls"))
     assert assistant["reasoning_content"] == " "
-    logs = client.get("/api/admin/logs", headers=auth_headers).json()
-    detail = client.get(f"/api/admin/logs/{logs['items'][0]['id']}", headers=auth_headers).json()
-    logged_assistant = next(item for item in detail["request_body"]["messages"] if item.get("tool_calls"))
+    items = _messages(client, auth_headers, client.get("/api/admin/logs", headers=auth_headers).json()["items"][0]["id"])[
+        "items"
+    ]
+    logged_assistant = next(item for item in items if item.get("tool_calls"))
     assert "reasoning_content" not in logged_assistant
 
 
@@ -776,11 +785,12 @@ def test_anthropic_upstream_stream_passthrough(client: TestClient, auth_headers:
     assert captured["url"] == "https://api.anthropic.com/v1/messages"
     assert captured["json"]["stream"] is True
     assert captured["headers"]["x-api-key"] == "sk-up"
-    detail = client.get(
-        f"/api/admin/logs/{client.get('/api/admin/logs', headers=auth_headers).json()['items'][0]['id']}",
-        headers=auth_headers,
-    ).json()
-    assert detail["response_body"]["content"][0]["text"] == "hi"
+    items = _messages(
+        client,
+        auth_headers,
+        client.get("/api/admin/logs", headers=auth_headers).json()["items"][0]["id"],
+    )["items"]
+    assert items[0]["content"][0]["text"] == "hi"
 
 
 def test_anthropic_count_tokens_passthrough(client: TestClient, auth_headers: dict[str, str]) -> None:

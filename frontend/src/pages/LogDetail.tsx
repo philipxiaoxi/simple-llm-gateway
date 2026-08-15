@@ -114,11 +114,6 @@ export function LogDetailPage() {
     queryFn: () => api.logMessages(id, page, PAGE_SIZE),
     enabled: ready,
   })
-  const { data: rawBodies } = useQuery({
-    queryKey: ['log-bodies', id],
-    queryFn: () => api.log(id, true),
-    enabled: ready && raw,
-  })
   useEffect(() => {
     setExpanded({})
     setRaw(false)
@@ -175,11 +170,7 @@ export function LogDetailPage() {
       </Button>
       {raw ? (
         <pre className="overflow-auto rounded-xl border border-line bg-ink p-4 font-mono text-xs text-mist">
-          {JSON.stringify(
-            { request: rawBodies?.request_body, response: rawBodies?.response_body },
-            null,
-            2,
-          )}
+          {JSON.stringify({ page: currentPage, total, messages }, null, 2)}
         </pre>
       ) : null}
     </div>

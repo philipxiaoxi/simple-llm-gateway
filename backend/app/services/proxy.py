@@ -38,7 +38,15 @@ from app.services.bridge import (
     stream_openai_chunks,
     _passthrough_keys,
 )
-from app.services.conversation import extract_session_key, find_continuation_log
+from app.services.conversation import (
+    append_log_messages,
+    extract_assistant_message,
+    extract_request_messages,
+    extract_session_key,
+    find_continuation_log,
+    load_log_messages,
+    new_messages_to_store,
+)
 from app.services.credentials import CredentialError
 from app.services.reasoning import (
     dump_reasoning_json,
@@ -51,10 +59,6 @@ from app.services.reasoning import (
     reasoning_map_from_messages,
     reasoning_map_from_openai_payload,
 )
-
-
-def dump_json(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, default=str)
 
 
 def _output_text_from_openai(payload: dict[str, Any]) -> str:
@@ -196,6 +200,8 @@ def save_log(
             request_body=request_body,
             session_key=session_key,
         )
+    inbound = extract_request_messages(request_body) if isinstance(request_body, dict) else []
+    assistant = extract_assistant_message(protocol, response_body)
     if existing is not None:
         existing.model = model
         existing.stream = stream
@@ -213,8 +219,6 @@ def save_log(
         elif total is not None:
             existing.total_tokens = total
         existing.latency_ms = (existing.latency_ms or 0) + latency_ms
-        existing.request_body = dump_json(request_body)
-        existing.response_body = dump_json(response_body) if response_body is not None else existing.response_body
         existing.updated_at = now
         if session_key:
             existing.session_key = session_key
@@ -222,6 +226,7 @@ def save_log(
             existing.reasoning_json = dump_reasoning_json(
                 merge_reasoning_maps(parse_reasoning_json(existing.reasoning_json), reasoning_map)
             )
+        append_log_messages(db, existing.id, new_messages_to_store(load_log_messages(db, existing.id), inbound, assistant))
         db.flush()
         return existing
     log = RequestLog(
@@ -241,14 +246,17 @@ def save_log(
             else ((prompt or 0) + (completion or 0) if prompt is not None or completion is not None else None)
         ),
         latency_ms=latency_ms,
-        request_body=dump_json(request_body) if request_body is not None else None,
-        response_body=dump_json(response_body) if response_body is not None else None,
         created_at=now,
         updated_at=now,
         session_key=session_key,
         reasoning_json=dump_reasoning_json(reasoning_map or {}),
     )
     db.add(log)
+    db.flush()
+    to_store = list(inbound)
+    if assistant is not None:
+        to_store.append(assistant)
+    append_log_messages(db, log.id, to_store)
     db.flush()
     return log
 

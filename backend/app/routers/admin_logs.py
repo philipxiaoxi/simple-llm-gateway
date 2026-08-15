@@ -6,11 +6,10 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.db import get_db
 from app.deps import get_current_admin
-from app.models import RequestLog
+from app.models import RequestLog, RequestLogMessage
 from app.schemas import LogListOut, LogMessageListOut, LogMessageOut, LogOut
 from app.serializers import log_to_out
-from app.services.conversation import extract_log_messages
-from app.services.proxy import parse_json
+from app.services.conversation import decode_stored_message
 
 router = APIRouter(prefix="/api/admin/logs", tags=["admin-logs"], dependencies=[Depends(get_current_admin)])
 
@@ -64,17 +63,26 @@ def list_log_messages(
     item = db.get(RequestLog, log_id)
     if item is None:
         raise HTTPException(status_code=404, detail="记录不存在")
-    messages = extract_log_messages(item.protocol, parse_json(item.request_body), parse_json(item.response_body))
-    messages.reverse()
-    total = len(messages)
+    total = db.scalar(select(func.count()).where(RequestLogMessage.log_id == log_id)) or 0
     offset = (page - 1) * page_size
-    page_items = messages[offset : offset + page_size]
-    return LogMessageListOut(
-        items=[LogMessageOut(role=str(entry["role"]), content=entry.get("content")) for entry in page_items],
-        total=total,
-        page=page,
-        page_size=page_size,
-    )
+    rows = db.scalars(
+        select(RequestLogMessage)
+        .where(RequestLogMessage.log_id == log_id)
+        .order_by(RequestLogMessage.seq.desc())
+        .offset(offset)
+        .limit(page_size)
+    ).all()
+    items: list[LogMessageOut] = []
+    for row in rows:
+        decoded = decode_stored_message(row)
+        items.append(
+            LogMessageOut(
+                role=decoded["role"],
+                content=decoded.get("content"),
+                tool_calls=decoded.get("tool_calls"),
+            )
+        )
+    return LogMessageListOut(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{log_id}", response_model=LogOut)
