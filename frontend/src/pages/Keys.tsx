@@ -30,7 +30,7 @@ export function KeysPage() {
       queryClient.invalidateQueries({ queryKey: ['keys'] })
       if (item.key) setRevealed((current) => ({ ...current, [item.id]: item.key as string }))
       setName('')
-      setMessage('已创建，完整 Key 显示在对应卡片上，请立刻复制。')
+      setMessage('已创建，完整 Key 显示在对应卡片上。可把「分享页」和 Key 发给对方自行导入。')
     },
     onError: (error: Error) => setMessage(error.message),
   })
@@ -101,9 +101,26 @@ export function KeysPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold">API Key</h1>
-        <p className="mt-1 text-sm text-mist">创建时必须绑死一个上游账号。后台随时可以再看完整 sk-…</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">API Key</h1>
+          <p className="mt-1 text-sm text-mist">创建时必须绑死一个上游账号。后台随时可以再看完整 sk-…</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="line"
+            onClick={() => {
+              void navigator.clipboard.writeText(`${window.location.origin}/share`)
+              setMessage('已复制分享页地址，把链接和 Key 发给对方即可。')
+            }}
+          >
+            复制分享页
+          </Button>
+          <Button type="button" variant="line" onClick={() => window.open('/share', '_blank', 'noopener')}>
+            打开分享页
+          </Button>
+        </div>
       </div>
       <Card className="grid gap-3 md:grid-cols-3">
         <Field label="备注">

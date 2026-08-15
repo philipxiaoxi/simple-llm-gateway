@@ -19,6 +19,7 @@ from app.routers import (
     health,
     oauth,
     proxy,
+    share,
 )
 from app.seed import seed_admin
 
@@ -47,6 +48,7 @@ app.include_router(admin_logs.router)
 app.include_router(admin_dashboard.router)
 app.include_router(oauth.router)
 app.include_router(proxy.router)
+app.include_router(share.router)
 
 
 def _frontend_dist() -> Path:

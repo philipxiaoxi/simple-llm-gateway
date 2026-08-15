@@ -60,6 +60,14 @@ class CcSwitchBuildRequest(BaseModel):
     opus_model: str | None = None
 
 
+class ShareLookupRequest(BaseModel):
+    api_key: str
+
+
+class ShareCcSwitchRequest(CcSwitchBuildRequest):
+    api_key: str
+
+
 class KeyCreate(BaseModel):
     name: str
     account_id: int

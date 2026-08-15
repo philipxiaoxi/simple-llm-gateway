@@ -8,6 +8,7 @@ import { KeysPage } from './pages/Keys'
 import { LogDetailPage } from './pages/LogDetail'
 import { LoginPage } from './pages/Login'
 import { LogsPage } from './pages/Logs'
+import { SharePage } from './pages/Share'
 import type { ReactElement } from 'react'
 
 const queryClient = new QueryClient()
@@ -23,6 +24,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/share" element={<SharePage />} />
           <Route
             element={
               <Guard>

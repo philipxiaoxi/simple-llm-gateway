@@ -110,6 +110,22 @@ export type CcSwitchTarget = {
   url?: string
 }
 
+export type ShareLookup = {
+  name: string
+  account_name: string
+  provider: string
+  provider_label: string
+  status: string
+  account_status: string
+  models: string[]
+  gateway: {
+    origin: string
+    anthropic_base_url: string
+    openai_base_url: string
+  }
+  targets: CcSwitchTarget[]
+}
+
 export type ApiKeyItem = {
   id: number
   name: string
@@ -198,4 +214,14 @@ export const api = {
     return request<{ items: LogItem[]; total: number; page: number; page_size: number }>(`/api/admin/logs${suffix}`)
   },
   log: (id: number) => request<LogItem>(`/api/admin/logs/${id}`),
+  shareLookup: (apiKey: string) =>
+    request<ShareLookup>('/api/share/lookup', { method: 'POST', body: JSON.stringify({ api_key: apiKey }) }),
+  shareCcSwitch: (payload: {
+    api_key: string
+    app: string
+    model?: string
+    haiku_model?: string
+    sonnet_model?: string
+    opus_model?: string
+  }) => request<{ url: string }>('/api/share/cc-switch', { method: 'POST', body: JSON.stringify(payload) }),
 }
