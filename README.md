@@ -94,6 +94,7 @@ base_url = https://你的站/v1
 
 ```bash
 cp .env.example .env
+cp docker-compose.yml.example docker-compose.yml
 docker compose up --build
 ```
 
@@ -118,7 +119,7 @@ llm-gateway/
 ├── docs/                    # 设计文档
 ├── scripts/                 # 开发启动脚本
 ├── Dockerfile
-└── docker-compose.yml
+└── docker-compose.yml.example
 ```
 
 ## 技术栈
