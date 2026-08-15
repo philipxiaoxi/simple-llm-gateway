@@ -45,6 +45,30 @@ export function KeysPage() {
     notifyOk('已复制')
   }
 
+  async function shareKey(id: number) {
+    try {
+      const full = revealed[id] ?? (await api.key(id)).key
+      if (!full) {
+        notifyBad('无法读取完整 Key')
+        return
+      }
+      setRevealed((current) => ({ ...current, [id]: full }))
+      const shareUrl = `${window.location.origin}/share`
+      const text = [
+        '管理员通过中转台给你下发了 新的api-key：',
+        '------',
+        `使用链接：${shareUrl}`,
+        `api-key：${full}`,
+        '------',
+        '打开链接后，把api-key粘贴到查询框，即可查看模型和用量，并一键导入客户端，请勿外传。',
+      ].join('\n')
+      await navigator.clipboard.writeText(text)
+      notifyOk('已复制分享文案，发给对方即可。')
+    } catch (error) {
+      notifyBad(error instanceof Error ? error.message : '复制分享文案失败')
+    }
+  }
+
   async function loadCcSwitch(id: number) {
     try {
       const result = await api.ccSwitch(id)
@@ -172,6 +196,9 @@ export function KeysPage() {
               <div className="flex flex-wrap gap-2">
                 <Button variant="line" onClick={() => showKey(item.id)}>
                   显示完整 Key
+                </Button>
+                <Button type="button" variant="line" onClick={() => void shareKey(item.id)}>
+                  分享
                 </Button>
                 <Button type="button" variant="line" onClick={() => loadCcSwitch(item.id)}>
                   导入 CC Switch

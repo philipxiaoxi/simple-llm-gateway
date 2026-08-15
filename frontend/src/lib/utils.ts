@@ -1,16 +1,25 @@
 import { clsx, type ClassValue } from 'clsx'
+import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
 import { twMerge } from 'tailwind-merge'
+
+dayjs.extend(utc)
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+const ISO_TIME = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?/g
+
 export function formatTime(value: string | null | undefined) {
   if (!value) return '—'
-  const normalized = /[zZ]|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`
-  return new Date(normalized).toLocaleString('zh-CN', {
-    hour12: false,
-  })
+  const parsed = /[zZ]|[+-]\d{2}:\d{2}$/.test(value) ? dayjs(value) : dayjs.utc(value)
+  if (!parsed.isValid()) return value
+  return parsed.local().format('YYYY-MM-DD HH:mm:ss')
+}
+
+export function formatEmbeddedTimes(value: string) {
+  return value.replace(ISO_TIME, (match) => formatTime(match))
 }
 
 export function formatTokens(item: {

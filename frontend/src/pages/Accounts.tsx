@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api, type Account, type Provider, type QuotaItem } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { formatTime } from '../lib/utils'
+import { formatEmbeddedTimes, formatTime } from '../lib/utils'
 
 function AccountEditor({
   account,
@@ -281,7 +281,7 @@ function QuotaItems({ items }: { items: QuotaItem[] }) {
         return (
           <div key={`${item.label}-${index}`} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
             <span>{item.label}</span>
-            <span className="font-mono text-xs text-mist">{String(item.value)}</span>
+            <span className="font-mono text-xs text-mist">{formatEmbeddedTimes(String(item.value))}</span>
           </div>
         )
       })}
