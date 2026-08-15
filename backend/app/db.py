@@ -42,6 +42,7 @@ def init_db() -> None:
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
+    _ensure_request_logs_have_no_parent_fks(engine)
 
 
 def _ensure_columns(engine: Engine) -> None:
@@ -74,6 +75,120 @@ def _ensure_columns(engine: Engine) -> None:
             ).first()
             if message_count == 0 and has_old_bodies is not None:
                 connection.execute(text("DELETE FROM request_logs"))
+        log_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(request_logs)"))}
+        if log_columns and "api_key_name" not in log_columns:
+            connection.execute(text("ALTER TABLE request_logs ADD COLUMN api_key_name VARCHAR(128)"))
+            connection.execute(
+                text(
+                    "UPDATE request_logs SET api_key_name = "
+                    "(SELECT name FROM api_keys WHERE api_keys.id = request_logs.api_key_id) "
+                    "WHERE api_key_name IS NULL"
+                )
+            )
+        if log_columns and "account_name" not in log_columns:
+            connection.execute(text("ALTER TABLE request_logs ADD COLUMN account_name VARCHAR(128)"))
+            connection.execute(
+                text(
+                    "UPDATE request_logs SET account_name = "
+                    "(SELECT name FROM upstream_accounts WHERE upstream_accounts.id = request_logs.account_id) "
+                    "WHERE account_name IS NULL"
+                )
+            )
+
+
+def _request_logs_have_parent_fks(engine: Engine) -> bool:
+    with engine.connect() as connection:
+        fks = list(connection.execute(text("PRAGMA foreign_key_list(request_logs)")))
+        return any(row[2] in {"api_keys", "upstream_accounts"} for row in fks)
+
+
+def _ensure_request_logs_have_no_parent_fks(engine: Engine) -> None:
+    if not _request_logs_have_parent_fks(engine):
+        return
+    raw_connection = engine.raw_connection()
+    try:
+        cursor = raw_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=OFF")
+        cursor.execute("BEGIN")
+        cursor.execute(
+            """
+            CREATE TABLE request_logs_new (
+                id INTEGER NOT NULL PRIMARY KEY,
+                account_id INTEGER NOT NULL,
+                account_name VARCHAR(128),
+                api_key_id INTEGER,
+                api_key_name VARCHAR(128),
+                protocol VARCHAR(32) NOT NULL,
+                model VARCHAR(128),
+                stream BOOLEAN NOT NULL,
+                status VARCHAR(16) NOT NULL,
+                http_status INTEGER NOT NULL,
+                error_message TEXT,
+                prompt_tokens INTEGER,
+                completion_tokens INTEGER,
+                total_tokens INTEGER,
+                latency_ms INTEGER NOT NULL,
+                request_body TEXT,
+                response_body TEXT,
+                session_key VARCHAR(128),
+                reasoning_json TEXT,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME
+            )
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO request_logs_new (
+                id, account_id, account_name, api_key_id, api_key_name, protocol, model, stream, status,
+                http_status, error_message, prompt_tokens, completion_tokens, total_tokens,
+                latency_ms, request_body, response_body, session_key, reasoning_json,
+                created_at, updated_at
+            )
+            SELECT
+                request_logs.id,
+                request_logs.account_id,
+                COALESCE(request_logs.account_name, upstream_accounts.name),
+                request_logs.api_key_id,
+                COALESCE(request_logs.api_key_name, api_keys.name),
+                request_logs.protocol,
+                request_logs.model,
+                request_logs.stream,
+                request_logs.status,
+                request_logs.http_status,
+                request_logs.error_message,
+                request_logs.prompt_tokens,
+                request_logs.completion_tokens,
+                request_logs.total_tokens,
+                request_logs.latency_ms,
+                request_logs.request_body,
+                request_logs.response_body,
+                request_logs.session_key,
+                request_logs.reasoning_json,
+                request_logs.created_at,
+                request_logs.updated_at
+            FROM request_logs
+            LEFT JOIN api_keys ON api_keys.id = request_logs.api_key_id
+            LEFT JOIN upstream_accounts ON upstream_accounts.id = request_logs.account_id
+            """
+        )
+        cursor.execute("DROP TABLE request_logs")
+        cursor.execute("ALTER TABLE request_logs_new RENAME TO request_logs")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_request_logs_account_id ON request_logs (account_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_request_logs_api_key_id ON request_logs (api_key_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_request_logs_created_at ON request_logs (created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_request_logs_session_key ON request_logs (session_key)")
+        cursor.execute("COMMIT")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+    except Exception:
+        try:
+            raw_connection.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        raw_connection.close()
 
 
 def reset_db_runtime() -> None:

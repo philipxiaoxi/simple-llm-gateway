@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.crypto import (
@@ -32,9 +32,7 @@ def export_accounts(db: Session, password: str) -> dict[str, object]:
     if len(password) < MIN_EXPORT_PASSWORD_LENGTH:
         raise ValueError(f"密码至少 {MIN_EXPORT_PASSWORD_LENGTH} 位")
     settings = get_settings()
-    rows = db.scalars(
-        select(UpstreamAccount).options(joinedload(UpstreamAccount.oauth_token)).order_by(UpstreamAccount.id)
-    ).all()
+    rows = db.scalars(select(UpstreamAccount).order_by(UpstreamAccount.id)).all()
     accounts: list[dict[str, object]] = []
     for account in rows:
         api_key = None

@@ -229,9 +229,13 @@ def save_log(
         append_log_messages(db, existing.id, new_messages_to_store(load_log_messages(db, existing.id), inbound, assistant))
         db.flush()
         return existing
+    stored_key = db.get(ApiKey, api_key_id)
+    stored_account = db.get(UpstreamAccount, account_id)
     log = RequestLog(
         account_id=account_id,
+        account_name=stored_account.name if stored_account is not None else None,
         api_key_id=api_key_id,
+        api_key_name=stored_key.name if stored_key is not None else None,
         protocol=protocol,
         model=model,
         stream=stream,

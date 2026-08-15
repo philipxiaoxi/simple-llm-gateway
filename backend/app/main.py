@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -22,7 +23,7 @@ from app.routers import (
     share,
 )
 from app.seed import seed_admin
-from app.services.grok_oauth import cleanup_expired_oauth_states
+from app.services.grok_oauth import cleanup_expired_oauth_states, run_oauth_refresh_loop
 
 
 @asynccontextmanager
@@ -36,7 +37,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         session.commit()
     finally:
         session.close()
-    yield
+    refresh_task = asyncio.create_task(run_oauth_refresh_loop())
+    try:
+        yield
+    finally:
+        refresh_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await refresh_task
 
 
 app = FastAPI(

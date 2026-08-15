@@ -93,3 +93,49 @@ def test_disable_key(client: TestClient, auth_headers: dict[str, str]) -> None:
     key_id = created.json()["id"]
     updated = client.patch(f"/api/admin/keys/{key_id}", headers=auth_headers, json={"status": "disabled"})
     assert updated.json()["status"] == "disabled"
+
+
+def test_delete_key_keeps_request_logs(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from unittest.mock import AsyncMock, patch
+
+    account_id = _account(client, auth_headers)
+    created = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "k", "account_id": account_id},
+    )
+    key_id = created.json()["id"]
+    plaintext = created.json()["key"]
+
+    class FakeResponse:
+        def model_dump(self) -> dict:
+            return {
+                "id": "chatcmpl-test",
+                "choices": [{"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+
+    with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=FakeResponse())):
+        proxied = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {plaintext}"},
+            json={"model": "deepseek-chat", "messages": [{"role": "user", "content": "hi"}]},
+        )
+    assert proxied.status_code == 200
+    logs = client.get("/api/admin/logs", headers=auth_headers)
+    assert logs.json()["total"] == 1
+    log_id = logs.json()["items"][0]["id"]
+
+    deleted = client.delete(f"/api/admin/keys/{key_id}", headers=auth_headers)
+    assert deleted.status_code == 200
+    listed = client.get("/api/admin/keys", headers=auth_headers)
+    assert listed.json() == []
+    remaining_logs = client.get("/api/admin/logs", headers=auth_headers)
+    assert remaining_logs.json()["total"] == 1
+    leftover = remaining_logs.json()["items"][0]
+    assert leftover["api_key_id"] == key_id
+    assert leftover["api_key_name"] == "k"
+    assert leftover["account_name"] == "DS"
+    messages = client.get(f"/api/admin/logs/{log_id}/messages", headers=auth_headers)
+    assert messages.status_code == 200
+    assert messages.json()["total"] >= 1

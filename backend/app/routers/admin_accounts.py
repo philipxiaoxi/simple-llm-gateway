@@ -3,14 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
 from app.crypto import encrypt_secret
 from app.db import get_db
 from app.deps import get_current_admin
-from app.models import Admin, UpstreamAccount
+from app.models import Admin, OAuthState, RequestLog, UpstreamAccount
 from app.providers import get_provider, list_providers
 from app.schemas import AccountCreate, AccountExportRequest, AccountImportRequest, AccountOut, AccountUpdate, ProviderOut
 from app.serializers import account_to_out
@@ -123,8 +123,14 @@ def delete_account(account_id: int, db: Session = Depends(get_db)) -> dict[str, 
     account = _get_account(db, account_id)
     if account.api_keys:
         raise HTTPException(status_code=400, detail="请先删除绑定在该账号上的 API Key")
+    db.execute(
+        update(RequestLog)
+        .where(RequestLog.account_id == account_id)
+        .values(account_name=func.coalesce(RequestLog.account_name, account.name))
+    )
     if account.oauth_token is not None:
         db.delete(account.oauth_token)
+    db.execute(delete(OAuthState).where(OAuthState.account_id == account_id))
     db.delete(account)
     return {"ok": True}
 

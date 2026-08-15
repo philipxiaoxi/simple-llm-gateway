@@ -46,6 +46,13 @@ class AccountUpdate(BaseModel):
     status: str | None = None
 
 
+class OauthCallbackComplete(BaseModel):
+    account_id: int | None = None
+    callback_url: str | None = None
+    code: str | None = None
+    state: str | None = None
+
+
 class AccountOut(BaseModel):
     id: int
     name: str
@@ -110,7 +117,7 @@ class LogOut(BaseModel):
     id: int
     account_id: int
     account_name: str = ""
-    api_key_id: int
+    api_key_id: int | None = None
     api_key_name: str = ""
     protocol: str
     model: str | None

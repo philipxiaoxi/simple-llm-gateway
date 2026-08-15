@@ -91,8 +91,10 @@ class RequestLog(Base):
     __tablename__ = "request_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    account_id: Mapped[int] = mapped_column(ForeignKey("upstream_accounts.id"), index=True, nullable=False)
-    api_key_id: Mapped[int] = mapped_column(ForeignKey("api_keys.id"), index=True, nullable=False)
+    account_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    account_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    api_key_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    api_key_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     protocol: Mapped[str] = mapped_column(String(32), nullable=False)
     model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     stream: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -110,8 +112,16 @@ class RequestLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True, nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    account: Mapped[UpstreamAccount] = relationship(foreign_keys=[account_id])
-    api_key: Mapped[ApiKey] = relationship(foreign_keys=[api_key_id])
+    account: Mapped[UpstreamAccount | None] = relationship(
+        "UpstreamAccount",
+        primaryjoin="foreign(RequestLog.account_id) == UpstreamAccount.id",
+        viewonly=True,
+    )
+    api_key: Mapped[ApiKey | None] = relationship(
+        "ApiKey",
+        primaryjoin="foreign(RequestLog.api_key_id) == ApiKey.id",
+        viewonly=True,
+    )
     messages: Mapped[list[RequestLogMessage]] = relationship(
         back_populates="log",
         cascade="all, delete-orphan",

@@ -6,6 +6,7 @@ import httpx
 from sqlalchemy.orm import object_session
 
 from app.config import get_settings
+from app.crypto import decrypt_secret
 from app.models import UpstreamAccount
 from app.providers.base import OpenAICompatibleProvider, QuotaItem, QuotaView
 from app.services.grok_oauth import refresh_if_needed
@@ -66,10 +67,19 @@ class GrokProvider(OpenAICompatibleProvider):
     default_models = ["grok-4", "grok-4.6", "grok-3", "grok-2"]
 
     def missing_credential(self, account: UpstreamAccount) -> bool:
-        return account.oauth_token is None
+        return account.oauth_token is None and not account.api_key_encrypted
 
     async def prepare_credential(self, account: UpstreamAccount, db: Any) -> str:
-        return await refresh_if_needed(db, account)
+        if account.oauth_token is not None:
+            try:
+                return await refresh_if_needed(db, account)
+            except ValueError:
+                if account.api_key_encrypted:
+                    return decrypt_secret(account.api_key_encrypted, get_settings().app_secret_key)
+                raise
+        if account.api_key_encrypted:
+            return decrypt_secret(account.api_key_encrypted, get_settings().app_secret_key)
+        raise ValueError("Grok 账号尚未授权")
 
     async def _access_token(self, account: UpstreamAccount, token: str) -> str:
         session = object_session(account)

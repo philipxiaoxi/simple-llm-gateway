@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
 from app.crypto import decrypt_secret, encrypt_secret, generate_api_key, hash_api_key, key_prefix
 from app.db import get_db
 from app.deps import get_current_admin
-from app.models import ApiKey, UpstreamAccount
+from app.models import ApiKey, RequestLog, UpstreamAccount
 from app.schemas import CcSwitchBuildRequest, KeyCreate, KeyOut, KeyUpdate
 from app.serializers import key_to_out
 from app.services.ccswitch import (
@@ -108,6 +108,11 @@ def update_key(key_id: int, payload: KeyUpdate, db: Session = Depends(get_db)) -
 @router.delete("/{key_id}")
 def delete_key(key_id: int, db: Session = Depends(get_db)) -> dict[str, bool]:
     item = _get_key(db, key_id)
+    db.execute(
+        update(RequestLog)
+        .where(RequestLog.api_key_id == key_id)
+        .values(api_key_name=func.coalesce(RequestLog.api_key_name, item.name))
+    )
     db.delete(item)
     return {"ok": True}
 

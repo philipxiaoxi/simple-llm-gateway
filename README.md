@@ -45,7 +45,7 @@ cp .env.example .env
 | `APP_SECRET_KEY` | JWT 和密钥加密主密钥。丢了旧 Key 全部解不开 |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 仅空库第一次种管理员 |
 | `DATABASE_PATH` | SQLite 路径，默认 `data/gateway.db` |
-| `APP_BASE_URL` | Grok OAuth 回调根地址 |
+| `APP_BASE_URL` | 管理端根地址；自定义 OAuth 应用回调成功后会回到这里 |
 | `REQUEST_TIMEOUT_SECONDS` | 默认 120 |
 | `XAI_OAUTH_CLIENT_ID` | Grok OAuth 客户端，可覆盖默认值 |
 

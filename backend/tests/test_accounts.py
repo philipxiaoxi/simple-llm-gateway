@@ -90,6 +90,47 @@ def test_delete_account_blocked_when_keys_exist(client: TestClient, auth_headers
     assert "API Key" in deleted.json()["detail"]
 
 
+def test_delete_account_keeps_request_logs(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from unittest.mock import AsyncMock, patch
+
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    account_id = created.json()["id"]
+    key = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "k", "account_id": account_id},
+    ).json()
+    key_id = key["id"]
+
+    class FakeResponse:
+        def model_dump(self) -> dict:
+            return {
+                "id": "chatcmpl-test",
+                "choices": [{"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+
+    with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=FakeResponse())):
+        proxied = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key['key']}"},
+            json={"model": "deepseek-chat", "messages": [{"role": "user", "content": "hi"}]},
+        )
+    assert proxied.status_code == 200
+    assert client.delete(f"/api/admin/keys/{key_id}", headers=auth_headers).status_code == 200
+    deleted = client.delete(f"/api/admin/accounts/{account_id}", headers=auth_headers)
+    assert deleted.status_code == 200
+    leftover = client.get("/api/admin/logs", headers=auth_headers).json()["items"][0]
+    assert leftover["account_id"] == account_id
+    assert leftover["account_name"] == "DS"
+    assert leftover["api_key_id"] == key_id
+    assert leftover["api_key_name"] == "k"
+
+
 def test_probe_updates_account(client: TestClient, auth_headers: dict[str, str]) -> None:
     created = client.post(
         "/api/admin/accounts",
@@ -389,6 +430,72 @@ def test_export_import_accounts_roundtrip(client: TestClient, auth_headers: dict
     assert revealed["api_key"] == "sk-upstream-secret"
     grok_copy = next(item for item in client.get("/api/admin/accounts", headers=auth_headers).json() if item["name"] == "Grok（1）")
     assert grok_copy["has_credential"] is False
+
+
+def test_export_import_skips_grok_oauth_tokens(client: TestClient, auth_headers: dict[str, str]) -> None:
+    import json
+
+    from sqlalchemy import select
+
+    from app.crypto import decrypt_with_password
+    from app.db import get_session_factory
+    from app.models import OAuthToken
+
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "Grok", "provider": "grok"},
+    ).json()
+    client.get(f"/api/admin/accounts/{created['id']}/oauth/start", headers=auth_headers)
+
+    class TokenResponse:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {"access_token": "access-xyz", "refresh_token": "refresh-xyz", "expires_in": 3600}
+
+    with patch("app.services.grok_oauth.httpx.AsyncClient") as token_client:
+        instance = AsyncMock()
+        instance.post = AsyncMock(return_value=TokenResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        token_client.return_value = instance
+        completed = client.post(
+            "/api/admin/oauth/grok/callback",
+            headers=auth_headers,
+            json={"account_id": created["id"], "callback_url": "bare-auth-code"},
+        )
+    assert completed.status_code == 200, completed.text
+    assert client.get(f"/api/admin/accounts/{created['id']}", headers=auth_headers).json()["has_credential"] is True
+
+    envelope = client.post(
+        "/api/admin/accounts/export",
+        headers=auth_headers,
+        json={"password": "long-pass-1"},
+    ).json()
+    payload = json.loads(decrypt_with_password(envelope, "long-pass-1"))
+    grok_entry = next(item for item in payload["accounts"] if item["name"] == "Grok")
+    assert grok_entry["api_key"] is None
+    assert "oauth_token" not in grok_entry
+    assert "access_token" not in grok_entry
+    assert "refresh_token" not in grok_entry
+
+    imported = client.post(
+        "/api/admin/accounts/import",
+        headers=auth_headers,
+        json={"password": "long-pass-1", "payload": envelope},
+    )
+    assert imported.status_code == 200
+    copy = next(item for item in client.get("/api/admin/accounts", headers=auth_headers).json() if item["name"] == "Grok（1）")
+    assert copy["has_credential"] is False
+
+    session = get_session_factory()()
+    try:
+        token_account_ids = set(session.scalars(select(OAuthToken.account_id)).all())
+        assert created["id"] in token_account_ids
+        assert copy["id"] not in token_account_ids
+    finally:
+        session.close()
 
 
 def test_export_password_too_short(client: TestClient, auth_headers: dict[str, str]) -> None:

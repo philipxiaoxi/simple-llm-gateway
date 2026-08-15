@@ -77,9 +77,9 @@ def log_to_out(item: RequestLog, include_bodies: bool = False) -> LogOut:
     return LogOut(
         id=item.id,
         account_id=item.account_id,
-        account_name=item.account.name if item.account else "",
+        account_name=item.account_name or (item.account.name if item.account else ""),
         api_key_id=item.api_key_id,
-        api_key_name=item.api_key.name if item.api_key else "",
+        api_key_name=item.api_key_name or (item.api_key.name if item.api_key else ""),
         protocol=item.protocol,
         model=item.model,
         stream=item.stream,

@@ -129,7 +129,7 @@ export type LogItem = {
   id: number
   account_id: number
   account_name?: string
-  api_key_id: number
+  api_key_id: number | null
   api_key_name?: string
   protocol: string
   model: string | null
@@ -195,7 +195,9 @@ export const api = {
     request<{ ok: boolean; models: string[]; message?: string; source?: string }>(`/api/admin/accounts/${id}/models`, {
       method: 'POST',
     }),
-  oauthStart: (id: number) => request<{ authorize_url: string }>(`/api/admin/accounts/${id}/oauth/start`),
+  oauthStart: (id: number) => request<{ authorize_url: string; needs_paste: boolean }>(`/api/admin/accounts/${id}/oauth/start`),
+  completeOauth: (payload: { account_id?: number; callback_url?: string; code?: string; state?: string }) =>
+    request<{ ok: boolean }>('/api/admin/oauth/grok/callback', { method: 'POST', body: JSON.stringify(payload) }),
   keys: () => request<ApiKeyItem[]>('/api/admin/keys'),
   createKey: (payload: { name: string; account_id: number }) =>
     request<ApiKeyItem>('/api/admin/keys', { method: 'POST', body: JSON.stringify(payload) }),

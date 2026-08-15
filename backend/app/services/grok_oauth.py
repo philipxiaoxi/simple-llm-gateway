@@ -4,22 +4,20 @@ import asyncio
 import base64
 import hashlib
 import secrets
-import threading
 from datetime import datetime, timedelta
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
 from app.crypto import decrypt_secret, encrypt_secret
 from app.db import get_session_factory
 from app.models import OAuthState, OAuthToken, UpstreamAccount
 
-_listener_lock = threading.Lock()
-_listener_started = False
+OAUTH_REFRESH_INTERVAL_SECONDS = 10 * 60
+OAUTH_REFRESH_SOON_SECONDS = 20 * 60
 
 
 def _pkce_pair() -> tuple[str, str]:
@@ -32,6 +30,88 @@ def _pkce_pair() -> tuple[str, str]:
 def cleanup_expired_oauth_states(db: Session) -> int:
     result = db.execute(delete(OAuthState).where(OAuthState.expires_at < datetime.utcnow()))
     return result.rowcount or 0
+
+
+def is_loopback_redirect(redirect_uri: str) -> bool:
+    host = (urlparse(redirect_uri).hostname or "").lower()
+    return host in {"127.0.0.1", "localhost", "::1"}
+
+
+def parse_oauth_callback(
+    callback_url: str | None = None,
+    code: str | None = None,
+    state: str | None = None,
+) -> tuple[str, str]:
+    parsed_code = (code or "").strip() or None
+    parsed_state = (state or "").strip() or None
+    if callback_url:
+        query = parse_qs(urlparse(callback_url.strip()).query)
+        error = (query.get("error") or [None])[0]
+        if error:
+            raise ValueError(f"授权被拒绝：{error}")
+        parsed_code = (query.get("code") or [None])[0] or parsed_code
+        parsed_state = (query.get("state") or [None])[0] or parsed_state
+    if not parsed_code or not parsed_state:
+        raise ValueError("请粘贴授权后地址栏里完整的 127.0.0.1 回调链接")
+    return parsed_code, parsed_state
+
+
+def looks_like_api_key(value: str) -> bool:
+    lowered = value.strip().lower()
+    return lowered.startswith("xai-") or lowered.startswith("xai_") or lowered.startswith("sk-")
+
+
+def latest_oauth_state(db: Session, account_id: int) -> OAuthState | None:
+    return db.scalar(
+        select(OAuthState)
+        .where(OAuthState.account_id == account_id, OAuthState.expires_at > datetime.utcnow())
+        .order_by(OAuthState.id.desc())
+    )
+
+
+def store_account_api_key(db: Session, account_id: int, api_key: str) -> UpstreamAccount:
+    account = db.get(UpstreamAccount, account_id)
+    if account is None:
+        raise ValueError("授权对应的账号不存在")
+    account.api_key_encrypted = encrypt_secret(api_key.strip(), get_settings().app_secret_key)
+    if account.oauth_token is not None:
+        db.delete(account.oauth_token)
+        account.oauth_token = None
+    return account
+
+
+async def complete_oauth_from_paste(
+    db: Session,
+    *,
+    account_id: int | None,
+    pasted: str,
+    code: str | None = None,
+    state: str | None = None,
+) -> UpstreamAccount:
+    text = pasted.strip()
+    if not text and not code:
+        raise ValueError("请粘贴回调链接、页面上的授权码或 API Key")
+    if "accounts.x.ai/oauth2/consent" in text and not parse_qs(urlparse(text).query).get("code"):
+        raise ValueError("这是授权页地址，请粘贴页面上显示的代码或 API Key，不要粘这个网址")
+    if text.startswith("http://") or text.startswith("https://"):
+        parsed_code, parsed_state = parse_oauth_callback(text, code, state)
+        if account_id is not None:
+            record = db.scalar(select(OAuthState).where(OAuthState.state == parsed_state))
+            if record is not None and record.account_id != account_id:
+                raise ValueError("回调链接不属于当前账号")
+        return await exchange_code(db, parsed_code, parsed_state)
+    if looks_like_api_key(text):
+        if account_id is None:
+            raise ValueError("缺少账号")
+        return store_account_api_key(db, account_id, text)
+    if code and state:
+        return await exchange_code(db, code, state)
+    if account_id is None:
+        raise ValueError("缺少账号")
+    record = latest_oauth_state(db, account_id)
+    if record is None:
+        raise ValueError("没有进行中的授权，请重新点「去授权」")
+    return await exchange_code(db, text or (code or ""), record.state)
 
 
 def build_authorize_url(db: Session, account: UpstreamAccount) -> str:
@@ -47,7 +127,6 @@ def build_authorize_url(db: Session, account: UpstreamAccount) -> str:
             expires_at=datetime.utcnow() + timedelta(minutes=15),
         )
     )
-    ensure_loopback_listener()
     query = urlencode(
         {
             "response_type": "code",
@@ -90,14 +169,10 @@ async def exchange_code(db: Session, code: str, state: str) -> UpstreamAccount:
     return account
 
 
-async def refresh_if_needed(db: Session, account: UpstreamAccount) -> str:
+async def refresh_oauth_token(db: Session, account: UpstreamAccount) -> str:
     settings = get_settings()
     token = account.oauth_token
-    if token is None:
-        raise ValueError("Grok 账号尚未授权")
-    if token.expires_at is None or token.expires_at > datetime.utcnow() + timedelta(seconds=60):
-        return decrypt_secret(token.access_token_encrypted, settings.app_secret_key)
-    if not token.refresh_token_encrypted:
+    if token is None or not token.refresh_token_encrypted:
         raise ValueError("Grok 授权已过期，请重新授权")
     refresh_token = decrypt_secret(token.refresh_token_encrypted, settings.app_secret_key)
     async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
@@ -113,8 +188,76 @@ async def refresh_if_needed(db: Session, account: UpstreamAccount) -> str:
     if response.status_code >= 400:
         raise ValueError("Grok token 刷新失败，请重新授权")
     _store_tokens(db, account, response.json())
-    db.refresh(token)
+    db.flush()
     return decrypt_secret(account.oauth_token.access_token_encrypted, settings.app_secret_key)  # type: ignore[union-attr]
+
+
+async def refresh_if_needed(db: Session, account: UpstreamAccount) -> str:
+    settings = get_settings()
+    token = account.oauth_token
+    if token is None:
+        raise ValueError("Grok 账号尚未授权")
+    if token.expires_at is None or token.expires_at > datetime.utcnow() + timedelta(seconds=60):
+        return decrypt_secret(token.access_token_encrypted, settings.app_secret_key)
+    return await refresh_oauth_token(db, account)
+
+
+def accounts_due_for_oauth_refresh(
+    db: Session,
+    *,
+    now: datetime | None = None,
+    soon_seconds: int = OAUTH_REFRESH_SOON_SECONDS,
+) -> list[UpstreamAccount]:
+    cutoff = (now or datetime.utcnow()) + timedelta(seconds=soon_seconds)
+    rows = db.scalars(
+        select(UpstreamAccount)
+        .options(joinedload(UpstreamAccount.oauth_token))
+        .where(UpstreamAccount.status == "active")
+    ).all()
+    due: list[UpstreamAccount] = []
+    for account in rows:
+        token = account.oauth_token
+        if token is None or not token.refresh_token_encrypted:
+            continue
+        if token.expires_at is not None and token.expires_at <= cutoff:
+            due.append(account)
+    return due
+
+
+async def refresh_expiring_oauth_tokens() -> int:
+    session = get_session_factory()()
+    try:
+        account_ids = [account.id for account in accounts_due_for_oauth_refresh(session)]
+    finally:
+        session.close()
+    refreshed = 0
+    for account_id in account_ids:
+        session = get_session_factory()()
+        try:
+            account = session.scalar(
+                select(UpstreamAccount)
+                .options(joinedload(UpstreamAccount.oauth_token))
+                .where(UpstreamAccount.id == account_id)
+            )
+            if account is None:
+                continue
+            await refresh_oauth_token(session, account)
+            session.commit()
+            refreshed += 1
+        except Exception:
+            session.rollback()
+        finally:
+            session.close()
+    return refreshed
+
+
+async def run_oauth_refresh_loop() -> None:
+    while True:
+        try:
+            await refresh_expiring_oauth_tokens()
+        except Exception:
+            pass
+        await asyncio.sleep(OAUTH_REFRESH_INTERVAL_SECONDS)
 
 
 def _store_tokens(db: Session, account: UpstreamAccount, payload: dict) -> None:
@@ -133,61 +276,3 @@ def _store_tokens(db: Session, account: UpstreamAccount, payload: dict) -> None:
     account.oauth_token.expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
     account.oauth_token.scope = payload.get("scope")
     account.oauth_token.updated_at = datetime.utcnow()
-
-
-def ensure_loopback_listener() -> None:
-    global _listener_started
-    with _listener_lock:
-        if _listener_started:
-            return
-        parsed = urlparse(get_settings().xai_oauth_redirect_uri)
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or 56121
-        try:
-            server = HTTPServer((host, port), _LoopbackHandler)
-        except OSError:
-            _listener_started = True
-            return
-        thread = threading.Thread(target=server.serve_forever, name="grok-oauth-loopback", daemon=True)
-        thread.start()
-        _listener_started = True
-
-
-class _LoopbackHandler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:
-        parsed = urlparse(self.path)
-        if parsed.path.rstrip("/") != "/callback":
-            self.send_error(404)
-            return
-        query = parse_qs(parsed.query)
-        code = (query.get("code") or [None])[0]
-        state = (query.get("state") or [None])[0]
-        error = (query.get("error") or [None])[0]
-        frontend = get_settings().app_base_url.rstrip("/")
-        if error or not code or not state:
-            location = f"{frontend}/accounts?oauth=error&reason={error or 'missing'}"
-            self._redirect(location)
-            return
-        session = get_session_factory()()
-        try:
-            asyncio.run(exchange_code(session, code, state))
-            session.commit()
-            location = f"{frontend}/accounts?oauth=ok"
-        except Exception:
-            session.rollback()
-            location = f"{frontend}/accounts?oauth=error&reason=exchange"
-        finally:
-            session.close()
-        self._redirect(location)
-
-    def _redirect(self, location: str) -> None:
-        body = f'<html><body>授权完成，<a href="{location}">返回中转台</a></body></html>'.encode("utf-8")
-        self.send_response(302)
-        self.send_header("Location", location)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def log_message(self, format: str, *args: object) -> None:
-        return

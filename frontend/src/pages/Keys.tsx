@@ -188,8 +188,14 @@ export function KeysPage() {
                 <Button
                   variant="danger"
                   onClick={async () => {
-                    await api.deleteKey(item.id)
-                    queryClient.invalidateQueries({ queryKey: ['keys'] })
+                    try {
+                      await api.deleteKey(item.id)
+                      queryClient.invalidateQueries({ queryKey: ['keys'] })
+                      queryClient.invalidateQueries({ queryKey: ['logs'] })
+                      notifyOk('已删除')
+                    } catch (error) {
+                      notifyBad(error instanceof Error ? error.message : '删除失败')
+                    }
                   }}
                 >
                   删除

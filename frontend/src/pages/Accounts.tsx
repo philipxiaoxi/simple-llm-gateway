@@ -296,6 +296,9 @@ export function AccountsPage() {
   const [editor, setEditor] = useState<Account | 'new' | null>(null)
   const [transfer, setTransfer] = useState<'export' | 'import' | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
+  const [oauthPaste, setOauthPaste] = useState('')
+  const [oauthDialog, setOauthDialog] = useState(false)
+  const [oauthAccountId, setOauthAccountId] = useState<number | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
 
   useEffect(() => {
@@ -361,10 +364,15 @@ export function AccountsPage() {
     setBusyId(id)
     try {
       const result = await api.oauthStart(id)
-      notifyInfo('正在打开 xAI 授权页。若没有跳转，请允许弹窗或点下面的链接。')
-      const opened = window.open(result.authorize_url, '_blank', 'noopener,noreferrer')
-      if (!opened) {
-        window.location.href = result.authorize_url
+      const popup = window.open(result.authorize_url, '_blank')
+      if (popup) popup.opener = null
+      if (result.needs_paste) {
+        setOauthPaste('')
+        setOauthAccountId(id)
+        setOauthDialog(true)
+        notifyInfo(popup ? '已打开 xAI 授权页。确认后把页面上的代码或 API Key 粘回来。' : '弹窗被拦截，请允许后再点一次，或手动打开授权页。')
+      } else {
+        notifyInfo(popup ? '已打开 xAI 授权页，完成授权后会回到本站。' : '弹窗被拦截，请允许弹窗后再点一次「去授权」。')
       }
     } catch (error) {
       notifyBad(error instanceof Error ? error.message : '无法开始授权')
@@ -508,6 +516,54 @@ export function AccountsPage() {
             notifyOk(text)
           }}
         />
+      ) : null}
+      {oauthDialog ? (
+        <Dialog title="完成 Grok 授权" onClose={() => setOauthDialog(false)}>
+          <div className="space-y-3">
+            <p className="text-sm text-mist">
+              登录后页面常常不会跳到 127.0.0.1，而是停在授权页并给出一段代码或 API Key。把
+              <span className="text-paper"> 页面上显示的那段 </span>
+              粘到下面，不要粘授权页网址本身。如果地址栏已经变成
+              <span className="font-mono text-paper"> 127.0.0.1:56121/callback?...</span>
+              ，也可以粘完整链接。粘授权码或回调链接才能自动续期；粘
+              <span className="font-mono text-paper"> xai- </span>
+              API Key 不会过期，也没有 refresh。
+            </p>
+            <Field label="授权码 / API Key / 回调链接">
+              <Input
+                value={oauthPaste}
+                onChange={(event) => setOauthPaste(event.target.value)}
+                placeholder="xai-... 或授权码，或 http://127.0.0.1:56121/callback?code=..."
+              />
+            </Field>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="ghost" onClick={() => setOauthDialog(false)}>
+                取消
+              </Button>
+              <Button
+                type="button"
+                disabled={!oauthPaste.trim() || oauthAccountId == null}
+                onClick={async () => {
+                  try {
+                    await api.completeOauth({
+                      account_id: oauthAccountId ?? undefined,
+                      callback_url: oauthPaste.trim(),
+                    })
+                    queryClient.invalidateQueries({ queryKey: ['accounts'] })
+                    setOauthDialog(false)
+                    setOauthPaste('')
+                    setOauthAccountId(null)
+                    notifyOk('Grok 授权成功，凭证已保存。')
+                  } catch (error) {
+                    notifyBad(error instanceof Error ? error.message : '兑换授权失败')
+                  }
+                }}
+              >
+                完成授权
+              </Button>
+            </div>
+          </div>
+        </Dialog>
       ) : null}
     </div>
   )
