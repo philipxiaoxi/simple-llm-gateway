@@ -3,6 +3,36 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+INSECURE_APP_SECRET_KEYS = frozenset(
+    {
+        "dev-only-change-me",
+        "change-me-to-a-long-random-string",
+        "replace-with-a-long-random-string",
+    }
+)
+INSECURE_ADMIN_PASSWORDS = frozenset(
+    {
+        "changeme",
+        "replace-with-a-strong-password",
+        "admin",
+        "password",
+        "12345678",
+    }
+)
+MIN_APP_SECRET_KEY_LENGTH = 16
+MIN_ADMIN_PASSWORD_LENGTH = 8
+
+
+def validate_app_secret_key(secret_key: str) -> None:
+    stripped = (secret_key or "").strip()
+    if stripped in INSECURE_APP_SECRET_KEYS or len(stripped) < MIN_APP_SECRET_KEY_LENGTH:
+        raise RuntimeError("APP_SECRET_KEY 未设置或仍是示例值。请改成至少 16 位的随机字符串后启动。")
+
+
+def validate_bootstrap_admin_password(password: str) -> None:
+    if password in INSECURE_ADMIN_PASSWORDS or len(password) < MIN_ADMIN_PASSWORD_LENGTH:
+        raise RuntimeError("ADMIN_PASSWORD 未设置、过短或仍是示例值。首次启动请设置至少 8 位的密码。")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

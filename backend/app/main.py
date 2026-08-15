@@ -5,11 +5,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from app.db import init_db
+from app.config import get_settings, validate_app_secret_key
+from app.db import get_session_factory, init_db
 from app.routers import (
     admin_accounts,
     admin_auth,
@@ -22,22 +22,30 @@ from app.routers import (
     share,
 )
 from app.seed import seed_admin
+from app.services.grok_oauth import cleanup_expired_oauth_states
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    validate_app_secret_key(get_settings().app_secret_key)
     init_db()
     seed_admin()
+    session = get_session_factory()()
+    try:
+        cleanup_expired_oauth_states(session)
+        session.commit()
+    finally:
+        session.close()
     yield
 
 
-app = FastAPI(title="LLM Gateway", version="0.1.0", lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+app = FastAPI(
+    title="LLM Gateway",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 app.include_router(health.router)
@@ -64,9 +72,15 @@ FRONTEND_DIST = _frontend_dist()
 if FRONTEND_DIST.exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
+    @app.get("/favicon.svg")
+    def frontend_favicon() -> FileResponse:
+        return FileResponse(FRONTEND_DIST / "favicon.svg")
+
+    @app.get("/icons.svg")
+    def frontend_icons() -> FileResponse:
+        return FileResponse(FRONTEND_DIST / "icons.svg")
+
     @app.get("/{full_path:path}")
     def spa(full_path: str) -> FileResponse:
-        candidate = FRONTEND_DIST / full_path
-        if full_path and candidate.is_file():
-            return FileResponse(candidate)
+        # 前端路由一律回 index.html，不把用户路径拼到磁盘上。
         return FileResponse(FRONTEND_DIST / "index.html")

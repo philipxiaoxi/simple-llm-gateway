@@ -13,10 +13,14 @@ from app.db import get_db
 from app.models import Admin, ApiKey
 
 
-def create_access_token(username: str) -> str:
+def create_access_token(admin: Admin) -> str:
     settings = get_settings()
     expire = datetime.now(timezone.utc) + timedelta(days=settings.jwt_expire_days)
-    payload = {"sub": username, "exp": expire}
+    payload = {
+        "sub": admin.username,
+        "ver": int(admin.token_version or 0),
+        "exp": expire,
+    }
     return jwt.encode(payload, settings.app_secret_key, algorithm="HS256")
 
 
@@ -38,6 +42,9 @@ def get_current_admin(
     admin = db.scalar(select(Admin).where(Admin.username == username))
     if admin is None:
         raise HTTPException(status_code=401, detail="账号不存在")
+    token_version = int(payload.get("ver") or 0)
+    if token_version != int(admin.token_version or 0):
+        raise HTTPException(status_code=401, detail="登录已失效")
     return admin
 
 

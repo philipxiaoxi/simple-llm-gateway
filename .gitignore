@@ -9,6 +9,10 @@ env/
 *.egg-info/
 .DS_Store
 .env
+.env.*
+!.env.example
+*.sql
+*.pem
 data/
 *.db
 frontend/node_modules/

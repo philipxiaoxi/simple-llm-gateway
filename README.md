@@ -12,7 +12,7 @@
 
 ```bash
 cp .env.example .env
-# 改 APP_SECRET_KEY 和 ADMIN_PASSWORD
+# 必须改 APP_SECRET_KEY 和 ADMIN_PASSWORD，沿用示例值会拒绝启动
 
 python3.11 -m venv .venv
 source .venv/bin/activate
@@ -72,6 +72,8 @@ base_url = https://你的站/v1
 | `APP_BASE_URL` | Grok OAuth 回调根地址 |
 | `REQUEST_TIMEOUT_SECONDS` | 默认 120 |
 | `XAI_OAUTH_CLIENT_ID` | Grok OAuth 客户端，可覆盖默认值 |
+
+`ADMIN_PASSWORD` 只在空库第一次种管理员时生效，之后改 `.env` 不会改已有账号，请在网页里改密。
 
 数据库文件和 `APP_SECRET_KEY` 不要放在同一份备份里。
 

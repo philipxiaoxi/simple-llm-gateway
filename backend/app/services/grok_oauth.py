@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -29,8 +29,14 @@ def _pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
+def cleanup_expired_oauth_states(db: Session) -> int:
+    result = db.execute(delete(OAuthState).where(OAuthState.expires_at < datetime.utcnow()))
+    return result.rowcount or 0
+
+
 def build_authorize_url(db: Session, account: UpstreamAccount) -> str:
     settings = get_settings()
+    cleanup_expired_oauth_states(db)
     verifier, challenge = _pkce_pair()
     state = secrets.token_urlsafe(24)
     db.add(

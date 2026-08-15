@@ -14,9 +14,11 @@ def client(tmp_path, monkeypatch) -> TestClient:
 
     from app.config import reset_settings
     from app.db import reset_db_runtime
+    from app.login_gate import login_gate
 
     reset_settings()
     reset_db_runtime()
+    login_gate.reset()
 
     from app.main import app
     from app.db import init_db

@@ -63,6 +63,9 @@ def _ensure_columns(engine: Engine) -> None:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN session_key VARCHAR(128)"))
         if "reasoning_json" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN reasoning_json TEXT"))
+        admin_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(admins)"))}
+        if "token_version" not in admin_columns:
+            connection.execute(text("ALTER TABLE admins ADD COLUMN token_version INTEGER DEFAULT 0 NOT NULL"))
         tables = {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))}
         if "request_log_messages" in tables:
             message_count = connection.execute(text("SELECT COUNT(*) FROM request_log_messages")).scalar() or 0
