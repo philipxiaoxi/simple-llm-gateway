@@ -257,6 +257,130 @@ def test_anthropic_forward_converts(client: TestClient, auth_headers: dict[str, 
     assert body["content"][0]["text"] == "你好"
 
 
+def test_extract_usage_keeps_zero_and_alias_keys() -> None:
+    from app.services.bridge import extract_usage, pick_usage_from_chunk
+
+    assert extract_usage({"usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}}) == (0, 0, 0)
+    assert extract_usage({"usage": {"input_tokens": 4, "output_tokens": 6}}) == (4, 6, 10)
+    assert pick_usage_from_chunk({"choices": [{"delta": {"content": "x"}}], "usage": {}}) is None
+    assert pick_usage_from_chunk({"choices": [], "usage": {"prompt_tokens": 3, "completion_tokens": 2}}) == (3, 2, 5)
+
+
+def test_stream_requests_include_usage(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+    captured: dict = {}
+
+    async def fake_stream(_account, _messages, _model, _stream, extra, _credential):
+        captured["extra"] = extra
+
+        async def chunks():
+            yield {"choices": [{"delta": {"content": "好"}, "index": 0, "finish_reason": "stop"}]}
+            yield {"choices": [], "usage": {"prompt_tokens": 9, "completion_tokens": 3, "total_tokens": 12}}
+
+        return chunks()
+
+    with patch("app.services.proxy.call_chat", new=fake_stream):
+        with client.stream(
+            "POST",
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": "deepseek-chat", "stream": True, "messages": [{"role": "user", "content": "hi"}]},
+        ) as response:
+            "".join(response.iter_text())
+    assert captured["extra"]["stream_options"]["include_usage"] is True
+    detail = client.get(
+        f"/api/admin/logs/{client.get('/api/admin/logs', headers=auth_headers).json()['items'][0]['id']}",
+        headers=auth_headers,
+    ).json()
+    assert detail["prompt_tokens"] == 9
+    assert detail["completion_tokens"] == 3
+    assert detail["total_tokens"] == 12
+
+
+def test_stream_without_usage_estimates_tokens(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+
+    async def fake_stream(*_args, **_kwargs):
+        async def chunks():
+            yield {"choices": [{"delta": {"content": "你好世界"}, "index": 0, "finish_reason": "stop"}]}
+
+        return chunks()
+
+    with patch("app.services.proxy.call_chat", new=AsyncMock(side_effect=fake_stream)):
+        with client.stream(
+            "POST",
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": "deepseek-chat", "stream": True, "messages": [{"role": "user", "content": "hello there"}]},
+        ) as response:
+            "".join(response.iter_text())
+    detail = client.get(
+        f"/api/admin/logs/{client.get('/api/admin/logs', headers=auth_headers).json()['items'][0]['id']}",
+        headers=auth_headers,
+    ).json()
+    assert detail["prompt_tokens"]
+    assert detail["completion_tokens"]
+    assert detail["total_tokens"] == detail["prompt_tokens"] + detail["completion_tokens"]
+
+
+def test_follow_up_does_not_wipe_tokens(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+    metadata = {"user_id": '{"device_id":"dev","account_uuid":"","session_id":"sess-tokens-1"}'}
+
+    class UsageResponse:
+        def model_dump(self) -> dict:
+            return {
+                "id": "chatcmpl-usage",
+                "choices": [{"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 11, "completion_tokens": 5, "total_tokens": 16},
+            }
+
+    async def fake_chat(_account, _messages, _model, stream, _extra, _credential):
+        if stream:
+
+            async def chunks():
+                yield {"choices": [{"delta": {"content": "再来"}, "index": 0, "finish_reason": "stop"}]}
+
+            return chunks()
+        return UsageResponse()
+
+    with patch("app.services.proxy.call_chat", new=fake_chat):
+        first = client.post(
+            "/v1/messages",
+            headers={"x-api-key": key},
+            json={
+                "model": "deepseek-v4-flash",
+                "max_tokens": 32,
+                "metadata": metadata,
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
+        assert first.status_code == 200
+        with client.stream(
+            "POST",
+            "/v1/messages",
+            headers={"x-api-key": key},
+            json={
+                "model": "deepseek-v4-flash",
+                "max_tokens": 32,
+                "stream": True,
+                "metadata": metadata,
+                "messages": [
+                    {"role": "user", "content": "hi"},
+                    {"role": "assistant", "content": "ok"},
+                    {"role": "user", "content": "again"},
+                ],
+            },
+        ) as response:
+            "".join(response.iter_text())
+    listed = client.get("/api/admin/logs", headers=auth_headers).json()
+    assert listed["total"] == 1
+    detail = client.get(f"/api/admin/logs/{listed['items'][0]['id']}", headers=auth_headers).json()
+    assert detail["prompt_tokens"]
+    assert detail["completion_tokens"] >= 5
+    assert detail["total_tokens"]
+
+
 def test_stream_reconstructs_log(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
 

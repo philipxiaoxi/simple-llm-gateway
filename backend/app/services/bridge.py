@@ -375,14 +375,71 @@ async def stream_openai_chunks(stream: Any) -> AsyncIterator[dict[str, Any]]:
             yield json.loads(chunk.model_dump_json())
 
 
+def _as_token_count(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit() or (stripped.startswith("-") and stripped[1:].isdigit()):
+            return int(stripped)
+    return None
+
+
 def extract_usage(payload: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
-    usage = payload.get("usage") or {}
-    prompt = usage.get("prompt_tokens") or usage.get("input_tokens")
-    completion = usage.get("completion_tokens") or usage.get("output_tokens")
-    total = usage.get("total_tokens")
+    usage = payload.get("usage")
+    if not isinstance(usage, dict):
+        return None, None, None
+    prompt = _as_token_count(usage.get("prompt_tokens"))
+    if prompt is None:
+        prompt = _as_token_count(usage.get("input_tokens"))
+    completion = _as_token_count(usage.get("completion_tokens"))
+    if completion is None:
+        completion = _as_token_count(usage.get("output_tokens"))
+    total = _as_token_count(usage.get("total_tokens"))
     if total is None and prompt is not None and completion is not None:
         total = prompt + completion
     return prompt, completion, total
+
+
+def pick_usage_from_chunk(chunk: dict[str, Any]) -> tuple[int | None, int | None, int | None] | None:
+    usage = extract_usage(chunk)
+    if usage[0] is None and usage[1] is None and usage[2] is None:
+        return None
+    if any((part or 0) > 0 for part in usage):
+        return usage
+    choices = chunk.get("choices") or []
+    if not choices:
+        return usage
+    first = choices[0] if isinstance(choices[0], dict) else {}
+    if first.get("finish_reason"):
+        return usage
+    return None
+
+
+def ensure_stream_usage(extra: dict[str, Any]) -> dict[str, Any]:
+    outbound = dict(extra)
+    options = outbound.get("stream_options")
+    if isinstance(options, dict):
+        merged = dict(options)
+        merged.setdefault("include_usage", True)
+        outbound["stream_options"] = merged
+    else:
+        outbound["stream_options"] = {"include_usage": True}
+    return outbound
+
+
+async def estimate_usage(
+    model: str,
+    messages: list[dict[str, Any]],
+    output_text: str,
+) -> tuple[int, int, int]:
+    prompt = await count_openai_tokens(model, messages)
+    completion = await count_openai_tokens(model, [{"role": "assistant", "content": output_text or ""}])
+    return prompt, completion, prompt + completion
 
 
 def extract_text_from_openai_chunk(chunk: dict[str, Any]) -> str:
@@ -449,8 +506,8 @@ class AnthropicStreamTranslator:
 
     def feed(self, chunk: dict[str, Any]) -> list[bytes]:
         events: list[bytes] = []
-        usage_candidate = extract_usage(chunk)
-        if any(part is not None for part in usage_candidate):
+        usage_candidate = pick_usage_from_chunk(chunk)
+        if usage_candidate is not None:
             self.usage = usage_candidate
         choices = chunk.get("choices") or []
         if not choices:

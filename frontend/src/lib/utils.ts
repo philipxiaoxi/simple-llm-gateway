@@ -12,3 +12,15 @@ export function formatTime(value: string | null | undefined) {
     hour12: false,
   })
 }
+
+export function formatTokens(item: {
+  total_tokens?: number | null
+  prompt_tokens?: number | null
+  completion_tokens?: number | null
+}) {
+  if (item.total_tokens != null) return String(item.total_tokens)
+  if (item.prompt_tokens != null || item.completion_tokens != null) {
+    return String((item.prompt_tokens || 0) + (item.completion_tokens || 0))
+  }
+  return '—'
+}

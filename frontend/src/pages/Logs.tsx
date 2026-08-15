@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Button, Card } from '../components/ui'
 import { api } from '../lib/api'
-import { formatTime } from '../lib/utils'
+import { formatTime, formatTokens } from '../lib/utils'
 
 const protocolLabel: Record<string, string> = {
   openai_chat: 'OpenAI Chat',
@@ -105,7 +105,7 @@ export function LogsPage() {
                   <Badge tone={item.status === 'success' ? 'ok' : 'bad'}>{item.status}</Badge>
                 </td>
                 <td className="px-3 py-2">{item.latency_ms}ms</td>
-                <td className="px-3 py-2">{item.total_tokens ?? '—'}</td>
+                <td className="px-3 py-2">{formatTokens(item)}</td>
               </tr>
             ))}
           </tbody>

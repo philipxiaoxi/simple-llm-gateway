@@ -21,10 +21,13 @@ from app.services.bridge import (
     anthropic_to_openai_messages,
     call_chat,
     count_openai_tokens,
+    ensure_stream_usage,
+    estimate_usage,
     extract_reasoning_from_openai_chunk,
     extract_text_from_openai_chunk,
     extract_usage,
     input_to_messages,
+    pick_usage_from_chunk,
     openai_response_to_anthropic,
     prepare_credential,
     responses_from_chat,
@@ -47,6 +50,35 @@ from app.services.reasoning import (
 
 def dump_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _output_text_from_openai(payload: dict[str, Any]) -> str:
+    choice = (payload.get("choices") or [{}])[0]
+    message = choice.get("message") or {}
+    content = message.get("content")
+    if isinstance(content, str):
+        text = content
+    elif content is None:
+        text = ""
+    else:
+        text = json.dumps(content, ensure_ascii=False)
+    reasoning = message.get("reasoning_content")
+    if isinstance(reasoning, str) and reasoning:
+        text = f"{reasoning}\n{text}" if text else reasoning
+    return text
+
+
+def _stream_output_text(protocol: str, collector: Any, translator: Any) -> str:
+    if protocol == "anthropic_messages":
+        parts: list[str] = []
+        if translator.reasoning:
+            parts.append(translator.reasoning)
+        if translator.text:
+            parts.append(translator.text)
+        for tool in translator.tools:
+            parts.append(str(tool.get("arguments") or ""))
+        return "\n".join(parts)
+    return f"{collector.reasoning}{collector.text}"
 
 
 def reconstruct_anthropic_from_sse(sse_text: str, model: str) -> dict[str, Any]:
@@ -165,11 +197,14 @@ def save_log(
         existing.status = status
         existing.http_status = http_status
         existing.error_message = error_message
-        existing.prompt_tokens = prompt
+        if prompt is not None:
+            existing.prompt_tokens = prompt
         if completion is not None:
             existing.completion_tokens = (existing.completion_tokens or 0) + completion
-        if prompt is not None or existing.completion_tokens is not None:
-            existing.total_tokens = (prompt or 0) + (existing.completion_tokens or 0)
+        stored_prompt = existing.prompt_tokens
+        stored_completion = existing.completion_tokens
+        if stored_prompt is not None or stored_completion is not None:
+            existing.total_tokens = (stored_prompt or 0) + (stored_completion or 0)
         elif total is not None:
             existing.total_tokens = total
         existing.latency_ms = (existing.latency_ms or 0) + latency_ms
@@ -195,7 +230,11 @@ def save_log(
         error_message=error_message,
         prompt_tokens=prompt,
         completion_tokens=completion,
-        total_tokens=total,
+        total_tokens=(
+            total
+            if total is not None
+            else ((prompt or 0) + (completion or 0) if prompt is not None or completion is not None else None)
+        ),
         latency_ms=latency_ms,
         request_body=dump_json(request_body) if request_body is not None else None,
         response_body=dump_json(response_body) if response_body is not None else None,
@@ -254,6 +293,8 @@ async def handle_chat(
 
     extra.pop("stream", None)
     extra.pop("thinking", None)
+    if stream:
+        extra = ensure_stream_usage(extra)
     session_key = extract_session_key(body, request_headers)
     inbound_reasoning = reasoning_map_from_messages(messages)
     stored_reasoning = merge_reasoning_maps(
@@ -296,6 +337,8 @@ async def handle_chat(
         payload = openai_payload
 
     usage = extract_usage(openai_payload)
+    if usage[0] is None and usage[1] is None and usage[2] is None:
+        usage = await estimate_usage(model, messages, _output_text_from_openai(openai_payload))
     save_log(
         db,
         account_id=account.id,
@@ -354,8 +397,8 @@ async def _stream_response(
                 for event in translator.start():
                     yield event
             async for chunk in stream_openai_chunks(result):
-                usage_candidate = extract_usage(chunk)
-                if any(part is not None for part in usage_candidate):
+                usage_candidate = pick_usage_from_chunk(chunk)
+                if usage_candidate is not None:
                     usage = usage_candidate
                 collector.feed(chunk)
                 if protocol == "anthropic_messages":
@@ -393,6 +436,8 @@ async def _stream_response(
                 yield b"data: [DONE]\n\n"
                 response_body = {"choices": [{"message": collector.message()}]}
                 response_map = collector.reasoning_map()
+            if usage[0] is None and usage[1] is None and usage[2] is None:
+                usage = await estimate_usage(model, messages, _stream_output_text(protocol, collector, translator))
         except Exception as error:
             status = "error"
             http_status = 502
