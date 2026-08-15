@@ -2,11 +2,12 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.db import get_db
 from app.deps import get_current_admin
-from app.models import OAuthToken, RequestLog, UpstreamAccount
+from app.models import RequestLog, UpstreamAccount
+from app.providers import get_provider
 from app.schemas import DashboardOut
 
 router = APIRouter(prefix="/api/admin", tags=["admin-dashboard"], dependencies=[Depends(get_current_admin)])
@@ -21,14 +22,9 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardOut:
         )
         or 0
     )
-    grok_missing = (
-        db.scalar(
-            select(func.count())
-            .select_from(UpstreamAccount)
-            .outerjoin(OAuthToken, OAuthToken.account_id == UpstreamAccount.id)
-            .where(UpstreamAccount.provider == "grok", OAuthToken.id.is_(None))
-        )
-        or 0
+    accounts = db.scalars(select(UpstreamAccount).options(joinedload(UpstreamAccount.oauth_token))).all()
+    missing_credential = sum(
+        1 for account in accounts if get_provider(account.provider).missing_credential(account)
     )
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     today_requests = (
@@ -44,7 +40,7 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardOut:
     )
     return DashboardOut(
         account_count=account_count,
-        unhealthy_count=probe_failed + grok_missing,
+        unhealthy_count=probe_failed + missing_credential,
         today_requests=today_requests,
         today_failures=today_failures,
     )

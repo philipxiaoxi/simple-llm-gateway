@@ -42,7 +42,7 @@ def test_cc_switch_links(client: TestClient, auth_headers: dict[str, str]) -> No
         def json(self) -> dict:
             return {"data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}]}
 
-    with patch("app.services.probe.httpx.AsyncClient") as client_cls:
+    with patch("app.providers.base.httpx.AsyncClient") as client_cls:
         instance = AsyncMock()
         instance.get = AsyncMock(return_value=FakeResponse())
         instance.__aenter__.return_value = instance

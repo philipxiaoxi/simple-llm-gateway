@@ -41,7 +41,7 @@ def test_probe_updates_account(client: TestClient, auth_headers: dict[str, str])
         status_code = 200
         text = '{"data":[]}'
 
-    with patch("app.services.probe.httpx.AsyncClient") as client_cls:
+    with patch("app.providers.base.httpx.AsyncClient") as client_cls:
         instance = AsyncMock()
         instance.get = AsyncMock(return_value=FakeResponse())
         instance.__aenter__.return_value = instance
@@ -69,7 +69,7 @@ def test_quota_deepseek(client: TestClient, auth_headers: dict[str, str]) -> Non
         def json(self) -> dict:
             return {"is_available": True, "balance_infos": [{"currency": "USD", "total_balance": "9.9"}]}
 
-    with patch("app.services.quota.httpx.AsyncClient") as client_cls:
+    with patch("app.providers.deepseek.httpx.AsyncClient") as client_cls:
         instance = AsyncMock()
         instance.get = AsyncMock(return_value=FakeResponse())
         instance.__aenter__.return_value = instance
@@ -79,14 +79,13 @@ def test_quota_deepseek(client: TestClient, auth_headers: dict[str, str]) -> Non
 
     assert response.status_code == 200
     body = response.json()
-    assert body["supported"] is True
     assert body["ok"] is True
-    assert body["available"] is True
-    assert body["balances"] == [
-        {"currency": "USD", "total": 9.9, "granted": 0.0, "topped_up": 0.0},
-    ]
+    assert body["items"][0] == {"label": "USD", "type": "text", "value": "$9.90"}
+    assert body["items"][1]["label"] == "构成"
+    assert "赠送 $0.00" in body["items"][1]["value"]
+    assert "充值 $0.00" in body["items"][1]["value"]
     stored = client.get(f"/api/admin/accounts/{account_id}", headers=auth_headers)
-    assert stored.json()["quota"]["balances"][0]["total"] == 9.9
+    assert stored.json()["quota"]["items"][0]["value"] == "$9.90"
 
 
 def test_quota_opencode_go_windows(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -109,7 +108,7 @@ def test_quota_opencode_go_windows(client: TestClient, auth_headers: dict[str, s
                 }
             }
 
-    with patch("app.services.quota.httpx.AsyncClient") as client_cls:
+    with patch("app.providers.opencode_go.httpx.AsyncClient") as client_cls:
         instance = AsyncMock()
         instance.get = AsyncMock(return_value=FakeResponse())
         instance.__aenter__.return_value = instance
@@ -119,25 +118,23 @@ def test_quota_opencode_go_windows(client: TestClient, auth_headers: dict[str, s
 
     assert response.status_code == 200
     body = response.json()
-    assert body["supported"] is True
     assert body["ok"] is True
-    windows = {item["id"]: item for item in body["windows"]}
-    assert windows["rolling"]["label"] == "5 小时限额"
-    assert windows["rolling"]["percent"] == 0
-    assert windows["rolling"]["limit_usd"] == 12
-    assert windows["weekly"]["label"] == "周限制"
-    assert windows["weekly"]["percent"] == 4
-    assert windows["weekly"]["used_usd"] == 1.2
-    assert windows["monthly"]["label"] == "月限制"
-    assert windows["monthly"]["percent"] == 3
+    items = body["items"]
+    progress = {item["label"]: item["value"] for item in items if item["type"] == "progress"}
+    texts = {item["label"]: item["value"] for item in items if item["type"] == "text"}
+    assert progress["5 小时限额"] == 0
+    assert progress["周限制"] == 4
+    assert progress["月限制"] == 3
+    assert "$0.00 / $12.00" in texts["5 小时限额"]
+    assert "$1.20 / $30.00" in texts["周限制"]
     stored = client.get(f"/api/admin/accounts/{account_id}", headers=auth_headers)
-    assert stored.json()["quota"]["windows"][0]["id"] == "rolling"
+    assert stored.json()["quota"]["items"][0]["label"] == "5 小时限额"
 
 
 def test_parse_grok_weekly_window() -> None:
-    from app.services.quota import parse_grok_weekly_windows
+    from app.providers.grok import grok_quota_items
 
-    windows = parse_grok_weekly_windows(
+    items = grok_quota_items(
         {
             "config": {
                 "currentPeriod": {
@@ -150,12 +147,11 @@ def test_parse_grok_weekly_window() -> None:
             }
         }
     )
-    assert len(windows) == 1
-    assert windows[0]["id"] == "weekly"
-    assert windows[0]["label"] == "周限制"
-    assert windows[0]["percent"] == 25.0
-    assert windows[0]["resets_at"] == "2026-08-16T09:32:10.577883+00:00"
-    assert windows[0].get("limit_usd") is None
+    assert items[0].label == "周限制"
+    assert items[0].type == "progress"
+    assert items[0].value == 25.0
+    assert items[1].type == "text"
+    assert items[1].value == "重置时间：2026-08-16T09:32:10.577883+00:00"
 
 
 def test_quota_grok_weekly(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -203,7 +199,7 @@ def test_quota_grok_weekly(client: TestClient, auth_headers: dict[str, str]) -> 
         )
     assert callback.status_code in {302, 307}
 
-    with patch("app.services.quota.httpx.AsyncClient") as billing_client:
+    with patch("app.providers.grok.httpx.AsyncClient") as billing_client:
         billing_instance = AsyncMock()
         billing_instance.get = AsyncMock(return_value=BillingResponse())
         billing_instance.__aenter__.return_value = billing_instance
@@ -214,8 +210,8 @@ def test_quota_grok_weekly(client: TestClient, auth_headers: dict[str, str]) -> 
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is True
-    assert body["windows"][0]["id"] == "weekly"
-    assert body["windows"][0]["percent"] == 25.0
+    assert body["items"][0] == {"label": "周限制", "type": "progress", "value": 25.0}
+    assert body["items"][1]["value"] == "重置时间：2026-08-16T09:32:10.577883+00:00"
     assert billing_instance.get.await_args.args[0].endswith("/billing?format=credits")
 
 
@@ -233,7 +229,7 @@ def test_list_account_models(client: TestClient, auth_headers: dict[str, str]) -
         def json(self) -> dict:
             return {"data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}]}
 
-    with patch("app.services.probe.httpx.AsyncClient") as client_cls:
+    with patch("app.providers.base.httpx.AsyncClient") as client_cls:
         instance = AsyncMock()
         instance.get = AsyncMock(return_value=FakeResponse())
         instance.__aenter__.return_value = instance

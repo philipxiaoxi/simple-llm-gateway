@@ -5,7 +5,7 @@ from app.config import get_settings
 from app.db import get_db
 from app.deps import resolve_api_key
 from app.models import ApiKey
-from app.providers import PRESETS
+from app.providers import find_provider
 from app.schemas import ShareCcSwitchRequest, ShareLookupRequest
 from app.services.ccswitch import (
     CCS_SWITCH_TARGETS,
@@ -42,11 +42,12 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
     models = parse_models_json(account.models_json if account else None)
     origin = settings.app_base_url.rstrip("/")
     provider = account.provider if account else ""
+    registered = find_provider(provider) if provider else None
     return {
         "name": item.name,
         "account_name": account.name if account else "",
         "provider": provider,
-        "provider_label": PRESETS.get(provider, {}).get("label") or provider,
+        "provider_label": registered.label if registered else provider,
         "status": item.status,
         "account_status": account.status if account else "",
         "models": models,

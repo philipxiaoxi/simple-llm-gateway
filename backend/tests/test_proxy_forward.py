@@ -417,11 +417,40 @@ def test_stream_reconstructs_log(client: TestClient, auth_headers: dict[str, str
 
 
 def test_models_endpoint(client: TestClient, auth_headers: dict[str, str]) -> None:
-    key = _make_key(client, auth_headers)
+    account = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    ).json()
+    key = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "k", "account_id": account["id"]},
+    ).json()["key"]
+
+    empty = client.get("/v1/models", headers={"Authorization": f"Bearer {key}"})
+    assert empty.status_code == 200
+    assert empty.json()["data"] == []
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {"data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}]}
+
+    with patch("app.providers.base.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        fetched = client.post(f"/api/admin/accounts/{account['id']}/models", headers=auth_headers)
+    assert fetched.status_code == 200
+
     response = client.get("/v1/models", headers={"Authorization": f"Bearer {key}"})
     assert response.status_code == 200
     ids = {item["id"] for item in response.json()["data"]}
-    assert "deepseek-chat" in ids
+    assert ids == {"deepseek-chat", "deepseek-reasoner"}
 
 
 def test_anthropic_followup_injects_stored_reasoning(client: TestClient, auth_headers: dict[str, str]) -> None:

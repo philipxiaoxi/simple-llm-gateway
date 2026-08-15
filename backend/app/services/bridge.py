@@ -12,8 +12,7 @@ litellm.drop_params = True
 
 from app.config import get_settings
 from app.models import UpstreamAccount
-from app.providers import openai_api_base
-from app.services.credentials import require_upstream_credential
+from app.providers import get_provider
 from app.services.reasoning import extract_reasoning_from_delta, extract_reasoning_text
 
 
@@ -338,7 +337,7 @@ async def call_chat(
     api_key: str,
 ) -> Any:
     settings = get_settings()
-    api_base = openai_api_base(account.provider, account.base_url)
+    api_base = get_provider(account.provider).openai_api_base(account.base_url)
     return await litellm.acompletion(
         model=f"openai/{model}",
         messages=messages,
@@ -691,8 +690,4 @@ class AnthropicStreamTranslator:
 
 
 async def prepare_credential(account: UpstreamAccount, db) -> str:  # type: ignore[no-untyped-def]
-    if account.provider == "grok" and account.auth_type == "oauth":
-        from app.services.grok_oauth import refresh_if_needed
-
-        return await refresh_if_needed(db, account)
-    return require_upstream_credential(account)
+    return await get_provider(account.provider).prepare_credential(account, db)

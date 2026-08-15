@@ -6,6 +6,7 @@ from app.config import get_settings
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import Admin, UpstreamAccount
+from app.providers import get_provider
 from app.services.grok_oauth import build_authorize_url, exchange_code
 
 router = APIRouter(tags=["oauth"])
@@ -20,8 +21,8 @@ def oauth_start(
     account = db.get(UpstreamAccount, account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="账号不存在")
-    if account.provider != "grok":
-        raise HTTPException(status_code=400, detail="只有 Grok 账号需要 OAuth")
+    if get_provider(account.provider).auth_type != "oauth":
+        raise HTTPException(status_code=400, detail="该供应商不需要 OAuth")
     return {"authorize_url": build_authorize_url(db, account)}
 
 

@@ -54,32 +54,16 @@ export type Provider = {
   models: string[]
 }
 
-export type QuotaWindow = {
-  id: string
+export type QuotaItem = {
   label: string
-  percent: number
-  limit_usd?: number | null
-  used_usd?: number | null
-  resets_at?: string | null
-  status?: string
-}
-
-export type QuotaBalance = {
-  currency: string
-  total: number
-  granted?: number
-  topped_up?: number
+  type: 'text' | 'progress'
+  value: string | number
 }
 
 export type AccountQuota = {
-  supported?: boolean
   ok?: boolean
-  provider?: string
   message?: string
-  available?: boolean
-  windows?: QuotaWindow[]
-  balances?: QuotaBalance[]
-  raw?: unknown
+  items?: QuotaItem[]
 }
 
 export type Account = {

@@ -2,105 +2,32 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Field, Input } from '../components/ui'
-import { api, type Account, type AccountQuota, type QuotaBalance, type QuotaWindow } from '../lib/api'
+import { api, type Account, type QuotaItem } from '../lib/api'
 import { formatTime } from '../lib/utils'
 
-const OPENCODE_WINDOW_META: { id: string; label: string; limitUsd: number }[] = [
-  { id: 'rolling', label: '5 小时限额', limitUsd: 12 },
-  { id: 'weekly', label: '周限制', limitUsd: 30 },
-  { id: 'monthly', label: '月限制', limitUsd: 60 },
-]
-
-function quotaWindows(quota: AccountQuota | null | undefined): QuotaWindow[] {
-  if (quota?.windows?.length) return quota.windows
-  const raw = quota?.raw
-  const usage =
-    raw && typeof raw === 'object' && raw !== null && 'usage' in raw
-      ? (raw as { usage?: Record<string, { percent?: number; resetsAt?: string; status?: string }> }).usage
-      : undefined
-  if (!usage) return []
-  return OPENCODE_WINDOW_META.flatMap((meta) => {
-    const item = usage[meta.id]
-    if (!item || typeof item.percent !== 'number') return []
-    return [
-      {
-        id: meta.id,
-        label: meta.label,
-        percent: item.percent,
-        limit_usd: meta.limitUsd,
-        used_usd: Math.round(meta.limitUsd * item.percent) / 100,
-        resets_at: item.resetsAt,
-        status: item.status,
-      },
-    ]
-  })
-}
-
-function formatMoney(currency: string, amount: number) {
-  const symbol = currency === 'CNY' ? '¥' : currency === 'USD' ? '$' : `${currency} `
-  return `${symbol}${amount.toFixed(2)}`
-}
-
-function quotaBalances(quota: AccountQuota | null | undefined): QuotaBalance[] {
-  if (quota?.balances?.length) return quota.balances
-  const raw = quota?.raw
-  const infos =
-    raw && typeof raw === 'object' && raw !== null && 'balance_infos' in raw
-      ? (raw as { balance_infos?: { currency?: string; total_balance?: string; granted_balance?: string; topped_up_balance?: string }[] })
-          .balance_infos
-      : undefined
-  if (!infos) return []
-  return infos.flatMap((item) => {
-    const total = Number(item.total_balance)
-    if (!Number.isFinite(total)) return []
-    return [
-      {
-        currency: item.currency || 'USD',
-        total,
-        granted: Number(item.granted_balance) || 0,
-        topped_up: Number(item.topped_up_balance) || 0,
-      },
-    ]
-  })
-}
-
-function BalancePanel({ balances, available }: { balances: QuotaBalance[]; available?: boolean }) {
-  return (
-    <div className="space-y-2">
-      {balances.map((item) => (
-        <div key={item.currency} className="flex flex-wrap items-baseline justify-between gap-2">
-          <div className="text-lg font-medium">{formatMoney(item.currency, item.total)}</div>
-          <div className="text-xs text-mist">
-            赠送 {formatMoney(item.currency, item.granted ?? 0)} · 充值 {formatMoney(item.currency, item.topped_up ?? 0)}
-          </div>
-        </div>
-      ))}
-      {available === false ? <Badge tone="warn">余额不足，可能无法继续调用</Badge> : null}
-    </div>
-  )
-}
-
-function QuotaBars({ windows }: { windows: QuotaWindow[] }) {
+function QuotaItems({ items }: { items: QuotaItem[] }) {
   return (
     <div className="space-y-3">
-      {windows.map((window) => {
-        const used = Math.min(Math.max(window.percent, 0), 100)
-        const tone = used >= 90 ? 'bg-danger' : used >= 70 ? 'bg-warn' : 'bg-signal'
+      {items.map((item, index) => {
+        if (item.type === 'progress') {
+          const used = Math.min(Math.max(Number(item.value) || 0, 0), 100)
+          const tone = used >= 90 ? 'bg-danger' : used >= 70 ? 'bg-warn' : 'bg-signal'
+          return (
+            <div key={`${item.label}-${index}`} className="space-y-1.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                <span>{item.label}</span>
+                <span className="font-mono text-xs text-mist">{used}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-ink">
+                <div className={`h-full rounded-full ${tone}`} style={{ width: `${used}%` }} />
+              </div>
+            </div>
+          )
+        }
         return (
-          <div key={window.id} className="space-y-1.5">
-            <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-              <span>{window.label}</span>
-              <span className="font-mono text-xs text-mist">
-                {window.used_usd != null && window.limit_usd != null
-                  ? `$${window.used_usd} / $${window.limit_usd}`
-                  : `${used}%`}
-                {window.status && window.status !== 'ok' ? ` · ${window.status}` : ''}
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-ink">
-              <div className={`h-full rounded-full ${tone}`} style={{ width: `${used}%` }} />
-            </div>
-            <div className="text-xs text-mist">重置时间：{formatTime(window.resets_at)}</div>
+          <div key={`${item.label}-${index}`} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+            <span>{item.label}</span>
+            <span className="font-mono text-xs text-mist">{String(item.value)}</span>
           </div>
         )
       })}
@@ -118,7 +45,6 @@ export function AccountsPage() {
   const [apiKey, setApiKey] = useState('')
   const [message, setMessage] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
-  const [quotaText, setQuotaText] = useState<Record<number, string>>({})
   const [searchParams, setSearchParams] = useSearchParams()
 
   const preset = useMemo(() => providers.find((item) => item.id === provider), [providers, provider])
@@ -170,9 +96,6 @@ export function AccountsPage() {
     setBusyId(id)
     try {
       const result = await api.quota(id)
-      if (result.provider !== 'opencode_go' && result.provider !== 'grok' && result.provider !== 'deepseek') {
-        setQuotaText((current) => ({ ...current, [id]: JSON.stringify(result, null, 2) }))
-      }
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
       setMessage(result.ok === false ? result.message || '额度查询失败' : '额度已更新')
     } catch (error) {
@@ -297,7 +220,7 @@ export function AccountsPage() {
               <Button type="button" variant="line" disabled={busyId === account.id} onClick={() => runModels(account.id)}>
                 获取模型
               </Button>
-              {account.provider === 'grok' ? (
+              {account.auth_type === 'oauth' ? (
                 <Button type="button" variant="line" disabled={busyId === account.id} onClick={() => startOauth(account.id)}>
                   去授权
                 </Button>
@@ -306,31 +229,16 @@ export function AccountsPage() {
                 {account.status === 'active' ? '停用' : '启用'}
               </Button>
             </div>
-            {account.provider === 'opencode_go' || account.provider === 'grok' || account.provider === 'deepseek' ? (
-              <div>
-                <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
-                  额度{account.quota_updated_at ? ` · ${formatTime(account.quota_updated_at)}` : ''}
-                </div>
-                {account.provider === 'deepseek' ? (
-                  quotaBalances(account.quota).length ? (
-                    <BalancePanel balances={quotaBalances(account.quota)} available={account.quota?.available} />
-                  ) : (
-                    <div className="text-sm text-mist">
-                      {account.quota?.message || '还没有余额，点「刷新额度」从 DeepSeek 拉取。'}
-                    </div>
-                  )
-                ) : quotaWindows(account.quota).length ? (
-                  <QuotaBars windows={quotaWindows(account.quota)} />
-                ) : (
-                  <div className="text-sm text-mist">
-                    {account.quota?.message ||
-                      (account.provider === 'grok'
-                        ? '还没有额度，点「刷新额度」拉取 Grok 周限制。'
-                        : '还没有额度，点「刷新额度」从 OpenCode 拉取 5 小时 / 周 / 月限制。')}
-                  </div>
-                )}
+            <div>
+              <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
+                额度{account.quota_updated_at ? ` · ${formatTime(account.quota_updated_at)}` : ''}
               </div>
-            ) : null}
+              {account.quota?.items?.length ? (
+                <QuotaItems items={account.quota.items} />
+              ) : (
+                <div className="text-sm text-mist">{account.quota?.message || '还没有额度，点「刷新额度」拉取。'}</div>
+              )}
+            </div>
             <div>
               <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
                 模型{account.models_updated_at ? ` · ${formatTime(account.models_updated_at)}` : ''}
@@ -347,9 +255,6 @@ export function AccountsPage() {
                 <div className="text-sm text-mist">还没有模型，点「获取模型」从上游拉取并入库。</div>
               )}
             </div>
-            {quotaText[account.id] ? (
-              <pre className="overflow-auto rounded-md bg-ink p-3 font-mono text-xs text-mist">{quotaText[account.id]}</pre>
-            ) : null}
           </Card>
         ))}
       </div>

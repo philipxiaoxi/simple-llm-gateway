@@ -39,7 +39,7 @@ def test_share_lookup_and_cc_switch_without_admin(
         def json(self) -> dict:
             return {"data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}]}
 
-    with patch("app.services.probe.httpx.AsyncClient") as client_cls:
+    with patch("app.providers.base.httpx.AsyncClient") as client_cls:
         instance = AsyncMock()
         instance.get = AsyncMock(return_value=FakeResponse())
         instance.__aenter__.return_value = instance

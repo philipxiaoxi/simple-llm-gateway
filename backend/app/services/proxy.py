@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.db import get_session_factory
 from app.errors import protocol_error
 from app.models import ApiKey, RequestLog, UpstreamAccount
-from app.providers import PRESETS
+from app.services.ccswitch import parse_models_json
 from app.services.bridge import (
     AnthropicStreamTranslator,
     anthropic_extra_to_openai,
@@ -563,7 +563,7 @@ async def handle_count_tokens(
 
 
 def list_models_payload(account: UpstreamAccount) -> dict[str, Any]:
-    models = PRESETS.get(account.provider, {}).get("models") or []
+    models = parse_models_json(account.models_json)
     return {
         "object": "list",
         "data": [

@@ -11,7 +11,7 @@ from app.crypto import encrypt_secret
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import Admin, UpstreamAccount
-from app.providers import PRESETS, get_preset
+from app.providers import get_provider, list_providers
 from app.schemas import AccountCreate, AccountOut, AccountUpdate, ProviderOut
 from app.serializers import account_to_out
 from app.services.probe import list_account_models, probe_account
@@ -21,16 +21,16 @@ router = APIRouter(prefix="/api/admin", tags=["admin-accounts"], dependencies=[D
 
 
 @router.get("/providers", response_model=list[ProviderOut])
-def list_providers() -> list[ProviderOut]:
+def admin_list_providers() -> list[ProviderOut]:
     return [
         ProviderOut(
-            id=key,
-            label=value["label"],
-            auth_type=value["auth_type"],
-            base_url=value["base_url"],
-            models=value.get("models") or [],
+            id=provider.id,
+            label=provider.label,
+            auth_type=provider.auth_type,
+            base_url=provider.default_base_url,
+            models=list(provider.default_models),
         )
-        for key, value in PRESETS.items()
+        for provider in list_providers()
     ]
 
 
@@ -47,7 +47,7 @@ def create_account(
     _: Admin = Depends(get_current_admin),
 ) -> AccountOut:
     try:
-        preset = get_preset(payload.provider)
+        provider = get_provider(payload.provider)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     encrypted = None
@@ -56,8 +56,8 @@ def create_account(
     account = UpstreamAccount(
         name=payload.name,
         provider=payload.provider,
-        auth_type=preset["auth_type"],
-        base_url=payload.base_url or preset["base_url"],
+        auth_type=provider.auth_type,
+        base_url=payload.base_url or provider.default_base_url,
         api_key_encrypted=encrypted,
         status=payload.status,
         updated_at=datetime.utcnow(),
