@@ -162,6 +162,11 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   me: () => request<{ username: string }>('/api/admin/me'),
+  updateMe: (payload: { current_password: string; username?: string; password?: string }) =>
+    request<{ token: string; username: string }>('/api/admin/me', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
   dashboard: () => request<Dashboard>('/api/admin/dashboard'),
   providers: () => request<Provider[]>('/api/admin/providers'),
   accounts: () => request<Account[]>('/api/admin/accounts'),

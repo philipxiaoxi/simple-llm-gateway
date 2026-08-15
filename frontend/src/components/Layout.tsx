@@ -1,9 +1,11 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Activity, KeyRound, Menu, MessageSquareText, RadioTower, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { clearToken } from '../lib/api'
+import { api, clearToken, setToken } from '../lib/api'
+import { notifyBad, notifyOk } from '../lib/toast'
 import { cn } from '../lib/utils'
-import { Button } from './ui'
+import { Button, Dialog, Field, Input } from './ui'
 
 const links = [
   { to: '/', label: '概览', icon: Activity },
@@ -12,8 +14,92 @@ const links = [
   { to: '/logs', label: '记录审计', icon: MessageSquareText },
 ]
 
+function ProfileDialog({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const { data } = useQuery({ queryKey: ['me'], queryFn: api.me })
+  const [username, setUsername] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState('')
+  const [pending, setPending] = useState(false)
+  const currentName = data?.username ?? ''
+
+  async function submit() {
+    const nextName = username.trim()
+    if (!currentPassword) {
+      setError('请填写当前密码')
+      return
+    }
+    if (!nextName && !password) {
+      setError('请填写新用户名或新密码')
+      return
+    }
+    if (password && password.length < 8) {
+      setError('新密码至少 8 位')
+      return
+    }
+    if (password && password !== confirm) {
+      setError('两次新密码不一致')
+      return
+    }
+    setPending(true)
+    setError('')
+    try {
+      const result = await api.updateMe({
+        current_password: currentPassword,
+        username: nextName && nextName !== currentName ? nextName : undefined,
+        password: password || undefined,
+      })
+      setToken(result.token)
+      await queryClient.invalidateQueries({ queryKey: ['me'] })
+      notifyOk('管理员账号已更新')
+      onClose()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '更新失败')
+      notifyBad(caught instanceof Error ? caught.message : '更新失败')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <Dialog title="修改管理员账号" onClose={onClose}>
+      <div className="grid gap-3">
+        <Field label="新用户名（不改请留空）">
+          <Input
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            placeholder="不改请留空"
+            autoComplete="off"
+          />
+        </Field>
+        <Field label="当前密码">
+          <Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
+        </Field>
+        <Field label="新密码（不改请留空）">
+          <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+        </Field>
+        <Field label="确认新密码">
+          <Input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} />
+        </Field>
+        {error ? <div className="text-sm text-danger">{error}</div> : null}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" disabled={pending} onClick={() => void submit()}>
+            保存
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
 export function Layout() {
   const [open, setOpen] = useState(false)
+  const [profile, setProfile] = useState(false)
   const navigate = useNavigate()
 
   function logout() {
@@ -58,12 +144,16 @@ export function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="p-3">
+        <div className="flex flex-col gap-1 p-3">
+          <Button variant="ghost" className="w-full justify-start text-mist" onClick={() => setProfile(true)}>
+            修改账号
+          </Button>
           <Button variant="ghost" className="w-full justify-start text-mist" onClick={logout}>
             退出登录
           </Button>
         </div>
       </aside>
+      {profile ? <ProfileDialog onClose={() => setProfile(false)} /> : null}
       <main className="px-4 py-6 lg:h-svh lg:overflow-y-auto lg:px-8">
         <Outlet />
       </main>

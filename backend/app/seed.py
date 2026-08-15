@@ -12,7 +12,7 @@ def seed_admin() -> None:
     settings = get_settings()
     session = get_session_factory()()
     try:
-        existing = session.scalar(select(Admin).where(Admin.username == settings.admin_username))
+        existing = session.scalar(select(Admin).limit(1))
         if existing is not None:
             return
         session.add(

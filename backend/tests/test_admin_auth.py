@@ -28,3 +28,38 @@ def test_me_with_token(client: TestClient, auth_headers: dict[str, str]) -> None
     response = client.get("/api/admin/me", headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["username"] == "admin"
+
+
+def test_update_admin_password(client: TestClient, auth_headers: dict[str, str]) -> None:
+    changed = client.patch(
+        "/api/admin/me",
+        headers=auth_headers,
+        json={"current_password": "admin123", "password": "new-pass-1"},
+    )
+    assert changed.status_code == 200
+    assert client.post("/api/admin/login", json={"username": "admin", "password": "admin123"}).status_code == 401
+    assert client.post("/api/admin/login", json={"username": "admin", "password": "new-pass-1"}).status_code == 200
+
+
+def test_update_admin_username_issues_new_token(client: TestClient, auth_headers: dict[str, str]) -> None:
+    changed = client.patch(
+        "/api/admin/me",
+        headers=auth_headers,
+        json={"current_password": "admin123", "username": "jesse"},
+    )
+    assert changed.status_code == 200
+    assert changed.json()["username"] == "jesse"
+    old_me = client.get("/api/admin/me", headers=auth_headers)
+    assert old_me.status_code == 401
+    new_headers = {"Authorization": f"Bearer {changed.json()['token']}"}
+    assert client.get("/api/admin/me", headers=new_headers).json()["username"] == "jesse"
+    assert client.post("/api/admin/login", json={"username": "jesse", "password": "admin123"}).status_code == 200
+
+
+def test_update_admin_rejects_wrong_current_password(client: TestClient, auth_headers: dict[str, str]) -> None:
+    response = client.patch(
+        "/api/admin/me",
+        headers=auth_headers,
+        json={"current_password": "nope-nope", "password": "new-pass-1"},
+    )
+    assert response.status_code == 400

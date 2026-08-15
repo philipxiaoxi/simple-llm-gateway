@@ -5,7 +5,7 @@ import { api, setToken } from '../lib/api'
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const [username, setUsername] = useState('admin')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -33,7 +33,11 @@ export function LoginPage() {
         <p className="mt-1 text-sm text-mist">管理员控制台，下游客户端请用 API Key 直连网关。</p>
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           <Field label="用户名">
-            <Input value={username} onChange={(event) => setUsername(event.target.value)} />
+            <Input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              autoComplete="off"
+            />
           </Field>
           <Field label="密码">
             <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />

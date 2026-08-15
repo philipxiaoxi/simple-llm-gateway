@@ -16,6 +16,12 @@ class LoginResponse(BaseModel):
     username: str
 
 
+class AdminUpdateRequest(BaseModel):
+    current_password: str
+    username: str | None = None
+    password: str | None = None
+
+
 class AccountCreate(BaseModel):
     name: str
     provider: str

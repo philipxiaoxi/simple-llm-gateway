@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.crypto import verify_password
+from app.crypto import hash_password, verify_password
 from app.db import get_db
 from app.deps import create_access_token, get_current_admin
 from app.models import Admin
-from app.schemas import LoginRequest, LoginResponse
+from app.schemas import AdminUpdateRequest, LoginRequest, LoginResponse
 
 router = APIRouter(prefix="/api/admin", tags=["admin-auth"])
 
@@ -25,3 +25,27 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
 @router.get("/me")
 def me(admin: Admin = Depends(get_current_admin)) -> dict[str, str]:
     return {"username": admin.username}
+
+
+@router.patch("/me", response_model=LoginResponse)
+def update_me(
+    payload: AdminUpdateRequest,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(get_current_admin),
+) -> LoginResponse:
+    if not verify_password(payload.current_password, admin.password_hash):
+        raise HTTPException(status_code=400, detail="当前密码不正确")
+    new_username = (payload.username or "").strip()
+    new_password = payload.password or ""
+    if not new_username and not new_password:
+        raise HTTPException(status_code=400, detail="请填写新用户名或新密码")
+    if new_username:
+        clash = db.scalar(select(Admin).where(Admin.username == new_username, Admin.id != admin.id))
+        if clash is not None:
+            raise HTTPException(status_code=400, detail="用户名已被占用")
+        admin.username = new_username
+    if new_password:
+        if len(new_password) < 8:
+            raise HTTPException(status_code=400, detail="新密码至少 8 位")
+        admin.password_hash = hash_password(new_password)
+    return LoginResponse(token=create_access_token(admin.username), username=admin.username)
