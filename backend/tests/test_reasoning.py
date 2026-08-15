@@ -15,6 +15,44 @@ from app.services.reasoning import (
 )
 
 
+def test_mixed_text_and_tool_result_merges_text_into_tool_message() -> None:
+    messages = anthropic_to_openai_messages(
+        {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "call_skill",
+                            "name": "Skill",
+                            "input": {"name": "web-access"},
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "call_skill",
+                            "content": [{"type": "text", "text": "skill 启动完成"}],
+                        },
+                        {"type": "text", "text": "[Request interrupted by user] 好像出问题了"},
+                    ],
+                },
+            ],
+        }
+    )
+    roles = [message["role"] for message in messages]
+    assert roles == ["assistant", "tool"]
+    assert messages[1] == {
+        "role": "tool",
+        "tool_call_id": "call_skill",
+        "content": "[Request interrupted by user] 好像出问题了\nskill 启动完成",
+    }
+
+
 def test_thinking_block_becomes_reasoning_content() -> None:
     messages = anthropic_to_openai_messages(
         {

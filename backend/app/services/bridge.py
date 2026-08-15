@@ -201,7 +201,18 @@ def anthropic_to_openai_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
                     message["tool_calls"] = tool_calls
                 if thinking_parts:
                     message["reasoning_content"] = "".join(thinking_parts)
-                messages.append(message)
+                if tool_messages and not tool_calls:
+                    text_parts = "".join(
+                        str(part.get("text") or "") for part in parts if part.get("type") == "text"
+                    )
+                    if text_parts:
+                        first_tool_message = tool_messages[0]
+                        existing_content = first_tool_message.get("content") or ""
+                        first_tool_message["content"] = (
+                            f"{text_parts}\n{existing_content}" if existing_content else text_parts
+                        )
+                else:
+                    messages.append(message)
             messages.extend(tool_messages)
         else:
             outbound = {"role": role, "content": content}
