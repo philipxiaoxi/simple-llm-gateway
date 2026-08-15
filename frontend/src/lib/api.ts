@@ -200,7 +200,12 @@ export const api = {
     const suffix = params.toString() ? `?${params}` : ''
     return request<{ items: LogItem[]; total: number; page: number; page_size: number }>(`/api/admin/logs${suffix}`)
   },
-  log: (id: number) => request<LogItem>(`/api/admin/logs/${id}`),
+  log: (id: number, includeBodies = false) =>
+    request<LogItem>(`/api/admin/logs/${id}?include_bodies=${includeBodies ? 'true' : 'false'}`),
+  logMessages: (id: number, page: number, pageSize = 20) =>
+    request<{ items: { role: string; content: unknown }[]; total: number; page: number; page_size: number }>(
+      `/api/admin/logs/${id}/messages?page=${page}&page_size=${pageSize}`,
+    ),
   shareLookup: (apiKey: string) =>
     request<ShareLookup>('/api/share/lookup', { method: 'POST', body: JSON.stringify({ api_key: apiKey }) }),
   shareCcSwitch: (payload: {

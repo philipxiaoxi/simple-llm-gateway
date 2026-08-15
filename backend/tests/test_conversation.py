@@ -1,4 +1,9 @@
-from app.services.conversation import extract_session_key, is_continuation, normalize_messages
+from app.services.conversation import (
+    extract_log_messages,
+    extract_session_key,
+    is_continuation,
+    normalize_messages,
+)
 
 
 def test_normalize_openai_and_anthropic_messages() -> None:
@@ -52,6 +57,18 @@ def test_extract_claude_code_session_id() -> None:
 def test_extract_session_id_from_header() -> None:
     assert extract_session_key({}, {"x-session-id": "sess-header"}) == "sess-header"
     assert extract_session_key({}, {"x-session-affinity": "sess-opencode"}) == "sess-opencode"
+
+
+def test_extract_log_messages_appends_openai_reply() -> None:
+    messages = extract_log_messages(
+        "openai_chat",
+        {"messages": [{"role": "user", "content": "hi"}]},
+        {"choices": [{"message": {"role": "assistant", "content": "ok"}}]},
+    )
+    assert messages == [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "ok"},
+    ]
 
 
 def test_unrelated_prompt_is_new_conversation() -> None:

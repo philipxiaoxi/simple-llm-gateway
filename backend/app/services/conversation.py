@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -101,6 +102,42 @@ def is_continuation(previous_request: dict[str, Any], new_request: dict[str, Any
     if len(current) <= len(previous):
         return False
     return current[: len(previous)] == previous
+
+
+def extract_log_messages(protocol: str, request_body: Any, response_body: Any) -> list[dict[str, Any]]:
+    request = request_body if isinstance(request_body, dict) else {}
+    response = response_body if isinstance(response_body, dict) else {}
+    messages: list[dict[str, Any]] = []
+    raw_messages = request.get("messages")
+    if isinstance(raw_messages, list):
+        for item in raw_messages:
+            if isinstance(item, dict) and item.get("role"):
+                messages.append({"role": str(item["role"]), "content": item.get("content")})
+    elif isinstance(request.get("input"), str):
+        messages.append({"role": "user", "content": request["input"]})
+    if protocol == "anthropic_messages":
+        content = response.get("content")
+        if content:
+            messages.append({"role": "assistant", "content": content})
+        elif isinstance(response.get("raw_sse"), str):
+            texts: list[str] = []
+            for match in re.finditer(r'"text_delta"[^}]*"text":\s*"((?:\\.|[^"\\])*)"', response["raw_sse"]):
+                try:
+                    texts.append(json.loads(f'"{match.group(1)}"'))
+                except json.JSONDecodeError:
+                    texts.append(match.group(1))
+            messages.append({"role": "assistant", "content": "".join(texts)})
+        else:
+            messages.append({"role": "assistant", "content": ""})
+    elif protocol == "openai_responses":
+        messages.append({"role": "assistant", "content": response.get("output_text") or response.get("output")})
+    else:
+        choices = response.get("choices")
+        first = choices[0] if isinstance(choices, list) and choices else None
+        message = first.get("message") if isinstance(first, dict) else None
+        if isinstance(message, dict):
+            messages.append({"role": "assistant", "content": message.get("content")})
+    return messages
 
 
 def find_continuation_log(

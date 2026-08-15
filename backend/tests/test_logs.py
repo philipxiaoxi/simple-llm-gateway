@@ -71,3 +71,48 @@ def test_logs_are_paginated(client: TestClient, auth_headers: dict[str, str]) ->
     assert len(ids) == 3
     assert body["items"][0]["api_key_name"] == "k"
     assert body["items"][0]["account_name"] == "DS"
+
+
+def test_log_messages_are_paginated_newest_first(client: TestClient, auth_headers: dict[str, str]) -> None:
+    account = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    ).json()
+    key = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "k", "account_id": account["id"]},
+    ).json()["key"]
+    history = [{"role": "user", "content": f"turn-{index}"} for index in range(5)]
+    with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=FakeResponse())):
+        client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": "deepseek-chat", "messages": history},
+        )
+    log_id = client.get("/api/admin/logs", headers=auth_headers).json()["items"][0]["id"]
+    header = client.get(f"/api/admin/logs/{log_id}", headers=auth_headers, params={"include_bodies": False})
+    assert header.status_code == 200
+    assert header.json()["request_body"] is None
+    assert header.json()["response_body"] is None
+
+    first = client.get(
+        f"/api/admin/logs/{log_id}/messages",
+        headers=auth_headers,
+        params={"page": 1, "page_size": 3},
+    )
+    assert first.status_code == 200
+    body = first.json()
+    assert body["total"] == 6
+    assert body["page"] == 1
+    assert [item["role"] for item in body["items"]] == ["assistant", "user", "user"]
+    assert body["items"][0]["content"] == "ok"
+    assert [item["content"] for item in body["items"][1:]] == ["turn-4", "turn-3"]
+
+    second = client.get(
+        f"/api/admin/logs/{log_id}/messages",
+        headers=auth_headers,
+        params={"page": 2, "page_size": 3},
+    )
+    assert [item["content"] for item in second.json()["items"]] == ["turn-2", "turn-1", "turn-0"]

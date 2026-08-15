@@ -120,6 +120,18 @@ class LogListOut(BaseModel):
     page_size: int
 
 
+class LogMessageOut(BaseModel):
+    role: str
+    content: Any = None
+
+
+class LogMessageListOut(BaseModel):
+    items: list[LogMessageOut]
+    total: int
+    page: int
+    page_size: int
+
+
 class DashboardOut(BaseModel):
     account_count: int
     unhealthy_count: int

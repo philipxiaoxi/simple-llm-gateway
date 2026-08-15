@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session, joinedload
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import RequestLog
-from app.schemas import LogListOut, LogOut
+from app.schemas import LogListOut, LogMessageListOut, LogMessageOut, LogOut
 from app.serializers import log_to_out
+from app.services.conversation import extract_log_messages
+from app.services.proxy import parse_json
 
 router = APIRouter(prefix="/api/admin/logs", tags=["admin-logs"], dependencies=[Depends(get_current_admin)])
 
@@ -52,9 +54,36 @@ def list_logs(
     return LogListOut(items=[log_to_out(row) for row in rows], total=total, page=page, page_size=page_size)
 
 
-@router.get("/{log_id}", response_model=LogOut)
-def get_log(log_id: int, db: Session = Depends(get_db)) -> LogOut:
+@router.get("/{log_id}/messages", response_model=LogMessageListOut)
+def list_log_messages(
+    log_id: int,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> LogMessageListOut:
     item = db.get(RequestLog, log_id)
     if item is None:
         raise HTTPException(status_code=404, detail="记录不存在")
-    return log_to_out(item, include_bodies=True)
+    messages = extract_log_messages(item.protocol, parse_json(item.request_body), parse_json(item.response_body))
+    messages.reverse()
+    total = len(messages)
+    offset = (page - 1) * page_size
+    page_items = messages[offset : offset + page_size]
+    return LogMessageListOut(
+        items=[LogMessageOut(role=str(entry["role"]), content=entry.get("content")) for entry in page_items],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/{log_id}", response_model=LogOut)
+def get_log(
+    log_id: int,
+    include_bodies: bool = Query(default=True),
+    db: Session = Depends(get_db),
+) -> LogOut:
+    item = db.get(RequestLog, log_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    return log_to_out(item, include_bodies=include_bodies)
