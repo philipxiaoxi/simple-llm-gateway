@@ -24,6 +24,15 @@ class AccountCreate(BaseModel):
     status: str = "active"
 
 
+class AccountExportRequest(BaseModel):
+    password: str
+
+
+class AccountImportRequest(BaseModel):
+    password: str
+    payload: dict
+
+
 class AccountUpdate(BaseModel):
     name: str | None = None
     base_url: str | None = None

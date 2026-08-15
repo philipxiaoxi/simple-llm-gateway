@@ -125,6 +125,140 @@ function AccountEditor({
   )
 }
 
+function ExportDialog({ onClose }: { onClose: () => void }) {
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState('')
+  const [pending, setPending] = useState(false)
+
+  async function submit() {
+    if (password.length < 8) {
+      setError('密码至少 8 位')
+      return
+    }
+    if (password !== confirm) {
+      setError('两次密码不一致')
+      return
+    }
+    setPending(true)
+    setError('')
+    try {
+      const envelope = await api.exportAccounts(password)
+      const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'upstream-accounts.json'
+      link.click()
+      URL.revokeObjectURL(url)
+      notifyOk('已导出加密 JSON')
+      onClose()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '导出失败')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <Dialog title="导出上游账号" onClose={onClose}>
+      <div className="grid gap-3">
+        <p className="text-sm text-mist">导出全部上游账号。请设置至少 8 位密码，导入时要用同一密码解密。Grok 号不含授权，到新环境需重新点「去授权」。</p>
+        <Field label="密码">
+          <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+        </Field>
+        <Field label="确认密码">
+          <Input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} />
+        </Field>
+        {error ? <div className="text-sm text-danger">{error}</div> : null}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" disabled={pending} onClick={() => void submit()}>
+            导出
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
+function ImportDialog({
+  onClose,
+  onImported,
+}: {
+  onClose: () => void
+  onImported: () => void
+}) {
+  const [password, setPassword] = useState('')
+  const [fileText, setFileText] = useState('')
+  const [fileName, setFileName] = useState('')
+  const [error, setError] = useState('')
+  const [pending, setPending] = useState(false)
+
+  async function onFile(event: { target: { files: FileList | null } }) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setFileName(file.name)
+    setFileText(await file.text())
+  }
+
+  async function submit() {
+    if (password.length < 8) {
+      setError('密码至少 8 位')
+      return
+    }
+    if (!fileText.trim()) {
+      setError('请选择导出的 JSON 文件')
+      return
+    }
+    let payload: Record<string, unknown>
+    try {
+      payload = JSON.parse(fileText) as Record<string, unknown>
+    } catch {
+      setError('文件不是合法 JSON')
+      return
+    }
+    setPending(true)
+    setError('')
+    try {
+      const result = await api.importAccounts(password, payload)
+      notifyOk(`已导入 ${result.created} 个账号${result.skipped ? `，跳过 ${result.skipped} 个` : ''}`)
+      onImported()
+      onClose()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '导入失败')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <Dialog title="导入上游账号" onClose={onClose}>
+      <div className="grid gap-3">
+        <p className="text-sm text-mist">选择加密导出的 JSON，输入当时的密码。重名会新建为「原名（1）」。</p>
+        <Field label="JSON 文件">
+          <input type="file" accept="application/json,.json" onChange={(event) => void onFile(event)} />
+        </Field>
+        {fileName ? <div className="font-mono text-xs text-mist">{fileName}</div> : null}
+        <Field label="密码">
+          <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+        </Field>
+        {error ? <div className="text-sm text-danger">{error}</div> : null}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" disabled={pending} onClick={() => void submit()}>
+            导入
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
 function QuotaItems({ items }: { items: QuotaItem[] }) {
   return (
     <div className="space-y-3">
@@ -160,6 +294,7 @@ export function AccountsPage() {
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: api.providers })
   const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: api.accounts })
   const [editor, setEditor] = useState<Account | 'new' | null>(null)
+  const [transfer, setTransfer] = useState<'export' | 'import' | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -265,7 +400,15 @@ export function AccountsPage() {
             预设 OpenCode Go、Grok、DeepSeek，也可选通用 OpenAI / Anthropic。探测只在你点的时候发生。
           </p>
         </div>
-        <Button onClick={() => setEditor('new')}>新建账号</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="line" onClick={() => setTransfer('export')}>
+            导出
+          </Button>
+          <Button type="button" variant="line" onClick={() => setTransfer('import')}>
+            导入
+          </Button>
+          <Button onClick={() => setEditor('new')}>新建账号</Button>
+        </div>
       </div>
       <div className="grid gap-3">
         {accounts.map((account) => (
@@ -345,6 +488,15 @@ export function AccountsPage() {
           </Card>
         ))}
       </div>
+      {transfer === 'export' ? <ExportDialog onClose={() => setTransfer(null)} /> : null}
+      {transfer === 'import' ? (
+        <ImportDialog
+          onClose={() => setTransfer(null)}
+          onImported={() => {
+            queryClient.invalidateQueries({ queryKey: ['accounts'] })
+          }}
+        />
+      ) : null}
       {editor !== null ? (
         <AccountEditor
           account={editor === 'new' ? null : editor}

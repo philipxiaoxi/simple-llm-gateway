@@ -12,8 +12,9 @@ from app.db import get_db
 from app.deps import get_current_admin
 from app.models import Admin, UpstreamAccount
 from app.providers import get_provider, list_providers
-from app.schemas import AccountCreate, AccountOut, AccountUpdate, ProviderOut
+from app.schemas import AccountCreate, AccountExportRequest, AccountImportRequest, AccountOut, AccountUpdate, ProviderOut
 from app.serializers import account_to_out
+from app.services.account_transfer import export_accounts, import_accounts
 from app.services.probe import list_account_models, probe_account
 from app.services.quota import refresh_quota
 
@@ -68,6 +69,22 @@ def create_account(
     if initial_quota is not None:
         provider.store_quota(account, initial_quota)
     return account_to_out(account)
+
+
+@router.post("/accounts/export")
+def export_upstream_accounts(payload: AccountExportRequest, db: Session = Depends(get_db)) -> dict:
+    try:
+        return export_accounts(db, payload.password)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/accounts/import")
+def import_upstream_accounts(payload: AccountImportRequest, db: Session = Depends(get_db)) -> dict[str, int]:
+    try:
+        return import_accounts(db, payload.password, payload.payload)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @router.get("/accounts/{account_id}", response_model=AccountOut)

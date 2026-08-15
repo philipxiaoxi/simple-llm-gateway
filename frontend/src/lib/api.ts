@@ -172,6 +172,16 @@ export const api = {
   updateAccount: (id: number, payload: Record<string, unknown>) =>
     request<Account>(`/api/admin/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteAccount: (id: number) => request<{ ok: boolean }>(`/api/admin/accounts/${id}`, { method: 'DELETE' }),
+  exportAccounts: (password: string) =>
+    request<Record<string, unknown>>('/api/admin/accounts/export', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
+  importAccounts: (password: string, payload: Record<string, unknown>) =>
+    request<{ created: number; skipped: number }>('/api/admin/accounts/import', {
+      method: 'POST',
+      body: JSON.stringify({ password, payload }),
+    }),
   probe: (id: number) => request<{ ok: boolean; latency_ms: number; message: string }>(`/api/admin/accounts/${id}/probe`, { method: 'POST' }),
   quota: (id: number) => request<AccountQuota>(`/api/admin/accounts/${id}/quota`, { method: 'POST' }),
   models: (id: number) =>

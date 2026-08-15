@@ -352,3 +352,64 @@ def test_list_account_models(client: TestClient, auth_headers: dict[str, str]) -
     assert response.json()["models"] == ["deepseek-chat", "deepseek-reasoner"]
     stored = client.get(f"/api/admin/accounts/{account_id}", headers=auth_headers)
     assert stored.json()["models"] == ["deepseek-chat", "deepseek-reasoner"]
+
+
+def test_export_import_accounts_roundtrip(client: TestClient, auth_headers: dict[str, str]) -> None:
+    client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-upstream-secret"},
+    )
+    client.post("/api/admin/accounts", headers=auth_headers, json={"name": "Grok", "provider": "grok"})
+    exported = client.post(
+        "/api/admin/accounts/export",
+        headers=auth_headers,
+        json={"password": "long-pass-1"},
+    )
+    assert exported.status_code == 200
+    envelope = exported.json()
+    assert envelope["kdf"] == "pbkdf2_sha256"
+    assert "ciphertext" in envelope
+
+    imported = client.post(
+        "/api/admin/accounts/import",
+        headers=auth_headers,
+        json={"password": "long-pass-1", "payload": envelope},
+    )
+    assert imported.status_code == 200
+    assert imported.json()["created"] == 2
+    names = {item["name"] for item in client.get("/api/admin/accounts", headers=auth_headers).json()}
+    assert "DS" in names
+    assert "DS（1）" in names
+    assert "Grok" in names
+    assert "Grok（1）" in names
+
+    copy = next(item for item in client.get("/api/admin/accounts", headers=auth_headers).json() if item["name"] == "DS（1）")
+    revealed = client.get(f"/api/admin/accounts/{copy['id']}?reveal=1", headers=auth_headers).json()
+    assert revealed["api_key"] == "sk-upstream-secret"
+    grok_copy = next(item for item in client.get("/api/admin/accounts", headers=auth_headers).json() if item["name"] == "Grok（1）")
+    assert grok_copy["has_credential"] is False
+
+
+def test_export_password_too_short(client: TestClient, auth_headers: dict[str, str]) -> None:
+    response = client.post("/api/admin/accounts/export", headers=auth_headers, json={"password": "short"})
+    assert response.status_code == 400
+
+
+def test_import_wrong_password(client: TestClient, auth_headers: dict[str, str]) -> None:
+    client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    envelope = client.post(
+        "/api/admin/accounts/export",
+        headers=auth_headers,
+        json={"password": "long-pass-1"},
+    ).json()
+    failed = client.post(
+        "/api/admin/accounts/import",
+        headers=auth_headers,
+        json={"password": "long-pass-2", "payload": envelope},
+    )
+    assert failed.status_code == 400
