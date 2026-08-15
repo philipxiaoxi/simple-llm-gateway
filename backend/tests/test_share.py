@@ -1,6 +1,10 @@
+from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
+
+from app.db import get_session_factory
+from app.models import RequestLog
 
 
 def _make_key(client: TestClient, auth_headers: dict[str, str], name: str = "同事A") -> dict:
@@ -53,6 +57,8 @@ def test_share_lookup_and_cc_switch_without_admin(
     assert body["name"] == "同事A"
     assert body["account_name"] == "DS"
     assert body["provider"] == "deepseek"
+    assert body["today_tokens"] == 0
+    assert body["total_tokens"] == 0
     assert body["models"] == ["deepseek-chat", "deepseek-reasoner"]
     assert body["gateway"]["anthropic_base_url"] == "http://testserver"
     assert body["gateway"]["openai_base_url"] == "http://testserver/v1"
@@ -86,3 +92,55 @@ def test_share_cc_switch_rejects_disabled_key(client: TestClient, auth_headers: 
         json={"api_key": created["key"], "app": "opencode", "model": "deepseek-chat"},
     )
     assert built.status_code == 403
+
+
+def _add_log(api_key_id: int, account_id: int, total_tokens: int, created_at: datetime) -> None:
+    session = get_session_factory()()
+    try:
+        session.add(
+            RequestLog(
+                account_id=account_id,
+                api_key_id=api_key_id,
+                protocol="openai",
+                model="deepseek-chat",
+                stream=False,
+                status="ok",
+                http_status=200,
+                total_tokens=total_tokens,
+                latency_ms=1,
+                created_at=created_at,
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+
+
+def test_share_lookup_tokens_are_per_key(client: TestClient, auth_headers: dict[str, str]) -> None:
+    account = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    ).json()
+    first = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "同事A", "account_id": account["id"]},
+    ).json()
+    second = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "同事B", "account_id": account["id"]},
+    ).json()
+    now = datetime.utcnow()
+    yesterday = now - timedelta(days=1)
+    _add_log(first["id"], first["account_id"], 10, now)
+    _add_log(first["id"], first["account_id"], 20, yesterday)
+    _add_log(second["id"], first["account_id"], 99, now)
+
+    mine = client.post("/api/share/lookup", json={"api_key": first["key"]}).json()
+    other = client.post("/api/share/lookup", json={"api_key": second["key"]}).json()
+    assert mine["today_tokens"] == 10
+    assert mine["total_tokens"] == 30
+    assert other["today_tokens"] == 99
+    assert other["total_tokens"] == 99

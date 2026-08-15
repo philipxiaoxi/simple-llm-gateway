@@ -101,6 +101,8 @@ export type ShareLookup = {
   provider_label: string
   status: string
   account_status: string
+  today_tokens: number
+  total_tokens: number
   models: string[]
   gateway: {
     origin: string

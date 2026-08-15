@@ -112,13 +112,13 @@ export function KeysPage() {
             variant="line"
             onClick={() => {
               void navigator.clipboard.writeText(`${window.location.origin}/share`)
-              notifyOk('已复制分享页地址，把链接和 Key 发给对方即可。')
+              notifyOk('已复制自助查询页地址，把链接和 Key 发给对方即可。')
             }}
           >
-            复制分享页
+            复制自助查询页
           </Button>
           <Button type="button" variant="line" onClick={() => window.open('/share', '_blank', 'noopener')}>
-            打开分享页
+            打开自助查询
           </Button>
         </div>
       </div>

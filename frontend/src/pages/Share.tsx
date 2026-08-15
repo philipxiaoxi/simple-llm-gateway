@@ -109,9 +109,9 @@ export function SharePage() {
       <div className="mx-auto w-full max-w-3xl space-y-5">
         <div>
           <div className="font-mono text-xs tracking-[0.28em] text-signal">SIGNAL DESK</div>
-          <h1 className="mt-2 text-2xl font-semibold">导入中转台</h1>
+          <h1 className="mt-2 text-2xl font-semibold">API Key 自助查询</h1>
           <p className="mt-1 text-sm text-mist">
-            把管理员发给你的完整 API Key 粘贴进来，页面会自动识别归属，并生成 CC Switch 一键导入。
+            把管理员发给你的完整 API Key 粘贴进来，查询绑定的上游账号、可用情况和用量。
           </p>
         </div>
 
@@ -135,10 +135,27 @@ export function SharePage() {
               <div>
                 <div className="text-lg font-medium">{lookup.name}</div>
                 <div className="mt-1 text-sm text-mist">
-                  {lookup.account_name} · {lookup.provider_label}
+                  绑定上游：{lookup.account_name || '未绑定'} · {lookup.provider_label}
                 </div>
               </div>
-              <Badge tone={usable ? 'ok' : 'bad'}>{lookup.status === 'active' ? '可用' : '已停用'}</Badge>
+              <div className="flex flex-wrap gap-2">
+                <Badge tone={lookup.status === 'active' ? 'ok' : 'bad'}>
+                  Key {lookup.status === 'active' ? '可用' : '已停用'}
+                </Badge>
+                <Badge tone={lookup.account_status === 'active' ? 'ok' : 'bad'}>
+                  账号 {lookup.account_status === 'active' ? '可用' : '不可用'}
+                </Badge>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-line bg-ink/40 px-3 py-3">
+                <div className="text-xs uppercase tracking-[0.16em] text-mist">今日 Token</div>
+                <div className="mt-2 font-mono text-2xl text-signal">{lookup.today_tokens}</div>
+              </div>
+              <div className="rounded-lg border border-line bg-ink/40 px-3 py-3">
+                <div className="text-xs uppercase tracking-[0.16em] text-mist">总 Token</div>
+                <div className="mt-2 font-mono text-2xl text-signal">{lookup.total_tokens}</div>
+              </div>
             </div>
             <div>
               <div className="text-xs uppercase tracking-[0.16em] text-mist">可用模型</div>

@@ -1,10 +1,13 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
 from app.deps import resolve_api_key
-from app.models import ApiKey
+from app.models import ApiKey, RequestLog
 from app.providers import find_provider
 from app.schemas import ShareCcSwitchRequest, ShareLookupRequest
 from app.services.ccswitch import (
@@ -31,6 +34,28 @@ def _display_name(item: ApiKey) -> str:
     return item.name
 
 
+def _key_token_totals(db: Session, api_key_id: int) -> tuple[int, int]:
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_tokens = (
+        db.scalar(
+            select(func.coalesce(func.sum(RequestLog.total_tokens), 0)).where(
+                RequestLog.api_key_id == api_key_id,
+                RequestLog.created_at >= today,
+            )
+        )
+        or 0
+    )
+    total_tokens = (
+        db.scalar(
+            select(func.coalesce(func.sum(RequestLog.total_tokens), 0)).where(
+                RequestLog.api_key_id == api_key_id,
+            )
+        )
+        or 0
+    )
+    return int(today_tokens), int(total_tokens)
+
+
 @router.post("/lookup")
 def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> dict:
     raw_key = payload.api_key.strip()
@@ -43,6 +68,7 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
     origin = settings.app_base_url.rstrip("/")
     provider = account.provider if account else ""
     registered = find_provider(provider) if provider else None
+    today_tokens, total_tokens = _key_token_totals(db, item.id)
     return {
         "name": item.name,
         "account_name": account.name if account else "",
@@ -50,6 +76,8 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
         "provider_label": registered.label if registered else provider,
         "status": item.status,
         "account_status": account.status if account else "",
+        "today_tokens": today_tokens,
+        "total_tokens": total_tokens,
         "models": models,
         "gateway": {
             "origin": origin,
