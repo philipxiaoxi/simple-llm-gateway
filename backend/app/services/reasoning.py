@@ -97,6 +97,14 @@ def reasoning_map_from_anthropic_content(content: Any) -> dict[str, str]:
     return {tool_id: text for tool_id in tool_ids}
 
 
+def reasoning_map_from_anthropic_messages(messages: list[Any] | None) -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for message in messages or []:
+        if isinstance(message, dict):
+            merged.update(reasoning_map_from_anthropic_content(message.get("content")))
+    return merged
+
+
 def reasoning_map_from_messages(messages: list[dict[str, Any]]) -> dict[str, str]:
     merged: dict[str, str] = {}
     for message in messages:

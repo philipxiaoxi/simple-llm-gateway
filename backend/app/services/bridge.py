@@ -10,7 +10,6 @@ import litellm
 
 litellm.drop_params = True
 
-from app.config import get_settings
 from app.models import UpstreamAccount
 from app.providers import get_provider
 from app.services.reasoning import extract_reasoning_from_delta, extract_reasoning_text
@@ -336,18 +335,7 @@ async def call_chat(
     extra: dict[str, Any],
     api_key: str,
 ) -> Any:
-    settings = get_settings()
-    api_base = get_provider(account.provider).openai_api_base(account.base_url)
-    return await litellm.acompletion(
-        model=f"openai/{model}",
-        messages=messages,
-        api_key=api_key,
-        api_base=api_base,
-        stream=stream,
-        timeout=settings.request_timeout_seconds,
-        drop_params=True,
-        **extra,
-    )
+    return await get_provider(account.provider).complete(account, messages, model, stream, extra, api_key)
 
 
 async def count_openai_tokens(model: str, messages: list[dict[str, Any]]) -> int:

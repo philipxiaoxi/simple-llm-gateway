@@ -259,7 +259,9 @@ export function AccountsPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">上游账号</h1>
-          <p className="mt-1 text-sm text-mist">预设 OpenCode Go、Grok、DeepSeek。探测只在你点的时候发生。</p>
+          <p className="mt-1 text-sm text-mist">
+            预设 OpenCode Go、Grok、DeepSeek，也可选通用 OpenAI / Anthropic。探测只在你点的时候发生。
+          </p>
         </div>
         <Button onClick={() => setEditor('new')}>新建账号</Button>
       </div>

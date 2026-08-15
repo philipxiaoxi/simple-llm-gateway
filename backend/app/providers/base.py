@@ -6,10 +6,13 @@ from datetime import datetime
 from typing import Any
 
 import httpx
+import litellm
 
 from app.config import get_settings
 from app.models import UpstreamAccount
 from app.services.credentials import get_upstream_credential, require_upstream_credential
+
+GENERIC_QUOTA_UNSUPPORTED = "通用供应商不支持查询余额"
 
 
 @dataclass
@@ -65,6 +68,7 @@ class Provider:
     default_base_url: str
     default_models: list[str] = []
     append_v1: bool = False
+    upstream_protocol: str = "openai"
 
     def openai_api_base(self, base_url: str) -> str:
         base = base_url.rstrip("/")
@@ -74,6 +78,61 @@ class Provider:
 
     def missing_credential(self, account: UpstreamAccount) -> bool:
         return False
+
+    def auth_headers(self, token: str) -> dict[str, str]:
+        return {"Authorization": f"Bearer {token}"} if token else {}
+
+    def can_passthrough(self, inbound_protocol: str) -> bool:
+        return False
+
+    def initial_quota(self) -> QuotaView | None:
+        return None
+
+    async def complete(
+        self,
+        account: UpstreamAccount,
+        messages: list[dict[str, Any]],
+        model: str,
+        stream: bool,
+        extra: dict[str, Any],
+        api_key: str,
+    ) -> Any:
+        settings = get_settings()
+        return await litellm.acompletion(
+            model=f"openai/{model}",
+            messages=messages,
+            api_key=api_key,
+            api_base=self.openai_api_base(account.base_url),
+            stream=stream,
+            timeout=settings.request_timeout_seconds,
+            drop_params=True,
+            **extra,
+        )
+
+    async def post_native(
+        self,
+        account: UpstreamAccount,
+        body: dict[str, Any],
+        token: str,
+        inbound_headers: dict[str, str] | None = None,
+    ) -> tuple[int, Any]:
+        raise NotImplementedError
+
+    def native_request(
+        self,
+        account: UpstreamAccount,
+        token: str,
+        inbound_headers: dict[str, str] | None = None,
+    ) -> tuple[str, dict[str, str]]:
+        raise NotImplementedError
+
+    async def count_tokens_native(
+        self,
+        account: UpstreamAccount,
+        body: dict[str, Any],
+        inbound_headers: dict[str, str] | None = None,
+    ) -> tuple[int, Any] | None:
+        return None
 
     async def prepare_credential(self, account: UpstreamAccount, db: Any) -> str:
         return require_upstream_credential(account)
@@ -89,7 +148,7 @@ class Provider:
 
     async def probe(self, account: UpstreamAccount) -> dict[str, Any]:
         token = get_upstream_credential(account)
-        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        headers = self.auth_headers(token or "")
         last_error = "未发起请求"
         started = datetime.utcnow()
         settings = get_settings()
@@ -121,7 +180,7 @@ class Provider:
 
     async def list_models(self, account: UpstreamAccount) -> dict[str, Any]:
         token = get_upstream_credential(account, allow_expired=True)
-        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        headers = self.auth_headers(token or "")
         last_error = "未发起请求"
         settings = get_settings()
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:

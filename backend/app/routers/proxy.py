@@ -96,7 +96,7 @@ async def count_tokens(
         return error
     _api_key, account = resolved
     body = await request.json()
-    return await handle_count_tokens(account, body)
+    return await handle_count_tokens(account, body, dict(request.headers))
 
 
 @router.api_route("/v1/models", methods=["GET"], response_model=None)

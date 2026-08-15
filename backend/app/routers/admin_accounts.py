@@ -64,6 +64,9 @@ def create_account(
     )
     db.add(account)
     db.flush()
+    initial_quota = provider.initial_quota()
+    if initial_quota is not None:
+        provider.store_quota(account, initial_quota)
     return account_to_out(account)
 
 

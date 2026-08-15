@@ -8,12 +8,15 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 
+import httpx
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import get_session_factory
 from app.errors import protocol_error
 from app.models import ApiKey, RequestLog, UpstreamAccount
+from app.providers import get_provider
 from app.services.ccswitch import parse_models_json
 from app.services.bridge import (
     AnthropicStreamTranslator,
@@ -43,6 +46,8 @@ from app.services.reasoning import (
     load_reasoning_map,
     merge_reasoning_maps,
     parse_reasoning_json,
+    reasoning_map_from_anthropic_content,
+    reasoning_map_from_anthropic_messages,
     reasoning_map_from_messages,
     reasoning_map_from_openai_payload,
 )
@@ -280,6 +285,18 @@ async def handle_chat(
             request_headers=request_headers,
         )
         return protocol_error(protocol, status_code, str(error))
+
+    provider = get_provider(account.provider)
+    if provider.can_passthrough(protocol):
+        return await handle_anthropic_passthrough(
+            db,
+            api_key,
+            account,
+            body,
+            credential,
+            started,
+            request_headers,
+        )
 
     if protocol == "anthropic_messages":
         messages = anthropic_to_openai_messages(body)
@@ -552,10 +569,174 @@ def _fail(
     return protocol_error(protocol, status_code, message)
 
 
+async def handle_anthropic_passthrough(
+    db: Session,
+    api_key: ApiKey,
+    account: UpstreamAccount,
+    body: dict[str, Any],
+    credential: str,
+    started: float,
+    request_headers: dict[str, str] | None = None,
+) -> JSONResponse | StreamingResponse:
+    stream = bool(body.get("stream"))
+    model = str(body.get("model") or "")
+    inbound_reasoning = reasoning_map_from_anthropic_messages(body.get("messages") if isinstance(body, dict) else None)
+    if stream:
+        return _stream_anthropic_passthrough(
+            api_key,
+            account,
+            body,
+            credential,
+            started,
+            request_headers,
+            inbound_reasoning,
+        )
+    try:
+        status_code, payload = await get_provider(account.provider).post_native(
+            account, body, credential, request_headers
+        )
+    except Exception as error:
+        return _fail(db, api_key, account, body, "anthropic_messages", model, False, started, error, request_headers)
+
+    usage = extract_usage(payload if isinstance(payload, dict) else {})
+    ok = status_code < 400
+    save_log(
+        db,
+        account_id=account.id,
+        api_key_id=api_key.id,
+        protocol="anthropic_messages",
+        model=model,
+        stream=False,
+        status="success" if ok else "error",
+        http_status=status_code,
+        error_message=None if ok else _anthropic_error_message(payload),
+        usage=usage,
+        latency_ms=int((time.perf_counter() - started) * 1000),
+        request_body=body,
+        response_body=payload,
+        request_headers=request_headers,
+        reasoning_map=merge_reasoning_maps(
+            inbound_reasoning,
+            reasoning_map_from_anthropic_content(payload.get("content") if isinstance(payload, dict) else None),
+        ),
+    )
+    api_key.last_used_at = datetime.utcnow()
+    return JSONResponse(payload, status_code=status_code)
+
+
+def _anthropic_error_message(payload: Any) -> str:
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict) and error.get("message"):
+            return str(error["message"])
+        if payload.get("message"):
+            return str(payload["message"])
+    return "上游 Anthropic 请求失败"
+
+
+def _stream_anthropic_passthrough(
+    api_key: ApiKey,
+    account: UpstreamAccount,
+    body: dict[str, Any],
+    credential: str,
+    started: float,
+    request_headers: dict[str, str] | None,
+    inbound_reasoning: dict[str, str],
+) -> StreamingResponse:
+    provider = get_provider(account.provider)
+    url, headers = provider.native_request(account, credential, request_headers)
+    timeout = get_settings().request_timeout_seconds
+    account_id = account.id
+    api_key_id = api_key.id
+    model = str(body.get("model") or "")
+
+    async def event_source() -> AsyncIterator[bytes]:
+        collected = bytearray()
+        status = "success"
+        http_status = 200
+        error_text: str | None = None
+        response_body: Any = None
+        usage: tuple[int | None, int | None, int | None] = (None, None, None)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream("POST", url, headers=headers, json=body) as response:
+                    http_status = response.status_code
+                    if response.status_code >= 400:
+                        raw = await response.aread()
+                        status = "error"
+                        try:
+                            payload = json.loads(raw)
+                        except json.JSONDecodeError:
+                            payload = {
+                                "type": "error",
+                                "error": {"type": "api_error", "message": raw.decode("utf-8", errors="replace")[:300]},
+                            }
+                        error_text = _anthropic_error_message(payload)
+                        response_body = payload
+                        yield sse_event("error", payload if payload.get("type") == "error" else {"type": "error", "error": payload})
+                    else:
+                        async for chunk in response.aiter_bytes():
+                            collected.extend(chunk)
+                            yield chunk
+                        sse_text = collected.decode("utf-8", errors="replace")
+                        response_body = reconstruct_anthropic_from_sse(sse_text, model)
+                        usage = extract_usage(response_body)
+        except Exception as error:
+            status = "error"
+            http_status = 504 if "timeout" in str(error).lower() else 502
+            error_text = str(error)
+            yield sse_event(
+                "error",
+                {"type": "error", "error": {"type": "api_error", "message": error_text}},
+            )
+        finally:
+            session = get_session_factory()()
+            try:
+                save_log(
+                    session,
+                    account_id=account_id,
+                    api_key_id=api_key_id,
+                    protocol="anthropic_messages",
+                    model=model,
+                    stream=True,
+                    status=status,
+                    http_status=http_status,
+                    error_message=error_text,
+                    usage=usage,
+                    latency_ms=int((time.perf_counter() - started) * 1000),
+                    request_body=body,
+                    response_body=response_body,
+                    request_headers=request_headers,
+                    reasoning_map=merge_reasoning_maps(
+                        inbound_reasoning,
+                        reasoning_map_from_anthropic_content(
+                            response_body.get("content") if isinstance(response_body, dict) else None
+                        ),
+                    ),
+                )
+                stored_key = session.get(ApiKey, api_key_id)
+                if stored_key is not None:
+                    stored_key.last_used_at = datetime.utcnow()
+                session.commit()
+            finally:
+                session.close()
+
+    return StreamingResponse(event_source(), media_type="text/event-stream")
+
+
 async def handle_count_tokens(
     account: UpstreamAccount,
     body: dict[str, Any],
+    request_headers: dict[str, str] | None = None,
 ) -> JSONResponse:
+    provider = get_provider(account.provider)
+    try:
+        native = await provider.count_tokens_native(account, body, request_headers)
+    except Exception as error:
+        return protocol_error("anthropic_messages", 502, str(error))
+    if native is not None:
+        status_code, payload = native
+        return JSONResponse(payload, status_code=status_code)
     messages = anthropic_to_openai_messages(body)
     model = str(body.get("model") or "claude")
     tokens = await count_openai_tokens(model, messages)

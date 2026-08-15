@@ -7,7 +7,12 @@ def test_list_providers(client: TestClient, auth_headers: dict[str, str]) -> Non
     response = client.get("/api/admin/providers", headers=auth_headers)
     assert response.status_code == 200
     ids = {item["id"] for item in response.json()}
-    assert ids == {"opencode_go", "grok", "deepseek"}
+    assert ids == {"opencode_go", "grok", "deepseek", "openai_generic", "anthropic_generic"}
+    by_id = {item["id"]: item for item in response.json()}
+    assert by_id["openai_generic"]["label"] == "通用 OpenAI"
+    assert by_id["openai_generic"]["base_url"] == "https://api.openai.com"
+    assert by_id["anthropic_generic"]["label"] == "通用 Anthropic"
+    assert by_id["anthropic_generic"]["base_url"] == "https://api.anthropic.com"
 
 
 def test_create_account_encrypts_key(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -269,6 +274,55 @@ def test_quota_grok_weekly(client: TestClient, auth_headers: dict[str, str]) -> 
     assert body["items"][0] == {"label": "周限制", "type": "progress", "value": 25.0}
     assert body["items"][1]["value"] == "重置时间：2026-08-16T09:32:10.577883+00:00"
     assert billing_instance.get.await_args.args[0].endswith("/billing?format=credits")
+
+
+def test_quota_generic_providers_skip_network(client: TestClient, auth_headers: dict[str, str]) -> None:
+    for provider_id in ("openai_generic", "anthropic_generic"):
+        created = client.post(
+            "/api/admin/accounts",
+            headers=auth_headers,
+            json={"name": provider_id, "provider": provider_id, "api_key": "sk-up"},
+        )
+        assert created.status_code == 200
+        assert created.json()["base_url"] in {"https://api.openai.com", "https://api.anthropic.com"}
+        assert created.json()["quota"]["ok"] is False
+        assert created.json()["quota"]["message"] == "通用供应商不支持查询余额"
+
+        with patch("app.providers.base.httpx.AsyncClient") as client_cls:
+            response = client.post(f"/api/admin/accounts/{created.json()['id']}/quota", headers=auth_headers)
+        assert response.status_code == 200
+        assert response.json()["ok"] is False
+        assert response.json()["message"] == "通用供应商不支持查询余额"
+        client_cls.assert_not_called()
+
+
+def test_anthropic_generic_probe_uses_x_api_key(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "Claude", "provider": "anthropic_generic", "api_key": "sk-ant"},
+    )
+    account_id = created.json()["id"]
+
+    class FakeResponse:
+        status_code = 200
+        text = '{"data":[]}'
+
+    with patch("app.providers.base.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        response = client.post(f"/api/admin/accounts/{account_id}/probe", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    headers = instance.get.await_args.kwargs["headers"]
+    assert headers["x-api-key"] == "sk-ant"
+    assert headers["anthropic-version"] == "2023-06-01"
+    assert "Authorization" not in headers
+    assert instance.get.await_args.args[0] == "https://api.anthropic.com/v1/models"
 
 
 def test_list_account_models(client: TestClient, auth_headers: dict[str, str]) -> None:

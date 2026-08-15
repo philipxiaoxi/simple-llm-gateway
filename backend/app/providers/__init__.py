@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from app.providers.anthropic_generic import AnthropicGenericProvider
 from app.providers.base import Provider
 from app.providers.deepseek import DeepSeekProvider
 from app.providers.grok import GrokProvider
+from app.providers.openai_generic import OpenAIGenericProvider
 from app.providers.opencode_go import OpenCodeGoProvider
 
 _REGISTRY: dict[str, Provider] = {}
@@ -30,3 +32,5 @@ def list_providers() -> list[Provider]:
 register_provider(OpenCodeGoProvider())
 register_provider(GrokProvider())
 register_provider(DeepSeekProvider())
+register_provider(OpenAIGenericProvider())
+register_provider(AnthropicGenericProvider())
