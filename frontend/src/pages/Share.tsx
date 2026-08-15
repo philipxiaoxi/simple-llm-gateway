@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api, type CcSwitchTarget, type ShareLookup } from '../lib/api'
+import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 
 function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false)
   async function copy() {
     await navigator.clipboard.writeText(value)
     setCopied(true)
+    notifyOk('已复制')
     window.setTimeout(() => setCopied(false), 1500)
   }
   return (
@@ -27,7 +29,6 @@ export function SharePage() {
   const [lookup, setLookup] = useState<ShareLookup | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
   const [dialog, setDialog] = useState<{
     app: string
     label: string
@@ -65,11 +66,11 @@ export function SharePage() {
   function openTarget(target: CcSwitchTarget) {
     if (!lookup) return
     if (lookup.status !== 'active') {
-      setMessage('该 Key 已停用，无法导入。')
+      notifyBad('该 Key 已停用，无法导入。')
       return
     }
     if (lookup.models.length === 0) {
-      setMessage('这个 Key 绑定的账号还没有模型列表，请联系管理员先「获取模型」。')
+      notifyBad('这个 Key 绑定的账号还没有模型列表，请联系管理员先「获取模型」。')
       return
     }
     setDialog({
@@ -93,11 +94,11 @@ export function SharePage() {
         sonnet_model: dialog.app === 'claude' ? dialog.sonnet || undefined : undefined,
         opus_model: dialog.app === 'claude' ? dialog.opus || undefined : undefined,
       })
-      setMessage(`正在打开 CC Switch（${dialog.label}）。若没反应，请确认已安装 CC Switch。`)
+      notifyInfo(`正在打开 CC Switch（${dialog.label}）。若没反应，请确认已安装 CC Switch。`)
       setDialog(null)
       window.location.href = result.url
     } catch (item) {
-      setMessage(item instanceof Error ? item.message : '生成导入链接失败')
+      notifyBad(item instanceof Error ? item.message : '生成导入链接失败')
     }
   }
 
@@ -211,8 +212,6 @@ export function SharePage() {
             </div>
           </Card>
         ) : null}
-
-        {message ? <div className="text-sm text-info">{message}</div> : null}
       </div>
 
       {dialog && lookup ? (

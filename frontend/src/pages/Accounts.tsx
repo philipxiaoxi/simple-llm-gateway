@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api, type Account, type Provider, type QuotaItem } from '../lib/api'
+import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { formatTime } from '../lib/utils'
 
 function AccountEditor({
@@ -159,7 +160,6 @@ export function AccountsPage() {
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: api.providers })
   const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: api.accounts })
   const [editor, setEditor] = useState<Account | 'new' | null>(null)
-  const [message, setMessage] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -167,10 +167,10 @@ export function AccountsPage() {
     const oauth = searchParams.get('oauth')
     if (!oauth) return
     if (oauth === 'ok') {
-      setMessage('Grok 授权成功，凭证已保存。')
+      notifyOk('Grok 授权成功，凭证已保存。')
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
     } else {
-      setMessage(`Grok 授权失败：${searchParams.get('reason') || '未知原因'}`)
+      notifyBad(`Grok 授权失败：${searchParams.get('reason') || '未知原因'}`)
     }
     searchParams.delete('oauth')
     searchParams.delete('reason')
@@ -181,10 +181,11 @@ export function AccountsPage() {
     setBusyId(id)
     try {
       const result = await api.probe(id)
-      setMessage(result.ok ? `探测成功 ${result.latency_ms}ms` : `探测失败：${result.message}`)
+      if (result.ok) notifyOk(`探测成功 ${result.latency_ms}ms`)
+      else notifyBad(`探测失败：${result.message}`)
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '探测失败')
+      notifyBad(error instanceof Error ? error.message : '探测失败')
     } finally {
       setBusyId(null)
     }
@@ -195,9 +196,10 @@ export function AccountsPage() {
     try {
       const result = await api.quota(id)
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      setMessage(result.ok === false ? result.message || '额度查询失败' : '额度已更新')
+      if (result.ok === false) notifyBad(result.message || '额度查询失败')
+      else notifyOk('额度已更新')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '额度查询失败')
+      notifyBad(error instanceof Error ? error.message : '额度查询失败')
     } finally {
       setBusyId(null)
     }
@@ -208,13 +210,13 @@ export function AccountsPage() {
     try {
       const result = await api.models(id)
       if (!result.ok) {
-        setMessage(result.message || '未能拉取模型列表')
+        notifyBad(result.message || '未能拉取模型列表')
         return
       }
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      setMessage(`已入库 ${result.models.length} 个模型`)
+      notifyOk(`已入库 ${result.models.length} 个模型`)
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '拉取模型失败')
+      notifyBad(error instanceof Error ? error.message : '拉取模型失败')
     } finally {
       setBusyId(null)
     }
@@ -224,13 +226,13 @@ export function AccountsPage() {
     setBusyId(id)
     try {
       const result = await api.oauthStart(id)
-      setMessage('正在打开 xAI 授权页。若没有跳转，请允许弹窗或点下面的链接。')
+      notifyInfo('正在打开 xAI 授权页。若没有跳转，请允许弹窗或点下面的链接。')
       const opened = window.open(result.authorize_url, '_blank', 'noopener,noreferrer')
       if (!opened) {
         window.location.href = result.authorize_url
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '无法开始授权')
+      notifyBad(error instanceof Error ? error.message : '无法开始授权')
     } finally {
       setBusyId(null)
     }
@@ -246,9 +248,9 @@ export function AccountsPage() {
     try {
       await api.deleteAccount(account.id)
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      setMessage(`已删除 ${account.name}`)
+      notifyOk(`已删除 ${account.name}`)
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '删除失败')
+      notifyBad(error instanceof Error ? error.message : '删除失败')
     } finally {
       setBusyId(null)
     }
@@ -265,7 +267,6 @@ export function AccountsPage() {
         </div>
         <Button onClick={() => setEditor('new')}>新建账号</Button>
       </div>
-      {message ? <div className="text-sm text-info">{message}</div> : null}
       <div className="grid gap-3">
         {accounts.map((account) => (
           <Card key={account.id} className="space-y-3">
@@ -352,7 +353,7 @@ export function AccountsPage() {
           onSaved={(text) => {
             queryClient.invalidateQueries({ queryKey: ['accounts'] })
             setEditor(null)
-            setMessage(text)
+            notifyOk(text)
           }}
         />
       ) : null}

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import { Layout } from './components/Layout'
 import { getToken } from './lib/api'
 import { AccountsPage } from './pages/Accounts'
@@ -21,6 +22,7 @@ function Guard({ children }: { children: ReactElement }) {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <Toaster theme="dark" position="top-center" richColors closeButton />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

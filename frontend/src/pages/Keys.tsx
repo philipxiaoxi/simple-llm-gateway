@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api, type CcSwitchTarget } from '../lib/api'
+import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { formatTime } from '../lib/utils'
 
 export function KeysPage() {
@@ -22,7 +23,6 @@ export function KeysPage() {
     sonnet: string
     opus: string
   } | null>(null)
-  const [message, setMessage] = useState('')
 
   const createMutation = useMutation({
     mutationFn: () => api.createKey({ name, account_id: Number(accountId) }),
@@ -30,9 +30,9 @@ export function KeysPage() {
       queryClient.invalidateQueries({ queryKey: ['keys'] })
       if (item.key) setRevealed((current) => ({ ...current, [item.id]: item.key as string }))
       setName('')
-      setMessage('已创建，完整 Key 显示在对应卡片上。可把「分享页」和 Key 发给对方自行导入。')
+      notifyOk('已创建，完整 Key 显示在对应卡片上。可把「分享页」和 Key 发给对方自行导入。')
     },
-    onError: (error: Error) => setMessage(error.message),
+    onError: (error: Error) => notifyBad(error.message),
   })
 
   async function showKey(id: number) {
@@ -42,7 +42,7 @@ export function KeysPage() {
 
   async function copy(text: string) {
     await navigator.clipboard.writeText(text)
-    setMessage('已复制')
+    notifyOk('已复制')
   }
 
   async function loadCcSwitch(id: number) {
@@ -50,23 +50,23 @@ export function KeysPage() {
       const result = await api.ccSwitch(id)
       setCcPanel((current) => ({ ...current, [id]: { models: result.models, targets: result.targets } }))
       if (result.models.length === 0) {
-        setMessage('绑定账号还没有模型列表，请先到「上游账号」点「获取模型」。')
+        notifyBad('绑定账号还没有模型列表，请先到「上游账号」点「获取模型」。')
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '无法生成 CC Switch 链接')
+      notifyBad(error instanceof Error ? error.message : '无法生成 CC Switch 链接')
     }
   }
 
   function openCcTarget(keyId: number, target: CcSwitchTarget, models: string[]) {
     if (!target.needs_dialog) {
       if (target.url) {
-        setMessage(`正在打开 CC Switch（${target.label}）。`)
+        notifyInfo(`正在打开 CC Switch（${target.label}）。`)
         window.location.href = target.url
       }
       return
     }
     if (models.length === 0) {
-      setMessage('绑定账号还没有模型，请先到「上游账号」点「获取模型」。')
+      notifyBad('绑定账号还没有模型，请先到「上游账号」点「获取模型」。')
       return
     }
     setDialog({
@@ -91,11 +91,11 @@ export function KeysPage() {
         sonnet_model: dialog.app === 'claude' ? dialog.sonnet || undefined : undefined,
         opus_model: dialog.app === 'claude' ? dialog.opus || undefined : undefined,
       })
-      setMessage(`正在打开 CC Switch（${dialog.label}）。若没反应，请确认已安装 CC Switch。`)
+      notifyInfo(`正在打开 CC Switch（${dialog.label}）。若没反应，请确认已安装 CC Switch。`)
       setDialog(null)
       window.location.href = result.url
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '生成导入链接失败')
+      notifyBad(error instanceof Error ? error.message : '生成导入链接失败')
     }
   }
 
@@ -112,7 +112,7 @@ export function KeysPage() {
             variant="line"
             onClick={() => {
               void navigator.clipboard.writeText(`${window.location.origin}/share`)
-              setMessage('已复制分享页地址，把链接和 Key 发给对方即可。')
+              notifyOk('已复制分享页地址，把链接和 Key 发给对方即可。')
             }}
           >
             复制分享页
@@ -146,7 +146,6 @@ export function KeysPage() {
           </Button>
         </div>
       </Card>
-      {message ? <div className="text-sm text-info">{message}</div> : null}
       <div className="grid gap-3">
         {keys.map((item) => {
           const full = revealed[item.id]
