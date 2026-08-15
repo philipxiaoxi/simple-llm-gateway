@@ -1,7 +1,7 @@
 # LLM 中转站设计说明
 
 日期：2026-08-14  
-状态：已确认，进入实现
+状态：已确认并实现。供应商抽象见 `2026-08-15-provider-abstraction.md`（该文档覆盖本节 §7 与 `GET /v1/models` 的后续约定）。
 
 ## 1. 目标
 
@@ -94,7 +94,8 @@
 - `api_key_encrypted`（OpenCode Go / DeepSeek；Grok 为空）
 - `status`（`active` / `disabled`）
 - `last_probe_ok`、`last_probe_latency_ms`、`last_probe_message`、`last_probe_at`
-- `quota_json`、`quota_updated_at`
+- `quota_json`、`quota_updated_at`（2026-08-15 起为 `{ok, message?, items[]}`，见供应商抽象文档）
+- `models_json`、`models_updated_at`（管理员「获取模型」入库；下游 `GET /v1/models` 只读这份）
 
 ### `oauth_tokens`
 
@@ -143,11 +144,13 @@
 
 ## 7. 三个上游预设
 
+> 2026-08-15 起，预设不再是 `PRESETS` 字典，而是 `backend/app/providers/` 下的子类。额度存 `items` 数组；下游 `GET /v1/models` 只读账号入库的 `models_json`。细节以 `2026-08-15-provider-abstraction.md` 为准。
+
 | 供应商 | 认证 | 默认 Base URL | 额度 | 探测 |
 |--------|------|---------------|------|------|
-| OpenCode Go | API Key | `https://opencode.ai/zen/go` | 有接口就查，没有则提示不支持 | `GET .../v1/models` |
-| Grok | xAI OAuth PKCE（对齐 sub2api） | `https://api.x.ai/v1` | billing / 响应头尽力取 | `GET .../models`（带 access token） |
-| DeepSeek | API Key | `https://api.deepseek.com` | `GET /user/balance` | `GET /models` |
+| OpenCode Go | API Key | `https://opencode.ai/zen/go` | `GET {base}/v1/usage`，输出 progress + text | `GET .../v1/models` |
+| Grok | xAI OAuth PKCE（对齐 sub2api） | `https://api.x.ai/v1` | Grok CLI billing，输出周额度 progress + text | `GET .../models`（带 access token） |
+| DeepSeek | API Key | `https://api.deepseek.com` | `GET /user/balance`，输出 text | `GET /models` |
 
 第一版不做官方 `XAI_API_KEY`。OAuth `client_id` 用环境变量 `XAI_OAUTH_CLIENT_ID`（可覆盖公开默认值）。回调用 `APP_BASE_URL`。
 

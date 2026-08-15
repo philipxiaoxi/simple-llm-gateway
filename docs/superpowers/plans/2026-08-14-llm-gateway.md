@@ -37,7 +37,7 @@ backend/app/services/bridge.py       LiteLLM 封装
 backend/app/services/probe.py
 backend/app/services/quota.py
 backend/app/services/grok_oauth.py
-backend/app/providers.py             三个预设
+backend/app/providers.py             三个预设（2026-08-15 已拆成 `providers/` 包，见 `2026-08-15-provider-abstraction.md`）
 backend/tests/...
 frontend/                            Vite React 管理端
 docker-compose.yml
@@ -119,6 +119,8 @@ git commit -m "feat: 增加密钥加解密与 API Key 哈希"
 ---
 
 ### Task 4: 上游账号 CRUD、探测、额度
+
+> 预设字典和额度 `windows`/`balances` 已被 `2026-08-15-provider-abstraction.md` 取代。本任务保留为第一版落地记录。
 
 **Files:**
 - Create: `backend/app/providers.py`
