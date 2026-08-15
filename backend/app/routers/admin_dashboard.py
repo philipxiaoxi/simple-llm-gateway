@@ -38,9 +38,20 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardOut:
         )
         or 0
     )
+    today_tokens = (
+        db.scalar(
+            select(func.coalesce(func.sum(RequestLog.total_tokens), 0)).where(RequestLog.created_at >= today)
+        )
+        or 0
+    )
+    total_requests = db.scalar(select(func.count()).select_from(RequestLog)) or 0
+    total_tokens = db.scalar(select(func.coalesce(func.sum(RequestLog.total_tokens), 0))) or 0
     return DashboardOut(
         account_count=account_count,
         unhealthy_count=probe_failed + missing_credential,
         today_requests=today_requests,
         today_failures=today_failures,
+        today_tokens=int(today_tokens),
+        total_requests=total_requests,
+        total_tokens=int(total_tokens),
     )

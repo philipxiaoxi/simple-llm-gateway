@@ -125,6 +125,9 @@ class DashboardOut(BaseModel):
     unhealthy_count: int
     today_requests: int
     today_failures: int
+    today_tokens: int
+    total_requests: int
+    total_tokens: int
 
 
 class ProviderOut(BaseModel):

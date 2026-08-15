@@ -10,6 +10,9 @@ export function DashboardPage() {
     { label: '异常账号', value: data?.unhealthy_count ?? '—', to: '/accounts', warn: true },
     { label: '今日请求', value: data?.today_requests ?? '—', to: '/logs' },
     { label: '今日失败', value: data?.today_failures ?? '—', to: '/logs', warn: true },
+    { label: '今日 Token', value: data?.today_tokens ?? '—', to: '/logs' },
+    { label: '总请求', value: data?.total_requests ?? '—', to: '/logs' },
+    { label: '总 Token', value: data?.total_tokens ?? '—', to: '/logs' },
   ]
 
   return (

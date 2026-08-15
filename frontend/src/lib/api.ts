@@ -150,6 +150,9 @@ export type Dashboard = {
   unhealthy_count: number
   today_requests: number
   today_failures: number
+  today_tokens: number
+  total_requests: number
+  total_tokens: number
 }
 
 export const api = {

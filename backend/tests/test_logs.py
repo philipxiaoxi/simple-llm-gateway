@@ -34,6 +34,9 @@ def test_dashboard_counts(client: TestClient, auth_headers: dict[str, str]) -> N
     body = dashboard.json()
     assert body["account_count"] == 1
     assert body["today_requests"] >= 1
+    assert body["today_tokens"] >= 2
+    assert body["total_requests"] >= 1
+    assert body["total_tokens"] >= 2
 
 
 def test_logs_are_paginated(client: TestClient, auth_headers: dict[str, str]) -> None:
