@@ -116,7 +116,7 @@
 - `account_id`、`api_key_id`、`protocol`（`openai_chat` / `openai_responses` / `anthropic_messages`）
 - `model`、`stream`、`status`、`http_status`、`error_message`
 - `prompt_tokens`、`completion_tokens`、`total_tokens`、`latency_ms`
-- `request_body`、`response_body`（全文；流式结束后拼回）
+- `request_body`、`response_body`（完整正文；流式结束后拼回）
 - `created_at`
 - 索引：`(account_id, created_at)`、`(api_key_id, created_at)`
 
