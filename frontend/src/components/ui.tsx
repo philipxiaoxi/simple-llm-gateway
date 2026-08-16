@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
 import { cn } from '../lib/utils'
 
 export function Button({
@@ -52,6 +52,20 @@ export function Badge({
     info: 'bg-info/15 text-info',
   }
   return <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', map[tone])}>{children}</span>
+}
+
+export function Select({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      className={cn(
+        'w-full rounded-md border border-line bg-ink px-3 py-2 text-sm text-paper outline-none focus:border-signal/70',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </select>
+  )
 }
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {

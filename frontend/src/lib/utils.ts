@@ -9,6 +9,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
+export const MIN_PASSWORD_LENGTH = 8
+export const MIN_KEY_LENGTH = 8
+export const LOG_PAGE_SIZE = 20
+
 const ISO_TIME = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?/g
 
 export function formatTime(value: string | null | undefined) {

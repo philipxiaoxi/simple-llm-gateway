@@ -1,15 +1,20 @@
-import { useEffect, useState } from 'react'
-import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
+import { useEffect, useRef, useState } from 'react'
+import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
+import { Badge, Button, Card, Field, Input } from '../components/ui'
 import { api, type CcSwitchTarget, type ShareLookup } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
+import { MIN_KEY_LENGTH, errorMessage } from '../lib/utils'
 
 function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false)
+  const timerRef = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(timerRef.current), [])
   async function copy() {
     await navigator.clipboard.writeText(value)
     setCopied(true)
     notifyOk('已复制')
-    window.setTimeout(() => setCopied(false), 1500)
+    window.clearTimeout(timerRef.current)
+    timerRef.current = window.setTimeout(() => setCopied(false), 1500)
   }
   return (
     <div className="space-y-1.5">
@@ -32,35 +37,39 @@ export function SharePage() {
   const [dialog, setDialog] = useState<{
     app: string
     label: string
-    model: string
-    haiku: string
-    sonnet: string
-    opus: string
   } | null>(null)
 
   useEffect(() => {
     const trimmed = rawKey.trim()
-    if (trimmed.length < 8) {
+    if (trimmed.length < MIN_KEY_LENGTH) {
       setLookup(null)
       setError('')
       setLoading(false)
       return
     }
     setLoading(true)
+    let cancelled = false
     const timer = window.setTimeout(() => {
       void api
         .shareLookup(trimmed)
         .then((result) => {
+          if (cancelled) return
           setLookup(result)
           setError('')
         })
         .catch((item: Error) => {
+          if (cancelled) return
           setLookup(null)
           setError(item.message)
         })
-        .finally(() => setLoading(false))
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
     }, 400)
-    return () => window.clearTimeout(timer)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
   }, [rawKey])
 
   function openTarget(target: CcSwitchTarget) {
@@ -76,29 +85,25 @@ export function SharePage() {
     setDialog({
       app: target.app,
       label: target.label,
-      model: lookup.models[0],
-      haiku: '',
-      sonnet: '',
-      opus: '',
     })
   }
 
-  async function confirmDialog() {
+  async function confirmDialog(values: CcSwitchValues) {
     if (!dialog) return
     try {
       const result = await api.shareCcSwitch({
         api_key: rawKey.trim(),
         app: dialog.app,
-        model: dialog.model,
-        haiku_model: dialog.app === 'claude' ? dialog.haiku || undefined : undefined,
-        sonnet_model: dialog.app === 'claude' ? dialog.sonnet || undefined : undefined,
-        opus_model: dialog.app === 'claude' ? dialog.opus || undefined : undefined,
+        model: values.model,
+        haiku_model: dialog.app === 'claude' ? values.haiku || undefined : undefined,
+        sonnet_model: dialog.app === 'claude' ? values.sonnet || undefined : undefined,
+        opus_model: dialog.app === 'claude' ? values.opus || undefined : undefined,
       })
       notifyInfo(`正在打开 CC Switch（${dialog.label}）。若没反应，请确认已安装 CC Switch。`)
       setDialog(null)
       window.location.href = result.url
     } catch (item) {
-      notifyBad(item instanceof Error ? item.message : '生成导入链接失败')
+      notifyBad(errorMessage(item, '生成导入链接失败'))
     }
   }
 
@@ -241,78 +246,14 @@ export function SharePage() {
       </div>
 
       {dialog && lookup ? (
-        <Dialog title={`导入到 ${dialog.label}`} onClose={() => setDialog(null)}>
-          <div className="space-y-3">
-            <p className="text-sm text-mist">模型来自该 Key 绑定的上游账号，请按 {dialog.label} 的角色选好再导入。</p>
-            <Field label={dialog.app === 'claude' ? '主模型' : '模型'}>
-              <select
-                className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm"
-                value={dialog.model}
-                onChange={(event) => setDialog({ ...dialog, model: event.target.value })}
-              >
-                {lookup.models.map((modelName) => (
-                  <option key={modelName} value={modelName}>
-                    {modelName}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {dialog.app === 'claude' ? (
-              <>
-                <Field label="Haiku 模型（可选）">
-                  <select
-                    className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm"
-                    value={dialog.haiku}
-                    onChange={(event) => setDialog({ ...dialog, haiku: event.target.value })}
-                  >
-                    <option value="">不设置</option>
-                    {lookup.models.map((modelName) => (
-                      <option key={modelName} value={modelName}>
-                        {modelName}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Sonnet 模型（可选）">
-                  <select
-                    className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm"
-                    value={dialog.sonnet}
-                    onChange={(event) => setDialog({ ...dialog, sonnet: event.target.value })}
-                  >
-                    <option value="">不设置</option>
-                    {lookup.models.map((modelName) => (
-                      <option key={modelName} value={modelName}>
-                        {modelName}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Opus 模型（可选）">
-                  <select
-                    className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm"
-                    value={dialog.opus}
-                    onChange={(event) => setDialog({ ...dialog, opus: event.target.value })}
-                  >
-                    <option value="">不设置</option>
-                    {lookup.models.map((modelName) => (
-                      <option key={modelName} value={modelName}>
-                        {modelName}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </>
-            ) : null}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" onClick={() => setDialog(null)}>
-                取消
-              </Button>
-              <Button type="button" onClick={() => void confirmDialog()}>
-                打开 CC Switch
-              </Button>
-            </div>
-          </div>
-        </Dialog>
+        <CcSwitchDialog
+          label={dialog.label}
+          models={lookup.models}
+          isClaude={dialog.app === 'claude'}
+          initial={{ model: lookup.models[0] ?? '', haiku: '', sonnet: '', opus: '' }}
+          onConfirm={(values) => void confirmDialog(values)}
+          onClose={() => setDialog(null)}
+        />
       ) : null}
     </div>
   )

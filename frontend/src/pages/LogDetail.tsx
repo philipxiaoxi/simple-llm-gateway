@@ -3,11 +3,10 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Badge, Button, Card } from '../components/ui'
 import { api } from '../lib/api'
-import { cn, formatTime } from '../lib/utils'
+import { LOG_PAGE_SIZE, cn, formatTime } from '../lib/utils'
 
 const COLLAPSE_CHAR_LIMIT = 400
 const COLLAPSE_LINE_LIMIT = 8
-const PAGE_SIZE = 20
 
 function isLongText(text: string): boolean {
   return text.length > COLLAPSE_CHAR_LIMIT || text.split('\n').length > COLLAPSE_LINE_LIMIT
@@ -104,14 +103,14 @@ export function LogDetailPage() {
   const [raw, setRaw] = useState(false)
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
   const [page, setPage] = useState(1)
-  const { data } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: ['log', id],
     queryFn: () => api.log(id, false),
     enabled: ready,
   })
-  const { data: pageData } = useQuery({
+  const { data: pageData, isPending: pagePending } = useQuery({
     queryKey: ['log-messages', id, page],
-    queryFn: () => api.logMessages(id, page, PAGE_SIZE),
+    queryFn: () => api.logMessages(id, page, LOG_PAGE_SIZE),
     enabled: ready,
   })
   useEffect(() => {
@@ -119,15 +118,18 @@ export function LogDetailPage() {
     setRaw(false)
     setPage(1)
   }, [id])
-  if (!data || !pageData) return <div className="text-mist">加载中…</div>
+  if (isPending || pagePending || !data || !pageData || data.id !== id) {
+    return <div className="text-mist">加载中…</div>
+  }
   const messages = pageData.items
   const total = pageData.total
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const pageCount = Math.max(1, Math.ceil(total / LOG_PAGE_SIZE))
   const currentPage = Math.min(Math.max(page, 1), pageCount)
-  const start = (currentPage - 1) * PAGE_SIZE
+  const start = (currentPage - 1) * LOG_PAGE_SIZE
 
   function goToPage(nextPage: number) {
     setPage(nextPage)
+    setExpanded({})
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 

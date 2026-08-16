@@ -1,10 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
+import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type Account, type Provider, type QuotaItem } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { formatEmbeddedTimes, formatTime } from '../lib/utils'
+import { MIN_PASSWORD_LENGTH, errorMessage, formatEmbeddedTimes, formatTime } from '../lib/utils'
+
+const QUOTA_WARN_HIGH = 90
+const QUOTA_WARN_MEDIUM = 70
 
 function AccountEditor({
   account,
@@ -60,7 +63,7 @@ function AccountEditor({
         onSaved('账号已创建')
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '保存失败')
+      setError(errorMessage(caught, '保存失败'))
     } finally {
       setPending(false)
     }
@@ -73,8 +76,7 @@ function AccountEditor({
           <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="DeepSeek 主号" />
         </Field>
         <Field label="供应商">
-          <select
-            className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm disabled:opacity-60"
+          <Select
             value={provider}
             disabled={editing}
             onChange={(event) => setProvider(event.target.value)}
@@ -84,7 +86,7 @@ function AccountEditor({
                 {item.label}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
         <div className="sm:col-span-2">
           <Field label="Base URL">
@@ -132,7 +134,7 @@ function ExportDialog({ onClose }: { onClose: () => void }) {
   const [pending, setPending] = useState(false)
 
   async function submit() {
-    if (password.length < 8) {
+    if (password.length < MIN_PASSWORD_LENGTH) {
       setError('密码至少 8 位')
       return
     }
@@ -154,7 +156,7 @@ function ExportDialog({ onClose }: { onClose: () => void }) {
       notifyOk('已导出加密 JSON')
       onClose()
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '导出失败')
+      setError(errorMessage(caught, '导出失败'))
     } finally {
       setPending(false)
     }
@@ -205,7 +207,7 @@ function ImportDialog({
   }
 
   async function submit() {
-    if (password.length < 8) {
+    if (password.length < MIN_PASSWORD_LENGTH) {
       setError('密码至少 8 位')
       return
     }
@@ -228,7 +230,7 @@ function ImportDialog({
       onImported()
       onClose()
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '导入失败')
+      setError(errorMessage(caught, '导入失败'))
     } finally {
       setPending(false)
     }
@@ -265,7 +267,7 @@ function QuotaItems({ items }: { items: QuotaItem[] }) {
       {items.map((item, index) => {
         if (item.type === 'progress') {
           const used = Math.min(Math.max(Number(item.value) || 0, 0), 100)
-          const tone = used >= 90 ? 'bg-danger' : used >= 70 ? 'bg-warn' : 'bg-signal'
+          const tone = used >= QUOTA_WARN_HIGH ? 'bg-danger' : used >= QUOTA_WARN_MEDIUM ? 'bg-warn' : 'bg-signal'
           return (
             <div key={`${item.label}-${index}`} className="space-y-1.5">
               <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
@@ -323,7 +325,7 @@ export function AccountsPage() {
       else notifyBad(`探测失败：${result.message}`)
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
     } catch (error) {
-      notifyBad(error instanceof Error ? error.message : '探测失败')
+      notifyBad(errorMessage(error, '探测失败'))
     } finally {
       setBusyId(null)
     }
@@ -337,7 +339,7 @@ export function AccountsPage() {
       if (result.ok === false) notifyBad(result.message || '额度查询失败')
       else notifyOk('额度已更新')
     } catch (error) {
-      notifyBad(error instanceof Error ? error.message : '额度查询失败')
+      notifyBad(errorMessage(error, '额度查询失败'))
     } finally {
       setBusyId(null)
     }
@@ -354,7 +356,7 @@ export function AccountsPage() {
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
       notifyOk(`已入库 ${result.models.length} 个模型`)
     } catch (error) {
-      notifyBad(error instanceof Error ? error.message : '拉取模型失败')
+      notifyBad(errorMessage(error, '拉取模型失败'))
     } finally {
       setBusyId(null)
     }
@@ -375,15 +377,22 @@ export function AccountsPage() {
         notifyInfo(popup ? '已打开 xAI 授权页，完成授权后会回到本站。' : '弹窗被拦截，请允许弹窗后再点一次「去授权」。')
       }
     } catch (error) {
-      notifyBad(error instanceof Error ? error.message : '无法开始授权')
+      notifyBad(errorMessage(error, '无法开始授权'))
     } finally {
       setBusyId(null)
     }
   }
 
   async function toggle(account: Account) {
-    await api.updateAccount(account.id, { status: account.status === 'active' ? 'disabled' : 'active' })
-    queryClient.invalidateQueries({ queryKey: ['accounts'] })
+    setBusyId(account.id)
+    try {
+      await api.updateAccount(account.id, { status: account.status === 'active' ? 'disabled' : 'active' })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+    } catch (error) {
+      notifyBad(errorMessage(error, '操作失败'))
+    } finally {
+      setBusyId(null)
+    }
   }
 
   async function removeAccount(account: Account) {
@@ -393,7 +402,7 @@ export function AccountsPage() {
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
       notifyOk(`已删除 ${account.name}`)
     } catch (error) {
-      notifyBad(error instanceof Error ? error.message : '删除失败')
+      notifyBad(errorMessage(error, '删除失败'))
     } finally {
       setBusyId(null)
     }
@@ -555,7 +564,7 @@ export function AccountsPage() {
                     setOauthAccountId(null)
                     notifyOk('Grok 授权成功，凭证已保存。')
                   } catch (error) {
-                    notifyBad(error instanceof Error ? error.message : '兑换授权失败')
+                    notifyBad(errorMessage(error, '兑换授权失败'))
                   }
                 }}
               >

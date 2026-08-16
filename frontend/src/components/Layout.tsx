@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { cn } from '../lib/utils'
+import { MIN_PASSWORD_LENGTH, cn, errorMessage } from '../lib/utils'
 import { Button, Dialog, Field, Input } from './ui'
 
 const links = [
@@ -35,7 +35,7 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
       setError('请填写新用户名或新密码')
       return
     }
-    if (password && password.length < 8) {
+    if (password && password.length < MIN_PASSWORD_LENGTH) {
       setError('新密码至少 8 位')
       return
     }
@@ -56,8 +56,8 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
       notifyOk('管理员账号已更新')
       onClose()
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '更新失败')
-      notifyBad(caught instanceof Error ? caught.message : '更新失败')
+      setError(errorMessage(caught, '更新失败'))
+      notifyBad(errorMessage(caught, '更新失败'))
     } finally {
       setPending(false)
     }
@@ -101,9 +101,11 @@ export function Layout() {
   const [open, setOpen] = useState(false)
   const [profile, setProfile] = useState(false)
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   function logout() {
     clearToken()
+    void queryClient.clear()
     navigate('/login')
   }
 

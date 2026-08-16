@@ -1,9 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
+import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
+import { Badge, Button, Card, Field, Input, Select } from '../components/ui'
 import { api, type CcSwitchTarget } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { formatTime } from '../lib/utils'
+import { errorMessage, formatTime } from '../lib/utils'
+
+function shareText(shareUrl: string, apiKey: string) {
+  return [
+    '管理员通过中转台给你下发了 新的api-key：',
+    '------',
+    `使用链接：${shareUrl}`,
+    `api-key：${apiKey}`,
+    '------',
+    '打开链接后，把api-key粘贴到查询框，即可查看模型和用量，并一键导入客户端，请勿外传。',
+  ].join('\n')
+}
 
 export function KeysPage() {
   const queryClient = useQueryClient()
@@ -18,10 +30,6 @@ export function KeysPage() {
     app: string
     label: string
     models: string[]
-    model: string
-    haiku: string
-    sonnet: string
-    opus: string
   } | null>(null)
 
   const createMutation = useMutation({
@@ -36,8 +44,12 @@ export function KeysPage() {
   })
 
   async function showKey(id: number) {
-    const item = await api.key(id)
-    if (item.key) setRevealed((current) => ({ ...current, [id]: item.key as string }))
+    try {
+      const item = await api.key(id)
+      if (item.key) setRevealed((current) => ({ ...current, [id]: item.key as string }))
+    } catch (error) {
+      notifyBad(errorMessage(error, '读取完整 Key 失败'))
+    }
   }
 
   async function copy(text: string) {
@@ -53,19 +65,10 @@ export function KeysPage() {
         return
       }
       setRevealed((current) => ({ ...current, [id]: full }))
-      const shareUrl = `${window.location.origin}/share`
-      const text = [
-        '管理员通过中转台给你下发了 新的api-key：',
-        '------',
-        `使用链接：${shareUrl}`,
-        `api-key：${full}`,
-        '------',
-        '打开链接后，把api-key粘贴到查询框，即可查看模型和用量，并一键导入客户端，请勿外传。',
-      ].join('\n')
-      await navigator.clipboard.writeText(text)
+      await navigator.clipboard.writeText(shareText(`${window.location.origin}/share`, full))
       notifyOk('已复制分享文案，发给对方即可。')
     } catch (error) {
-      notifyBad(error instanceof Error ? error.message : '复制分享文案失败')
+      notifyBad(errorMessage(error, '复制分享文案失败'))
     }
   }
 
@@ -77,7 +80,7 @@ export function KeysPage() {
         notifyBad('绑定账号还没有模型列表，请先到「上游账号」点「获取模型」。')
       }
     } catch (error) {
-      notifyBad(error instanceof Error ? error.message : '无法生成 CC Switch 链接')
+      notifyBad(errorMessage(error, '无法生成 CC Switch 链接'))
     }
   }
 
@@ -98,28 +101,24 @@ export function KeysPage() {
       app: target.app,
       label: target.label,
       models,
-      model: models[0],
-      haiku: '',
-      sonnet: '',
-      opus: '',
     })
   }
 
-  async function confirmDialog() {
+  async function confirmDialog(values: CcSwitchValues) {
     if (!dialog) return
     try {
       const result = await api.ccSwitchBuild(dialog.keyId, {
         app: dialog.app,
-        model: dialog.model,
-        haiku_model: dialog.app === 'claude' ? dialog.haiku || undefined : undefined,
-        sonnet_model: dialog.app === 'claude' ? dialog.sonnet || undefined : undefined,
-        opus_model: dialog.app === 'claude' ? dialog.opus || undefined : undefined,
+        model: values.model,
+        haiku_model: dialog.app === 'claude' ? values.haiku || undefined : undefined,
+        sonnet_model: dialog.app === 'claude' ? values.sonnet || undefined : undefined,
+        opus_model: dialog.app === 'claude' ? values.opus || undefined : undefined,
       })
       notifyInfo(`正在打开 CC Switch（${dialog.label}）。若没反应，请确认已安装 CC Switch。`)
       setDialog(null)
       window.location.href = result.url
     } catch (error) {
-      notifyBad(error instanceof Error ? error.message : '生成导入链接失败')
+      notifyBad(errorMessage(error, '生成导入链接失败'))
     }
   }
 
@@ -151,8 +150,7 @@ export function KeysPage() {
           <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="给同事 A" />
         </Field>
         <Field label="绑定上游">
-          <select
-            className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm"
+          <Select
             value={accountId}
             onChange={(event) => setAccountId(event.target.value ? Number(event.target.value) : '')}
           >
@@ -162,7 +160,7 @@ export function KeysPage() {
                 {account.name} ({account.provider})
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
         <div className="flex items-end">
           <Button disabled={!name || !accountId || createMutation.isPending} onClick={() => createMutation.mutate()}>
@@ -206,8 +204,12 @@ export function KeysPage() {
                 <Button
                   variant="ghost"
                   onClick={async () => {
-                    await api.updateKey(item.id, { status: item.status === 'active' ? 'disabled' : 'active' })
-                    queryClient.invalidateQueries({ queryKey: ['keys'] })
+                    try {
+                      await api.updateKey(item.id, { status: item.status === 'active' ? 'disabled' : 'active' })
+                      queryClient.invalidateQueries({ queryKey: ['keys'] })
+                    } catch (error) {
+                      notifyBad(errorMessage(error, '操作失败'))
+                    }
                   }}
                 >
                   {item.status === 'active' ? '停用' : '启用'}
@@ -221,7 +223,7 @@ export function KeysPage() {
                       queryClient.invalidateQueries({ queryKey: ['logs'] })
                       notifyOk('已删除')
                     } catch (error) {
-                      notifyBad(error instanceof Error ? error.message : '删除失败')
+                      notifyBad(errorMessage(error, '删除失败'))
                     }
                   }}
                 >
@@ -250,78 +252,14 @@ export function KeysPage() {
         })}
       </div>
       {dialog ? (
-        <Dialog title={`导入到 ${dialog.label}`} onClose={() => setDialog(null)}>
-          <div className="space-y-3">
-            <p className="text-sm text-mist">模型来自该 Key 绑定的上游账号，请按 {dialog.label} 的角色选好再导入。</p>
-            <Field label={dialog.app === 'claude' ? '主模型' : '模型'}>
-              <select
-                className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm"
-                value={dialog.model}
-                onChange={(event) => setDialog({ ...dialog, model: event.target.value })}
-              >
-                {dialog.models.map((modelName) => (
-                  <option key={modelName} value={modelName}>
-                    {modelName}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {dialog.app === 'claude' ? (
-              <>
-                <Field label="Haiku 模型（可选）">
-                  <select
-                    className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm"
-                    value={dialog.haiku}
-                    onChange={(event) => setDialog({ ...dialog, haiku: event.target.value })}
-                  >
-                    <option value="">不设置</option>
-                    {dialog.models.map((modelName) => (
-                      <option key={modelName} value={modelName}>
-                        {modelName}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Sonnet 模型（可选）">
-                  <select
-                    className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm"
-                    value={dialog.sonnet}
-                    onChange={(event) => setDialog({ ...dialog, sonnet: event.target.value })}
-                  >
-                    <option value="">不设置</option>
-                    {dialog.models.map((modelName) => (
-                      <option key={modelName} value={modelName}>
-                        {modelName}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Opus 模型（可选）">
-                  <select
-                    className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm"
-                    value={dialog.opus}
-                    onChange={(event) => setDialog({ ...dialog, opus: event.target.value })}
-                  >
-                    <option value="">不设置</option>
-                    {dialog.models.map((modelName) => (
-                      <option key={modelName} value={modelName}>
-                        {modelName}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </>
-            ) : null}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" onClick={() => setDialog(null)}>
-                取消
-              </Button>
-              <Button type="button" onClick={() => confirmDialog()}>
-                打开 CC Switch
-              </Button>
-            </div>
-          </div>
-        </Dialog>
+        <CcSwitchDialog
+          label={dialog.label}
+          models={dialog.models}
+          isClaude={dialog.app === 'claude'}
+          initial={{ model: dialog.models[0] ?? '', haiku: '', sonnet: '', opus: '' }}
+          onConfirm={(values) => void confirmDialog(values)}
+          onClose={() => setDialog(null)}
+        />
       ) : null}
     </div>
   )

@@ -26,7 +26,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
   const response = await fetch(path, { ...init, headers })
-  if (response.status === 401 && !path.endsWith('/login')) {
+  // 401 强制登出只对管理后台接口生效，/api/share 等自助页面无需登录
+  if (response.status === 401 && path.startsWith('/api/admin') && !path.endsWith('/login')) {
     clearToken()
     if (!window.location.pathname.startsWith('/login')) {
       window.location.href = '/login'

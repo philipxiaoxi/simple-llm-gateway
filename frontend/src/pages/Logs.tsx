@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Badge, Button, Card } from '../components/ui'
+import { Badge, Button, Card, Select } from '../components/ui'
 import { api } from '../lib/api'
-import { formatTime, formatTokens } from '../lib/utils'
+import { formatTime, formatTokens, LOG_PAGE_SIZE } from '../lib/utils'
 
 const protocolLabel: Record<string, string> = {
   openai_chat: 'OpenAI Chat',
@@ -19,7 +19,7 @@ export function LogsPage() {
   const [protocol, setProtocol] = useState('')
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
-  const pageSize = 20
+  const pageSize = LOG_PAGE_SIZE
   const query = {
     account_id: accountId ? Number(accountId) : undefined,
     api_key_id: keyId ? Number(keyId) : undefined,
@@ -47,33 +47,33 @@ export function LogsPage() {
         <p className="mt-1 text-sm text-mist">按账号、Key、协议和状态筛选请求。</p>
       </div>
       <Card className="grid gap-3 md:grid-cols-4">
-        <select className="rounded-md border border-line bg-ink px-3 py-2 text-sm" value={accountId} onChange={changeFilter(setAccountId)}>
+        <Select className="rounded-md" value={accountId} onChange={changeFilter(setAccountId)}>
           <option value="">全部账号</option>
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
               {account.name}
             </option>
           ))}
-        </select>
-        <select className="rounded-md border border-line bg-ink px-3 py-2 text-sm" value={keyId} onChange={changeFilter(setKeyId)}>
+        </Select>
+        <Select className="rounded-md" value={keyId} onChange={changeFilter(setKeyId)}>
           <option value="">全部 Key</option>
           {keys.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name}
             </option>
           ))}
-        </select>
-        <select className="rounded-md border border-line bg-ink px-3 py-2 text-sm" value={protocol} onChange={changeFilter(setProtocol)}>
+        </Select>
+        <Select className="rounded-md" value={protocol} onChange={changeFilter(setProtocol)}>
           <option value="">全部协议</option>
           <option value="openai_chat">OpenAI Chat</option>
           <option value="openai_responses">Responses</option>
           <option value="anthropic_messages">Anthropic</option>
-        </select>
-        <select className="rounded-md border border-line bg-ink px-3 py-2 text-sm" value={status} onChange={changeFilter(setStatus)}>
+        </Select>
+        <Select className="rounded-md" value={status} onChange={changeFilter(setStatus)}>
           <option value="">全部状态</option>
           <option value="success">成功</option>
           <option value="error">失败</option>
-        </select>
+        </Select>
       </Card>
       <div className="hidden overflow-hidden rounded-xl border border-line md:block">
         <table className="w-full text-left text-sm">

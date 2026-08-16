@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, Field, Input } from '../components/ui'
 import { api, setToken } from '../lib/api'
+import { errorMessage } from '../lib/utils'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -19,7 +20,7 @@ export function LoginPage() {
       setToken(result.token)
       navigate('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '登录失败')
+      setError(errorMessage(err, '登录失败'))
     } finally {
       setLoading(false)
     }
