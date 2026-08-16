@@ -201,7 +201,7 @@ export function SharePage() {
             <div>
               <h2 className="text-lg font-medium">手动配置</h2>
               <p className="mt-1 text-sm text-mist">
-                不走 CC Switch 时，按协议填 Base URL。两种协议的地址不一样，不要混用。
+                不走 CC Switch 时，按协议填 Base URL。三种协议的地址不一样，不要混用。
               </p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -215,13 +215,22 @@ export function SharePage() {
                 <div className="text-xs text-mist">请求路径：POST /v1/messages</div>
               </div>
               <div className="space-y-3 rounded-lg border border-line bg-ink/40 p-3">
-                <div className="font-medium">OpenAI 兼容</div>
+                <div className="font-medium">OpenAI 兼容 / Chat Completions</div>
                 <p className="text-xs text-mist">
-                  OpenCode、Codex、Grok 以及常见 Chat Completions 客户端，Base URL 要带 /v1。
+                  OpenCode、Grok 以及常见 Chat Completions 客户端，Base URL 要带 /v1。
                 </p>
                 <CopyField label="Base URL" value={lookup.gateway.openai_base_url} />
                 <CopyField label="鉴权" value="Authorization: Bearer" />
                 <div className="text-xs text-mist">请求路径：POST /v1/chat/completions</div>
+              </div>
+              <div className="space-y-3 rounded-lg border border-line bg-ink/40 p-3">
+                <div className="font-medium">OpenAI Responses / Codex CLI</div>
+                <p className="text-xs text-mist">
+                  Codex CLI 等 Responses API 客户端，Base URL 要带 /v1，wire_api 填 responses。
+                </p>
+                <CopyField label="Base URL" value={lookup.gateway.openai_base_url} />
+                <CopyField label="鉴权" value="Authorization: Bearer" />
+                <div className="text-xs text-mist">请求路径：POST /v1/responses</div>
               </div>
             </div>
             <div className="text-xs text-mist">
