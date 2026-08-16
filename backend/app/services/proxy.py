@@ -20,9 +20,11 @@ from app.providers import get_provider
 from app.services.ccswitch import parse_models_json
 from app.services.bridge import (
     AnthropicStreamTranslator,
+    ResponsesStreamCollector,
     anthropic_extra_to_openai,
     anthropic_to_openai_messages,
     call_chat,
+    call_responses,
     count_openai_tokens,
     ensure_stream_usage,
     estimate_usage,
@@ -33,7 +35,12 @@ from app.services.bridge import (
     pick_usage_from_chunk,
     openai_response_to_anthropic,
     prepare_credential,
-    responses_from_chat,
+    reasoning_map_from_responses_payload,
+    responses_extra_passthrough,
+    responses_event_to_dict,
+    responses_payload_to_dict,
+    responses_sse,
+    sanitize_responses_input,
     sse_event,
     stream_openai_chunks,
     _passthrough_keys,
@@ -315,14 +322,14 @@ async def handle_chat(
         extra = anthropic_extra_to_openai(body)
     elif protocol == "openai_responses":
         messages = input_to_messages(body)
-        extra = _passthrough_keys(body)
+        extra = responses_extra_passthrough(body)
     else:
         messages = [dict(item) if isinstance(item, dict) else item for item in (body.get("messages") or [])]
         extra = _passthrough_keys(body)
 
     extra.pop("stream", None)
     extra.pop("thinking", None)
-    if stream:
+    if stream and protocol != "openai_responses":
         extra = ensure_stream_usage(extra)
     session_key = extract_session_key(body, request_headers)
     inbound_reasoning = reasoning_map_from_messages(messages)
@@ -346,10 +353,16 @@ async def handle_chat(
             started,
             request_headers,
             inbound_reasoning,
+            responses_input=sanitize_responses_input(body.get("input")),
         )
 
     try:
-        result = await call_chat(account, messages, model, False, extra, credential)
+        if protocol == "openai_responses":
+            result = await call_responses(
+                account, sanitize_responses_input(body.get("input")), model, False, extra, credential
+            )
+        else:
+            result = await call_chat(account, messages, model, False, extra, credential)
     except Exception as error:
         return _fail(db, api_key, account, body, protocol, model, stream, started, error, request_headers)
 
@@ -361,13 +374,18 @@ async def handle_chat(
     if protocol == "anthropic_messages":
         payload = openai_response_to_anthropic(openai_payload, model)
     elif protocol == "openai_responses":
-        payload = responses_from_chat(openai_payload, model)
+        payload = responses_payload_to_dict(result)
     else:
         payload = openai_payload
 
     usage = extract_usage(openai_payload)
     if usage[0] is None and usage[1] is None and usage[2] is None:
         usage = await estimate_usage(model, messages, _output_text_from_openai(openai_payload))
+    reasoning_map = (
+        reasoning_map_from_responses_payload(payload)
+        if protocol == "openai_responses"
+        else reasoning_map_from_openai_payload(openai_payload)
+    )
     save_log(
         db,
         account_id=account.id,
@@ -383,7 +401,7 @@ async def handle_chat(
         request_body=body,
         response_body=payload,
         request_headers=request_headers,
-        reasoning_map=merge_reasoning_maps(inbound_reasoning, reasoning_map_from_openai_payload(openai_payload)),
+        reasoning_map=merge_reasoning_maps(inbound_reasoning, reasoning_map),
     )
     api_key.last_used_at = datetime.utcnow()
     return JSONResponse(payload)
@@ -402,9 +420,13 @@ async def _stream_response(
     started: float,
     request_headers: dict[str, str] | None = None,
     inbound_reasoning: dict[str, str] | None = None,
+    responses_input: Any = None,
 ) -> StreamingResponse | JSONResponse:
     try:
-        result = await call_chat(account, messages, model, True, extra, credential)
+        if protocol == "openai_responses":
+            result = await call_responses(account, responses_input, model, True, extra, credential)
+        else:
+            result = await call_chat(account, messages, model, True, extra, credential)
     except Exception as error:
         return _fail(db, api_key, account, body, protocol, model, True, started, error, request_headers)
 
@@ -414,6 +436,11 @@ async def _stream_response(
 
     async def event_source() -> AsyncIterator[bytes]:
         collector = OpenAIStreamCollector()
+        responses_collector = (
+            ResponsesStreamCollector(f"resp_{uuid.uuid4().hex}", model)
+            if protocol == "openai_responses"
+            else None
+        )
         translator = AnthropicStreamTranslator(message_id, model)
         usage = (None, None, None)
         error_text: str | None = None
@@ -425,48 +452,42 @@ async def _stream_response(
             if protocol == "anthropic_messages":
                 for event in translator.start():
                     yield event
-            async for chunk in stream_openai_chunks(result):
-                usage_candidate = pick_usage_from_chunk(chunk)
-                if usage_candidate is not None:
-                    usage = usage_candidate
-                collector.feed(chunk)
-                if protocol == "anthropic_messages":
-                    for event in translator.feed(chunk):
-                        yield event
-                elif protocol == "openai_responses":
-                    text = extract_text_from_openai_chunk(chunk)
-                    if text:
-                        event = {
-                            "type": "response.output_text.delta",
-                            "delta": text,
-                        }
-                        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode()
-                else:
-                    yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode()
+            if protocol == "openai_responses":
+                # litellm 流自带 response.created 等官方事件，直接透传
+                async for event in result:
+                    data = responses_event_to_dict(event)
+                    responses_collector.feed(data)
+                    yield responses_sse(data)
+            else:
+                async for chunk in stream_openai_chunks(result):
+                    usage_candidate = pick_usage_from_chunk(chunk)
+                    if usage_candidate is not None:
+                        usage = usage_candidate
+                    collector.feed(chunk)
+                    if protocol == "anthropic_messages":
+                        for event in translator.feed(chunk):
+                            yield event
+                    else:
+                        yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode()
             if protocol == "anthropic_messages":
                 for event in translator.finish():
                     yield event
                 response_body = translator.payload()
                 response_map = translator.reasoning_map()
                 usage = translator.usage
-            elif protocol == "openai_responses":
-                completed = {
-                    "type": "response.completed",
-                    "response": {
-                        "id": f"resp_{uuid.uuid4().hex}",
-                        "status": "completed",
-                        "model": model,
-                        "output_text": collector.text,
-                    },
-                }
-                yield f"data: {json.dumps(completed, ensure_ascii=False)}\n\n".encode()
-                response_body = completed["response"]
+            elif responses_collector is not None:
+                response_body = responses_collector.payload()
+                response_map = responses_collector.reasoning_map()
+                usage = responses_collector.usage
             else:
                 yield b"data: [DONE]\n\n"
                 response_body = {"choices": [{"message": collector.message()}]}
                 response_map = collector.reasoning_map()
             if usage[0] is None and usage[1] is None and usage[2] is None:
-                usage = await estimate_usage(model, messages, _stream_output_text(protocol, collector, translator))
+                if responses_collector is not None:
+                    usage = await estimate_usage(model, messages, responses_collector.text)
+                else:
+                    usage = await estimate_usage(model, messages, _stream_output_text(protocol, collector, translator))
         except Exception as error:
             status = "error"
             http_status = 502
@@ -475,6 +496,19 @@ async def _stream_response(
                 yield sse_event(
                     "error",
                     {"type": "error", "error": {"type": "api_error", "message": error_text}},
+                )
+            elif responses_collector is not None:
+                yield responses_sse(
+                    {
+                        "type": "response.failed",
+                        "response": {
+                            "id": responses_collector.response_id,
+                            "object": "response",
+                            "status": "failed",
+                            "error": {"code": "server_error", "message": error_text},
+                            "model": model,
+                        },
+                    }
                 )
             else:
                 yield f"data: {json.dumps({'error': {'message': error_text}}, ensure_ascii=False)}\n\n".encode()

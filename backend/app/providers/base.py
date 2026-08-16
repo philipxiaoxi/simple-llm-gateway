@@ -109,6 +109,27 @@ class Provider:
             **extra,
         )
 
+    async def responses(
+        self,
+        account: UpstreamAccount,
+        input_items: Any,
+        model: str,
+        stream: bool,
+        extra: dict[str, Any],
+        api_key: str,
+    ) -> Any:
+        settings = get_settings()
+        return await litellm.aresponses(
+            model=f"openai/{model}",
+            input=input_items,
+            api_key=api_key,
+            api_base=self.openai_api_base(account.base_url),
+            stream=stream,
+            timeout=settings.request_timeout_seconds,
+            drop_params=True,
+            **extra,
+        )
+
     async def post_native(
         self,
         account: UpstreamAccount,

@@ -284,58 +284,188 @@ def openai_response_to_anthropic(response: Any, model: str) -> dict[str, Any]:
     }
 
 
-def responses_from_chat(chat: Any, model: str) -> dict[str, Any]:
-    if hasattr(chat, "model_dump"):
-        data = chat.model_dump()
-    elif isinstance(chat, dict):
-        data = chat
+def _responses_content_to_openai(content: Any) -> Any:
+    """把 Responses API 的消息 content 转成 OpenAI Chat Completions content。
+
+    content 可以是字符串，也可以是 content parts 数组（input_text / output_text /
+    input_image / refusal 等）。
+    """
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    parts: list[dict[str, Any]] = []
+    for part in content:
+        if not isinstance(part, dict):
+            continue
+        part_type = part.get("type")
+        if part_type in ("input_text", "output_text"):
+            text = part.get("text")
+            if isinstance(text, str) and text:
+                parts.append({"type": "text", "text": text})
+        elif part_type == "input_image":
+            image_url = part.get("image_url")
+            if isinstance(image_url, str):
+                parts.append({"type": "image_url", "image_url": {"url": image_url}})
+            elif isinstance(image_url, dict) and image_url.get("url"):
+                parts.append({"type": "image_url", "image_url": {"url": image_url["url"]}})
+        elif part_type == "refusal":
+            refusal = part.get("refusal")
+            if isinstance(refusal, str) and refusal:
+                parts.append({"type": "text", "text": refusal})
+    if not parts:
+        return ""
+    if all(part.get("type") == "text" for part in parts):
+        return "".join(str(part.get("text") or "") for part in parts)
+    return parts
+
+
+def _append_tool_call(messages: list[dict[str, Any]], tool_call: dict[str, Any]) -> None:
+    if messages and messages[-1].get("role") == "assistant" and messages[-1].get("tool_calls") is not None:
+        messages[-1]["tool_calls"].append(tool_call)
     else:
-        data = {}
-    choice = (data.get("choices") or [{}])[0]
-    message = choice.get("message") or {}
-    text = message.get("content") or ""
-    if not isinstance(text, str):
-        text = json.dumps(text, ensure_ascii=False)
-    usage = data.get("usage") or {}
-    return {
-        "id": data.get("id") or f"resp_{uuid.uuid4().hex}",
-        "object": "response",
-        "created_at": int(time.time()),
-        "status": "completed",
-        "model": data.get("model") or model,
-        "output": [
-            {
-                "type": "message",
-                "id": f"msg_{uuid.uuid4().hex[:8]}",
-                "role": "assistant",
-                "content": [{"type": "output_text", "text": text}],
-            }
-        ],
-        "usage": {
-            "input_tokens": usage.get("prompt_tokens") or 0,
-            "output_tokens": usage.get("completion_tokens") or 0,
-            "total_tokens": usage.get("total_tokens") or 0,
-        },
-    }
+        messages.append({"role": "assistant", "content": None, "tool_calls": [tool_call]})
 
 
 def input_to_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = []
+    instructions = body.get("instructions")
+    if isinstance(instructions, str) and instructions.strip():
+        messages.append({"role": "system", "content": instructions})
     if body.get("messages"):
-        return body["messages"]
+        for item in body.get("messages") or []:
+            if isinstance(item, dict):
+                messages.append(dict(item))
+        return messages
     raw_input = body.get("input")
     if isinstance(raw_input, str):
-        return [{"role": "user", "content": raw_input}]
-    if isinstance(raw_input, list):
-        messages: list[dict[str, Any]] = []
-        for item in raw_input:
-            if isinstance(item, str):
-                messages.append({"role": "user", "content": item})
-            elif isinstance(item, dict):
-                role = item.get("role") or "user"
-                content = item.get("content") or item.get("text") or ""
-                messages.append({"role": role, "content": content})
+        messages.append({"role": "user", "content": raw_input})
         return messages
-    return []
+    if not isinstance(raw_input, list):
+        return messages
+    for item in raw_input:
+        if isinstance(item, str):
+            messages.append({"role": "user", "content": item})
+            continue
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        if item_type == "message":
+            role = item.get("role") or "user"
+            entry: dict[str, Any] = {"role": role, "content": _responses_content_to_openai(item.get("content"))}
+            reasoning = extract_reasoning_text(item)
+            if reasoning:
+                entry["reasoning_content"] = reasoning
+            messages.append(entry)
+            continue
+        if item_type == "function_call":
+            call_id = item.get("call_id") or f"call_{uuid.uuid4().hex[:8]}"
+            _append_tool_call(
+                messages,
+                {
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": item.get("name") or "",
+                        "arguments": item.get("arguments") or "",
+                    },
+                },
+            )
+            continue
+        if item_type == "function_call_output":
+            call_id = item.get("call_id") or ""
+            output = item.get("output")
+            if not isinstance(output, str):
+                output = json.dumps(output, ensure_ascii=False) if output is not None else ""
+            messages.append({"role": "tool", "tool_call_id": call_id, "content": output})
+            continue
+        if item_type == "reasoning":
+            summary = item.get("summary") or []
+            text = "".join(
+                str(part.get("text") or "")
+                for part in summary
+                if isinstance(part, dict) and part.get("text")
+            )
+            if text:
+                if messages and messages[-1].get("role") == "assistant":
+                    messages[-1]["reasoning_content"] = text
+                else:
+                    messages.append({"role": "assistant", "content": "", "reasoning_content": text})
+            continue
+        role = item.get("role")
+        if role:
+            entry = {"role": role, "content": _responses_content_to_openai(item.get("content"))}
+            reasoning = extract_reasoning_text(item)
+            if reasoning:
+                entry["reasoning_content"] = reasoning
+            messages.append(entry)
+    return messages
+
+
+RESPONSES_PASSTHROUGH_KEYS = (
+    "background",
+    "include",
+    "instructions",
+    "max_output_tokens",
+    "metadata",
+    "parallel_tool_calls",
+    "previous_response_id",
+    "prompt",
+    "reasoning",
+    "service_tier",
+    "safety_identifier",
+    "store",
+    "temperature",
+    "text",
+    "tool_choice",
+    "tools",
+    "top_p",
+    "truncation",
+    "user",
+)
+
+RESPONSES_CONTENT_PART_TYPES = ("input_text", "output_text", "input_image", "input_file", "refusal")
+
+
+def sanitize_responses_input(input_items: Any) -> Any:
+    """过滤 Responses API 输入里上游不支持的 content part（如 Codex 的 environment_context）。
+
+    只保留 OpenAI 官方定义的 content part 类型；识别不出的 part 直接剔除，
+    若整条消息只剩不认识的 part 则丢弃该消息。
+    """
+    if isinstance(input_items, str) or not isinstance(input_items, list):
+        return input_items
+    cleaned: list[dict[str, Any]] = []
+    for item in input_items:
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            cleaned.append(item)
+            continue
+        parts = [
+            part
+            for part in content
+            if isinstance(part, dict) and part.get("type") in RESPONSES_CONTENT_PART_TYPES
+        ]
+        if len(parts) == len(content):
+            cleaned.append(item)
+            continue
+        if not parts:
+            continue
+        copied = dict(item)
+        copied["content"] = parts
+        cleaned.append(copied)
+    return cleaned
+
+
+def responses_extra_passthrough(body: dict[str, Any]) -> dict[str, Any]:
+    """把 Responses API 的请求参数原样透传给 litellm.responses()。"""
+    extra: dict[str, Any] = {}
+    for key in RESPONSES_PASSTHROUGH_KEYS:
+        if key in body and body[key] is not None:
+            extra[key] = body[key]
+    return extra
 
 
 async def call_chat(
@@ -347,6 +477,17 @@ async def call_chat(
     api_key: str,
 ) -> Any:
     return await get_provider(account.provider).complete(account, messages, model, stream, extra, api_key)
+
+
+async def call_responses(
+    account: UpstreamAccount,
+    input_items: Any,
+    model: str,
+    stream: bool,
+    extra: dict[str, Any],
+    api_key: str,
+) -> Any:
+    return await get_provider(account.provider).responses(account, input_items, model, stream, extra, api_key)
 
 
 async def count_openai_tokens(model: str, messages: list[dict[str, Any]]) -> int:
@@ -690,3 +831,166 @@ class AnthropicStreamTranslator:
 
 async def prepare_credential(account: UpstreamAccount, db) -> str:  # type: ignore[no-untyped-def]
     return await get_provider(account.provider).prepare_credential(account, db)
+
+
+def responses_sse(payload: dict[str, Any]) -> bytes:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode()
+
+
+def responses_event_to_dict(event: Any) -> dict[str, Any]:
+    """把 litellm 的 Responses API 流式事件对象转成普通 dict（type 转为字符串值）。"""
+    if isinstance(event, dict):
+        return event
+    if hasattr(event, "model_dump"):
+        return event.model_dump(mode="json")
+    return {}
+
+
+def responses_payload_to_dict(payload: Any) -> dict[str, Any]:
+    """把 litellm 的 Response 对象转成普通 dict。"""
+    if isinstance(payload, dict):
+        return payload
+    if hasattr(payload, "model_dump"):
+        return payload.model_dump()
+    return {}
+
+
+def reasoning_map_from_responses_payload(payload: dict[str, Any] | None) -> dict[str, str]:
+    """从 Responses API 输出里提取 reasoning 映射（function_call call_id → reasoning 文本）。"""
+    if not isinstance(payload, dict):
+        return {}
+    output = payload.get("output")
+    if not isinstance(output, list):
+        return {}
+    reasoning_text: str | None = None
+    mapping: dict[str, str] = {}
+    for item in output:
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        if item_type == "reasoning":
+            summary = item.get("summary")
+            if isinstance(summary, list):
+                texts = [
+                    str(part.get("text") or "")
+                    for part in summary
+                    if isinstance(part, dict) and part.get("text")
+                ]
+                reasoning_text = "".join(texts) or None
+        elif item_type == "function_call" and reasoning_text and item.get("call_id"):
+            mapping[str(item["call_id"])] = reasoning_text
+    return mapping
+
+
+class ResponsesStreamCollector:
+    """从 litellm 的 Responses API 流式事件里收集日志所需信息（文本/推理/工具/用量）。"""
+
+    def __init__(self, response_id: str, model: str) -> None:
+        self.response_id = response_id
+        self.model = model
+        self.text = ""
+        self.reasoning = ""
+        self.tools: list[dict[str, Any]] = []
+        self.usage: tuple[int | None, int | None, int | None] = (None, None, None)
+        self.status = "completed"
+
+    def feed(self, event: dict[str, Any]) -> None:
+        event_type = event.get("type")
+        if event_type == "response.output_text.delta":
+            delta = event.get("delta")
+            if isinstance(delta, str):
+                self.text += delta
+        elif event_type == "response.output_item.added":
+            item = event.get("item")
+            if isinstance(item, dict) and item.get("type") == "function_call":
+                self.tools.append(
+                    {
+                        "call_id": item.get("call_id") or item.get("id"),
+                        "name": item.get("name") or "",
+                        "arguments": item.get("arguments") or "",
+                    }
+                )
+        elif event_type == "response.function_call_arguments.delta":
+            if self.tools:
+                delta = event.get("delta")
+                if isinstance(delta, str):
+                    self.tools[-1]["arguments"] += delta
+        elif event_type == "response.output_item.done":
+            item = event.get("item")
+            if not isinstance(item, dict):
+                return
+            if item.get("type") == "reasoning":
+                summary = item.get("summary")
+                if isinstance(summary, list):
+                    parts = [
+                        str(part.get("text") or "")
+                        for part in summary
+                        if isinstance(part, dict) and part.get("text")
+                    ]
+                    if parts:
+                        self.reasoning = "".join(parts)
+            elif item.get("type") == "function_call":
+                for record in self.tools:
+                    if (record["call_id"] or "") == (item.get("call_id") or ""):
+                        record["call_id"] = item.get("call_id") or record["call_id"]
+                        record["name"] = item.get("name") or record["name"]
+                        record["arguments"] = item.get("arguments") or record["arguments"]
+                        break
+        elif event_type in ("response.completed", "response.incomplete", "response.failed"):
+            response = event.get("response")
+            if isinstance(response, dict):
+                self.status = str(response.get("status") or self.status)
+                usage = extract_usage(response)
+                if usage != (None, None, None):
+                    self.usage = usage
+
+    def payload(self) -> dict[str, Any]:
+        output: list[dict[str, Any]] = []
+        if self.reasoning:
+            output.append(
+                {
+                    "type": "reasoning",
+                    "summary": [{"type": "summary_text", "text": self.reasoning}],
+                }
+            )
+        output.append(
+            {
+                "type": "message",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": self.text, "annotations": []}],
+            }
+        )
+        for tool in self.tools:
+            output.append(
+                {
+                    "type": "function_call",
+                    "call_id": tool.get("call_id"),
+                    "name": tool.get("name"),
+                    "arguments": tool.get("arguments"),
+                    "status": "completed",
+                }
+            )
+        return {
+            "id": self.response_id,
+            "object": "response",
+            "created_at": int(time.time()),
+            "status": self.status,
+            "model": self.model,
+            "output": output,
+            "usage": {
+                "input_tokens": self.usage[0] or 0,
+                "output_tokens": self.usage[1] or 0,
+                "total_tokens": self.usage[2] or 0,
+            },
+            "output_text": self.text,
+        }
+
+    def reasoning_map(self) -> dict[str, str]:
+        if not self.reasoning:
+            return {}
+        return {
+            str(tool["call_id"]): self.reasoning for tool in self.tools if tool.get("call_id")
+        }
+
+

@@ -7,7 +7,7 @@ cryptography==45.0.6
 httpx==0.28.1
 pyjwt==2.10.1
 bcrypt==4.3.0
-litellm==1.75.8
+litellm==1.97.0
 python-multipart==0.0.20
 pytest==8.4.1
 pytest-asyncio==1.1.0

@@ -79,6 +79,19 @@ def _content_key(content: Any) -> str:
 
 
 def normalize_messages(protocol: str, body: dict[str, Any]) -> list[tuple[str, str]]:
+    if protocol == "openai_responses":
+        from app.services.bridge import input_to_messages
+
+        converted = input_to_messages(body)
+        normalized: list[tuple[str, str]] = []
+        for item in converted:
+            if not isinstance(item, dict):
+                continue
+            role = str(item.get("role") or "")
+            if not role:
+                continue
+            normalized.append((role, _content_key(item.get("content"))))
+        return normalized
     messages = body.get("messages")
     if not isinstance(messages, list):
         if protocol == "openai_responses" and isinstance(body.get("input"), str):
@@ -119,6 +132,16 @@ def extract_request_messages(request_body: Any) -> list[dict[str, Any]]:
             messages.append(entry)
     elif isinstance(request.get("input"), str):
         messages.append({"role": "user", "content": request["input"]})
+    elif isinstance(request.get("input"), list):
+        from app.services.bridge import input_to_messages
+
+        for item in input_to_messages(request):
+            if not isinstance(item, dict) or not item.get("role"):
+                continue
+            entry: dict[str, Any] = {"role": str(item["role"]), "content": item.get("content")}
+            if item.get("tool_calls"):
+                entry["tool_calls"] = item["tool_calls"]
+            messages.append(entry)
     return messages
 
 
@@ -138,10 +161,43 @@ def extract_assistant_message(protocol: str, response_body: Any) -> dict[str, An
             return {"role": "assistant", "content": "".join(texts)}
         return None
     if protocol == "openai_responses":
-        output = response.get("output_text") or response.get("output")
-        if output is None:
+        output = response.get("output")
+        if isinstance(output, list):
+            texts: list[str] = []
+            tool_calls: list[dict[str, Any]] = []
+            for item in output:
+                if not isinstance(item, dict):
+                    continue
+                item_type = item.get("type")
+                if item_type == "message":
+                    content = item.get("content")
+                    if isinstance(content, list):
+                        for part in content:
+                            if isinstance(part, dict) and part.get("type") == "output_text":
+                                text = part.get("text")
+                                if isinstance(text, str):
+                                    texts.append(text)
+                    elif isinstance(content, str):
+                        texts.append(content)
+                elif item_type == "function_call":
+                    tool_calls.append(
+                        {
+                            "id": item.get("call_id") or item.get("id"),
+                            "type": "function",
+                            "function": {
+                                "name": item.get("name") or "",
+                                "arguments": item.get("arguments") or "{}",
+                            },
+                        }
+                    )
+            entry: dict[str, Any] = {"role": "assistant", "content": "".join(texts)}
+            if tool_calls:
+                entry["tool_calls"] = tool_calls
+            return entry
+        output_text = response.get("output_text")
+        if output_text is None:
             return None
-        return {"role": "assistant", "content": output}
+        return {"role": "assistant", "content": output_text}
     choices = response.get("choices")
     first = choices[0] if isinstance(choices, list) and choices else None
     message = first.get("message") if isinstance(first, dict) else None
