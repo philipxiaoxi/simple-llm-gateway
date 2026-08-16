@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from app.clock import utcnow
 from app.config import get_settings
 from app.crypto import decrypt_secret
 from app.models import UpstreamAccount
@@ -25,7 +26,7 @@ def get_upstream_credential(account: UpstreamAccount, allow_expired: bool = Fals
         if (
             allow_expired
             or token.expires_at is None
-            or token.expires_at > datetime.utcnow() + timedelta(seconds=30)
+            or token.expires_at > utcnow() + timedelta(seconds=30)
         ):
             return decrypt_secret(token.access_token_encrypted, settings.app_secret_key)
     if account.api_key_encrypted:

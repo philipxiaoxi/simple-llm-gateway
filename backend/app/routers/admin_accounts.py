@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, joinedload
 
+from app.clock import utcnow
 from app.config import get_settings
 from app.crypto import encrypt_secret
 from app.db import get_db
@@ -61,7 +61,7 @@ def create_account(
         base_url=(payload.base_url or "").strip() or provider.default_base_url,
         api_key_encrypted=encrypted,
         status=payload.status,
-        updated_at=datetime.utcnow(),
+        updated_at=utcnow(),
     )
     db.add(account)
     db.flush()
@@ -114,7 +114,7 @@ def update_account(
         account.status = payload.status
     if payload.api_key:
         account.api_key_encrypted = encrypt_secret(payload.api_key, get_settings().app_secret_key)
-    account.updated_at = datetime.utcnow()
+    account.updated_at = utcnow()
     return account_to_out(account)
 
 

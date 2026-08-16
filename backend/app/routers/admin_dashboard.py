@@ -1,9 +1,9 @@
-from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.clock import utcnow
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import RequestLog, UpstreamAccount
@@ -26,7 +26,7 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardOut:
     missing_credential = sum(
         1 for account in accounts if get_provider(account.provider).missing_credential(account)
     )
-    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     today_requests = (
         db.scalar(select(func.count()).select_from(RequestLog).where(RequestLog.created_at >= today)) or 0
     )

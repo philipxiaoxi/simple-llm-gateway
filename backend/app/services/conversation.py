@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.clock import utcnow
 from app.models import RequestLog, RequestLogMessage
 
 SESSION_HEADER_NAMES = (
@@ -76,46 +76,6 @@ def _content_key(content: Any) -> str:
                 parts.append(str(part))
         return "\n".join(parts)
     return json.dumps(content, sort_keys=True, ensure_ascii=False)
-
-
-def normalize_messages(protocol: str, body: dict[str, Any]) -> list[tuple[str, str]]:
-    if protocol == "openai_responses":
-        from app.services.bridge import input_to_messages
-
-        converted = input_to_messages(body)
-        normalized: list[tuple[str, str]] = []
-        for item in converted:
-            if not isinstance(item, dict):
-                continue
-            role = str(item.get("role") or "")
-            if not role:
-                continue
-            normalized.append((role, _content_key(item.get("content"))))
-        return normalized
-    messages = body.get("messages")
-    if not isinstance(messages, list):
-        if protocol == "openai_responses" and isinstance(body.get("input"), str):
-            return [("user", body["input"])]
-        return []
-    normalized: list[tuple[str, str]] = []
-    for item in messages:
-        if not isinstance(item, dict):
-            continue
-        role = str(item.get("role") or "")
-        if not role:
-            continue
-        normalized.append((role, _content_key(item.get("content"))))
-    return normalized
-
-
-def is_continuation(previous_request: dict[str, Any], new_request: dict[str, Any], protocol: str) -> bool:
-    previous = normalize_messages(protocol, previous_request)
-    current = normalize_messages(protocol, new_request)
-    if not previous or not current:
-        return False
-    if len(current) <= len(previous):
-        return False
-    return current[: len(previous)] == previous
 
 
 def extract_request_messages(request_body: Any) -> list[dict[str, Any]]:
@@ -209,14 +169,6 @@ def extract_assistant_message(protocol: str, response_body: Any) -> dict[str, An
     return entry
 
 
-def extract_log_messages(protocol: str, request_body: Any, response_body: Any) -> list[dict[str, Any]]:
-    messages = extract_request_messages(request_body)
-    assistant = extract_assistant_message(protocol, response_body)
-    if assistant is not None:
-        messages.append(assistant)
-    return messages
-
-
 def message_fingerprint(message: dict[str, Any]) -> tuple[str, str]:
     extra = ""
     if message.get("tool_calls"):
@@ -279,12 +231,27 @@ def load_log_messages(db: Session, log_id: int) -> list[dict[str, Any]]:
     return [decode_stored_message(row) for row in rows]
 
 
+def load_log_messages_batch(db: Session, log_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+    """一次查询批量加载多条日志的消息，避免逐条查询的 N+1。"""
+    if not log_ids:
+        return {}
+    rows = db.scalars(
+        select(RequestLogMessage)
+        .where(RequestLogMessage.log_id.in_(log_ids))
+        .order_by(RequestLogMessage.log_id, RequestLogMessage.seq)
+    ).all()
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(row.log_id, []).append(decode_stored_message(row))
+    return grouped
+
+
 def append_log_messages(db: Session, log_id: int, messages: list[dict[str, Any]]) -> None:
     if not messages:
         return
     last_seq = db.scalar(select(func.max(RequestLogMessage.seq)).where(RequestLogMessage.log_id == log_id))
     next_seq = (last_seq if last_seq is not None else -1) + 1
-    now = datetime.utcnow()
+    now = utcnow()
     for offset, message in enumerate(messages):
         db.add(
             RequestLogMessage(
@@ -308,7 +275,11 @@ def find_continuation_log(
     if session_key:
         return db.scalar(
             select(RequestLog)
-            .where(RequestLog.api_key_id == api_key_id, RequestLog.session_key == session_key)
+            .where(
+                RequestLog.api_key_id == api_key_id,
+                RequestLog.session_key == session_key,
+                RequestLog.protocol == protocol,
+            )
             .order_by(RequestLog.id.desc())
             .limit(1)
         )
@@ -321,8 +292,9 @@ def find_continuation_log(
         .order_by(RequestLog.id.desc())
         .limit(20)
     ).all()
+    stored_by_log = load_log_messages_batch(db, [log.id for log in candidates])
     for log in candidates:
-        stored = load_log_messages(db, log.id)
+        stored = stored_by_log.get(log.id, [])
         if not stored:
             continue
         prefix = common_prefix_len(stored, inbound)

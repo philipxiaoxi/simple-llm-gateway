@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
 
 import httpx
 import litellm
 
+from app.clock import utcnow
 from app.config import get_settings
 from app.models import UpstreamAccount
 from app.services.credentials import get_upstream_credential, require_upstream_credential
@@ -171,7 +171,7 @@ class Provider:
         token = get_upstream_credential(account)
         headers = self.auth_headers(token or "")
         last_error = "未发起请求"
-        started = datetime.utcnow()
+        started = utcnow()
         settings = get_settings()
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
             for url in self.model_candidate_urls(account):
@@ -180,23 +180,23 @@ class Provider:
                 except httpx.HTTPError as error:
                     last_error = str(error)
                     continue
-                latency = int((datetime.utcnow() - started).total_seconds() * 1000)
+                latency = int((utcnow() - started).total_seconds() * 1000)
                 if response.status_code < 400:
                     account.last_probe_ok = True
                     account.last_probe_latency_ms = latency
                     account.last_probe_message = f"{response.status_code} {url}"
-                    account.last_probe_at = datetime.utcnow()
+                    account.last_probe_at = utcnow()
                     return {
                         "ok": True,
                         "latency_ms": latency,
                         "message": account.last_probe_message,
                     }
                 last_error = f"{response.status_code} {response.text[:300]}"
-        latency = int((datetime.utcnow() - started).total_seconds() * 1000)
+        latency = int((utcnow() - started).total_seconds() * 1000)
         account.last_probe_ok = False
         account.last_probe_latency_ms = latency
         account.last_probe_message = last_error
-        account.last_probe_at = datetime.utcnow()
+        account.last_probe_at = utcnow()
         return {"ok": False, "latency_ms": latency, "message": last_error}
 
     async def list_models(self, account: UpstreamAccount) -> dict[str, Any]:
@@ -222,7 +222,7 @@ class Provider:
                 models = extract_model_ids(payload)
                 if models:
                     account.models_json = json.dumps(models, ensure_ascii=False)
-                    account.models_updated_at = datetime.utcnow()
+                    account.models_updated_at = utcnow()
                     return {"ok": True, "models": models, "source": url}
                 last_error = f"{url} 没有解析到模型"
         return {"ok": False, "models": [], "message": last_error}
@@ -230,7 +230,7 @@ class Provider:
     def store_quota(self, account: UpstreamAccount, view: QuotaView) -> dict[str, Any]:
         payload = view.to_dict()
         account.quota_json = json.dumps(payload, ensure_ascii=False)
-        account.quota_updated_at = datetime.utcnow()
+        account.quota_updated_at = utcnow()
         return payload
 
     async def fetch_quota(self, account: UpstreamAccount) -> dict[str, Any]:

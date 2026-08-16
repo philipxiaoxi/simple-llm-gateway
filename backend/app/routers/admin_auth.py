@@ -1,9 +1,9 @@
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.clock import utcnow
 from app.crypto import hash_password, verify_password
 from app.db import get_db
 from app.deps import create_access_token, get_current_admin
@@ -25,7 +25,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
         login_gate.fail(payload.username)
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     login_gate.succeed(payload.username)
-    admin.last_login_at = datetime.utcnow()
+    admin.last_login_at = utcnow()
     return LoginResponse(token=create_access_token(admin), username=admin.username)
 
 

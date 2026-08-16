@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.clock import utcnow
 from app.config import get_settings
 from app.crypto import (
     MIN_EXPORT_PASSWORD_LENGTH,
@@ -92,7 +92,7 @@ def import_accounts(db: Session, password: str, envelope: dict[str, object]) -> 
             base_url=(str(entry.get("base_url") or "").strip() or provider.default_base_url),
             api_key_encrypted=encrypted,
             status=status,
-            updated_at=datetime.utcnow(),
+            updated_at=utcnow(),
         )
         db.add(account)
         db.flush()

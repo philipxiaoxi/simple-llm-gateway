@@ -118,7 +118,9 @@ def anthropic_tool_choice_to_openai(tool_choice: Any) -> Any:
 def anthropic_extra_to_openai(body: dict[str, Any]) -> dict[str, Any]:
     extra: dict[str, Any] = {}
     if body.get("max_tokens") is not None:
-        extra["max_tokens"] = int(body["max_tokens"])
+        max_tokens = _as_token_count(body["max_tokens"])
+        if max_tokens is not None:
+            extra["max_tokens"] = max_tokens
     for key in ("temperature", "top_p"):
         if body.get(key) is not None:
             extra[key] = body[key]
@@ -201,18 +203,7 @@ def anthropic_to_openai_messages(body: dict[str, Any]) -> list[dict[str, Any]]:
                     message["tool_calls"] = tool_calls
                 if thinking_parts:
                     message["reasoning_content"] = "".join(thinking_parts)
-                if tool_messages and not tool_calls:
-                    text_parts = "".join(
-                        str(part.get("text") or "") for part in parts if part.get("type") == "text"
-                    )
-                    if text_parts:
-                        first_tool_message = tool_messages[0]
-                        existing_content = first_tool_message.get("content") or ""
-                        first_tool_message["content"] = (
-                            f"{text_parts}\n{existing_content}" if existing_content else text_parts
-                        )
-                else:
-                    messages.append(message)
+                messages.append(message)
             messages.extend(tool_messages)
         else:
             outbound = {"role": role, "content": content}
@@ -770,7 +761,7 @@ class AnthropicStreamTranslator:
 
     def _feed_tool(self, tool: dict[str, Any]) -> list[bytes]:
         events: list[bytes] = []
-        openai_index = int(tool.get("index") or 0)
+        openai_index = _as_token_count(tool.get("index")) or 0
         function = tool.get("function") or {}
         if openai_index not in self.tool_by_openai_index:
             events.extend(self._close_open())

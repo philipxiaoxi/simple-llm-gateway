@@ -517,24 +517,3 @@ def test_responses_follow_up_reuses_same_log(client: TestClient, auth_headers: d
     assert fresh_id != continued_id
 
 
-def test_responses_normalize_input_array() -> None:
-    from app.services.conversation import is_continuation, normalize_messages
-
-    first = {"model": "x", "input": "hi"}
-    second = {
-        "model": "x",
-        "input": [
-            {"role": "user", "content": "hi"},
-            {"role": "assistant", "content": "ok"},
-            {"role": "user", "content": "and then?"},
-        ],
-    }
-    unrelated = {"model": "x", "input": "unrelated"}
-    assert normalize_messages("openai_responses", first) == [("user", "hi")]
-    assert normalize_messages("openai_responses", second) == [
-        ("user", "hi"),
-        ("assistant", "ok"),
-        ("user", "and then?"),
-    ]
-    assert is_continuation(first, second, "openai_responses") is True
-    assert is_continuation(first, unrelated, "openai_responses") is False

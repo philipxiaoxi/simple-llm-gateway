@@ -25,6 +25,8 @@ def get_engine() -> Engine:
         @event.listens_for(_engine, "connect")
         def _set_sqlite_pragma(database_api_connection, _connection_record) -> None:  # type: ignore[no-untyped-def]
             cursor = database_api_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
 
@@ -40,9 +42,32 @@ def get_session_factory() -> sessionmaker[Session]:
 
 def init_db() -> None:
     engine = get_engine()
+    _migrate_legacy_logs(engine)
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
     _ensure_request_logs_have_no_parent_fks(engine)
+
+
+def _migrate_legacy_logs(engine: Engine) -> None:
+    """旧版本把消息存在 request_logs.request_body，新版本拆到 request_log_messages。
+
+    仅当 request_log_messages 表尚不存在（旧库首次升级）时清理一次遗留数据，
+    避免每次启动都可能在消息表为空时清空全部日志。
+    """
+    with engine.begin() as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table'")
+            )
+        }
+        if "request_log_messages" in tables or "request_logs" not in tables:
+            return
+        has_old_bodies = connection.execute(
+            text("SELECT 1 FROM request_logs WHERE request_body IS NOT NULL LIMIT 1")
+        ).first() is not None
+        if has_old_bodies:
+            connection.execute(text("DELETE FROM request_logs"))
 
 
 def _ensure_columns(engine: Engine) -> None:
@@ -67,14 +92,6 @@ def _ensure_columns(engine: Engine) -> None:
         admin_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(admins)"))}
         if "token_version" not in admin_columns:
             connection.execute(text("ALTER TABLE admins ADD COLUMN token_version INTEGER DEFAULT 0 NOT NULL"))
-        tables = {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))}
-        if "request_log_messages" in tables:
-            message_count = connection.execute(text("SELECT COUNT(*) FROM request_log_messages")).scalar() or 0
-            has_old_bodies = connection.execute(
-                text("SELECT 1 FROM request_logs WHERE request_body IS NOT NULL LIMIT 1")
-            ).first()
-            if message_count == 0 and has_old_bodies is not None:
-                connection.execute(text("DELETE FROM request_logs"))
         log_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(request_logs)"))}
         if log_columns and "api_key_name" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN api_key_name VARCHAR(128)"))

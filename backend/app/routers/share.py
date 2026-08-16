@@ -1,9 +1,9 @@
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.clock import utcnow
 from app.config import get_settings
 from app.db import get_db
 from app.deps import resolve_api_key
@@ -35,7 +35,7 @@ def _display_name(item: ApiKey) -> str:
 
 
 def _key_token_totals(db: Session, api_key_id: int) -> tuple[int, int]:
-    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     today_tokens = (
         db.scalar(
             select(func.coalesce(func.sum(RequestLog.total_tokens), 0)).where(

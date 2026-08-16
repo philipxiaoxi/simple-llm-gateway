@@ -15,7 +15,7 @@ from app.services.reasoning import (
 )
 
 
-def test_mixed_text_and_tool_result_merges_text_into_tool_message() -> None:
+def test_mixed_text_and_tool_result_keeps_user_role() -> None:
     messages = anthropic_to_openai_messages(
         {
             "messages": [
@@ -45,11 +45,12 @@ def test_mixed_text_and_tool_result_merges_text_into_tool_message() -> None:
         }
     )
     roles = [message["role"] for message in messages]
-    assert roles == ["assistant", "tool"]
-    assert messages[1] == {
+    assert roles == ["assistant", "user", "tool"]
+    assert messages[1] == {"role": "user", "content": "[Request interrupted by user] 好像出问题了"}
+    assert messages[2] == {
         "role": "tool",
         "tool_call_id": "call_skill",
-        "content": "[Request interrupted by user] 好像出问题了\nskill 启动完成",
+        "content": "skill 启动完成",
     }
 
 

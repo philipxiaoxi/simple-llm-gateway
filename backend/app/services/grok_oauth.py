@@ -11,6 +11,7 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.clock import utcnow
 from app.config import get_settings
 from app.crypto import decrypt_secret, encrypt_secret
 from app.db import get_session_factory
@@ -28,7 +29,7 @@ def _pkce_pair() -> tuple[str, str]:
 
 
 def cleanup_expired_oauth_states(db: Session) -> int:
-    result = db.execute(delete(OAuthState).where(OAuthState.expires_at < datetime.utcnow()))
+    result = db.execute(delete(OAuthState).where(OAuthState.expires_at < utcnow()))
     return result.rowcount or 0
 
 
@@ -64,7 +65,7 @@ def looks_like_api_key(value: str) -> bool:
 def latest_oauth_state(db: Session, account_id: int) -> OAuthState | None:
     return db.scalar(
         select(OAuthState)
-        .where(OAuthState.account_id == account_id, OAuthState.expires_at > datetime.utcnow())
+        .where(OAuthState.account_id == account_id, OAuthState.expires_at > utcnow())
         .order_by(OAuthState.id.desc())
     )
 
@@ -124,7 +125,7 @@ def build_authorize_url(db: Session, account: UpstreamAccount) -> str:
             state=state,
             code_verifier=verifier,
             account_id=account.id,
-            expires_at=datetime.utcnow() + timedelta(minutes=15),
+            expires_at=utcnow() + timedelta(minutes=15),
         )
     )
     query = urlencode(
@@ -144,7 +145,7 @@ def build_authorize_url(db: Session, account: UpstreamAccount) -> str:
 async def exchange_code(db: Session, code: str, state: str) -> UpstreamAccount:
     settings = get_settings()
     record = db.scalar(select(OAuthState).where(OAuthState.state == state))
-    if record is None or record.expires_at < datetime.utcnow():
+    if record is None or record.expires_at < utcnow():
         raise ValueError("授权状态无效或已过期")
     account = db.get(UpstreamAccount, record.account_id)
     if account is None:
@@ -197,7 +198,7 @@ async def refresh_if_needed(db: Session, account: UpstreamAccount) -> str:
     token = account.oauth_token
     if token is None:
         raise ValueError("Grok 账号尚未授权")
-    if token.expires_at is None or token.expires_at > datetime.utcnow() + timedelta(seconds=60):
+    if token.expires_at is None or token.expires_at > utcnow() + timedelta(seconds=60):
         return decrypt_secret(token.access_token_encrypted, settings.app_secret_key)
     return await refresh_oauth_token(db, account)
 
@@ -208,7 +209,7 @@ def accounts_due_for_oauth_refresh(
     now: datetime | None = None,
     soon_seconds: int = OAUTH_REFRESH_SOON_SECONDS,
 ) -> list[UpstreamAccount]:
-    cutoff = (now or datetime.utcnow()) + timedelta(seconds=soon_seconds)
+    cutoff = (now or utcnow()) + timedelta(seconds=soon_seconds)
     rows = db.scalars(
         select(UpstreamAccount)
         .options(joinedload(UpstreamAccount.oauth_token))
@@ -273,6 +274,6 @@ def _store_tokens(db: Session, account: UpstreamAccount, payload: dict) -> None:
     account.oauth_token.access_token_encrypted = encrypt_secret(access, settings.app_secret_key)
     if refresh:
         account.oauth_token.refresh_token_encrypted = encrypt_secret(refresh, settings.app_secret_key)
-    account.oauth_token.expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+    account.oauth_token.expires_at = utcnow() + timedelta(seconds=expires_in)
     account.oauth_token.scope = payload.get("scope")
-    account.oauth_token.updated_at = datetime.utcnow()
+    account.oauth_token.updated_at = utcnow()

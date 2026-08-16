@@ -5,13 +5,13 @@ import re
 import time
 import uuid
 from collections.abc import AsyncIterator
-from datetime import datetime
 from typing import Any
 
 import httpx
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.clock import utcnow
 from app.config import get_settings
 from app.db import get_session_factory
 from app.errors import protocol_error
@@ -66,6 +66,53 @@ from app.services.reasoning import (
     reasoning_map_from_messages,
     reasoning_map_from_openai_payload,
 )
+
+
+def elapsed_ms(started: float) -> int:
+    return int((time.perf_counter() - started) * 1000)
+
+
+def _finalize_stream_log(
+    *,
+    account_id: int,
+    api_key_id: int,
+    protocol: str,
+    model: str,
+    status: str,
+    http_status: int,
+    error_text: str | None,
+    usage: tuple[int | None, int | None, int | None],
+    started: float,
+    request_body: Any,
+    response_body: Any,
+    request_headers: dict[str, str] | None,
+    reasoning_map: dict[str, str],
+) -> None:
+    session = get_session_factory()()
+    try:
+        save_log(
+            session,
+            account_id=account_id,
+            api_key_id=api_key_id,
+            protocol=protocol,
+            model=model,
+            stream=True,
+            status=status,
+            http_status=http_status,
+            error_message=error_text,
+            usage=usage,
+            latency_ms=elapsed_ms(started),
+            request_body=request_body,
+            response_body=response_body,
+            request_headers=request_headers,
+            reasoning_map=reasoning_map,
+        )
+        stored_key = session.get(ApiKey, api_key_id)
+        if stored_key is not None:
+            stored_key.last_used_at = utcnow()
+        session.commit()
+    finally:
+        session.close()
 
 
 def _output_text_from_openai(payload: dict[str, Any]) -> str:
@@ -196,7 +243,7 @@ def save_log(
     reasoning_map: dict[str, str] | None = None,
 ) -> RequestLog:
     prompt, completion, total = usage
-    now = datetime.utcnow()
+    now = utcnow()
     existing = None
     session_key = extract_session_key(request_body if isinstance(request_body, dict) else None, request_headers)
     if isinstance(request_body, dict):
@@ -281,7 +328,7 @@ async def handle_chat(
     request_headers: dict[str, str] | None = None,
 ) -> JSONResponse | StreamingResponse:
     started = time.perf_counter()
-    stream = bool(body.get("stream"))
+    stream = body.get("stream") is True
     model = str(body.get("model") or "")
     try:
         credential = await prepare_credential(account, db)
@@ -298,7 +345,7 @@ async def handle_chat(
             http_status=status_code,
             error_message=str(error),
             usage=(None, None, None),
-            latency_ms=int((time.perf_counter() - started) * 1000),
+            latency_ms=elapsed_ms(started),
             request_body=body,
             response_body=None,
             request_headers=request_headers,
@@ -397,13 +444,13 @@ async def handle_chat(
         http_status=200,
         error_message=None,
         usage=usage,
-        latency_ms=int((time.perf_counter() - started) * 1000),
+        latency_ms=elapsed_ms(started),
         request_body=body,
         response_body=payload,
         request_headers=request_headers,
         reasoning_map=merge_reasoning_maps(inbound_reasoning, reasoning_map),
     )
-    api_key.last_used_at = datetime.utcnow()
+    api_key.last_used_at = utcnow()
     return JSONResponse(payload)
 
 
@@ -513,31 +560,21 @@ async def _stream_response(
             else:
                 yield f"data: {json.dumps({'error': {'message': error_text}}, ensure_ascii=False)}\n\n".encode()
         finally:
-            session = get_session_factory()()
-            try:
-                save_log(
-                    session,
-                    account_id=account_id,
-                    api_key_id=api_key_id,
-                    protocol=protocol,
-                    model=model,
-                    stream=True,
-                    status=status,
-                    http_status=http_status,
-                    error_message=error_text,
-                    usage=usage,
-                    latency_ms=int((time.perf_counter() - started) * 1000),
-                    request_body=body,
-                    response_body=response_body,
-                    request_headers=request_headers,
-                    reasoning_map=merge_reasoning_maps(inbound_reasoning or {}, response_map),
-                )
-                stored_key = session.get(ApiKey, api_key_id)
-                if stored_key is not None:
-                    stored_key.last_used_at = datetime.utcnow()
-                session.commit()
-            finally:
-                session.close()
+            _finalize_stream_log(
+                account_id=account_id,
+                api_key_id=api_key_id,
+                protocol=protocol,
+                model=model,
+                status=status,
+                http_status=http_status,
+                error_text=error_text,
+                usage=usage,
+                started=started,
+                request_body=body,
+                response_body=response_body,
+                request_headers=request_headers,
+                reasoning_map=merge_reasoning_maps(inbound_reasoning or {}, response_map),
+            )
 
     return StreamingResponse(event_source(), media_type="text/event-stream")
 
@@ -607,7 +644,7 @@ def _fail(
         http_status=status_code,
         error_message=message,
         usage=(None, None, None),
-        latency_ms=int((time.perf_counter() - started) * 1000),
+        latency_ms=elapsed_ms(started),
         request_body=body,
         response_body=None,
         request_headers=request_headers,
@@ -624,7 +661,7 @@ async def handle_anthropic_passthrough(
     started: float,
     request_headers: dict[str, str] | None = None,
 ) -> JSONResponse | StreamingResponse:
-    stream = bool(body.get("stream"))
+    stream = body.get("stream") is True
     model = str(body.get("model") or "")
     inbound_reasoning = reasoning_map_from_anthropic_messages(body.get("messages") if isinstance(body, dict) else None)
     if stream:
@@ -657,7 +694,7 @@ async def handle_anthropic_passthrough(
         http_status=status_code,
         error_message=None if ok else _anthropic_error_message(payload),
         usage=usage,
-        latency_ms=int((time.perf_counter() - started) * 1000),
+        latency_ms=elapsed_ms(started),
         request_body=body,
         response_body=payload,
         request_headers=request_headers,
@@ -666,7 +703,7 @@ async def handle_anthropic_passthrough(
             reasoning_map_from_anthropic_content(payload.get("content") if isinstance(payload, dict) else None),
         ),
     )
-    api_key.last_used_at = datetime.utcnow()
+    api_key.last_used_at = utcnow()
     return JSONResponse(payload, status_code=status_code)
 
 
@@ -736,36 +773,26 @@ def _stream_anthropic_passthrough(
                 {"type": "error", "error": {"type": "api_error", "message": error_text}},
             )
         finally:
-            session = get_session_factory()()
-            try:
-                save_log(
-                    session,
-                    account_id=account_id,
-                    api_key_id=api_key_id,
-                    protocol="anthropic_messages",
-                    model=model,
-                    stream=True,
-                    status=status,
-                    http_status=http_status,
-                    error_message=error_text,
-                    usage=usage,
-                    latency_ms=int((time.perf_counter() - started) * 1000),
-                    request_body=body,
-                    response_body=response_body,
-                    request_headers=request_headers,
-                    reasoning_map=merge_reasoning_maps(
-                        inbound_reasoning,
-                        reasoning_map_from_anthropic_content(
-                            response_body.get("content") if isinstance(response_body, dict) else None
-                        ),
+            _finalize_stream_log(
+                account_id=account_id,
+                api_key_id=api_key_id,
+                protocol="anthropic_messages",
+                model=model,
+                status=status,
+                http_status=http_status,
+                error_text=error_text,
+                usage=usage,
+                started=started,
+                request_body=body,
+                response_body=response_body,
+                request_headers=request_headers,
+                reasoning_map=merge_reasoning_maps(
+                    inbound_reasoning,
+                    reasoning_map_from_anthropic_content(
+                        response_body.get("content") if isinstance(response_body, dict) else None
                     ),
-                )
-                stored_key = session.get(ApiKey, api_key_id)
-                if stored_key is not None:
-                    stored_key.last_used_at = datetime.utcnow()
-                session.commit()
-            finally:
-                session.close()
+                ),
+            )
 
     return StreamingResponse(event_source(), media_type="text/event-stream")
 

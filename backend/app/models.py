@@ -5,6 +5,8 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from app.clock import utcnow
+
 
 class Base(DeclarativeBase):
     pass
@@ -17,7 +19,7 @@ class Admin(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
@@ -39,8 +41,8 @@ class UpstreamAccount(Base):
     quota_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     models_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     models_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     oauth_token: Mapped[OAuthToken | None] = relationship(back_populates="account", uselist=False)
     api_keys: Mapped[list[ApiKey]] = relationship(back_populates="account")
@@ -55,7 +57,7 @@ class OAuthToken(Base):
     refresh_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     scope: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     account: Mapped[UpstreamAccount] = relationship(back_populates="oauth_token")
 
@@ -81,7 +83,7 @@ class ApiKey(Base):
     key_prefix: Mapped[str] = mapped_column(String(32), nullable=False)
     account_id: Mapped[int] = mapped_column(ForeignKey("upstream_accounts.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     account: Mapped[UpstreamAccount] = relationship(back_populates="api_keys")
@@ -109,7 +111,7 @@ class RequestLog(Base):
     response_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     session_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     reasoning_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     account: Mapped[UpstreamAccount | None] = relationship(
@@ -138,6 +140,6 @@ class RequestLogMessage(Base):
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     content_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     log: Mapped[RequestLog] = relationship(back_populates="messages")
