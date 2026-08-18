@@ -1,4 +1,9 @@
+from datetime import datetime, timedelta
+
 from fastapi.testclient import TestClient
+
+from app.db import get_session_factory
+from app.models import ApiKey, RequestLog
 
 
 def _account(client: TestClient, auth_headers: dict[str, str]) -> int:
@@ -139,3 +144,91 @@ def test_delete_key_keeps_request_logs(client: TestClient, auth_headers: dict[st
     messages = client.get(f"/api/admin/logs/{log_id}/messages", headers=auth_headers)
     assert messages.status_code == 200
     assert messages.json()["total"] >= 1
+
+
+def _add_log(api_key_id: int, account_id: int, total_tokens: int, created_at: datetime) -> None:
+    session = get_session_factory()()
+    try:
+        session.add(
+            RequestLog(
+                account_id=account_id,
+                api_key_id=api_key_id,
+                protocol="openai",
+                model="deepseek-chat",
+                stream=False,
+                status="ok",
+                http_status=200,
+                total_tokens=total_tokens,
+                latency_ms=1,
+                created_at=created_at,
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+
+
+def _set_last_used(key_id: int, last_used_at: datetime | None) -> None:
+    session = get_session_factory()()
+    try:
+        item = session.get(ApiKey, key_id)
+        assert item is not None
+        item.last_used_at = last_used_at
+        session.commit()
+    finally:
+        session.close()
+
+
+def test_list_keys_includes_token_usage_and_sorts(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    account_id = _account(client, auth_headers)
+    older = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "先建", "account_id": account_id},
+    ).json()
+    newer = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "后建", "account_id": account_id},
+    ).json()
+    unused = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "未用", "account_id": account_id},
+    ).json()
+
+    now = datetime.utcnow()
+    yesterday = now - timedelta(days=1)
+    _add_log(older["id"], account_id, 10, now)
+    _add_log(older["id"], account_id, 20, yesterday)
+    _add_log(newer["id"], account_id, 99, now)
+    _set_last_used(older["id"], now)
+    _set_last_used(newer["id"], yesterday)
+    _set_last_used(unused["id"], None)
+
+    listed = client.get("/api/admin/keys", headers=auth_headers)
+    assert listed.status_code == 200
+    default_names = [item["name"] for item in listed.json()]
+    assert default_names == ["先建", "后建", "未用"]
+    by_name = {item["name"]: item for item in listed.json()}
+    assert by_name["先建"]["today_tokens"] == 10
+    assert by_name["先建"]["total_tokens"] == 30
+    assert by_name["后建"]["today_tokens"] == 99
+    assert by_name["后建"]["total_tokens"] == 99
+    assert by_name["未用"]["today_tokens"] == 0
+    assert by_name["未用"]["total_tokens"] == 0
+
+    by_tokens = client.get("/api/admin/keys?sort=tokens", headers=auth_headers)
+    assert [item["name"] for item in by_tokens.json()] == ["后建", "先建", "未用"]
+
+    by_used = client.get("/api/admin/keys?sort=last_used", headers=auth_headers)
+    assert [item["name"] for item in by_used.json()] == ["先建", "后建", "未用"]
+
+    by_created = client.get("/api/admin/keys?sort=created_at", headers=auth_headers)
+    assert [item["name"] for item in by_created.json()] == ["未用", "后建", "先建"]
+
+    detail = client.get(f"/api/admin/keys/{older['id']}", headers=auth_headers)
+    assert detail.json()["today_tokens"] == 10
+    assert detail.json()["total_tokens"] == 30

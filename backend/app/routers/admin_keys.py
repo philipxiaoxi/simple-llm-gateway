@@ -1,7 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select, update
+from datetime import datetime
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session, joinedload
 
+from app.clock import utcnow
 from app.config import get_settings
 from app.crypto import decrypt_secret, encrypt_secret, generate_api_key, hash_api_key, key_prefix
 from app.db import get_db
@@ -18,11 +22,25 @@ from app.services.ccswitch import (
 
 router = APIRouter(prefix="/api/admin/keys", tags=["admin-keys"], dependencies=[Depends(get_current_admin)])
 
+KeySort = Literal["created_at", "tokens", "last_used"]
+
 
 @router.get("", response_model=list[KeyOut])
-def list_keys(db: Session = Depends(get_db)) -> list[KeyOut]:
-    rows = db.scalars(select(ApiKey).options(joinedload(ApiKey.account)).order_by(ApiKey.id.desc())).all()
-    return [key_to_out(row) for row in rows]
+def list_keys(
+    sort: KeySort = Query(default="last_used"),
+    db: Session = Depends(get_db),
+) -> list[KeyOut]:
+    rows = list(db.scalars(select(ApiKey).options(joinedload(ApiKey.account))).all())
+    usage = _token_usage_by_key(db, [row.id for row in rows])
+    rows.sort(key=lambda item: _sort_value(item, sort, usage), reverse=True)
+    return [
+        key_to_out(
+            row,
+            today_tokens=usage.get(row.id, (0, 0))[0],
+            total_tokens=usage.get(row.id, (0, 0))[1],
+        )
+        for row in rows
+    ]
 
 
 @router.post("", response_model=KeyOut)
@@ -43,7 +61,7 @@ def create_key(payload: KeyCreate, db: Session = Depends(get_db)) -> KeyOut:
     db.flush()
     db.refresh(item)
     item.account = account
-    result = key_to_out(item, reveal=True)
+    result = key_to_out(item, reveal=True, today_tokens=0, total_tokens=0)
     result.key = plaintext
     return result
 
@@ -51,7 +69,7 @@ def create_key(payload: KeyCreate, db: Session = Depends(get_db)) -> KeyOut:
 @router.get("/{key_id}", response_model=KeyOut)
 def get_key(key_id: int, db: Session = Depends(get_db)) -> KeyOut:
     item = _get_key(db, key_id)
-    return key_to_out(item, reveal=True)
+    return _key_out(db, item, reveal=True)
 
 
 @router.get("/{key_id}/cc-switch")
@@ -102,7 +120,7 @@ def update_key(key_id: int, payload: KeyUpdate, db: Session = Depends(get_db)) -
         item.name = payload.name
     if payload.status is not None:
         item.status = payload.status
-    return key_to_out(item)
+    return _key_out(db, item)
 
 
 @router.delete("/{key_id}")
@@ -122,3 +140,39 @@ def _get_key(db: Session, key_id: int) -> ApiKey:
     if item is None:
         raise HTTPException(status_code=404, detail="API Key 不存在")
     return item
+
+
+def _token_usage_by_key(db: Session, key_ids: list[int]) -> dict[int, tuple[int, int]]:
+    if not key_ids:
+        return {}
+    today = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    rows = db.execute(
+        select(
+            RequestLog.api_key_id,
+            func.coalesce(
+                func.sum(case((RequestLog.created_at >= today, RequestLog.total_tokens), else_=0)),
+                0,
+            ),
+            func.coalesce(func.sum(RequestLog.total_tokens), 0),
+        )
+        .where(RequestLog.api_key_id.in_(key_ids))
+        .group_by(RequestLog.api_key_id)
+    ).all()
+    return {int(key_id): (int(today_tokens), int(total_tokens)) for key_id, today_tokens, total_tokens in rows}
+
+
+def _key_out(db: Session, item: ApiKey, reveal: bool = False) -> KeyOut:
+    today_tokens, total_tokens = _token_usage_by_key(db, [item.id]).get(item.id, (0, 0))
+    return key_to_out(item, reveal=reveal, today_tokens=today_tokens, total_tokens=total_tokens)
+
+
+def _sort_value(
+    item: ApiKey,
+    sort: KeySort,
+    usage: dict[int, tuple[int, int]],
+) -> tuple[datetime | int, int]:
+    if sort == "tokens":
+        return (usage.get(item.id, (0, 0))[1], item.id)
+    if sort == "last_used":
+        return (item.last_used_at or datetime.min, item.id)
+    return (item.created_at, item.id)

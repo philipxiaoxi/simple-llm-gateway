@@ -113,6 +113,8 @@ export type ShareLookup = {
   targets: CcSwitchTarget[]
 }
 
+export type ApiKeySort = 'created_at' | 'tokens' | 'last_used'
+
 export type ApiKeyItem = {
   id: number
   name: string
@@ -124,6 +126,8 @@ export type ApiKeyItem = {
   status: string
   created_at: string
   last_used_at: string | null
+  today_tokens: number
+  total_tokens: number
 }
 
 export type LogItem = {
@@ -199,7 +203,7 @@ export const api = {
   oauthStart: (id: number) => request<{ authorize_url: string; needs_paste: boolean }>(`/api/admin/accounts/${id}/oauth/start`),
   completeOauth: (payload: { account_id?: number; callback_url?: string; code?: string; state?: string }) =>
     request<{ ok: boolean }>('/api/admin/oauth/grok/callback', { method: 'POST', body: JSON.stringify(payload) }),
-  keys: () => request<ApiKeyItem[]>('/api/admin/keys'),
+  keys: (sort: ApiKeySort = 'last_used') => request<ApiKeyItem[]>(`/api/admin/keys?sort=${sort}`),
   createKey: (payload: { name: string; account_id: number }) =>
     request<ApiKeyItem>('/api/admin/keys', { method: 'POST', body: JSON.stringify(payload) }),
   key: (id: number) => request<ApiKeyItem>(`/api/admin/keys/${id}`),

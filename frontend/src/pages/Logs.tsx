@@ -13,7 +13,7 @@ const protocolLabel: Record<string, string> = {
 
 export function LogsPage() {
   const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: api.accounts })
-  const { data: keys = [] } = useQuery({ queryKey: ['keys'], queryFn: api.keys })
+  const { data: keys = [] } = useQuery({ queryKey: ['keys'], queryFn: () => api.keys() })
   const [accountId, setAccountId] = useState('')
   const [keyId, setKeyId] = useState('')
   const [protocol, setProtocol] = useState('')

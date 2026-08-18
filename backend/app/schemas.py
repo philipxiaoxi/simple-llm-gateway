@@ -111,6 +111,8 @@ class KeyOut(BaseModel):
     status: str
     created_at: datetime
     last_used_at: datetime | None
+    today_tokens: int = 0
+    total_tokens: int = 0
 
 
 class LogOut(BaseModel):

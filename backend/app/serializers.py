@@ -54,7 +54,12 @@ def account_to_out(account: UpstreamAccount, reveal: bool = False) -> AccountOut
     )
 
 
-def key_to_out(item: ApiKey, reveal: bool = False) -> KeyOut:
+def key_to_out(
+    item: ApiKey,
+    reveal: bool = False,
+    today_tokens: int = 0,
+    total_tokens: int = 0,
+) -> KeyOut:
     settings = get_settings()
     plaintext = None
     if reveal:
@@ -70,6 +75,8 @@ def key_to_out(item: ApiKey, reveal: bool = False) -> KeyOut:
         status=item.status,
         created_at=item.created_at,
         last_used_at=item.last_used_at,
+        today_tokens=today_tokens,
+        total_tokens=total_tokens,
     )
 
 

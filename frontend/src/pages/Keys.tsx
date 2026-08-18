@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
 import { Badge, Button, Card, Field, Input, Select } from '../components/ui'
-import { api, type CcSwitchTarget } from '../lib/api'
+import { api, type ApiKeySort, type CcSwitchTarget } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
 
@@ -20,7 +20,8 @@ function shareText(shareUrl: string, apiKey: string) {
 export function KeysPage() {
   const queryClient = useQueryClient()
   const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: api.accounts })
-  const { data: keys = [] } = useQuery({ queryKey: ['keys'], queryFn: api.keys })
+  const [sort, setSort] = useState<ApiKeySort>('last_used')
+  const { data: keys = [] } = useQuery({ queryKey: ['keys', sort], queryFn: () => api.keys(sort) })
   const [name, setName] = useState('')
   const [accountId, setAccountId] = useState<number | ''>('')
   const [revealed, setRevealed] = useState<Record<number, string>>({})
@@ -129,7 +130,18 @@ export function KeysPage() {
           <h1 className="text-2xl font-semibold">API Key</h1>
           <p className="mt-1 text-sm text-mist">创建时必须绑死一个上游账号。后台随时可以再看完整 sk-…</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label="排序">
+            <Select
+              className="w-44"
+              value={sort}
+              onChange={(event) => setSort(event.target.value as ApiKeySort)}
+            >
+              <option value="created_at">按创建时间</option>
+              <option value="tokens">按 Token 消耗</option>
+              <option value="last_used">按最近使用</option>
+            </Select>
+          </Field>
           <Button
             type="button"
             variant="line"
@@ -182,7 +194,24 @@ export function KeysPage() {
                 </div>
                 <Badge tone={item.status === 'active' ? 'ok' : 'mist'}>{item.status}</Badge>
               </div>
-              <div className="text-sm text-mist">最近使用：{formatTime(item.last_used_at)}</div>
+              <div className="grid gap-3 sm:grid-cols-4">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">今日 Token</div>
+                  <div className="mt-1 font-mono text-lg text-signal">{item.today_tokens}</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">总 Token</div>
+                  <div className="mt-1 font-mono text-lg text-signal">{item.total_tokens}</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">最近使用</div>
+                  <div className="mt-1 text-sm text-paper">{formatTime(item.last_used_at)}</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">创建时间</div>
+                  <div className="mt-1 text-sm text-paper">{formatTime(item.created_at)}</div>
+                </div>
+              </div>
               {full ? (
                 <div className="flex flex-wrap items-center gap-2 rounded-md bg-ink p-3 font-mono text-xs break-all">
                   {full}
