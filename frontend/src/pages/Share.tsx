@@ -127,6 +127,8 @@ export function SharePage() {
               onChange={(event) => setRawKey(event.target.value)}
               placeholder="sk-…"
               autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
               spellCheck={false}
             />
           </Field>

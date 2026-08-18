@@ -9,7 +9,7 @@ export function Button({
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition disabled:opacity-40',
+        'inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition disabled:opacity-40 md:min-h-9',
         variant === 'primary' && 'bg-signal text-ink hover:brightness-110',
         variant === 'ghost' && 'bg-transparent text-paper hover:bg-white/5',
         variant === 'danger' && 'bg-danger/15 text-danger hover:bg-danger/25',
@@ -25,7 +25,7 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return (
     <input
       className={cn(
-        'w-full rounded-md border border-line bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-mist/70 focus:border-signal/70',
+        'w-full rounded-md border border-line bg-ink px-3 py-2 text-base text-paper outline-none placeholder:text-mist/70 focus:border-signal/70 md:text-sm',
         className,
       )}
       {...props}
@@ -58,7 +58,7 @@ export function Select({ className, children, ...props }: SelectHTMLAttributes<H
   return (
     <select
       className={cn(
-        'w-full rounded-md border border-line bg-ink px-3 py-2 text-sm text-paper outline-none focus:border-signal/70',
+        'w-full rounded-md border border-line bg-ink px-3 py-2 text-base text-paper outline-none focus:border-signal/70 md:text-sm',
         className,
       )}
       {...props}
@@ -88,10 +88,14 @@ export function Dialog({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
-      <div className="w-full max-w-lg rounded-xl border border-line bg-panel p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+      <div className="max-h-[min(90dvh,100dvh)] w-full max-w-lg overflow-y-auto rounded-xl border border-line bg-panel p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">{title}</h2>
-          <button type="button" className="text-mist hover:text-paper" onClick={onClose}>
+          <button
+            type="button"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center text-mist hover:text-paper"
+            onClick={onClose}
+          >
             关闭
           </button>
         </div>

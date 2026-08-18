@@ -37,11 +37,19 @@ export function LoginPage() {
             <Input
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              autoComplete="off"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </Field>
           <Field label="密码">
-            <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            <Input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+            />
           </Field>
           {error ? <div className="text-sm text-danger">{error}</div> : null}
           <Button type="submit" className="w-full" disabled={loading}>

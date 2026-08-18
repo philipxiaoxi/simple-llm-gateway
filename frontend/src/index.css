@@ -16,10 +16,22 @@
   --color-info: #6ec8ff;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  touch-action: manipulation;
+}
+
 html,
 body,
 #root {
   min-height: 100%;
+  min-height: 100dvh;
+}
+
+html,
+body {
+  overscroll-behavior: none;
 }
 
 body {
@@ -29,7 +41,15 @@ body {
     radial-gradient(900px 400px at 100% 0%, rgba(110, 200, 255, 0.05), transparent 45%),
     #0b0d11;
   color: #e8edf5;
+  color-scheme: dark;
   font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  padding:
+    env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
 }
 
 * {

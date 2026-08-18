@@ -113,7 +113,12 @@ export function Layout() {
     <div className="min-h-svh lg:h-svh lg:overflow-hidden lg:grid lg:grid-cols-[240px_1fr]">
       <header className="flex items-center justify-between border-b border-line px-4 py-3 lg:hidden">
         <div className="font-mono text-sm tracking-[0.2em] text-signal">中转台</div>
-        <button onClick={() => setOpen((value) => !value)} className="text-paper">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="inline-flex min-h-11 min-w-11 items-center justify-center text-paper"
+          aria-label={open ? '关闭菜单' : '打开菜单'}
+        >
           {open ? <X size={20} /> : <Menu size={20} />}
         </button>
       </header>
@@ -136,7 +141,7 @@ export function Layout() {
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2 rounded-md px-3 py-2 text-sm',
+                  'flex items-center gap-2 rounded-md px-3 py-3 text-sm lg:py-2',
                   isActive ? 'bg-signal/15 text-signal' : 'text-mist hover:bg-white/5 hover:text-paper',
                 )
               }
