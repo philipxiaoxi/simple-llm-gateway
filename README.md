@@ -47,6 +47,7 @@ cp .env.example .env
 | `DATABASE_PATH` | SQLite 路径，默认 `data/gateway.db` |
 | `APP_BASE_URL` | 管理端根地址；自定义 OAuth 应用回调成功后会回到这里 |
 | `REQUEST_TIMEOUT_SECONDS` | 默认 120 |
+| `QUOTA_REFRESH_INTERVAL_SECONDS` | 上游额度自动刷新间隔，默认 3600（1 小时） |
 | `XAI_OAUTH_CLIENT_ID` | Grok OAuth 客户端，可覆盖默认值 |
 
 

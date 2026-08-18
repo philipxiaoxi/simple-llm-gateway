@@ -24,6 +24,7 @@ from app.routers import (
 )
 from app.seed import seed_admin
 from app.services.grok_oauth import cleanup_expired_oauth_states, run_oauth_refresh_loop
+from app.services.quota import run_quota_refresh_loop
 
 
 @asynccontextmanager
@@ -37,13 +38,18 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         session.commit()
     finally:
         session.close()
-    refresh_task = asyncio.create_task(run_oauth_refresh_loop())
+    background_tasks = [
+        asyncio.create_task(run_oauth_refresh_loop()),
+        asyncio.create_task(run_quota_refresh_loop()),
+    ]
     try:
         yield
     finally:
-        refresh_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await refresh_task
+        for task in background_tasks:
+            task.cancel()
+        for task in background_tasks:
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 app = FastAPI(

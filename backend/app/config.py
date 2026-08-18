@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     database_path: str = "data/gateway.db"
     app_base_url: str = "http://127.0.0.1:8000"
     request_timeout_seconds: int = 120
+    quota_refresh_interval_seconds: int = 3600
     jwt_expire_days: int = 7
     frontend_dist: str = ""
     xai_oauth_client_id: str = "b1a00492-073a-47ea-816f-4c329264a828"
