@@ -27,7 +27,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-svh items-center justify-center px-4">
+    <div className="page-enter flex min-h-svh items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <div className="font-mono text-xs tracking-[0.28em] text-signal">SIGNAL DESK</div>
         <h1 className="mt-2 text-2xl font-semibold">登录中转台</h1>

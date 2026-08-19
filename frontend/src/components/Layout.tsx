@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Activity, KeyRound, Menu, MessageSquareText, RadioTower, X } from 'lucide-react'
 import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { MIN_PASSWORD_LENGTH, cn, errorMessage } from '../lib/utils'
@@ -102,6 +102,7 @@ export function Layout() {
   const [profile, setProfile] = useState(false)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const location = useLocation()
 
   function logout() {
     clearToken()
@@ -112,22 +113,46 @@ export function Layout() {
   return (
     <div className="min-h-svh lg:h-svh lg:overflow-hidden lg:grid lg:grid-cols-[240px_1fr]">
       <header className="flex items-center justify-between border-b border-line px-4 py-3 lg:hidden">
-        <div className="font-mono text-sm tracking-[0.2em] text-signal">中转台</div>
         <button
           type="button"
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => setOpen(true)}
           className="inline-flex min-h-11 min-w-11 items-center justify-center text-paper"
-          aria-label={open ? '关闭菜单' : '打开菜单'}
+          aria-label="打开菜单"
         >
-          {open ? <X size={20} /> : <Menu size={20} />}
+          <Menu size={20} />
         </button>
+        <div className="font-mono text-sm tracking-[0.2em] text-signal">中转台</div>
+        <div className="min-w-11" aria-hidden="true" />
       </header>
+
+      {/* 移动端：侧拉抽屉遮罩 */}
+      <div
+        className={cn(
+          'fixed inset-0 z-40 bg-black/60 transition-opacity duration-300 lg:hidden',
+          open ? 'opacity-100' : 'pointer-events-none opacity-0',
+        )}
+        onClick={() => setOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* 移动端：侧拉抽屉；桌面端：固定侧边栏 */}
       <aside
         className={cn(
-          'border-line bg-panel/80 lg:flex lg:h-svh lg:flex-col lg:border-r lg:overflow-hidden',
-          open ? 'block' : 'hidden lg:flex',
+          'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[80vw] flex-col border-r border-line bg-panel transition-transform duration-300 ease-out lg:static lg:z-auto lg:h-svh lg:w-auto lg:max-w-none lg:translate-x-0 lg:overflow-hidden lg:border-r lg:bg-panel/80',
+          open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
+        <div className="flex items-center justify-between border-b border-line px-5 py-4 lg:hidden">
+          <div className="font-mono text-xs tracking-[0.28em] text-signal">SIGNAL DESK</div>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center text-mist hover:text-paper"
+            aria-label="关闭菜单"
+          >
+            <X size={20} />
+          </button>
+        </div>
         <div className="hidden border-b border-line px-5 py-6 lg:block">
           <div className="font-mono text-xs tracking-[0.28em] text-signal">SIGNAL DESK</div>
           <div className="mt-1 text-lg font-semibold">中转台</div>
@@ -162,7 +187,9 @@ export function Layout() {
       </aside>
       {profile ? <ProfileDialog onClose={() => setProfile(false)} /> : null}
       <main className="px-4 py-6 lg:h-svh lg:overflow-y-auto lg:px-8">
-        <Outlet />
+        <div key={location.pathname} className="page-enter">
+          <Outlet />
+        </div>
       </main>
     </div>
   )

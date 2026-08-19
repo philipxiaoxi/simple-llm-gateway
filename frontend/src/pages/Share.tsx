@@ -110,7 +110,7 @@ export function SharePage() {
   const usable = lookup && lookup.status === 'active' && lookup.account_status === 'active'
 
   return (
-    <div className="min-h-svh px-4 py-10">
+    <div className="page-enter min-h-svh px-4 py-10">
       <div className="mx-auto w-full max-w-3xl space-y-5">
         <div>
           <div className="font-mono text-xs tracking-[0.28em] text-signal">SIGNAL DESK</div>

@@ -291,6 +291,43 @@ function QuotaItems({ items }: { items: QuotaItem[] }) {
   )
 }
 
+// 默认展示两行模型（约 8 个），超出部分折叠，点击展开/收起。
+const MODELS_COLLAPSED_COUNT = 8
+
+function ModelList({
+  models,
+  expanded,
+  onToggle,
+}: {
+  models: string[]
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const visible = expanded ? models : models.slice(0, MODELS_COLLAPSED_COUNT)
+  const hasMore = models.length > MODELS_COLLAPSED_COUNT
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2">
+        {visible.map((modelName) => (
+          <Badge key={modelName} tone="info">
+            {modelName}
+          </Badge>
+        ))}
+      </div>
+      {hasMore ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          className="mt-2 text-xs text-mist underline-offset-2 hover:text-paper hover:underline"
+        >
+          {expanded ? '收起' : `展开全部 ${models.length} 个`}
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export function AccountsPage() {
   const queryClient = useQueryClient()
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: api.providers })
@@ -301,6 +338,7 @@ export function AccountsPage() {
   const [oauthPaste, setOauthPaste] = useState('')
   const [oauthDialog, setOauthDialog] = useState(false)
   const [oauthAccountId, setOauthAccountId] = useState<number | null>(null)
+  const [expandedModels, setExpandedModels] = useState<Set<number>>(new Set())
   const [searchParams, setSearchParams] = useSearchParams()
 
   useEffect(() => {
@@ -491,13 +529,18 @@ export function AccountsPage() {
                 模型{account.models_updated_at ? ` · ${formatTime(account.models_updated_at)}` : ''}
               </div>
               {account.models?.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {account.models.map((modelName) => (
-                    <Badge key={modelName} tone="info">
-                      {modelName}
-                    </Badge>
-                  ))}
-                </div>
+                <ModelList
+                  models={account.models}
+                  expanded={expandedModels.has(account.id)}
+                  onToggle={() =>
+                    setExpandedModels((current) => {
+                      const next = new Set(current)
+                      if (next.has(account.id)) next.delete(account.id)
+                      else next.add(account.id)
+                      return next
+                    })
+                  }
+                />
               ) : (
                 <div className="text-sm text-mist">还没有模型，点「获取模型」从上游拉取并入库。</div>
               )}
