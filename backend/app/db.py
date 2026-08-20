@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Generator
+import asyncio
+from collections.abc import Callable, Generator
+from typing import Any, TypeVar
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
@@ -11,6 +13,31 @@ from app.models import Base
 
 _engine: Engine | None = None
 _SessionLocal: sessionmaker[Session] | None = None
+
+# SQLite 写操作是串行的，高并发下多个请求同时写 request_logs 等表会产生锁竞争。
+# 用一个全局 asyncio.Lock 串行化所有数据库写操作，并把它们放到线程池执行，
+# 避免同步 DB 写阻塞事件循环（否则高并发下整个后端会无响应）。
+_db_write_lock = asyncio.Lock()
+
+_T = TypeVar("_T")
+
+
+async def run_db_write(func: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
+    """在全局锁保护下，把同步数据库写操作放到线程池执行。
+
+    这样既避免同步 DB 写阻塞事件循环，又通过串行化避免 SQLite 写锁竞争。
+    每个请求使用独立 Session，因此同一 Session 不会被并发访问。
+    """
+    async with _db_write_lock:
+        return await asyncio.to_thread(func, *args, **kwargs)
+
+
+async def run_db_read(func: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
+    """把同步数据库读操作放到线程池执行，避免阻塞事件循环。
+
+    读操作在 WAL 模式下可并发，无需全局锁。
+    """
+    return await asyncio.to_thread(func, *args, **kwargs)
 
 
 def get_engine() -> Engine:
@@ -26,7 +53,9 @@ def get_engine() -> Engine:
         def _set_sqlite_pragma(database_api_connection, _connection_record) -> None:  # type: ignore[no-untyped-def]
             cursor = database_api_connection.cursor()
             cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA busy_timeout=5000")
+            # SQLite 写操作是串行的，高并发下写 request_logs 等表会产生锁竞争。
+            # 调大 busy_timeout，让写操作等待更久，避免过早抛 database is locked。
+            cursor.execute("PRAGMA busy_timeout=30000")
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
 
