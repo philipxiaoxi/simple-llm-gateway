@@ -65,6 +65,7 @@ class GrokProvider(OpenAICompatibleProvider):
     auth_type = "oauth"
     default_base_url = "https://api.x.ai/v1"
     default_models = ["grok-4", "grok-4.6", "grok-3", "grok-2"]
+    default_rpm_limit = 30  # SuperGrok 标准版约 30 RPM
 
     def missing_credential(self, account: UpstreamAccount) -> bool:
         return account.oauth_token is None and not account.api_key_encrypted

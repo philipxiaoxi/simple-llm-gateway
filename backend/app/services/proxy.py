@@ -326,10 +326,14 @@ async def handle_chat(
     body: dict[str, Any],
     protocol: str,
     request_headers: dict[str, str] | None = None,
+    release_slot: Any = None,
 ) -> JSONResponse | StreamingResponse:
     started = time.perf_counter()
     stream = body.get("stream") is True
     model = str(body.get("model") or "")
+    # 对象可能来自独立的认证 Session，重新绑定到当前 db Session
+    api_key = db.merge(api_key)
+    account = db.merge(account)
     try:
         credential = await prepare_credential(account, db)
     except (CredentialError, ValueError) as error:
@@ -350,6 +354,8 @@ async def handle_chat(
             response_body=None,
             request_headers=request_headers,
         )
+        if release_slot is not None:
+            await release_slot()
         return protocol_error(protocol, status_code, str(error))
 
     provider = get_provider(account.provider)
@@ -362,6 +368,7 @@ async def handle_chat(
             credential,
             started,
             request_headers,
+            release_slot=release_slot,
         )
 
     if protocol == "anthropic_messages":
@@ -401,6 +408,7 @@ async def handle_chat(
             request_headers,
             inbound_reasoning,
             responses_input=sanitize_responses_input(body.get("input")),
+            release_slot=release_slot,
         )
 
     try:
@@ -411,6 +419,8 @@ async def handle_chat(
         else:
             result = await call_chat(account, messages, model, False, extra, credential)
     except Exception as error:
+        if release_slot is not None:
+            await release_slot()
         return _fail(db, api_key, account, body, protocol, model, stream, started, error, request_headers)
 
     if hasattr(result, "model_dump"):
@@ -451,6 +461,8 @@ async def handle_chat(
         reasoning_map=merge_reasoning_maps(inbound_reasoning, reasoning_map),
     )
     api_key.last_used_at = utcnow()
+    if release_slot is not None:
+        await release_slot()
     return JSONResponse(payload)
 
 
@@ -468,6 +480,7 @@ async def _stream_response(
     request_headers: dict[str, str] | None = None,
     inbound_reasoning: dict[str, str] | None = None,
     responses_input: Any = None,
+    release_slot: Any = None,
 ) -> StreamingResponse | JSONResponse:
     try:
         if protocol == "openai_responses":
@@ -560,6 +573,8 @@ async def _stream_response(
             else:
                 yield f"data: {json.dumps({'error': {'message': error_text}}, ensure_ascii=False)}\n\n".encode()
         finally:
+            if release_slot is not None:
+                await release_slot()
             _finalize_stream_log(
                 account_id=account_id,
                 api_key_id=api_key_id,
@@ -660,6 +675,7 @@ async def handle_anthropic_passthrough(
     credential: str,
     started: float,
     request_headers: dict[str, str] | None = None,
+    release_slot: Any = None,
 ) -> JSONResponse | StreamingResponse:
     stream = body.get("stream") is True
     model = str(body.get("model") or "")
@@ -673,12 +689,15 @@ async def handle_anthropic_passthrough(
             started,
             request_headers,
             inbound_reasoning,
+            release_slot=release_slot,
         )
     try:
         status_code, payload = await get_provider(account.provider).post_native(
             account, body, credential, request_headers
         )
     except Exception as error:
+        if release_slot is not None:
+            await release_slot()
         return _fail(db, api_key, account, body, "anthropic_messages", model, False, started, error, request_headers)
 
     usage = extract_usage(payload if isinstance(payload, dict) else {})
@@ -704,6 +723,8 @@ async def handle_anthropic_passthrough(
         ),
     )
     api_key.last_used_at = utcnow()
+    if release_slot is not None:
+        await release_slot()
     return JSONResponse(payload, status_code=status_code)
 
 
@@ -725,6 +746,7 @@ def _stream_anthropic_passthrough(
     started: float,
     request_headers: dict[str, str] | None,
     inbound_reasoning: dict[str, str],
+    release_slot: Any = None,
 ) -> StreamingResponse:
     provider = get_provider(account.provider)
     url, headers = provider.native_request(account, credential, request_headers)
@@ -773,6 +795,8 @@ def _stream_anthropic_passthrough(
                 {"type": "error", "error": {"type": "api_error", "message": error_text}},
             )
         finally:
+            if release_slot is not None:
+                await release_slot()
             _finalize_stream_log(
                 account_id=account_id,
                 api_key_id=api_key_id,

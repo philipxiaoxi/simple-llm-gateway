@@ -25,6 +25,7 @@ from app.routers import (
 from app.seed import seed_admin
 from app.services.grok_oauth import cleanup_expired_oauth_states, run_oauth_refresh_loop
 from app.services.quota import run_quota_refresh_loop
+from app.services.ratelimit import get_limiter
 
 
 @asynccontextmanager
@@ -36,6 +37,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         cleanup_expired_oauth_states(session)
         session.commit()
+        # 初始化所有账号的限流器容量
+        from sqlalchemy import select
+
+        from app.models import UpstreamAccount
+
+        for account in session.scalars(select(UpstreamAccount)).all():
+            get_limiter(account.id, account.rpm_limit)
     finally:
         session.close()
     background_tasks = [

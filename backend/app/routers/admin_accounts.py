@@ -17,6 +17,7 @@ from app.serializers import account_to_out
 from app.services.account_transfer import export_accounts, import_accounts
 from app.services.probe import list_account_models, probe_account
 from app.services.quota import refresh_quota
+from app.services.ratelimit import all_status, get_limiter, remove_limiter
 
 router = APIRouter(prefix="/api/admin", tags=["admin-accounts"], dependencies=[Depends(get_current_admin)])
 
@@ -61,6 +62,7 @@ def create_account(
         base_url=(payload.base_url or "").strip() or provider.default_base_url,
         api_key_encrypted=encrypted,
         status=payload.status,
+        rpm_limit=payload.rpm_limit if payload.rpm_limit is not None else provider.default_rpm_limit,
         updated_at=utcnow(),
     )
     db.add(account)
@@ -112,9 +114,12 @@ def update_account(
             account.base_url = stripped
     if payload.status is not None:
         account.status = payload.status
+    if payload.rpm_limit is not None:
+        account.rpm_limit = max(0, int(payload.rpm_limit))
     if payload.api_key:
         account.api_key_encrypted = encrypt_secret(payload.api_key, get_settings().app_secret_key)
     account.updated_at = utcnow()
+    get_limiter(account.id, account.rpm_limit)
     return account_to_out(account)
 
 
@@ -132,6 +137,7 @@ def delete_account(account_id: int, db: Session = Depends(get_db)) -> dict[str, 
         db.delete(account.oauth_token)
     db.execute(delete(OAuthState).where(OAuthState.account_id == account_id))
     db.delete(account)
+    remove_limiter(account_id)
     return {"ok": True}
 
 
@@ -151,6 +157,21 @@ async def quota(account_id: int, db: Session = Depends(get_db)) -> dict:
 async def models(account_id: int, db: Session = Depends(get_db)) -> dict:
     account = _get_account(db, account_id)
     return await list_account_models(account)
+
+
+@router.get("/ratelimit/status")
+def ratelimit_status(db: Session = Depends(get_db)) -> list[dict]:
+    """返回所有账号的 RPM 占用/等待/容量状态。"""
+    rows = db.scalars(select(UpstreamAccount)).all()
+    result: list[dict] = []
+    for account in rows:
+        limiter = get_limiter(account.id, account.rpm_limit)
+        status = limiter.status()
+        status["name"] = account.name
+        status["provider"] = account.provider
+        status["status"] = account.status
+        result.append(status)
+    return result
 
 
 def _get_account(db: Session, account_id: int) -> UpstreamAccount:

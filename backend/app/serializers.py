@@ -39,6 +39,7 @@ def account_to_out(account: UpstreamAccount, reveal: bool = False) -> AccountOut
         auth_type=account.auth_type,
         base_url=account.base_url,
         status=account.status,
+        rpm_limit=account.rpm_limit,
         has_credential=has_credential,
         api_key=api_key,
         last_probe_ok=account.last_probe_ok,

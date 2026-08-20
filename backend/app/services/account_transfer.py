@@ -44,6 +44,7 @@ def export_accounts(db: Session, password: str) -> dict[str, object]:
                 "provider": account.provider,
                 "base_url": account.base_url,
                 "status": account.status,
+                "rpm_limit": account.rpm_limit,
                 "api_key": api_key,
             }
         )
@@ -85,6 +86,11 @@ def import_accounts(db: Session, password: str, envelope: dict[str, object]) -> 
         status = str(entry.get("status") or "active")
         if status not in {"active", "disabled"}:
             status = "active"
+        rpm_limit = entry.get("rpm_limit")
+        try:
+            rpm_limit = max(0, int(rpm_limit)) if rpm_limit is not None else provider.default_rpm_limit
+        except (TypeError, ValueError):
+            rpm_limit = provider.default_rpm_limit
         account = UpstreamAccount(
             name=name,
             provider=provider.id,
@@ -92,6 +98,7 @@ def import_accounts(db: Session, password: str, envelope: dict[str, object]) -> 
             base_url=(str(entry.get("base_url") or "").strip() or provider.default_base_url),
             api_key_encrypted=encrypted,
             status=status,
+            rpm_limit=rpm_limit,
             updated_at=utcnow(),
         )
         db.add(account)
