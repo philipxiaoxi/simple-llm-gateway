@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
 import { cn } from '../lib/utils'
 
@@ -86,8 +87,18 @@ export function Dialog({
   children: ReactNode
   onClose: () => void
 }) {
+  // 弹窗打开时锁定背景滚动（main 是滚动容器），关闭时恢复
+  useEffect(() => {
+    const main = document.querySelector('main')
+    const previousOverflow = main ? main.style.overflow : ''
+    if (main) main.style.overflow = 'hidden'
+    return () => {
+      if (main) main.style.overflow = previousOverflow
+    }
+  }, [])
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="max-h-[min(90dvh,100dvh)] w-full max-w-lg overflow-y-auto rounded-xl border border-line bg-panel p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">{title}</h2>
