@@ -23,13 +23,13 @@ def _make_key(client: TestClient, auth_headers: dict[str, str], rpm_limit: int =
     ).json()["key"]
 
 
-def test_non_stream_cancel_releases_slot(client: TestClient, auth_headers: dict[str, str]) -> None:
-    """非流式请求在上游调用期间被取消，槽位必须释放（不能泄漏）。"""
+def test_non_stream_cancel_keeps_quota(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """非流式请求已发往上游后被取消，RPM 配额仍占用窗口（对齐上游计数）。"""
     key = _make_key(client, auth_headers, rpm_limit=1)
     account_id = client.get("/api/admin/accounts", headers=auth_headers).json()[0]["id"]
     limiter = get_limiter(account_id, 1)
 
-    # 先占满唯一槽位
+    # 先占满唯一配额
     asyncio.run(limiter.acquire())
     assert limiter.active == 1
 
@@ -72,13 +72,13 @@ def test_non_stream_cancel_releases_slot(client: TestClient, auth_headers: dict[
         mp.setattr(proxy_service, "call_chat", blocking_call)
         asyncio.run(scenario())
 
-    # 槽位必须已释放
-    assert limiter.active == 0, f"槽位泄漏：active={limiter.active}"
+    # 已发往上游：取消不归还配额
+    assert limiter.active == 1, f"已发出请求不应归还配额：active={limiter.active}"
     remove_limiter(account_id)
 
 
-def test_stream_cancel_releases_slot(client: TestClient, auth_headers: dict[str, str]) -> None:
-    """流式请求在流式传输期间被取消，槽位必须释放。"""
+def test_stream_cancel_keeps_quota(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """流式请求已开始传输后被取消，RPM 配额仍占用窗口。"""
     key = _make_key(client, auth_headers, rpm_limit=1)
     account_id = client.get("/api/admin/accounts", headers=auth_headers).json()[0]["id"]
     limiter = get_limiter(account_id, 1)
@@ -121,7 +121,7 @@ def test_stream_cancel_releases_slot(client: TestClient, auth_headers: dict[str,
             # 消费流式生成器，中途取消以模拟客户端断开
             gen = response.body_iterator
             await gen.__anext__()  # 开始流式传输
-            assert limiter.active == 1  # 流式期间槽位仍被占用
+            assert limiter.active == 1  # 流式期间配额仍被占用
             await gen.aclose()  # 模拟客户端断开：关闭生成器
         finally:
             session.close()
@@ -130,7 +130,7 @@ def test_stream_cancel_releases_slot(client: TestClient, auth_headers: dict[str,
         mp.setattr(proxy_service, "call_chat", blocking_stream)
         asyncio.run(scenario())
 
-    assert limiter.active == 0, f"槽位泄漏：active={limiter.active}"
+    assert limiter.active == 1, f"已发出请求不应归还配额：active={limiter.active}"
     remove_limiter(account_id)
 
 
@@ -181,8 +181,8 @@ def test_db_merge_error_releases_slot(client: TestClient, auth_headers: dict[str
     remove_limiter(account_id)
 
 
-def test_stream_call_chat_cancelled_releases_slot(client: TestClient, auth_headers: dict[str, str]) -> None:
-    """流式 call_chat 抛 CancelledError（客户端断开）时，槽位必须释放（修复：except BaseException）。"""
+def test_stream_call_chat_cancelled_keeps_quota(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """流式 call_chat 抛 CancelledError 时，请求已开始发往上游，配额不归还。"""
     _make_key(client, auth_headers, rpm_limit=1)
     account_id = client.get("/api/admin/accounts", headers=auth_headers).json()[0]["id"]
     limiter = get_limiter(account_id, 1)
@@ -208,7 +208,7 @@ def test_stream_call_chat_cancelled_releases_slot(client: TestClient, auth_heade
                 "stream": True,
                 "messages": [{"role": "user", "content": "hi"}],
             }
-            # CancelledError 应向上传播，且槽位必须已释放
+            # CancelledError 应向上传播；请求已开始发往上游，配额不归还
             with pytest.raises(asyncio.CancelledError):
                 await proxy_service.handle_chat(
                     session,
@@ -226,6 +226,5 @@ def test_stream_call_chat_cancelled_releases_slot(client: TestClient, auth_heade
         mp.setattr(proxy_service, "call_chat", cancelled_call)
         asyncio.run(scenario())
 
-    # 槽位必须已释放
-    assert limiter.active == 0, f"槽位泄漏：active={limiter.active}"
+    assert limiter.active == 1, f"已发出请求不应归还配额：active={limiter.active}"
     remove_limiter(account_id)

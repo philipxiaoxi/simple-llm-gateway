@@ -127,7 +127,7 @@ function AccountEditor({
             />
           </Field>
           <p className="mt-1 text-xs text-mist">
-            超过限制的请求会排队等待，最长等待 5 分钟。SuperGrok 建议 30，OpenCode Go 默认无限制。
+            按 60 秒滑动窗口限制每分钟请求次数，超过后排队等待（最长 5 分钟）。已发出的请求占用配额直到窗口过期。SuperGrok 建议 30，OpenCode Go 默认无限制。
           </p>
         </div>
         {error ? <div className="sm:col-span-2 text-sm text-danger">{error}</div> : null}
@@ -314,16 +314,25 @@ const MODELS_COLLAPSED_COUNT = 8
 const RPM_WARN_HIGH = 90
 const RPM_WARN_MEDIUM = 70
 
+function formatWait(ms: number): string {
+  if (ms <= 0) return ''
+  const s = Math.ceil(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  const rest = s % 60
+  return rest > 0 ? `${m}m${rest}s` : `${m}m`
+}
+
 function RpmStatus({
   capacity,
   active,
   waiting,
-  avgWaitMs,
+  nextSlotInMs,
 }: {
   capacity: number
   active: number
   waiting: number
-  avgWaitMs: number
+  nextSlotInMs: number
 }) {
   if (capacity <= 0) {
     return (
@@ -335,6 +344,7 @@ function RpmStatus({
   }
   const used = Math.min(Math.max((active / capacity) * 100, 0), 100)
   const tone = used >= RPM_WARN_HIGH ? 'bg-danger' : used >= RPM_WARN_MEDIUM ? 'bg-warn' : 'bg-signal'
+  const next = formatWait(nextSlotInMs)
   return (
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
@@ -342,7 +352,7 @@ function RpmStatus({
         <span className="font-mono text-xs text-mist">
           {active} / {capacity}
           {waiting > 0 ? ` · 等待 ${waiting}` : ''}
-          {avgWaitMs > 0 ? ` · 均等 ${Math.round(avgWaitMs)}ms` : ''}
+          {next ? ` · 距下次 ${next}` : ''}
         </span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-ink">
@@ -588,7 +598,7 @@ export function AccountsPage() {
                     capacity={account.rpm_limit}
                     active={status?.active ?? 0}
                     waiting={status?.waiting ?? 0}
-                    avgWaitMs={status?.avg_wait_ms ?? 0}
+                    nextSlotInMs={status?.next_slot_in_ms ?? 0}
                   />
                 )
               })()}

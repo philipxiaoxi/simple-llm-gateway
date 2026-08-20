@@ -29,7 +29,7 @@ def test_capacity_blocks_and_releases() -> None:
 
         async def second() -> None:
             await limiter.acquire(timeout=0.5)
-            assert limiter.active == 1  # capacity=1，同时最多 1 个执行
+            assert limiter.active == 1  # capacity=1，窗口内最多 1 个配额
             second_done.set()
 
         task = asyncio.create_task(second())
@@ -37,13 +37,32 @@ def test_capacity_blocks_and_releases() -> None:
         assert not second_done.is_set()  # 仍在等待
         assert limiter.waiting == 1
 
-        # 释放第一个，唤醒等待者
+        # 归还未使用的配额，唤醒等待者
         await limiter.release()
         await asyncio.wait_for(task, timeout=1)
         assert second_done.is_set()
         assert limiter.active == 1
 
     asyncio.run(scenario())
+
+
+def test_quota_held_until_window_expires() -> None:
+    """已占用的配额不因时间未到而释放；窗口过期后才腾出。"""
+    limiter = get_limiter(999005, capacity=1)
+    limiter.window_seconds = 0.2
+
+    async def scenario() -> None:
+        await limiter.acquire()
+        assert limiter.active == 1
+        with pytest.raises(RateLimitTimeout):
+            await limiter.acquire(timeout=0.05)
+        assert limiter.active == 1
+
+        await limiter.acquire(timeout=0.5)
+        assert limiter.active == 1
+
+    asyncio.run(scenario())
+    remove_limiter(999005)
 
 
 def test_timeout_raises() -> None:
