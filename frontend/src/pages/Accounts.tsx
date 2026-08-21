@@ -10,6 +10,12 @@ import { MIN_PASSWORD_LENGTH, cn, errorMessage, formatEmbeddedTimes, formatTime 
 const QUOTA_WARN_HIGH = 90
 const QUOTA_WARN_MEDIUM = 70
 
+const RISK_LEVELS: Record<string, { label: string; tone: 'ok' | 'warn' | 'bad'; hint: string }> = {
+  low: { label: '低风险', tone: 'ok', hint: '官方模型或数据泄露可能性较低' },
+  medium: { label: '中风险', tone: 'warn', hint: '非官方，可能是中转站或内部部署的模型' },
+  high: { label: '高风险', tone: 'bad', hint: '非官方的低价或廉价站点模型，可能存在信息收集' },
+}
+
 function AccountEditor({
   account,
   providers,
@@ -26,6 +32,7 @@ function AccountEditor({
   const [provider, setProvider] = useState(account?.provider ?? 'deepseek')
   const [baseUrl, setBaseUrl] = useState(account?.base_url ?? '')
   const [apiKey, setApiKey] = useState('')
+  const [riskLevel, setRiskLevel] = useState(account?.risk_level ?? 'low')
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
 
@@ -52,6 +59,7 @@ function AccountEditor({
           name: trimmedName,
           base_url: trimmedUrl || undefined,
           api_key: authType === 'api_key' && apiKey.trim() ? apiKey.trim() : undefined,
+          risk_level: riskLevel,
         })
         onSaved('账号已更新')
       } else {
@@ -60,6 +68,7 @@ function AccountEditor({
           provider,
           base_url: trimmedUrl || undefined,
           api_key: authType === 'api_key' ? apiKey : undefined,
+          risk_level: riskLevel,
         })
         onSaved('账号已创建')
       }
@@ -114,6 +123,16 @@ function AccountEditor({
             {editing ? 'OAuth 授权请在卡片上点「去授权」。' : '创建后点「去授权」完成 Grok OAuth。'}
           </div>
         )}
+        <div className="sm:col-span-2">
+          <Field label="风险等级">
+            <Select value={riskLevel} onChange={(event) => setRiskLevel(event.target.value)}>
+              <option value="low">低风险 · 官方模型或数据泄露可能性较低</option>
+              <option value="medium">中风险 · 非官方，可能是中转站或内部部署的模型</option>
+              <option value="high">高风险 · 非官方的低价或廉价站点模型，可能存在信息收集</option>
+            </Select>
+          </Field>
+          <div className="mt-1.5 text-xs text-mist">风险指上游账号来源，与本站无关。</div>
+        </div>
         {error ? <div className="sm:col-span-2 text-sm text-danger">{error}</div> : null}
         <div className="flex justify-end gap-2 sm:col-span-2">
           <Button type="button" variant="ghost" onClick={onClose}>
@@ -598,6 +617,12 @@ export function AccountsPage() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
+                <Badge
+                  tone={RISK_LEVELS[account.risk_level]?.tone ?? 'mist'}
+                  title={`上游账号风险：${RISK_LEVELS[account.risk_level]?.hint ?? ''}`}
+                >
+                  {RISK_LEVELS[account.risk_level]?.label ?? account.risk_level}
+                </Badge>
                 <Badge tone={account.status === 'active' ? 'ok' : 'mist'}>{account.status}</Badge>
                 <Badge tone={account.has_credential ? 'info' : 'warn'}>
                   {account.has_credential ? '已配置凭证' : '缺凭证'}

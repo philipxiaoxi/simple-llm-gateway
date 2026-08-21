@@ -61,6 +61,7 @@ def create_account(
         base_url=(payload.base_url or "").strip() or provider.default_base_url,
         api_key_encrypted=encrypted,
         status=payload.status,
+        risk_level=payload.risk_level,
         updated_at=utcnow(),
     )
     db.add(account)
@@ -112,6 +113,8 @@ def update_account(
             account.base_url = stripped
     if payload.status is not None:
         account.status = payload.status
+    if payload.risk_level is not None:
+        account.risk_level = payload.risk_level
     if payload.api_key:
         account.api_key_encrypted = encrypt_secret(payload.api_key, get_settings().app_secret_key)
     account.updated_at = utcnow()

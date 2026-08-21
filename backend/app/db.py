@@ -74,6 +74,7 @@ def _ensure_columns(engine: Engine) -> None:
     account_statements = {
         "models_json": "ALTER TABLE upstream_accounts ADD COLUMN models_json TEXT",
         "models_updated_at": "ALTER TABLE upstream_accounts ADD COLUMN models_updated_at DATETIME",
+        "risk_level": "ALTER TABLE upstream_accounts ADD COLUMN risk_level VARCHAR(16) DEFAULT 'low' NOT NULL",
     }
     with engine.begin() as connection:
         account_columns = {

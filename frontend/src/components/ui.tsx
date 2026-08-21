@@ -42,9 +42,11 @@ export function Card({ children, className }: { children: ReactNode; className?:
 export function Badge({
   children,
   tone = 'mist',
+  title,
 }: {
   children: ReactNode
   tone?: 'ok' | 'bad' | 'warn' | 'mist' | 'info'
+  title?: string
 }) {
   const map = {
     ok: 'bg-signal/15 text-signal',
@@ -53,7 +55,11 @@ export function Badge({
     mist: 'bg-white/5 text-mist',
     info: 'bg-info/15 text-info',
   }
-  return <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', map[tone])}>{children}</span>
+  return (
+    <span title={title} className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', map[tone])}>
+      {children}
+    </span>
+  )
 }
 
 export function Select({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {

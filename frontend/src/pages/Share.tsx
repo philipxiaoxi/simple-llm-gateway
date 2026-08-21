@@ -3,7 +3,21 @@ import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialo
 import { Badge, Button, Card, Field, Input } from '../components/ui'
 import { api, type CcSwitchTarget, type ShareLookup } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { MIN_KEY_LENGTH, errorMessage } from '../lib/utils'
+import { MIN_KEY_LENGTH, cn, errorMessage } from '../lib/utils'
+
+const RISK_META: Record<string, { label: string; hint: string; className: string }> = {
+  low: { label: '低风险', hint: '官方模型或数据泄露可能性较低', className: 'border-signal/30 bg-signal/10 text-signal' },
+  medium: {
+    label: '中风险',
+    hint: '非官方，可能是中转站或内部部署的模型',
+    className: 'border-warn/30 bg-warn/10 text-warn',
+  },
+  high: {
+    label: '高风险',
+    hint: '非官方的低价或廉价站点模型，可能存在信息收集',
+    className: 'border-danger/30 bg-danger/10 text-danger',
+  },
+}
 
 function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false)
@@ -162,6 +176,16 @@ export function SharePage() {
 
         {lookup ? (
           <Card className="space-y-3">
+            <div
+              className={cn(
+                'rounded-md border px-3 py-2 text-sm',
+                RISK_META[lookup.risk_level]?.className ?? 'border-line bg-ink/40 text-mist',
+              )}
+            >
+              <span className="font-semibold">上游账号 · {RISK_META[lookup.risk_level]?.label ?? lookup.risk_level}</span>
+              <span className="ml-2 opacity-80">{RISK_META[lookup.risk_level]?.hint ?? ''}</span>
+              <div className="mt-1 text-xs opacity-70">风险指上游账号来源，与本站无关。</div>
+            </div>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <div className="text-lg font-medium">{lookup.name}</div>

@@ -75,6 +75,7 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
         "account_name": account.name if account else "",
         "provider": provider,
         "provider_label": registered.label if registered else provider,
+        "risk_level": account.risk_level if account else "low",
         "status": item.status,
         "account_status": account.status if account else "",
         "today_tokens": today_tokens,

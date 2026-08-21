@@ -28,6 +28,7 @@ class AccountCreate(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     status: str = "active"
+    risk_level: str = "low"
 
 
 class AccountExportRequest(BaseModel):
@@ -44,6 +45,7 @@ class AccountUpdate(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     status: str | None = None
+    risk_level: str | None = None
 
 
 class OauthCallbackComplete(BaseModel):
@@ -60,6 +62,7 @@ class AccountOut(BaseModel):
     auth_type: str
     base_url: str
     status: str
+    risk_level: str
     has_credential: bool
     api_key: str | None = None
     last_probe_ok: bool | None

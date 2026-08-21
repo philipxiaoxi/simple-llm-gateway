@@ -74,6 +74,7 @@ export type Account = {
   auth_type: string
   base_url: string
   status: string
+  risk_level: string
   has_credential: boolean
   api_key?: string | null
   last_probe_ok: boolean | null
@@ -100,6 +101,7 @@ export type ShareLookup = {
   account_name: string
   provider: string
   provider_label: string
+  risk_level: string
   status: string
   account_status: string
   today_tokens: number
