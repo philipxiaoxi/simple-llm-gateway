@@ -127,6 +127,12 @@ def update_key(key_id: int, payload: KeyUpdate, db: Session = Depends(get_db)) -
         item.name = payload.name
     if payload.status is not None:
         item.status = payload.status
+    if payload.account_id is not None:
+        account = db.get(UpstreamAccount, payload.account_id)
+        if account is None:
+            raise HTTPException(status_code=400, detail="上游账号不存在")
+        item.account_id = account.id
+        item.account = account
     return _key_out(db, item)
 
 

@@ -73,6 +73,7 @@ def key_to_out(
         account_id=item.account_id,
         account_name=item.account.name if item.account else "",
         provider=item.account.provider if item.account else "",
+        risk_level=item.account.risk_level if item.account else "low",
         status=item.status,
         created_at=item.created_at,
         last_used_at=item.last_used_at,

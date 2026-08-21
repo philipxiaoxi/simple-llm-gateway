@@ -5,16 +5,10 @@ import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type Account, type Provider, type QuotaItem } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { MIN_PASSWORD_LENGTH, cn, errorMessage, formatEmbeddedTimes, formatTime } from '../lib/utils'
+import { MIN_PASSWORD_LENGTH, RISK_LEVELS, cn, errorMessage, formatEmbeddedTimes, formatTime } from '../lib/utils'
 
 const QUOTA_WARN_HIGH = 90
 const QUOTA_WARN_MEDIUM = 70
-
-const RISK_LEVELS: Record<string, { label: string; tone: 'ok' | 'warn' | 'bad'; hint: string }> = {
-  low: { label: '低风险', tone: 'ok', hint: '官方模型或数据泄露可能性较低' },
-  medium: { label: '中风险', tone: 'warn', hint: '非官方，可能是中转站或内部部署的模型' },
-  high: { label: '高风险', tone: 'bad', hint: '非官方的低价或廉价站点模型，可能存在信息收集' },
-}
 
 function AccountEditor({
   account,

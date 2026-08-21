@@ -126,6 +126,7 @@ export type ApiKeyItem = {
   account_id: number
   account_name: string
   provider: string
+  risk_level: string
   status: string
   created_at: string
   last_used_at: string | null

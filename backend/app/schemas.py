@@ -101,6 +101,7 @@ class KeyCreate(BaseModel):
 class KeyUpdate(BaseModel):
     name: str | None = None
     status: str | None = None
+    account_id: int | None = None
 
 
 class KeyOut(BaseModel):
@@ -111,6 +112,7 @@ class KeyOut(BaseModel):
     account_id: int
     account_name: str
     provider: str
+    risk_level: str
     status: str
     created_at: datetime
     last_used_at: datetime | None
