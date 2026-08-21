@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { FileJson, Upload } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type Account, type Provider, type QuotaItem } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { MIN_PASSWORD_LENGTH, errorMessage, formatEmbeddedTimes, formatTime } from '../lib/utils'
+import { MIN_PASSWORD_LENGTH, cn, errorMessage, formatEmbeddedTimes, formatTime } from '../lib/utils'
 
 const QUOTA_WARN_HIGH = 90
 const QUOTA_WARN_MEDIUM = 70
@@ -241,9 +242,33 @@ function ImportDialog({
       <div className="grid gap-3">
         <p className="text-sm text-mist">选择加密导出的 JSON，输入当时的密码。重名会新建为「原名（1）」。</p>
         <Field label="JSON 文件">
-          <input type="file" accept="application/json,.json" onChange={(event) => void onFile(event)} />
+          <label
+            className={cn(
+              'flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border border-dashed border-line bg-ink px-3 py-6 text-center transition hover:border-signal/60 hover:bg-white/[0.02]',
+              fileName && 'border-signal/40',
+            )}
+          >
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="sr-only"
+              onChange={(event) => void onFile(event)}
+            />
+            {fileName ? (
+              <>
+                <FileJson className="h-5 w-5 text-signal" />
+                <span className="max-w-full truncate font-mono text-xs text-paper">{fileName}</span>
+                <span className="text-xs text-mist">点击可重新选择</span>
+              </>
+            ) : (
+              <>
+                <Upload className="h-5 w-5 text-mist" />
+                <span className="text-sm text-paper">点击选择 JSON 文件</span>
+                <span className="text-xs text-mist">支持 .json 格式</span>
+              </>
+            )}
+          </label>
         </Field>
-        {fileName ? <div className="font-mono text-xs text-mist">{fileName}</div> : null}
         <Field label="密码">
           <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
         </Field>
@@ -287,6 +312,60 @@ function QuotaItems({ items }: { items: QuotaItem[] }) {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// 卡片默认折叠高度：内容超出时截断，点击「展开全部」查看完整内容。
+const CARD_COLLAPSED_HEIGHT = 300
+
+function CollapsibleSection({ children }: { children: ReactNode }) {
+  const [expanded, setExpanded] = useState(false)
+  const [overflowing, setOverflowing] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const container = containerRef.current
+    const content = contentRef.current
+    if (!container || !content) return
+    const update = () => {
+      // 只在折叠状态下判断是否溢出；展开时保持上次结果，避免按钮消失
+      if (!expanded) {
+        setOverflowing(content.scrollHeight > container.clientHeight + 1)
+      }
+    }
+    const observer = new ResizeObserver(update)
+    observer.observe(content)
+    update()
+    return () => observer.disconnect()
+  }, [expanded])
+
+  return (
+    <div className="relative">
+      <div
+        ref={containerRef}
+        className={cn('overflow-hidden', !expanded && 'max-h-[300px]')}
+        style={!expanded ? { maxHeight: CARD_COLLAPSED_HEIGHT } : undefined}
+      >
+        <div ref={contentRef} className="space-y-3">
+          {children}
+        </div>
+      </div>
+      {overflowing ? (
+        <div className="relative mt-3 flex justify-center">
+          {!expanded ? (
+            <div className="pointer-events-none absolute inset-x-0 -top-14 h-14 bg-gradient-to-t from-panel to-transparent" />
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setExpanded((current) => !current)}
+            className="rounded-full bg-white/10 px-4 py-1.5 text-xs font-medium text-paper transition hover:bg-white/15"
+          >
+            {expanded ? '收起' : '展开全部'}
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -465,9 +544,9 @@ export function AccountsPage() {
           <Button onClick={() => setEditor('new')}>新建账号</Button>
         </div>
       </div>
-      <div className="grid gap-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {accounts.map((account) => (
-          <Card key={account.id} className="space-y-3">
+          <Card key={account.id} className="flex flex-col space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="text-lg font-medium">{account.name}</div>
@@ -484,67 +563,69 @@ export function AccountsPage() {
                 {account.last_probe_ok === false ? <Badge tone="bad">探测失败</Badge> : null}
               </div>
             </div>
-            <div className="text-sm text-mist">
-              上次探测：{formatTime(account.last_probe_at)}
-              {account.last_probe_latency_ms != null ? ` · ${account.last_probe_latency_ms}ms` : ''}
-              {account.last_probe_message ? ` · ${account.last_probe_message}` : ''}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="line" disabled={busyId === account.id} onClick={() => runProbe(account.id)}>
-                探测
-              </Button>
-              <Button variant="line" disabled={busyId === account.id} onClick={() => runQuota(account.id)}>
-                刷新额度
-              </Button>
-              <Button type="button" variant="line" disabled={busyId === account.id} onClick={() => runModels(account.id)}>
-                获取模型
-              </Button>
-              {account.auth_type === 'oauth' ? (
-                <Button type="button" variant="line" disabled={busyId === account.id} onClick={() => startOauth(account.id)}>
-                  去授权
+            <CollapsibleSection>
+              <div className="text-sm text-mist">
+                上次探测：{formatTime(account.last_probe_at)}
+                {account.last_probe_latency_ms != null ? ` · ${account.last_probe_latency_ms}ms` : ''}
+                {account.last_probe_message ? ` · ${account.last_probe_message}` : ''}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="line" disabled={busyId === account.id} onClick={() => runProbe(account.id)}>
+                  探测
                 </Button>
-              ) : null}
-              <Button variant="line" onClick={() => setEditor(account)}>
-                编辑
-              </Button>
-              <Button variant="ghost" onClick={() => toggle(account)}>
-                {account.status === 'active' ? '停用' : '启用'}
-              </Button>
-              <Button variant="danger" disabled={busyId === account.id} onClick={() => void removeAccount(account)}>
-                删除
-              </Button>
-            </div>
-            <div>
-              <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
-                额度{account.quota_updated_at ? ` · ${formatTime(account.quota_updated_at)}` : ''}
+                <Button variant="line" disabled={busyId === account.id} onClick={() => runQuota(account.id)}>
+                  刷新额度
+                </Button>
+                <Button type="button" variant="line" disabled={busyId === account.id} onClick={() => runModels(account.id)}>
+                  获取模型
+                </Button>
+                {account.auth_type === 'oauth' ? (
+                  <Button type="button" variant="line" disabled={busyId === account.id} onClick={() => startOauth(account.id)}>
+                    去授权
+                  </Button>
+                ) : null}
+                <Button variant="line" onClick={() => setEditor(account)}>
+                  编辑
+                </Button>
+                <Button variant="ghost" onClick={() => toggle(account)}>
+                  {account.status === 'active' ? '停用' : '启用'}
+                </Button>
+                <Button variant="danger" disabled={busyId === account.id} onClick={() => void removeAccount(account)}>
+                  删除
+                </Button>
               </div>
-              {account.quota?.items?.length ? (
-                <QuotaItems items={account.quota.items} />
-              ) : (
-                <div className="text-sm text-mist">{account.quota?.message || '还没有额度，点「刷新额度」拉取。'}</div>
-              )}
-            </div>
-            <div>
-              <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
-                模型{account.models_updated_at ? ` · ${formatTime(account.models_updated_at)}` : ''}
+              <div>
+                <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
+                  额度{account.quota_updated_at ? ` · ${formatTime(account.quota_updated_at)}` : ''}
+                </div>
+                {account.quota?.items?.length ? (
+                  <QuotaItems items={account.quota.items} />
+                ) : (
+                  <div className="text-sm text-mist">{account.quota?.message || '还没有额度，点「刷新额度」拉取。'}</div>
+                )}
               </div>
-              {account.models?.length ? (
-                <ModelList
-                  models={account.models}
-                  expanded={expandedModels.has(account.id)}
-                  onToggle={() =>
-                    setExpandedModels((current) => {
-                      const next = new Set(current)
-                      if (next.has(account.id)) next.delete(account.id)
-                      else next.add(account.id)
-                      return next
-                    })
-                  }
-                />
-              ) : (
-                <div className="text-sm text-mist">还没有模型，点「获取模型」从上游拉取并入库。</div>
-              )}
-            </div>
+              <div>
+                <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
+                  模型{account.models_updated_at ? ` · ${formatTime(account.models_updated_at)}` : ''}
+                </div>
+                {account.models?.length ? (
+                  <ModelList
+                    models={account.models}
+                    expanded={expandedModels.has(account.id)}
+                    onToggle={() =>
+                      setExpandedModels((current) => {
+                        const next = new Set(current)
+                        if (next.has(account.id)) next.delete(account.id)
+                        else next.add(account.id)
+                        return next
+                      })
+                    }
+                  />
+                ) : (
+                  <div className="text-sm text-mist">还没有模型，点「获取模型」从上游拉取并入库。</div>
+                )}
+              </div>
+            </CollapsibleSection>
           </Card>
         ))}
       </div>
