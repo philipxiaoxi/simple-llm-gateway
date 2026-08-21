@@ -19,6 +19,43 @@ const RISK_META: Record<string, { label: string; hint: string; className: string
   },
 }
 
+function aiConfigText(lookup: ShareLookup, apiKey: string) {
+  const models =
+    lookup.models.length > 0
+      ? lookup.models.map((modelName) => `- ${modelName}`).join('\n')
+      : '- （暂无模型列表，请联系管理员先获取模型）'
+  return [
+    '请帮我把下面这个 LLM 中转配置接入到我正在使用的客户端。',
+    '',
+    '这是一个同时兼容 OpenAI 和 Anthropic 协议的中转网关。请根据我用的客户端选择对应协议，不要混用 Base URL。',
+    '',
+    `API Key：${apiKey}`,
+    `备注：${lookup.name}`,
+    `上游：${lookup.account_name || '未绑定'}（${lookup.provider_label}）`,
+    '',
+    '可用模型：',
+    models,
+    '',
+    '接入地址（三选一，按客户端协议填写）：',
+    '',
+    '1) Anthropic / Claude Code',
+    `   Base URL：${lookup.gateway.anthropic_base_url}`,
+    '   请求路径：POST /v1/messages',
+    '   注意：客户端会自己拼 /v1/messages，所以 Base URL 不要带 /v1。',
+    '',
+    '2) OpenAI 兼容 / Chat Completions（OpenCode、Cursor、ChatBox 等）',
+    `   Base URL：${lookup.gateway.openai_base_url}`,
+    '   请求路径：POST /v1/chat/completions',
+    '',
+    '3) OpenAI Responses / Codex CLI',
+    `   Base URL：${lookup.gateway.openai_base_url}`,
+    '   请求路径：POST /v1/responses',
+    '   额外：wire_api 填 responses',
+    '',
+    '请先确认我用的是哪个客户端，再给出逐步配置方法。配置时直接使用上面的 API Key 和模型名，不要改写。',
+  ].join('\n')
+}
+
 function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false)
   const timerRef = useRef<number | undefined>(undefined)
@@ -52,6 +89,10 @@ export function SharePage() {
     app: string
     label: string
   } | null>(null)
+  const [aiCopied, setAiCopied] = useState(false)
+  const aiCopiedTimerRef = useRef<number | undefined>(undefined)
+
+  useEffect(() => () => window.clearTimeout(aiCopiedTimerRef.current), [])
 
   useEffect(() => {
     const trimmed = rawKey.trim()
@@ -118,6 +159,19 @@ export function SharePage() {
       notifyOk('VSCode 配置已复制，粘贴到 chatLanguageModels.json 即可。')
     } catch (item) {
       notifyBad(errorMessage(item, '复制 VSCode 配置失败'))
+    }
+  }
+
+  async function copyAiConfig() {
+    if (!lookup) return
+    try {
+      await navigator.clipboard.writeText(aiConfigText(lookup, rawKey.trim()))
+      setAiCopied(true)
+      notifyOk('已复制 AI 配置说明，发给任意 AI 即可。')
+      window.clearTimeout(aiCopiedTimerRef.current)
+      aiCopiedTimerRef.current = window.setTimeout(() => setAiCopied(false), 1500)
+    } catch (item) {
+      notifyBad(errorMessage(item, '复制 AI 配置说明失败'))
     }
   }
 
@@ -310,6 +364,22 @@ export function SharePage() {
             </div>
             <div className="text-xs text-mist">
               模型名填上面列出的即可。API Key 就是你刚粘贴的那一串，不要再改。
+            </div>
+          </Card>
+        ) : null}
+
+        {lookup ? (
+          <Card className="space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-medium">AI 配置</h2>
+                <p className="mt-1 text-sm text-mist">
+                  复制这段说明发给任意 AI，让它按你的客户端帮你配好供应商。包含 API Key、Base URL 和可用模型。
+                </p>
+              </div>
+              <Button type="button" variant="line" onClick={() => void copyAiConfig()}>
+                {aiCopied ? '已复制' : '复制配置说明'}
+              </Button>
             </div>
           </Card>
         ) : null}
