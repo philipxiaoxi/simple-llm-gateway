@@ -79,7 +79,8 @@ body {
 }
 
 .page-enter {
-  animation: page-enter 0.28s ease-out both;
+  /* backwards：动画结束后不保留 transform，避免创建包含块导致 fixed 定位失效 */
+  animation: page-enter 0.28s ease-out backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {

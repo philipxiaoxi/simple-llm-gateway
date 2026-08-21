@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
 import { cn } from '../lib/utils'
 
@@ -87,19 +88,20 @@ export function Dialog({
   children: ReactNode
   onClose: () => void
 }) {
-  // 弹窗打开时锁定背景滚动（main 是滚动容器），关闭时恢复
+  // 弹窗打开时锁定背景滚动，关闭时恢复
   useEffect(() => {
-    const main = document.querySelector('main')
-    const previousOverflow = main ? main.style.overflow : ''
-    if (main) main.style.overflow = 'hidden'
+    const body = document.body
+    const previousOverflow = body.style.overflow
+    body.style.overflow = 'hidden'
     return () => {
-      if (main) main.style.overflow = previousOverflow
+      body.style.overflow = previousOverflow
     }
   }, [])
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="max-h-[min(90dvh,100dvh)] w-full max-w-lg overflow-y-auto rounded-xl border border-line bg-panel p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+  // 挂载到 body，避免被祖先的 transform/filter 等属性限制（fixed 定位失效）
+  return createPortal(
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60">
+      <div className="mx-auto my-[15vh] w-[calc(100%-2rem)] max-w-lg rounded-xl border border-line bg-panel p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button
@@ -112,6 +114,7 @@ export function Dialog({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
