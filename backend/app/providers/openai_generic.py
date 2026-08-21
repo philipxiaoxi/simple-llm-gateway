@@ -8,7 +8,7 @@ class OpenAIGenericProvider(OpenAICompatibleProvider):
     id = "openai_generic"
     label = "通用 OpenAI"
     auth_type = "api_key"
-    default_base_url = "https://api.openai.com"
+    default_base_url = "https://api.openai.com/v1"
     default_models: list[str] = []
 
     def initial_quota(self) -> QuotaView | None:

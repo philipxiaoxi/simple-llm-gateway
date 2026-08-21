@@ -27,7 +27,7 @@ class AnthropicGenericProvider(Provider):
     id = "anthropic_generic"
     label = "通用 Anthropic"
     auth_type = "api_key"
-    default_base_url = "https://api.anthropic.com"
+    default_base_url = "https://api.anthropic.com/v1"
     default_models: list[str] = []
     upstream_protocol = "anthropic"
 
@@ -51,26 +51,21 @@ class AnthropicGenericProvider(Provider):
             headers["anthropic-version"] = lowered["anthropic-version"]
         return headers
 
-    def _v1_root(self, base_url: str) -> str:
-        base = base_url.rstrip("/")
-        if base.endswith("/v1"):
-            return base
-        return f"{base}/v1"
-
     def _origin(self, base_url: str) -> str:
+        # litellm 的 anthropic 集成会自己拼 /v1/messages，这里去掉 base 里已带的 /v1
         base = base_url.rstrip("/")
         if base.endswith("/v1"):
             return base[: -len("/v1")].rstrip("/")
         return base
 
     def messages_url(self, account: UpstreamAccount) -> str:
-        return f"{self._v1_root(account.base_url)}/messages"
+        return f"{account.base_url.rstrip('/')}/messages"
 
     def count_tokens_url(self, account: UpstreamAccount) -> str:
-        return f"{self._v1_root(account.base_url)}/messages/count_tokens"
+        return f"{account.base_url.rstrip('/')}/messages/count_tokens"
 
     def model_candidate_urls(self, account: UpstreamAccount) -> list[str]:
-        return [f"{self._v1_root(account.base_url)}/models"]
+        return [f"{account.base_url.rstrip('/')}/models"]
 
     def native_request(
         self,

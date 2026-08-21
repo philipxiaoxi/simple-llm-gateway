@@ -67,14 +67,11 @@ class Provider:
     auth_type: str
     default_base_url: str
     default_models: list[str] = []
-    append_v1: bool = False
     upstream_protocol: str = "openai"
 
     def openai_api_base(self, base_url: str) -> str:
-        base = base_url.rstrip("/")
-        if self.append_v1 and not base.endswith("/v1"):
-            return f"{base}/v1"
-        return base
+        # 不主动补 /v1：有的上游 API 版本不是 v1（如 /v4），按用户填写的 base URL 原样使用
+        return base_url.rstrip("/")
 
     def missing_credential(self, account: UpstreamAccount) -> bool:
         return False
@@ -243,7 +240,7 @@ class Provider:
     async def load_quota(self, account: UpstreamAccount, token: str) -> QuotaView:
         base = self.openai_api_base(account.base_url)
         headers = {"Authorization": f"Bearer {token}"}
-        candidates = [f"{base}/usage", f"{account.base_url.rstrip('/')}/usage", f"{base}/billing"]
+        candidates = [f"{base}/usage", f"{base}/billing"]
         settings = get_settings()
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
             for url in candidates:
@@ -262,4 +259,4 @@ class Provider:
 
 
 class OpenAICompatibleProvider(Provider):
-    append_v1 = True
+    """OpenAI 兼容供应商标记基类。base URL 按用户填写原样使用，不自动补 /v1。"""

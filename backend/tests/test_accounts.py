@@ -10,9 +10,9 @@ def test_list_providers(client: TestClient, auth_headers: dict[str, str]) -> Non
     assert ids == {"opencode_go", "grok", "deepseek", "openai_generic", "anthropic_generic"}
     by_id = {item["id"]: item for item in response.json()}
     assert by_id["openai_generic"]["label"] == "通用 OpenAI"
-    assert by_id["openai_generic"]["base_url"] == "https://api.openai.com"
+    assert by_id["openai_generic"]["base_url"] == "https://api.openai.com/v1"
     assert by_id["anthropic_generic"]["label"] == "通用 Anthropic"
-    assert by_id["anthropic_generic"]["base_url"] == "https://api.anthropic.com"
+    assert by_id["anthropic_generic"]["base_url"] == "https://api.anthropic.com/v1"
 
 
 def test_create_account_encrypts_key(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -325,7 +325,7 @@ def test_quota_generic_providers_skip_network(client: TestClient, auth_headers: 
             json={"name": provider_id, "provider": provider_id, "api_key": "sk-up"},
         )
         assert created.status_code == 200
-        assert created.json()["base_url"] in {"https://api.openai.com", "https://api.anthropic.com"}
+        assert created.json()["base_url"] in {"https://api.openai.com/v1", "https://api.anthropic.com/v1"}
         assert created.json()["quota"]["ok"] is False
         assert created.json()["quota"]["message"] == "通用供应商不支持查询余额"
 

@@ -64,7 +64,7 @@ class OpenCodeGoProvider(OpenAICompatibleProvider):
     id = "opencode_go"
     label = "OpenCode Go"
     auth_type = "api_key"
-    default_base_url = "https://opencode.ai/zen/go"
+    default_base_url = "https://opencode.ai/zen/go/v1"
     default_models = ["glm-5.3", "glm-5.2", "kimi-k2.6", "kimi-k2.7-code", "minimax-m2.7"]
 
     async def load_quota(self, account: UpstreamAccount, token: str) -> QuotaView:
