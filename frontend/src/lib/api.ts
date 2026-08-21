@@ -176,7 +176,6 @@ export type RateLimitStatus = {
   waiting: number
   usage_percent: number
   avg_wait_ms: number
-  next_slot_in_ms: number
 }
 
 export const api = {

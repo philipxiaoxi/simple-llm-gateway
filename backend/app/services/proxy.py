@@ -364,67 +364,64 @@ async def handle_chat(
             await release_slot()
         raise
 
-    # 已发往上游的请求占用 RPM 窗口配额，完成时不归还；仅未发出时才 release。
-    dispatched = False
-    try:
-        provider = get_provider(account.provider)
-        if provider.can_passthrough(protocol):
-            dispatched = True
-            return await handle_anthropic_passthrough(
-                db,
-                api_key,
-                account,
-                body,
-                credential,
-                started,
-                request_headers,
-                release_slot=release_slot,
-            )
-
-        if protocol == "anthropic_messages":
-            messages = anthropic_to_openai_messages(body)
-            extra = anthropic_extra_to_openai(body)
-        elif protocol == "openai_responses":
-            messages = input_to_messages(body)
-            extra = responses_extra_passthrough(body)
-        else:
-            messages = [dict(item) if isinstance(item, dict) else item for item in (body.get("messages") or [])]
-            extra = _passthrough_keys(body)
-
-        extra.pop("stream", None)
-        extra.pop("thinking", None)
-        if stream and protocol != "openai_responses":
-            extra = ensure_stream_usage(extra)
-        session_key = extract_session_key(body, request_headers)
-        inbound_reasoning = reasoning_map_from_messages(messages)
-        # load_reasoning_map 是同步 DB 读操作，放到线程池执行，避免阻塞事件循环
-        stored_reasoning = merge_reasoning_maps(
-            await run_db_read(load_reasoning_map, db, api_key.id, session_key),
-            inbound_reasoning,
+    provider = get_provider(account.provider)
+    if provider.can_passthrough(protocol):
+        return await handle_anthropic_passthrough(
+            db,
+            api_key,
+            account,
+            body,
+            credential,
+            started,
+            request_headers,
+            release_slot=release_slot,
         )
-        inject_reasoning_into_messages(messages, stored_reasoning)
 
-        if stream:
-            dispatched = True
-            return await _stream_response(
-                db,
-                api_key,
-                account,
-                body,
-                protocol,
-                model,
-                messages,
-                extra,
-                credential,
-                started,
-                request_headers,
-                inbound_reasoning,
-                responses_input=sanitize_responses_input(body.get("input")),
-                release_slot=release_slot,
-            )
+    if protocol == "anthropic_messages":
+        messages = anthropic_to_openai_messages(body)
+        extra = anthropic_extra_to_openai(body)
+    elif protocol == "openai_responses":
+        messages = input_to_messages(body)
+        extra = responses_extra_passthrough(body)
+    else:
+        messages = [dict(item) if isinstance(item, dict) else item for item in (body.get("messages") or [])]
+        extra = _passthrough_keys(body)
 
+    extra.pop("stream", None)
+    extra.pop("thinking", None)
+    if stream and protocol != "openai_responses":
+        extra = ensure_stream_usage(extra)
+    session_key = extract_session_key(body, request_headers)
+    inbound_reasoning = reasoning_map_from_messages(messages)
+    # load_reasoning_map 是同步 DB 读操作，放到线程池执行，避免阻塞事件循环
+    stored_reasoning = merge_reasoning_maps(
+        await run_db_read(load_reasoning_map, db, api_key.id, session_key),
+        inbound_reasoning,
+    )
+    inject_reasoning_into_messages(messages, stored_reasoning)
+
+    if stream:
+        return await _stream_response(
+            db,
+            api_key,
+            account,
+            body,
+            protocol,
+            model,
+            messages,
+            extra,
+            credential,
+            started,
+            request_headers,
+            inbound_reasoning,
+            responses_input=sanitize_responses_input(body.get("input")),
+            release_slot=release_slot,
+        )
+
+    # 非流式：无论成功、失败还是被取消（客户端断开），都必须释放限流槽位，
+    # 否则 active 计数泄漏会永久降低该账号的 RPM 容量。
+    try:
         try:
-            dispatched = True
             if protocol == "openai_responses":
                 result = await call_responses(
                     account, sanitize_responses_input(body.get("input")), model, False, extra, credential
@@ -477,10 +474,9 @@ async def handle_chat(
 
         await run_db_write(_persist_success)
         return JSONResponse(payload)
-    except BaseException:
-        if not dispatched and release_slot is not None:
+    finally:
+        if release_slot is not None:
             await release_slot()
-        raise
 
 
 async def _stream_response(
@@ -505,7 +501,14 @@ async def _stream_response(
         else:
             result = await call_chat(account, messages, model, True, extra, credential)
     except Exception as error:
+        if release_slot is not None:
+            await release_slot()
         return await _fail(db, api_key, account, body, protocol, model, True, started, error, request_headers)
+    except BaseException:
+        # 客户端断开等取消场景：释放槽位后继续传播，避免槽位泄漏
+        if release_slot is not None:
+            await release_slot()
+        raise
 
     message_id = f"msg_{uuid.uuid4().hex}"
     account_id = account.id
@@ -590,6 +593,8 @@ async def _stream_response(
             else:
                 yield f"data: {json.dumps({'error': {'message': error_text}}, ensure_ascii=False)}\n\n".encode()
         finally:
+            if release_slot is not None:
+                await release_slot()
             await run_db_write(
                 _finalize_stream_log,
                 account_id=account_id,
@@ -708,43 +713,48 @@ async def handle_anthropic_passthrough(
             inbound_reasoning,
             release_slot=release_slot,
         )
+    # 非流式：无论成功、失败还是被取消（客户端断开），都必须释放限流槽位。
     try:
-        status_code, payload = await get_provider(account.provider).post_native(
-            account, body, credential, request_headers
-        )
-    except Exception as error:
-        return await _fail(
-            db, api_key, account, body, "anthropic_messages", model, False, started, error, request_headers
-        )
+        try:
+            status_code, payload = await get_provider(account.provider).post_native(
+                account, body, credential, request_headers
+            )
+        except Exception as error:
+            return await _fail(
+                db, api_key, account, body, "anthropic_messages", model, False, started, error, request_headers
+            )
 
-    usage = extract_usage(payload if isinstance(payload, dict) else {})
-    ok = status_code < 400
+        usage = extract_usage(payload if isinstance(payload, dict) else {})
+        ok = status_code < 400
 
-    def _persist_passthrough() -> None:
-        save_log(
-            db,
-            account_id=account.id,
-            api_key_id=api_key.id,
-            protocol="anthropic_messages",
-            model=model,
-            stream=False,
-            status="success" if ok else "error",
-            http_status=status_code,
-            error_message=None if ok else _anthropic_error_message(payload),
-            usage=usage,
-            latency_ms=elapsed_ms(started),
-            request_body=body,
-            response_body=payload,
-            request_headers=request_headers,
-            reasoning_map=merge_reasoning_maps(
-                inbound_reasoning,
-                reasoning_map_from_anthropic_content(payload.get("content") if isinstance(payload, dict) else None),
-            ),
-        )
-        api_key.last_used_at = utcnow()
+        def _persist_passthrough() -> None:
+            save_log(
+                db,
+                account_id=account.id,
+                api_key_id=api_key.id,
+                protocol="anthropic_messages",
+                model=model,
+                stream=False,
+                status="success" if ok else "error",
+                http_status=status_code,
+                error_message=None if ok else _anthropic_error_message(payload),
+                usage=usage,
+                latency_ms=elapsed_ms(started),
+                request_body=body,
+                response_body=payload,
+                request_headers=request_headers,
+                reasoning_map=merge_reasoning_maps(
+                    inbound_reasoning,
+                    reasoning_map_from_anthropic_content(payload.get("content") if isinstance(payload, dict) else None),
+                ),
+            )
+            api_key.last_used_at = utcnow()
 
-    await run_db_write(_persist_passthrough)
-    return JSONResponse(payload, status_code=status_code)
+        await run_db_write(_persist_passthrough)
+        return JSONResponse(payload, status_code=status_code)
+    finally:
+        if release_slot is not None:
+            await release_slot()
 
 
 def _anthropic_error_message(payload: Any) -> str:
@@ -814,6 +824,8 @@ def _stream_anthropic_passthrough(
                 {"type": "error", "error": {"type": "api_error", "message": error_text}},
             )
         finally:
+            if release_slot is not None:
+                await release_slot()
             await run_db_write(
                 _finalize_stream_log,
                 account_id=account_id,
