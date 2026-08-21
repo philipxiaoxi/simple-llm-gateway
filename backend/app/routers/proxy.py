@@ -24,12 +24,10 @@ async def _authenticate(
     x_api_key: str | None,
 ):
     raw = extract_raw_api_key(authorization, x_api_key)
-    # 用独立 Session 解析 API Key，用完立即关闭，避免限流等待期间占用连接池。
-    # resolve_api_key 是同步数据库操作，放到线程池执行，避免阻塞事件循环
-    # （高并发下同步 DB 操作会拖垮整个后端）。
+    # 用独立 Session 解析 API Key，用完立即关闭，避免限流等待期间占用连接池
     auth_session = get_session_factory()()
     try:
-        api_key = await asyncio.to_thread(resolve_api_key, auth_session, raw)
+        api_key = resolve_api_key(auth_session, raw)
         if api_key is None:
             return None, protocol_error(protocol, 401, "无效的 API Key")
         if api_key.status != "active":

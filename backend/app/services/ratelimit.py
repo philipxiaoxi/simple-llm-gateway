@@ -46,11 +46,7 @@ class RpmLimiter:
         self.capacity = max(0, int(capacity))
 
     async def acquire(self, timeout: float = DEFAULT_WAIT_TIMEOUT_SECONDS) -> None:
-        """获取一个执行槽位。无限制时立即返回；超时抛 RateLimitTimeout。
-
-        若在等待期间任务被取消（例如客户端断开），会正确回滚：等待计数递减，
-        且若已获得槽位则一并释放，避免槽位泄漏。
-        """
+        """获取一个执行槽位。无限制时立即返回；超时抛 RateLimitTimeout。"""
         if self.capacity <= 0:
             return
         condition = self._ensure_condition()
@@ -61,7 +57,6 @@ class RpmLimiter:
             # 需要等待
             self.waiting += 1
             waited_started = time.perf_counter()
-            acquired = False
             try:
                 try:
                     await asyncio.wait_for(condition.wait(), timeout=timeout)
@@ -69,15 +64,10 @@ class RpmLimiter:
                     raise RateLimitTimeout() from error
                 # 被唤醒后获得槽位
                 self.active += 1
-                acquired = True
             finally:
                 self.waiting -= 1
                 self._total_wait_ms += (time.perf_counter() - waited_started) * 1000
                 self._completed_waiting += 1
-                # 若已获得槽位但任务随后被取消（CancelledError 在 async with 退出时抛出），
-                # 回滚槽位，避免 active 计数泄漏导致后续请求永久排队。
-                if acquired and asyncio.current_task() is not None and asyncio.current_task().cancelling():
-                    self.active = max(0, self.active - 1)
 
     async def release(self) -> None:
         """释放一个执行槽位，并唤醒一个等待者。"""
