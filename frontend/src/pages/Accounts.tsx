@@ -25,7 +25,6 @@ function AccountEditor({
   const [provider, setProvider] = useState(account?.provider ?? 'deepseek')
   const [baseUrl, setBaseUrl] = useState(account?.base_url ?? '')
   const [apiKey, setApiKey] = useState('')
-  const [rpmLimit, setRpmLimit] = useState(account?.rpm_limit ?? 0)
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
 
@@ -52,7 +51,6 @@ function AccountEditor({
           name: trimmedName,
           base_url: trimmedUrl || undefined,
           api_key: authType === 'api_key' && apiKey.trim() ? apiKey.trim() : undefined,
-          rpm_limit: rpmLimit,
         })
         onSaved('账号已更新')
       } else {
@@ -61,8 +59,6 @@ function AccountEditor({
           provider,
           base_url: trimmedUrl || undefined,
           api_key: authType === 'api_key' ? apiKey : undefined,
-          // 新建时 0 表示未指定，交给后端用 provider 默认值
-          ...(rpmLimit > 0 ? { rpm_limit: rpmLimit } : {}),
         })
         onSaved('账号已创建')
       }
@@ -117,19 +113,6 @@ function AccountEditor({
             {editing ? 'OAuth 授权请在卡片上点「去授权」。' : '创建后点「去授权」完成 Grok OAuth。'}
           </div>
         )}
-        <div className="sm:col-span-2">
-          <Field label="RPM 限流（每分钟请求数，0 = 无限制）">
-            <Input
-              type="number"
-              min={0}
-              value={rpmLimit}
-              onChange={(event) => setRpmLimit(Math.max(0, Number(event.target.value) || 0))}
-            />
-          </Field>
-          <p className="mt-1 text-xs text-mist">
-            超过限制的请求会排队等待，最长等待 5 分钟。SuperGrok 建议 30，OpenCode Go 默认无限制。
-          </p>
-        </div>
         {error ? <div className="sm:col-span-2 text-sm text-danger">{error}</div> : null}
         <div className="flex justify-end gap-2 sm:col-span-2">
           <Button type="button" variant="ghost" onClick={onClose}>
@@ -311,47 +294,6 @@ function QuotaItems({ items }: { items: QuotaItem[] }) {
 // 默认展示两行模型（约 8 个），超出部分折叠，点击展开/收起。
 const MODELS_COLLAPSED_COUNT = 8
 
-const RPM_WARN_HIGH = 90
-const RPM_WARN_MEDIUM = 70
-
-function RpmStatus({
-  capacity,
-  active,
-  waiting,
-  avgWaitMs,
-}: {
-  capacity: number
-  active: number
-  waiting: number
-  avgWaitMs: number
-}) {
-  if (capacity <= 0) {
-    return (
-      <div className="text-sm text-mist">
-        RPM 限流：<span className="font-mono">无限制</span>
-        {active > 0 ? ` · 执行中 ${active}` : ''}
-      </div>
-    )
-  }
-  const used = Math.min(Math.max((active / capacity) * 100, 0), 100)
-  const tone = used >= RPM_WARN_HIGH ? 'bg-danger' : used >= RPM_WARN_MEDIUM ? 'bg-warn' : 'bg-signal'
-  return (
-    <div className="space-y-1.5">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-        <span>RPM 占用</span>
-        <span className="font-mono text-xs text-mist">
-          {active} / {capacity}
-          {waiting > 0 ? ` · 等待 ${waiting}` : ''}
-          {avgWaitMs > 0 ? ` · 均等 ${Math.round(avgWaitMs)}ms` : ''}
-        </span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-ink">
-        <div className={`h-full rounded-full ${tone}`} style={{ width: `${used}%` }} />
-      </div>
-    </div>
-  )
-}
-
 function ModelList({
   models,
   expanded,
@@ -390,11 +332,6 @@ export function AccountsPage() {
   const queryClient = useQueryClient()
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: api.providers })
   const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: api.accounts })
-  const { data: rateStatus = [] } = useQuery({
-    queryKey: ['ratelimit-status'],
-    queryFn: api.ratelimitStatus,
-    refetchInterval: 3000,
-  })
   const [editor, setEditor] = useState<Account | 'new' | null>(null)
   const [transfer, setTransfer] = useState<'export' | 'import' | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
@@ -576,22 +513,6 @@ export function AccountsPage() {
               <Button variant="danger" disabled={busyId === account.id} onClick={() => void removeAccount(account)}>
                 删除
               </Button>
-            </div>
-            <div>
-              <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
-                RPM 限流{account.rpm_limit > 0 ? ` · ${account.rpm_limit}/min` : ' · 无限制'}
-              </div>
-              {(() => {
-                const status = rateStatus.find((item) => item.account_id === account.id)
-                return (
-                  <RpmStatus
-                    capacity={account.rpm_limit}
-                    active={status?.active ?? 0}
-                    waiting={status?.waiting ?? 0}
-                    avgWaitMs={status?.avg_wait_ms ?? 0}
-                  />
-                )
-              })()}
             </div>
             <div>
               <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">

@@ -28,7 +28,6 @@ class AccountCreate(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     status: str = "active"
-    rpm_limit: int | None = None
 
 
 class AccountExportRequest(BaseModel):
@@ -45,7 +44,6 @@ class AccountUpdate(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     status: str | None = None
-    rpm_limit: int | None = None
 
 
 class OauthCallbackComplete(BaseModel):
@@ -62,7 +60,6 @@ class AccountOut(BaseModel):
     auth_type: str
     base_url: str
     status: str
-    rpm_limit: int = 0
     has_credential: bool
     api_key: str | None = None
     last_probe_ok: bool | None
@@ -168,9 +165,6 @@ class DashboardOut(BaseModel):
     today_tokens: int
     total_requests: int
     total_tokens: int
-    active_requests: int = 0
-    waiting_requests: int = 0
-    avg_wait_ms: float = 0.0
 
 
 class ProviderOut(BaseModel):

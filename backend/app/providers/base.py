@@ -69,7 +69,6 @@ class Provider:
     default_models: list[str] = []
     append_v1: bool = False
     upstream_protocol: str = "openai"
-    default_rpm_limit: int = 0  # 0 表示无限制
 
     def openai_api_base(self, base_url: str) -> str:
         base = base_url.rstrip("/")

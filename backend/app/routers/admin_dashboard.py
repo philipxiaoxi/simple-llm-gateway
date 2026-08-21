@@ -9,7 +9,6 @@ from app.deps import get_current_admin
 from app.models import RequestLog, UpstreamAccount
 from app.providers import get_provider
 from app.schemas import DashboardOut
-from app.services.ratelimit import summary
 
 router = APIRouter(prefix="/api/admin", tags=["admin-dashboard"], dependencies=[Depends(get_current_admin)])
 
@@ -47,7 +46,6 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardOut:
     )
     total_requests = db.scalar(select(func.count()).select_from(RequestLog)) or 0
     total_tokens = db.scalar(select(func.coalesce(func.sum(RequestLog.total_tokens), 0))) or 0
-    rate_summary = summary()
     return DashboardOut(
         account_count=account_count,
         unhealthy_count=probe_failed + missing_credential,
@@ -56,7 +54,4 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardOut:
         today_tokens=int(today_tokens),
         total_requests=total_requests,
         total_tokens=int(total_tokens),
-        active_requests=int(rate_summary["active_requests"]),
-        waiting_requests=int(rate_summary["waiting_requests"]),
-        avg_wait_ms=float(rate_summary["avg_wait_ms"]),
     )

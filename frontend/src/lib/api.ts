@@ -74,7 +74,6 @@ export type Account = {
   auth_type: string
   base_url: string
   status: string
-  rpm_limit: number
   has_credential: boolean
   api_key?: string | null
   last_probe_ok: boolean | null
@@ -161,21 +160,6 @@ export type Dashboard = {
   today_tokens: number
   total_requests: number
   total_tokens: number
-  active_requests: number
-  waiting_requests: number
-  avg_wait_ms: number
-}
-
-export type RateLimitStatus = {
-  account_id: number
-  name: string
-  provider: string
-  status: string
-  capacity: number
-  active: number
-  waiting: number
-  usage_percent: number
-  avg_wait_ms: number
 }
 
 export const api = {
@@ -191,7 +175,6 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   dashboard: () => request<Dashboard>('/api/admin/dashboard'),
-  ratelimitStatus: () => request<RateLimitStatus[]>('/api/admin/ratelimit/status'),
   providers: () => request<Provider[]>('/api/admin/providers'),
   accounts: () => request<Account[]>('/api/admin/accounts'),
   account: (id: number, reveal = false) =>

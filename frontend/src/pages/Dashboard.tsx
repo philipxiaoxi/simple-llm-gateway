@@ -4,7 +4,7 @@ import { Card } from '../components/ui'
 import { api } from '../lib/api'
 
 export function DashboardPage() {
-  const { data } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard, refetchInterval: 3000 })
+  const { data } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard })
   const cards = [
     { label: '上游账号', value: data?.account_count ?? '—', to: '/accounts' },
     { label: '异常账号', value: data?.unhealthy_count ?? '—', to: '/accounts', warn: true },
@@ -13,13 +13,6 @@ export function DashboardPage() {
     { label: '今日 Token', value: data?.today_tokens ?? '—', to: '/logs' },
     { label: '总请求', value: data?.total_requests ?? '—', to: '/logs' },
     { label: '总 Token', value: data?.total_tokens ?? '—', to: '/logs' },
-    { label: '执行中', value: data?.active_requests ?? '—', to: '/accounts' },
-    { label: '等待中', value: data?.waiting_requests ?? '—', to: '/accounts', warn: (data?.waiting_requests ?? 0) > 0 },
-    {
-      label: '平均等待',
-      value: data?.avg_wait_ms != null && data.avg_wait_ms > 0 ? `${Math.round(data.avg_wait_ms)}ms` : '—',
-      to: '/accounts',
-    },
   ]
 
   return (

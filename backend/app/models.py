@@ -33,7 +33,6 @@ class UpstreamAccount(Base):
     base_url: Mapped[str] = mapped_column(String(512), nullable=False)
     api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
-    rpm_limit: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_probe_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     last_probe_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_probe_message: Mapped[str | None] = mapped_column(Text, nullable=True)
