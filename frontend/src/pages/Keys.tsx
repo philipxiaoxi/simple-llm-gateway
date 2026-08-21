@@ -28,7 +28,9 @@ export function KeysPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [accountFilter, setAccountFilter] = useState('')
   const [revealed, setRevealed] = useState<Record<number, string>>({})
-  const [ccPanel, setCcPanel] = useState<Record<number, { models: string[]; targets: CcSwitchTarget[] }>>({})
+  const [ccPanel, setCcPanel] = useState<
+    Record<number, { models: string[]; targets: CcSwitchTarget[]; vscode: Record<string, unknown> }>
+  >({})
   const [dialog, setDialog] = useState<{
     keyId: number
     app: string
@@ -91,15 +93,34 @@ export function KeysPage() {
     }
   }
 
-  async function loadCcSwitch(id: number) {
+  async function loadImport(id: number) {
     try {
       const result = await api.ccSwitch(id)
-      setCcPanel((current) => ({ ...current, [id]: { models: result.models, targets: result.targets } }))
+      setCcPanel((current) => ({
+        ...current,
+        [id]: { models: result.models, targets: result.targets, vscode: result.vscode },
+      }))
       if (result.models.length === 0) {
         notifyBad('绑定账号还没有模型列表，请先到「上游账号」点「获取模型」。')
       }
     } catch (error) {
-      notifyBad(errorMessage(error, '无法生成 CC Switch 链接'))
+      notifyBad(errorMessage(error, '无法生成导入配置'))
+    }
+  }
+
+  async function importToVscode(id: number) {
+    const panel = ccPanel[id]
+    if (!panel) return
+    if (panel.models.length === 0) {
+      notifyBad('绑定账号还没有模型，请先到「上游账号」点「获取模型」。')
+      return
+    }
+    try {
+      const text = JSON.stringify(panel.vscode, null, 2)
+      await navigator.clipboard.writeText(text)
+      notifyOk('VSCode 配置已复制，粘贴到 chatLanguageModels.json 即可。')
+    } catch (error) {
+      notifyBad(errorMessage(error, '复制 VSCode 配置失败'))
     }
   }
 
@@ -271,8 +292,8 @@ export function KeysPage() {
                 <Button type="button" variant="line" onClick={() => void shareKey(item.id)}>
                   分享
                 </Button>
-                <Button type="button" variant="line" onClick={() => loadCcSwitch(item.id)}>
-                  导入 CC Switch
+                <Button type="button" variant="line" onClick={() => loadImport(item.id)}>
+                  导入
                 </Button>
                 <Button
                   variant="ghost"
@@ -317,6 +338,9 @@ export function KeysPage() {
                         {target.label}
                       </Button>
                     ))}
+                    <Button type="button" variant="line" onClick={() => void importToVscode(item.id)}>
+                      VSCode
+                    </Button>
                   </div>
                 </div>
               ) : null}

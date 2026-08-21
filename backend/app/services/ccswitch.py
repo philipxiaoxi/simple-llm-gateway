@@ -106,3 +106,32 @@ def describe_ccswitch_targets(app_base_url: str, display_name: str, api_key: str
             )
         items.append(item)
     return items
+
+
+def build_vscode_config(
+    *,
+    app_base_url: str,
+    display_name: str,
+    api_key: str,
+    models: list[str],
+) -> dict:
+    """生成 VSCode chatLanguageModels.json 的 Custom Endpoint 配置片段（OpenAI Chat 协议）。"""
+    endpoint = f"{app_base_url.rstrip('/')}/v1/chat/completions"
+    return {
+        "name": display_name,
+        "vendor": "customendpoint",
+        "apiKey": api_key,
+        "apiType": "chat-completions",
+        "models": [
+            {
+                "id": model_name,
+                "name": model_name,
+                "url": endpoint,
+                "toolCalling": True,
+                "vision": False,
+                "maxInputTokens": 128000,
+                "maxOutputTokens": 16000,
+            }
+            for model_name in models
+        ],
+    }

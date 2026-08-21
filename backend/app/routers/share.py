@@ -13,6 +13,7 @@ from app.schemas import ShareCcSwitchRequest, ShareLookupRequest
 from app.services.ccswitch import (
     CCS_SWITCH_TARGETS,
     build_ccswitch_url_for_app,
+    build_vscode_config,
     describe_ccswitch_targets,
     gateway_endpoint,
     parse_models_json,
@@ -85,6 +86,12 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
             "openai_base_url": gateway_endpoint(origin, True),
         },
         "targets": describe_ccswitch_targets(origin, _display_name(item), raw_key, models),
+        "vscode": build_vscode_config(
+            app_base_url=origin,
+            display_name=_display_name(item),
+            api_key=raw_key,
+            models=models,
+        ),
     }
 
 

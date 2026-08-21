@@ -111,6 +111,7 @@ export type ShareLookup = {
     openai_base_url: string
   }
   targets: CcSwitchTarget[]
+  vscode: Record<string, unknown>
 }
 
 export type ApiKeySort = 'created_at' | 'tokens' | 'last_used'
@@ -208,7 +209,12 @@ export const api = {
     request<ApiKeyItem>('/api/admin/keys', { method: 'POST', body: JSON.stringify(payload) }),
   key: (id: number) => request<ApiKeyItem>(`/api/admin/keys/${id}`),
   ccSwitch: (id: number) =>
-    request<{ display_name: string; models: string[]; targets: CcSwitchTarget[] }>(`/api/admin/keys/${id}/cc-switch`),
+    request<{
+      display_name: string
+      models: string[]
+      targets: CcSwitchTarget[]
+      vscode: Record<string, unknown>
+    }>(`/api/admin/keys/${id}/cc-switch`),
   ccSwitchBuild: (
     id: number,
     payload: { app: string; model?: string; haiku_model?: string; sonnet_model?: string; opus_model?: string },

@@ -16,6 +16,7 @@ from app.serializers import key_to_out
 from app.services.ccswitch import (
     CCS_SWITCH_TARGETS,
     build_ccswitch_url_for_app,
+    build_vscode_config,
     describe_ccswitch_targets,
     parse_models_json,
 )
@@ -83,6 +84,12 @@ def cc_switch_links(key_id: int, db: Session = Depends(get_db)) -> dict:
         "display_name": display_name,
         "models": models,
         "targets": describe_ccswitch_targets(settings.app_base_url, display_name, plaintext, models),
+        "vscode": build_vscode_config(
+            app_base_url=settings.app_base_url,
+            display_name=display_name,
+            api_key=plaintext,
+            models=models,
+        ),
     }
 
 

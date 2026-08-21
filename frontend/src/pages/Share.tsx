@@ -88,6 +88,25 @@ export function SharePage() {
     })
   }
 
+  async function importToVscode() {
+    if (!lookup) return
+    if (lookup.status !== 'active') {
+      notifyBad('该 Key 已停用，无法导入。')
+      return
+    }
+    if (lookup.models.length === 0) {
+      notifyBad('这个 Key 绑定的账号还没有模型列表，请联系管理员先「获取模型」。')
+      return
+    }
+    try {
+      const text = JSON.stringify(lookup.vscode, null, 2)
+      await navigator.clipboard.writeText(text)
+      notifyOk('VSCode 配置已复制，粘贴到 chatLanguageModels.json 即可。')
+    } catch (item) {
+      notifyBad(errorMessage(item, '复制 VSCode 配置失败'))
+    }
+  }
+
   async function confirmDialog(values: CcSwitchValues) {
     if (!dialog) return
     try {
@@ -184,7 +203,7 @@ export function SharePage() {
         {lookup ? (
           <Card className="space-y-3">
             <div>
-              <h2 className="text-lg font-medium">一键导入 CC Switch</h2>
+              <h2 className="text-lg font-medium">一键导入</h2>
               <p className="mt-1 text-sm text-mist">选择要导入的客户端，再挑选模型。导入后即可直接用上面的 Key。</p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -199,6 +218,9 @@ export function SharePage() {
                   {target.label}
                 </Button>
               ))}
+              <Button type="button" variant="line" disabled={!usable} onClick={() => void importToVscode()}>
+                VSCode
+              </Button>
             </div>
           </Card>
         ) : null}
