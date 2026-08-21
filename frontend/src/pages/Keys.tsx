@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
 import { Badge, Button, Card, Field, Input, Select } from '../components/ui'
 import { api, type ApiKeySort, type CcSwitchTarget } from '../lib/api'
@@ -24,6 +24,9 @@ export function KeysPage() {
   const { data: keys = [] } = useQuery({ queryKey: ['keys', sort], queryFn: () => api.keys(sort) })
   const [name, setName] = useState('')
   const [accountId, setAccountId] = useState<number | ''>('')
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [accountFilter, setAccountFilter] = useState('')
   const [revealed, setRevealed] = useState<Record<number, string>>({})
   const [ccPanel, setCcPanel] = useState<Record<number, { models: string[]; targets: CcSwitchTarget[] }>>({})
   const [dialog, setDialog] = useState<{
@@ -43,6 +46,21 @@ export function KeysPage() {
     },
     onError: (error: Error) => notifyBad(error.message),
   })
+
+  const filteredKeys = useMemo(() => {
+    const keyword = search.trim().toLowerCase()
+    return keys.filter((item) => {
+      if (statusFilter && item.status !== statusFilter) return false
+      if (accountFilter && item.account_id !== Number(accountFilter)) return false
+      if (!keyword) return true
+      return (
+        item.name.toLowerCase().includes(keyword) ||
+        item.key_prefix.toLowerCase().includes(keyword) ||
+        item.account_name.toLowerCase().includes(keyword) ||
+        item.provider.toLowerCase().includes(keyword)
+      )
+    })
+  }, [keys, search, statusFilter, accountFilter])
 
   async function showKey(id: number) {
     try {
@@ -180,8 +198,34 @@ export function KeysPage() {
           </Button>
         </div>
       </Card>
+      <Card className="grid gap-3 md:grid-cols-3">
+        <Field label="搜索">
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="搜索备注 / Key 前缀 / 账号"
+          />
+        </Field>
+        <Field label="状态">
+          <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="">全部状态</option>
+            <option value="active">启用</option>
+            <option value="disabled">停用</option>
+          </Select>
+        </Field>
+        <Field label="绑定账号">
+          <Select value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}>
+            <option value="">全部账号</option>
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </Card>
       <div className="grid gap-3">
-        {keys.map((item) => {
+        {filteredKeys.map((item) => {
           const full = revealed[item.id]
           return (
             <Card key={item.id} className="space-y-3">

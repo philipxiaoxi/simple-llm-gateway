@@ -418,6 +418,9 @@ export function AccountsPage() {
   const [oauthDialog, setOauthDialog] = useState(false)
   const [oauthAccountId, setOauthAccountId] = useState<number | null>(null)
   const [expandedModels, setExpandedModels] = useState<Set<number>>(new Set())
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [providerFilter, setProviderFilter] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
 
   useEffect(() => {
@@ -433,6 +436,20 @@ export function AccountsPage() {
     searchParams.delete('reason')
     setSearchParams(searchParams, { replace: true })
   }, [queryClient, searchParams, setSearchParams])
+
+  const filteredAccounts = useMemo(() => {
+    const keyword = search.trim().toLowerCase()
+    return accounts.filter((account) => {
+      if (statusFilter && account.status !== statusFilter) return false
+      if (providerFilter && account.provider !== providerFilter) return false
+      if (!keyword) return true
+      return (
+        account.name.toLowerCase().includes(keyword) ||
+        account.provider.toLowerCase().includes(keyword) ||
+        account.base_url.toLowerCase().includes(keyword)
+      )
+    })
+  }, [accounts, search, statusFilter, providerFilter])
 
   async function runProbe(id: number) {
     setBusyId(id)
@@ -544,8 +561,34 @@ export function AccountsPage() {
           <Button onClick={() => setEditor('new')}>新建账号</Button>
         </div>
       </div>
+      <Card className="grid gap-3 md:grid-cols-3">
+        <Field label="搜索">
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="搜索名称 / 供应商 / URL"
+          />
+        </Field>
+        <Field label="状态">
+          <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="">全部状态</option>
+            <option value="active">启用</option>
+            <option value="disabled">停用</option>
+          </Select>
+        </Field>
+        <Field label="供应商">
+          <Select value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)}>
+            <option value="">全部供应商</option>
+            {providers.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </Card>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {accounts.map((account) => (
+        {filteredAccounts.map((account) => (
           <Card key={account.id} className="flex flex-col space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>

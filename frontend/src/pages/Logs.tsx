@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Badge, Button, Card, Select } from '../components/ui'
+import { Badge, Button, Card, Field, Input, Select } from '../components/ui'
 import { api } from '../lib/api'
 import { formatTime, formatTokens, LOG_PAGE_SIZE } from '../lib/utils'
 
@@ -18,6 +18,7 @@ export function LogsPage() {
   const [keyId, setKeyId] = useState('')
   const [protocol, setProtocol] = useState('')
   const [status, setStatus] = useState('')
+  const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = LOG_PAGE_SIZE
   const query = {
@@ -33,6 +34,17 @@ export function LogsPage() {
   const total = data?.total ?? 0
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
 
+  const filteredLogs = useMemo(() => {
+    const keyword = search.trim().toLowerCase()
+    if (!keyword) return logs
+    return logs.filter(
+      (item) =>
+        (item.model ?? '').toLowerCase().includes(keyword) ||
+        (item.api_key_name ?? '').toLowerCase().includes(keyword) ||
+        (item.account_name ?? '').toLowerCase().includes(keyword),
+    )
+  }, [logs, search])
+
   function changeFilter(setter: (value: string) => void) {
     return (event: { target: { value: string } }) => {
       setter(event.target.value)
@@ -47,6 +59,15 @@ export function LogsPage() {
         <p className="mt-1 text-sm text-mist">按账号、Key、协议和状态筛选请求。</p>
       </div>
       <Card className="grid gap-3 md:grid-cols-4">
+        <div className="md:col-span-4">
+          <Field label="搜索">
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="搜索模型 / Key / 账号"
+            />
+          </Field>
+        </div>
         <Select className="rounded-md" value={accountId} onChange={changeFilter(setAccountId)}>
           <option value="">全部账号</option>
           {accounts.map((account) => (
@@ -90,7 +111,7 @@ export function LogsPage() {
             </tr>
           </thead>
           <tbody>
-            {logs.map((item) => (
+            {filteredLogs.map((item) => (
               <tr key={item.id} className="border-t border-line hover:bg-white/5">
                 <td className="px-3 py-2">
                   <Link to={`/logs/${item.id}`} className="text-paper hover:text-signal">
@@ -112,7 +133,7 @@ export function LogsPage() {
         </table>
       </div>
       <div className="grid gap-3 md:hidden">
-        {logs.map((item) => (
+        {filteredLogs.map((item) => (
           <Link key={item.id} to={`/logs/${item.id}`}>
             <Card>
               <div className="flex items-center justify-between">
