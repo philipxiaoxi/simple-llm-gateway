@@ -107,6 +107,11 @@ export function SharePage() {
     }
   }
 
+  async function copyModel(modelName: string) {
+    await navigator.clipboard.writeText(modelName)
+    notifyOk(`已复制 ${modelName}`)
+  }
+
   async function confirmDialog(values: CcSwitchValues) {
     if (!dialog) return
     try {
@@ -233,6 +238,26 @@ export function SharePage() {
                 不走 CC Switch 时，按协议填 Base URL。三种协议的地址不一样，不要混用。
               </p>
             </div>
+            <CopyField label="API Key" value={rawKey.trim()} />
+            <div>
+              <div className="text-xs uppercase tracking-[0.16em] text-mist">模型（点击复制）</div>
+              {lookup.models.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {lookup.models.map((modelName) => (
+                    <button
+                      key={modelName}
+                      type="button"
+                      onClick={() => void copyModel(modelName)}
+                      className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-xs transition hover:bg-white/10 hover:text-signal"
+                    >
+                      {modelName}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-2 text-sm text-warn">还没有模型列表，请让管理员先在上游账号里点「获取模型」。</div>
+              )}
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-3 rounded-lg border border-line bg-ink/40 p-3">
                 <div className="font-medium">Anthropic / Claude Code</div>
@@ -240,7 +265,6 @@ export function SharePage() {
                   客户端会自己拼 /v1/messages，所以 Base URL 不要带 /v1。
                 </p>
                 <CopyField label="Base URL" value={lookup.gateway.anthropic_base_url} />
-                <CopyField label="鉴权" value="x-api-key 或 Authorization: Bearer" />
                 <div className="text-xs text-mist">请求路径：POST /v1/messages</div>
               </div>
               <div className="space-y-3 rounded-lg border border-line bg-ink/40 p-3">
@@ -249,7 +273,6 @@ export function SharePage() {
                   OpenCode、Grok 以及常见 Chat Completions 客户端，Base URL 要带 /v1。
                 </p>
                 <CopyField label="Base URL" value={lookup.gateway.openai_base_url} />
-                <CopyField label="鉴权" value="Authorization: Bearer" />
                 <div className="text-xs text-mist">请求路径：POST /v1/chat/completions</div>
               </div>
               <div className="space-y-3 rounded-lg border border-line bg-ink/40 p-3">
@@ -258,7 +281,6 @@ export function SharePage() {
                   Codex CLI 等 Responses API 客户端，Base URL 要带 /v1，wire_api 填 responses。
                 </p>
                 <CopyField label="Base URL" value={lookup.gateway.openai_base_url} />
-                <CopyField label="鉴权" value="Authorization: Bearer" />
                 <div className="text-xs text-mist">请求路径：POST /v1/responses</div>
               </div>
             </div>
