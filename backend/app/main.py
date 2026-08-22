@@ -83,6 +83,8 @@ def _frontend_dist() -> Path:
 
 FRONTEND_DIST = _frontend_dist()
 if FRONTEND_DIST.exists():
+    no_cache_headers = {"Cache-Control": "no-cache"}
+
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
     @app.get("/favicon.svg")
@@ -98,7 +100,7 @@ if FRONTEND_DIST.exists():
     @app.get("/manifest.webmanifest")
     @app.get("/sw.js")
     def frontend_pwa_file(request: Request) -> FileResponse:
-        return FileResponse(FRONTEND_DIST / request.url.path.lstrip("/"))
+        return FileResponse(FRONTEND_DIST / request.url.path.lstrip("/"), headers=no_cache_headers)
 
     @app.get("/workbox-{filename}.js")
     def frontend_workbox_file(filename: str) -> FileResponse:
@@ -111,4 +113,4 @@ if FRONTEND_DIST.exists():
     @app.get("/{full_path:path}")
     def spa(full_path: str) -> FileResponse:
         # 前端路由一律回 index.html，不把用户路径拼到磁盘上。
-        return FileResponse(FRONTEND_DIST / "index.html")
+        return FileResponse(FRONTEND_DIST / "index.html", headers=no_cache_headers)

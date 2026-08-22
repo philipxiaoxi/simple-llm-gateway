@@ -27,6 +27,18 @@ def test_spa_unknown_path_returns_index(client: TestClient) -> None:
     response = client.get("/accounts")
     assert response.status_code == 200
     assert "中转台" in response.text
+    assert response.headers["cache-control"] == "no-cache"
+
+
+@pytest.mark.parametrize("path", ["/", "/sw.js", "/manifest.webmanifest"])
+def test_pwa_update_files_do_not_use_stale_cache(client: TestClient, path: str) -> None:
+    from app.main import FRONTEND_DIST
+
+    if not FRONTEND_DIST.exists():
+        pytest.skip("frontend dist 不存在")
+    response = client.get(path)
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-cache"
 
 
 def test_spa_does_not_serve_repo_files(client: TestClient) -> None:
