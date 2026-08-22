@@ -51,8 +51,8 @@ def init_db() -> None:
 def _migrate_legacy_logs(engine: Engine) -> None:
     """旧版本把消息存在 request_logs.request_body，新版本拆到 request_log_messages。
 
-    仅当 request_log_messages 表尚不存在（旧库首次升级）时清理一次遗留数据，
-    避免每次启动都可能在消息表为空时清空全部日志。
+    仅当 request_log_messages 表尚不存在（旧库首次升级）时清除已被新表替代的正文，
+    保留可用于审计和统计的历史日志元数据。
     """
     with engine.begin() as connection:
         tables = {
@@ -64,14 +64,16 @@ def _migrate_legacy_logs(engine: Engine) -> None:
         if "request_log_messages" in tables or "request_logs" not in tables:
             return
         has_old_bodies = connection.execute(
-            text("SELECT 1 FROM request_logs WHERE request_body IS NOT NULL LIMIT 1")
+            text("SELECT 1 FROM request_logs WHERE request_body IS NOT NULL OR response_body IS NOT NULL LIMIT 1")
         ).first() is not None
         if has_old_bodies:
-            connection.execute(text("DELETE FROM request_logs"))
+            connection.execute(text("UPDATE request_logs SET request_body = NULL, response_body = NULL"))
 
 
 def _ensure_columns(engine: Engine) -> None:
     account_statements = {
+        "source": "ALTER TABLE upstream_accounts ADD COLUMN source VARCHAR(16) DEFAULT 'upstream' NOT NULL",
+        "agent_route_id": "ALTER TABLE upstream_accounts ADD COLUMN agent_route_id VARCHAR(128)",
         "models_json": "ALTER TABLE upstream_accounts ADD COLUMN models_json TEXT",
         "models_updated_at": "ALTER TABLE upstream_accounts ADD COLUMN models_updated_at DATETIME",
         "risk_level": "ALTER TABLE upstream_accounts ADD COLUMN risk_level VARCHAR(16) DEFAULT 'low' NOT NULL",
@@ -84,6 +86,15 @@ def _ensure_columns(engine: Engine) -> None:
         for column, statement in account_statements.items():
             if column not in account_columns:
                 connection.execute(text(statement))
+        connection.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS ix_upstream_accounts_agent_route_id ON upstream_accounts (agent_route_id)")
+        )
+        connection.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS ix_gateway_agents_agent_id ON gateway_agents (agent_id)")
+        )
+        connection.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS ix_gateway_agent_routes_route_id ON gateway_agent_routes (route_id)")
+        )
         log_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(request_logs)"))}
         if "updated_at" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN updated_at DATETIME"))

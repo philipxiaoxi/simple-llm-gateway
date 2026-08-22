@@ -79,6 +79,11 @@ class Provider:
     def auth_headers(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"} if token else {}
 
+    def relay_headers(self, account: UpstreamAccount) -> dict[str, str]:
+        if account.source != "agent":
+            return {}
+        return {"X-Local-Agent-Token": get_settings().local_agent_token}
+
     def can_passthrough(self, inbound_protocol: str) -> bool:
         return False
 
@@ -103,6 +108,7 @@ class Provider:
             stream=stream,
             timeout=settings.request_timeout_seconds,
             drop_params=True,
+            extra_headers=self.relay_headers(account),
             **extra,
         )
 
@@ -124,6 +130,7 @@ class Provider:
             stream=stream,
             timeout=settings.request_timeout_seconds,
             drop_params=True,
+            extra_headers=self.relay_headers(account),
             **extra,
         )
 
@@ -153,6 +160,8 @@ class Provider:
         return None
 
     async def prepare_credential(self, account: UpstreamAccount, db: Any) -> str:
+        if account.source == "agent":
+            return "agent-managed"
         return require_upstream_credential(account)
 
     def model_candidate_urls(self, account: UpstreamAccount) -> list[str]:
@@ -165,8 +174,8 @@ class Provider:
         return urls
 
     async def probe(self, account: UpstreamAccount) -> dict[str, Any]:
-        token = get_upstream_credential(account)
-        headers = self.auth_headers(token or "")
+        token = "agent-managed" if account.source == "agent" else get_upstream_credential(account)
+        headers = {**self.auth_headers(token or ""), **self.relay_headers(account)}
         last_error = "未发起请求"
         started = utcnow()
         settings = get_settings()
@@ -197,8 +206,8 @@ class Provider:
         return {"ok": False, "latency_ms": latency, "message": last_error}
 
     async def list_models(self, account: UpstreamAccount) -> dict[str, Any]:
-        token = get_upstream_credential(account, allow_expired=True)
-        headers = self.auth_headers(token or "")
+        token = "agent-managed" if account.source == "agent" else get_upstream_credential(account, allow_expired=True)
+        headers = {**self.auth_headers(token or ""), **self.relay_headers(account)}
         last_error = "未发起请求"
         settings = get_settings()
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:

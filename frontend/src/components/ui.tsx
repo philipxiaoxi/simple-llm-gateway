@@ -56,7 +56,7 @@ export function Badge({
     info: 'bg-info/15 text-info',
   }
   return (
-    <span title={title} className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', map[tone])}>
+    <span title={title} className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', map[tone])}>
       {children}
     </span>
   )

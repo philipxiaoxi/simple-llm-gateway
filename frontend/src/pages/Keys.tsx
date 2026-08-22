@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Children, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
-import { api, type ApiKeySort, type CcSwitchTarget } from '../lib/api'
+import { api, type ApiKeySort, type CcSwitchTarget, type GatewayAgent } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { cn, errorMessage, formatTime, formatTokenCount, RISK_LEVELS } from '../lib/utils'
 
@@ -89,7 +89,7 @@ function KeyEditDialog({
   keyId: number
   initialName: string
   initialAccountId: number
-  accounts: { id: number; name: string; provider: string }[]
+  accounts: { id: number; name: string; provider: string; source: 'upstream' | 'agent' }[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -134,7 +134,7 @@ function KeyEditDialog({
             <option value="">选择账号</option>
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
-                {account.name} ({account.provider})
+                {accountSourceLabel(account.source)} {account.name} ({account.provider})
               </option>
             ))}
           </Select>
@@ -164,9 +164,14 @@ function shareText(shareUrl: string, apiKey: string) {
   ].join('\n')
 }
 
+function accountSourceLabel(source: 'upstream' | 'agent') {
+  return source === 'agent' ? '[网关]' : '[上游]'
+}
+
 export function KeysPage() {
   const queryClient = useQueryClient()
-  const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: api.accounts })
+  const { data: accounts = [] } = useQuery({ queryKey: ['key-accounts'], queryFn: api.keyAccounts })
+  const { data: agentData } = useQuery({ queryKey: ['agents'], queryFn: api.agents })
   const [sort, setSort] = useState<ApiKeySort>('last_used')
   const { data: keys = [] } = useQuery({ queryKey: ['keys', sort], queryFn: () => api.keys(sort) })
   const [name, setName] = useState('')
@@ -218,6 +223,15 @@ export function KeysPage() {
       )
     })
   }, [keys, search, statusFilter, accountFilter])
+
+  const availableAccounts = useMemo(() => {
+    const onlineRouteIds = new Set(
+      (agentData?.items ?? [])
+        .filter((agent: GatewayAgent) => agent.status === 'online')
+        .flatMap((agent: GatewayAgent) => agent.routes.map((route) => route.id)),
+    )
+    return accounts.filter((account) => account.source !== 'agent' || onlineRouteIds.has(account.agent_route_id ?? ''))
+  }, [accounts, agentData])
 
   async function copyKey(id: number) {
     try {
@@ -323,7 +337,7 @@ export function KeysPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">API Key</h1>
-          <p className="mt-1 text-sm text-mist">创建时必须绑死一个上游账号。需要时直接复制完整 Key。</p>
+          <p className="mt-1 text-sm text-mist">创建时绑定一个上游账号或网关 Agent 账号。需要时直接复制完整 Key。</p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <Field label="排序">
@@ -362,9 +376,9 @@ export function KeysPage() {
             onChange={(event) => setAccountId(event.target.value ? Number(event.target.value) : '')}
           >
             <option value="">选择账号</option>
-            {accounts.map((account) => (
+            {availableAccounts.map((account) => (
               <option key={account.id} value={account.id}>
-                {account.name} ({account.provider})
+                {accountSourceLabel(account.source)} {account.name} ({account.provider})
               </option>
             ))}
           </Select>
@@ -395,7 +409,7 @@ export function KeysPage() {
             <option value="">全部账号</option>
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
-                {account.name}
+                {accountSourceLabel(account.source)} {account.name}
               </option>
             ))}
           </Select>
@@ -418,7 +432,7 @@ export function KeysPage() {
                     <Badge tone={item.status === 'active' ? 'ok' : 'mist'}>{item.status}</Badge>
                   </div>
                   <div className="mt-1 font-mono text-xs text-mist">
-                    {item.key_prefix} · {item.account_name} · {item.provider}
+                    {item.key_prefix} · {accountSourceLabel(item.account_source)} {item.account_name} · {item.provider}
                   </div>
                 </div>
               </div>

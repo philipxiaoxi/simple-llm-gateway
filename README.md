@@ -24,6 +24,7 @@
 - **多上游账号**: OpenCode Go、Grok（xAI OAuth）、DeepSeek，以及通用 OpenAI / 官方 Anthropic
 - **管理后台**: 探测上游是否可用、查询额度、拉取模型列表
 - **一键导入**: 分享页按 Key 查询归属，支持 CC Switch 导入
+- **本地 Agent**: 可将受限网络中的固定上游地址安全地反向接入 Gateway
 
 ## 环境要求
 
@@ -103,6 +104,20 @@ docker compose up --build
 
 镜像会先构建前端 `dist`，再由 FastAPI 同源托管页面和接口。
 
+## 本地 Agent
+
+Gateway 直接承载 Agent 的 WSS 连接，不需要单独部署 Relay 容器。为网关设置随机的 `LOCAL_AGENT_TOKEN`，然后在能访问本地上游的机器上执行：
+
+```bash
+cd agent
+npm install
+cp config.example.json config.json
+# 编辑 config.json：填写 Gateway 的 wss 地址、相同的 token 与固定上游 route
+npm start
+```
+
+Agent 只会访问 `config.json` 中声明的 `targetBaseUrl`。在管理后台创建账号时，将上游地址填为 `http://127.0.0.1:8000/r/<route-id>/v1`；Docker 部署则填 `http://gateway:8000/r/<route-id>/v1`。账号的上游 Key 仍只保存在 Gateway。
+
 ## 项目结构
 
 ```
@@ -118,6 +133,7 @@ llm-gateway/
 │       ├── pages/           # 概览、账号、Key、记录审计
 │       └── lib/             # API 封装
 ├── docs/                    # 设计文档
+├── agent/                   # 本地网络常驻 Node.js Agent
 ├── scripts/                 # 开发启动脚本
 ├── Dockerfile
 └── docker-compose.yml.example

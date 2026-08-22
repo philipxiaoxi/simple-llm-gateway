@@ -18,6 +18,7 @@ from app.routers import (
     admin_keys,
     admin_logs,
     health,
+    local_agent,
     oauth,
     proxy,
     share,
@@ -62,6 +63,7 @@ app = FastAPI(
 )
 
 app.include_router(health.router)
+app.include_router(local_agent.router)
 app.include_router(admin_auth.router)
 app.include_router(admin_accounts.router)
 app.include_router(admin_keys.router)

@@ -56,6 +56,7 @@ def test_share_lookup_and_cc_switch_without_admin(
     body = lookup.json()
     assert body["name"] == "同事A"
     assert body["account_name"] == "DS"
+    assert body["account_source"] == "upstream"
     assert body["provider"] == "deepseek"
     assert body["today_tokens"] == 0
     assert body["total_tokens"] == 0

@@ -10,7 +10,7 @@ from app.config import get_settings
 from app.crypto import encrypt_secret
 from app.db import get_db
 from app.deps import get_current_admin
-from app.models import Admin, OAuthState, RequestLog, UpstreamAccount
+from app.models import Admin, GatewayAgentRoute, OAuthState, RequestLog, UpstreamAccount
 from app.providers import get_provider, list_providers
 from app.schemas import AccountCreate, AccountExportRequest, AccountImportRequest, AccountOut, AccountUpdate, ProviderOut
 from app.serializers import account_to_out
@@ -36,8 +36,11 @@ def admin_list_providers() -> list[ProviderOut]:
 
 
 @router.get("/accounts", response_model=list[AccountOut])
-def list_accounts(db: Session = Depends(get_db)) -> list[AccountOut]:
-    rows = db.scalars(select(UpstreamAccount).options(joinedload(UpstreamAccount.oauth_token)).order_by(UpstreamAccount.id)).all()
+def list_accounts(include_agent: bool = Query(default=False), db: Session = Depends(get_db)) -> list[AccountOut]:
+    statement = select(UpstreamAccount).options(joinedload(UpstreamAccount.oauth_token)).order_by(UpstreamAccount.id)
+    if not include_agent:
+        statement = statement.where(UpstreamAccount.source == "upstream")
+    rows = db.scalars(statement).all()
     return [account_to_out(row) for row in rows]
 
 
@@ -57,6 +60,7 @@ def create_account(
     account = UpstreamAccount(
         name=payload.name,
         provider=payload.provider,
+        source="upstream",
         auth_type=provider.auth_type,
         base_url=(payload.base_url or "").strip() or provider.default_base_url,
         website_url=(payload.website_url or "").strip() or None,
@@ -156,7 +160,13 @@ async def quota(account_id: int, db: Session = Depends(get_db)) -> dict:
 @router.post("/accounts/{account_id}/models")
 async def models(account_id: int, db: Session = Depends(get_db)) -> dict:
     account = _get_account(db, account_id)
-    return await list_account_models(account)
+    result = await list_account_models(account)
+    if result["ok"] and account.source == "agent" and account.agent_route_id:
+        route = db.scalar(select(GatewayAgentRoute).where(GatewayAgentRoute.route_id == account.agent_route_id))
+        if route is not None:
+            route.models_json = account.models_json
+            route.models_updated_at = account.models_updated_at
+    return result
 
 
 def _get_account(db: Session, account_id: int) -> UpstreamAccount:

@@ -19,6 +19,10 @@ const RISK_META: Record<string, { label: string; hint: string; className: string
   },
 }
 
+function accountSourceLabel(source: 'upstream' | 'agent') {
+  return source === 'agent' ? '[网关]' : '[上游]'
+}
+
 function aiConfigText(lookup: ShareLookup, apiKey: string) {
   const models =
     lookup.models.length > 0
@@ -31,7 +35,7 @@ function aiConfigText(lookup: ShareLookup, apiKey: string) {
     '',
     `API Key：${apiKey}`,
     `备注：${lookup.name}`,
-    `上游：${lookup.account_name || '未绑定'}（${lookup.provider_label}）`,
+    `绑定账号：${lookup.account_name ? `${accountSourceLabel(lookup.account_source)} ${lookup.account_name}` : '未绑定'}（${lookup.provider_label}）`,
     '',
     '可用模型：',
     models,
@@ -208,7 +212,7 @@ export function SharePage() {
           <div className="font-mono text-xs tracking-[0.28em] text-signal">SIGNAL DESK</div>
           <h1 className="mt-2 text-2xl font-semibold">API Key 自助查询</h1>
           <p className="mt-1 text-sm text-mist">
-            把管理员发给你的完整 API Key 粘贴进来，查询绑定的上游账号、可用情况和用量。
+            把管理员发给你的完整 API Key 粘贴进来，查询绑定账号、可用情况和用量。
           </p>
         </div>
 
@@ -236,15 +240,16 @@ export function SharePage() {
                 RISK_META[lookup.risk_level]?.className ?? 'border-line bg-ink/40 text-mist',
               )}
             >
-              <span className="font-semibold">上游账号 · {RISK_META[lookup.risk_level]?.label ?? lookup.risk_level}</span>
+              <span className="font-semibold">绑定账号 · {RISK_META[lookup.risk_level]?.label ?? lookup.risk_level}</span>
               <span className="ml-2 opacity-80">{RISK_META[lookup.risk_level]?.hint ?? ''}</span>
-              <div className="mt-1 text-xs opacity-70">风险指上游账号来源，与本站无关。</div>
+              <div className="mt-1 text-xs opacity-70">风险指绑定账号来源，与本站无关。</div>
             </div>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <div className="text-lg font-medium">{lookup.name}</div>
                 <div className="mt-1 text-sm text-mist">
-                  绑定上游：{lookup.account_name || '未绑定'} · {lookup.provider_label}
+                  绑定账号：{lookup.account_name ? `${accountSourceLabel(lookup.account_source)} ${lookup.account_name}` : '未绑定'} ·{' '}
+                  {lookup.provider_label}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">

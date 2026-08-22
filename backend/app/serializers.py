@@ -29,13 +29,15 @@ def account_to_out(account: UpstreamAccount, reveal: bool = False) -> AccountOut
                 models = [str(item) for item in parsed]
         except json.JSONDecodeError:
             models = []
-    has_credential = bool(account.api_key_encrypted) or (
+    has_credential = account.source == "agent" or bool(account.api_key_encrypted) or (
         account.oauth_token is not None and bool(account.oauth_token.access_token_encrypted)
     )
     return AccountOut(
         id=account.id,
         name=account.name,
         provider=account.provider,
+        source=account.source,
+        agent_route_id=account.agent_route_id,
         auth_type=account.auth_type,
         base_url=account.base_url,
         website_url=account.website_url,
@@ -74,6 +76,7 @@ def key_to_out(
         account_id=item.account_id,
         account_name=item.account.name if item.account else "",
         provider=item.account.provider if item.account else "",
+        account_source=item.account.source if item.account else "upstream",
         risk_level=item.account.risk_level if item.account else "low",
         status=item.status,
         created_at=item.created_at,
@@ -88,6 +91,7 @@ def log_to_out(item: RequestLog, include_bodies: bool = False) -> LogOut:
         id=item.id,
         account_id=item.account_id,
         account_name=item.account_name or (item.account.name if item.account else ""),
+        account_source=item.account.source if item.account else "upstream",
         api_key_id=item.api_key_id,
         api_key_name=item.api_key_name or (item.api_key.name if item.api_key else ""),
         protocol=item.protocol,

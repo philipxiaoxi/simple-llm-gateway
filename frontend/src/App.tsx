@@ -4,6 +4,8 @@ import { Toaster } from 'sonner'
 import { Layout } from './components/Layout'
 import { getToken } from './lib/api'
 import { AccountsPage } from './pages/Accounts'
+import { AgentDetailPage } from './pages/AgentDetail'
+import { AgentsPage } from './pages/Agents'
 import { DashboardPage } from './pages/Dashboard'
 import { KeysPage } from './pages/Keys'
 import { LogDetailPage } from './pages/LogDetail'
@@ -36,6 +38,8 @@ export default function App() {
           >
             <Route path="/" element={<DashboardPage />} />
             <Route path="/accounts" element={<AccountsPage />} />
+            <Route path="/agents" element={<AgentsPage />} />
+            <Route path="/agents/:agentId" element={<AgentDetailPage />} />
             <Route path="/keys" element={<KeysPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/logs/:id" element={<LogDetailPage />} />

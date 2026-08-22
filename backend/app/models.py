@@ -29,6 +29,8 @@ class UpstreamAccount(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), default="upstream", nullable=False)
+    agent_route_id: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     auth_type: Mapped[str] = mapped_column(String(16), nullable=False)
     base_url: Mapped[str] = mapped_column(String(512), nullable=False)
     website_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -48,6 +50,38 @@ class UpstreamAccount(Base):
 
     oauth_token: Mapped[OAuthToken | None] = relationship(back_populates="account", uselist=False)
     api_keys: Mapped[list[ApiKey]] = relationship(back_populates="account")
+
+
+class GatewayAgent(Base):
+    __tablename__ = "gateway_agents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="offline", nullable=False)
+    last_connected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_disconnected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    routes: Mapped[list[GatewayAgentRoute]] = relationship(
+        back_populates="agent", cascade="all, delete-orphan", order_by="GatewayAgentRoute.id"
+    )
+
+
+class GatewayAgentRoute(Base):
+    __tablename__ = "gateway_agent_routes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("gateway_agents.id"), index=True, nullable=False)
+    route_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    models_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    models_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    agent: Mapped[GatewayAgent] = relationship(back_populates="routes")
 
 
 class OAuthToken(Base):

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy import create_engine, text
 
 from app.config import reset_settings, validate_app_secret_key, validate_bootstrap_admin_password
 from app.db import get_session_factory, init_db, reset_db_runtime
@@ -43,6 +44,33 @@ def test_seed_rejects_example_password(tmp_path, monkeypatch) -> None:
     finally:
         reset_db_runtime()
         reset_settings()
+
+
+def test_legacy_log_migration_preserves_log_metadata(tmp_path) -> None:
+    from app.db import _migrate_legacy_logs
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE request_logs ("
+                "id INTEGER PRIMARY KEY, request_body TEXT, response_body TEXT, status TEXT, http_status INTEGER)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO request_logs (id, request_body, response_body, status, http_status) "
+                "VALUES (1, '{\"prompt\":\"secret\"}', '{\"answer\":\"ok\"}', 'success', 200)"
+            )
+        )
+
+    _migrate_legacy_logs(engine)
+
+    with engine.connect() as connection:
+        row = connection.execute(
+            text("SELECT id, request_body, response_body, status, http_status FROM request_logs")
+        ).one()
+    assert row == (1, None, None, "success", 200)
 
 
 def test_cleanup_expired_oauth_states(client: TestClient, auth_headers: dict[str, str]) -> None:

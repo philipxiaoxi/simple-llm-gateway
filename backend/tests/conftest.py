@@ -11,6 +11,7 @@ def client(tmp_path, monkeypatch) -> TestClient:
     monkeypatch.setenv("ADMIN_PASSWORD", "admin123")
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "gateway.db"))
     monkeypatch.setenv("APP_BASE_URL", "http://testserver")
+    monkeypatch.setenv("LOCAL_AGENT_TOKEN", "unit-test-local-agent-token")
 
     from app.config import reset_settings
     from app.db import reset_db_runtime

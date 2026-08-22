@@ -76,6 +76,8 @@ class AccountOut(BaseModel):
     id: int
     name: str
     provider: str
+    source: str = "upstream"
+    agent_route_id: str | None = None
     auth_type: str
     base_url: str
     website_url: str | None
@@ -130,6 +132,7 @@ class KeyOut(BaseModel):
     account_id: int
     account_name: str
     provider: str
+    account_source: str
     risk_level: str
     status: str
     created_at: datetime
@@ -142,6 +145,7 @@ class LogOut(BaseModel):
     id: int
     account_id: int
     account_name: str = ""
+    account_source: str = "upstream"
     api_key_id: int | None = None
     api_key_name: str = ""
     protocol: str

@@ -1,0 +1,11 @@
+{
+  "name": "llm-gateway-local-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}

@@ -25,6 +25,7 @@ def test_create_key_returns_plaintext_and_can_reveal_later(
         json={"name": "同事A", "account_id": account_id},
     )
     assert created.status_code == 200
+    assert created.json()["account_source"] == "upstream"
     plaintext = created.json()["key"]
     assert plaintext.startswith("sk-")
     key_id = created.json()["id"]

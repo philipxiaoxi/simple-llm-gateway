@@ -11,8 +11,12 @@ const protocolLabel: Record<string, string> = {
   anthropic_messages: 'Anthropic',
 }
 
+function accountSourceLabel(source: 'upstream' | 'agent') {
+  return source === 'agent' ? '[网关]' : '[上游]'
+}
+
 export function LogsPage() {
-  const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: api.accounts })
+  const { data: accounts = [] } = useQuery({ queryKey: ['key-accounts'], queryFn: api.keyAccounts })
   const { data: keys = [] } = useQuery({ queryKey: ['keys'], queryFn: () => api.keys() })
   const [accountId, setAccountId] = useState('')
   const [keyId, setKeyId] = useState('')
@@ -72,7 +76,7 @@ export function LogsPage() {
           <option value="">全部账号</option>
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
-              {account.name}
+              {accountSourceLabel(account.source)} {account.name}
             </option>
           ))}
         </Select>
@@ -101,7 +105,7 @@ export function LogsPage() {
           <thead className="bg-panel-2 text-mist">
             <tr>
               <th className="px-3 py-2 font-medium">Key</th>
-              <th className="px-3 py-2 font-medium">上游账号</th>
+              <th className="px-3 py-2 font-medium">绑定账号</th>
               <th className="px-3 py-2 font-medium">时间</th>
               <th className="px-3 py-2 font-medium">模型</th>
               <th className="px-3 py-2 font-medium">协议</th>
@@ -118,7 +122,9 @@ export function LogsPage() {
                     {item.api_key_name || '—'}
                   </Link>
                 </td>
-                <td className="px-3 py-2">{item.account_name || '—'}</td>
+                <td className="px-3 py-2">
+                  {item.account_name ? `${accountSourceLabel(item.account_source)} ${item.account_name}` : '—'}
+                </td>
                 <td className="px-3 py-2 text-mist">{formatTime(item.updated_at || item.created_at)}</td>
                 <td className="px-3 py-2 font-mono text-xs">{item.model}</td>
                 <td className="px-3 py-2">{protocolLabel[item.protocol] || item.protocol}</td>
@@ -140,7 +146,9 @@ export function LogsPage() {
                 <div className="font-medium">{item.api_key_name || '—'}</div>
                 <Badge tone={item.status === 'success' ? 'ok' : 'bad'}>{item.status}</Badge>
               </div>
-              <div className="mt-1 text-sm text-mist">{item.account_name || '—'}</div>
+              <div className="mt-1 text-sm text-mist">
+                {item.account_name ? `${accountSourceLabel(item.account_source)} ${item.account_name}` : '—'}
+              </div>
               <div className="mt-2 text-sm">{formatTime(item.updated_at || item.created_at)}</div>
               <div className="mt-1 text-xs text-mist">
                 {item.model} · {protocolLabel[item.protocol]} · {item.latency_ms}ms

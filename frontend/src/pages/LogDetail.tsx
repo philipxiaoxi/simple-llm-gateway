@@ -8,6 +8,10 @@ import { LOG_PAGE_SIZE, cn, formatTime } from '../lib/utils'
 const COLLAPSE_CHAR_LIMIT = 400
 const COLLAPSE_LINE_LIMIT = 8
 
+function accountSourceLabel(source: 'upstream' | 'agent') {
+  return source === 'agent' ? '[网关]' : '[上游]'
+}
+
 function isLongText(text: string): boolean {
   return text.length > COLLAPSE_CHAR_LIMIT || text.split('\n').length > COLLAPSE_LINE_LIMIT
 }
@@ -142,7 +146,9 @@ export function LogDetailPage() {
         <div>
           <h1 className="text-2xl font-semibold">记录 #{data.id}</h1>
           <div className="mt-1 text-sm text-mist">
-            {data.api_key_name || '—'} · {data.account_name || '—'} · {formatTime(data.updated_at || data.created_at)} ·{' '}
+            {data.api_key_name || '—'} ·{' '}
+            {data.account_name ? `${accountSourceLabel(data.account_source)} ${data.account_name}` : '—'} ·{' '}
+            {formatTime(data.updated_at || data.created_at)} ·{' '}
             {data.model} · {data.latency_ms}ms
           </div>
         </div>

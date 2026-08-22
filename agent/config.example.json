@@ -1,0 +1,15 @@
+{
+  "relayUrl": "wss://gateway.example.com/agent/connect",
+  "agentId": "home-mac-mini",
+  "agentToken": "replace-with-the-same-LOCAL_AGENT_TOKEN-as-the-gateway",
+  "routes": [
+    {
+      "id": "deepseek-local",
+      "name": "家庭 DeepSeek",
+      "provider": "deepseek",
+      "targetBaseUrl": "https://api.deepseek.com/v1",
+      "apiKey": "replace-with-your-upstream-api-key",
+      "models": ["deepseek-chat", "deepseek-reasoner"]
+    }
+  ]
+}

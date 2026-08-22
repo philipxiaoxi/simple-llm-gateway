@@ -93,7 +93,7 @@ class AnthropicGenericProvider(Provider):
             stream=stream,
             timeout=settings.request_timeout_seconds,
             drop_params=True,
-            extra_headers=self.auth_headers(api_key),
+            extra_headers={**self.auth_headers(api_key), **self.relay_headers(account)},
             **extra,
         )
 
@@ -105,6 +105,7 @@ class AnthropicGenericProvider(Provider):
         inbound_headers: dict[str, str] | None = None,
     ) -> tuple[int, Any]:
         url, headers = self.native_request(account, token, inbound_headers)
+        headers.update(self.relay_headers(account))
         settings = get_settings()
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
             response = await client.post(url, headers=headers, json=body)
@@ -116,7 +117,7 @@ class AnthropicGenericProvider(Provider):
         body: dict[str, Any],
         inbound_headers: dict[str, str] | None = None,
     ) -> tuple[int, Any] | None:
-        token = get_upstream_credential(account, allow_expired=True)
+        token = "agent-managed" if account.source == "agent" else get_upstream_credential(account, allow_expired=True)
         if not token:
             return 403, {
                 "type": "error",
@@ -124,6 +125,7 @@ class AnthropicGenericProvider(Provider):
             }
         url = self.count_tokens_url(account)
         headers = self.merge_inbound_headers(token, inbound_headers)
+        headers.update(self.relay_headers(account))
         settings = get_settings()
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
             response = await client.post(url, headers=headers, json=body)

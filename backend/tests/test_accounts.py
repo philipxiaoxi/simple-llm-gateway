@@ -436,6 +436,27 @@ def test_list_account_models(client: TestClient, auth_headers: dict[str, str]) -
     assert stored.json()["models"] == ["deepseek-chat", "deepseek-reasoner"]
 
 
+def test_refreshing_agent_account_models_updates_agent_route(client: TestClient, auth_headers: dict[str, str], monkeypatch) -> None:
+    from app.routers.local_agent import _sync_agent
+
+    _sync_agent("macbook-studio", {"deepseek-local": {"id": "deepseek-local", "name": "DeepSeek", "provider": "deepseek"}})
+    account = client.get("/api/admin/accounts?include_agent=true", headers=auth_headers).json()[0]
+
+    async def fake_list_account_models(stored_account) -> dict[str, object]:
+        stored_account.models_json = '["deepseek-chat", "deepseek-reasoner"]'
+        from app.clock import utcnow
+
+        stored_account.models_updated_at = utcnow()
+        return {"ok": True, "models": ["deepseek-chat", "deepseek-reasoner"], "source": "upstream"}
+
+    monkeypatch.setattr("app.routers.admin_accounts.list_account_models", fake_list_account_models)
+    response = client.post(f"/api/admin/accounts/{account['id']}/models", headers=auth_headers)
+
+    assert response.status_code == 200
+    detail = client.get("/api/admin/agents/macbook-studio", headers=auth_headers)
+    assert detail.json()["routes"][0]["models"] == ["deepseek-chat", "deepseek-reasoner"]
+
+
 def test_export_import_accounts_roundtrip(client: TestClient, auth_headers: dict[str, str]) -> None:
     client.post(
         "/api/admin/accounts",

@@ -71,6 +71,8 @@ export type Account = {
   id: number
   name: string
   provider: string
+  source: 'upstream' | 'agent'
+  agent_route_id: string | null
   auth_type: string
   base_url: string
   website_url: string | null
@@ -100,6 +102,7 @@ export type CcSwitchTarget = {
 export type ShareLookup = {
   name: string
   account_name: string
+  account_source: 'upstream' | 'agent'
   provider: string
   provider_label: string
   risk_level: string
@@ -127,6 +130,7 @@ export type ApiKeyItem = {
   account_id: number
   account_name: string
   provider: string
+  account_source: 'upstream' | 'agent'
   risk_level: string
   status: string
   created_at: string
@@ -139,6 +143,7 @@ export type LogItem = {
   id: number
   account_id: number
   account_name?: string
+  account_source: 'upstream' | 'agent'
   api_key_id: number | null
   api_key_name?: string
   protocol: string
@@ -167,6 +172,20 @@ export type Dashboard = {
   total_tokens: number
 }
 
+export type GatewayAgent = {
+  agent_id: string
+  status: 'online' | 'offline'
+  last_connected_at: string | null
+  last_disconnected_at: string | null
+  routes: {
+    id: string
+    name: string
+    provider: string
+    models: string[]
+    models_updated_at: string | null
+  }[]
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<{ token: string; username: string }>('/api/admin/login', {
@@ -180,8 +199,16 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   dashboard: () => request<Dashboard>('/api/admin/dashboard'),
+  agents: () => request<{ items: GatewayAgent[]; total: number }>('/api/admin/agents'),
+  agent: (agentId: string) => request<GatewayAgent>(`/api/admin/agents/${encodeURIComponent(agentId)}`),
+  refreshAgentRouteModels: (agentId: string, routeId: string) =>
+    request<{ ok: boolean; models: string[]; message?: string; source?: string }>(
+      `/api/admin/agents/${encodeURIComponent(agentId)}/routes/${encodeURIComponent(routeId)}/models`,
+      { method: 'POST' },
+    ),
   providers: () => request<Provider[]>('/api/admin/providers'),
   accounts: () => request<Account[]>('/api/admin/accounts'),
+  keyAccounts: () => request<Account[]>('/api/admin/accounts?include_agent=true'),
   account: (id: number, reveal = false) =>
     request<Account>(`/api/admin/accounts/${id}${reveal ? '?reveal=1' : ''}`),
   createAccount: (payload: Record<string, unknown>) =>

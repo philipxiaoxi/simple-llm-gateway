@@ -71,6 +71,7 @@ def test_logs_are_paginated(client: TestClient, auth_headers: dict[str, str]) ->
     assert len(ids) == 3
     assert body["items"][0]["api_key_name"] == "k"
     assert body["items"][0]["account_name"] == "DS"
+    assert body["items"][0]["account_source"] == "upstream"
 
 
 def test_log_messages_are_paginated_newest_first(client: TestClient, auth_headers: dict[str, str]) -> None:
