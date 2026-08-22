@@ -4,7 +4,7 @@ import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialo
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type ApiKeySort, type CcSwitchTarget } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { cn, errorMessage, formatTime, RISK_LEVELS } from '../lib/utils'
+import { cn, errorMessage, formatTime, formatTokenCount, RISK_LEVELS } from '../lib/utils'
 
 function MoreMenu({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
@@ -425,11 +425,11 @@ export function KeysPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-lg border border-line bg-ink/40 px-3 py-3">
                   <div className="text-xs uppercase tracking-[0.16em] text-mist">今日 Token</div>
-                  <div className="mt-1 font-mono text-xl text-signal">{item.today_tokens}</div>
+                  <div className="mt-1 font-mono text-xl text-signal">{formatTokenCount(item.today_tokens)}</div>
                 </div>
                 <div className="rounded-lg border border-line bg-ink/40 px-3 py-3">
                   <div className="text-xs uppercase tracking-[0.16em] text-mist">总 Token</div>
-                  <div className="mt-1 font-mono text-xl text-signal">{item.total_tokens}</div>
+                  <div className="mt-1 font-mono text-xl text-signal">{formatTokenCount(item.total_tokens)}</div>
                 </div>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-mist">

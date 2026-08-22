@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Card } from '../components/ui'
 import { api } from '../lib/api'
+import { formatTokenCount } from '../lib/utils'
 
 export function DashboardPage() {
   const { data } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard })
@@ -10,9 +11,9 @@ export function DashboardPage() {
     { label: '异常账号', value: data?.unhealthy_count ?? '—', to: '/accounts', warn: true },
     { label: '今日请求', value: data?.today_requests ?? '—', to: '/logs' },
     { label: '今日失败', value: data?.today_failures ?? '—', to: '/logs', warn: true },
-    { label: '今日 Token', value: data?.today_tokens ?? '—', to: '/logs' },
+    { label: '今日 Token', value: formatTokenCount(data?.today_tokens), to: '/logs' },
     { label: '总请求', value: data?.total_requests ?? '—', to: '/logs' },
-    { label: '总 Token', value: data?.total_tokens ?? '—', to: '/logs' },
+    { label: '总 Token', value: formatTokenCount(data?.total_tokens), to: '/logs' },
   ]
 
   return (

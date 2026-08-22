@@ -3,7 +3,7 @@ import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialo
 import { Badge, Button, Card, Field, Input } from '../components/ui'
 import { api, type CcSwitchTarget, type ShareLookup } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { MIN_KEY_LENGTH, cn, errorMessage } from '../lib/utils'
+import { MIN_KEY_LENGTH, cn, errorMessage, formatTokenCount } from '../lib/utils'
 
 const RISK_META: Record<string, { label: string; hint: string; className: string }> = {
   low: { label: '低风险', hint: '官方模型或数据泄露可能性较低', className: 'border-signal/30 bg-signal/10 text-signal' },
@@ -259,11 +259,11 @@ export function SharePage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-lg border border-line bg-ink/40 px-3 py-3">
                 <div className="text-xs uppercase tracking-[0.16em] text-mist">今日 Token</div>
-                <div className="mt-2 font-mono text-2xl text-signal">{lookup.today_tokens}</div>
+                <div className="mt-2 font-mono text-2xl text-signal">{formatTokenCount(lookup.today_tokens)}</div>
               </div>
               <div className="rounded-lg border border-line bg-ink/40 px-3 py-3">
                 <div className="text-xs uppercase tracking-[0.16em] text-mist">总 Token</div>
-                <div className="mt-2 font-mono text-2xl text-signal">{lookup.total_tokens}</div>
+                <div className="mt-2 font-mono text-2xl text-signal">{formatTokenCount(lookup.total_tokens)}</div>
               </div>
             </div>
             <div>

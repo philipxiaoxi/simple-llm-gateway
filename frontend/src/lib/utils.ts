@@ -36,14 +36,21 @@ export function formatEmbeddedTimes(value: string) {
   return value.replace(ISO_TIME, (match) => formatTime(match))
 }
 
+export function formatTokenCount(value: number | null | undefined) {
+  if (value == null) return '—'
+  if (value < 1_000) return String(value)
+  if (value < 1_000_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, '')}K`
+  return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+}
+
 export function formatTokens(item: {
   total_tokens?: number | null
   prompt_tokens?: number | null
   completion_tokens?: number | null
 }) {
-  if (item.total_tokens != null) return String(item.total_tokens)
+  if (item.total_tokens != null) return formatTokenCount(item.total_tokens)
   if (item.prompt_tokens != null || item.completion_tokens != null) {
-    return String((item.prompt_tokens || 0) + (item.completion_tokens || 0))
+    return formatTokenCount((item.prompt_tokens || 0) + (item.completion_tokens || 0))
   }
   return '—'
 }
