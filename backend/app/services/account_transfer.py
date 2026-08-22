@@ -16,6 +16,7 @@ from app.crypto import (
 )
 from app.models import UpstreamAccount
 from app.providers import get_provider
+from app.schemas import normalize_website_url
 
 
 def unique_account_name(taken: set[str], name: str) -> str:
@@ -43,6 +44,7 @@ def export_accounts(db: Session, password: str) -> dict[str, object]:
                 "name": account.name,
                 "provider": account.provider,
                 "base_url": account.base_url,
+                "website_url": account.website_url,
                 "status": account.status,
                 "risk_level": account.risk_level,
                 "api_key": api_key,
@@ -89,11 +91,16 @@ def import_accounts(db: Session, password: str, envelope: dict[str, object]) -> 
         risk_level = str(entry.get("risk_level") or "low")
         if risk_level not in {"low", "medium", "high"}:
             risk_level = "low"
+        try:
+            website_url = normalize_website_url(entry.get("website_url") if isinstance(entry.get("website_url"), str) else None)
+        except ValueError:
+            website_url = None
         account = UpstreamAccount(
             name=name,
             provider=provider.id,
             auth_type=provider.auth_type,
             base_url=(str(entry.get("base_url") or "").strip() or provider.default_base_url),
+            website_url=website_url or None,
             api_key_encrypted=encrypted,
             status=status,
             risk_level=risk_level,

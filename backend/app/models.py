@@ -31,6 +31,7 @@ class UpstreamAccount(Base):
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     auth_type: Mapped[str] = mapped_column(String(16), nullable=False)
     base_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    website_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
     risk_level: Mapped[str] = mapped_column(String(16), default="low", nullable=False)

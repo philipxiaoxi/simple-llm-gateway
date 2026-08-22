@@ -73,6 +73,7 @@ export type Account = {
   provider: string
   auth_type: string
   base_url: string
+  website_url: string | null
   status: string
   risk_level: string
   has_credential: boolean

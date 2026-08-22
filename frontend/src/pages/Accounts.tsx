@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileJson, Upload } from 'lucide-react'
+import { ExternalLink, FileJson, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
@@ -25,6 +25,7 @@ function AccountEditor({
   const [name, setName] = useState(account?.name ?? '')
   const [provider, setProvider] = useState(account?.provider ?? 'deepseek')
   const [baseUrl, setBaseUrl] = useState(account?.base_url ?? '')
+  const [websiteUrl, setWebsiteUrl] = useState(account?.website_url ?? '')
   const [apiKey, setApiKey] = useState('')
   const [riskLevel, setRiskLevel] = useState(account?.risk_level ?? 'low')
   const [error, setError] = useState('')
@@ -41,6 +42,7 @@ function AccountEditor({
   async function save() {
     const trimmedName = name.trim()
     const trimmedUrl = baseUrl.trim()
+    const trimmedWebsiteUrl = websiteUrl.trim()
     if (!trimmedName) {
       setError('请填写显示名')
       return
@@ -52,6 +54,7 @@ function AccountEditor({
         await api.updateAccount(account.id, {
           name: trimmedName,
           base_url: trimmedUrl || undefined,
+          website_url: trimmedWebsiteUrl || null,
           api_key: authType === 'api_key' && apiKey.trim() ? apiKey.trim() : undefined,
           risk_level: riskLevel,
         })
@@ -61,6 +64,7 @@ function AccountEditor({
           name: trimmedName,
           provider,
           base_url: trimmedUrl || undefined,
+          website_url: trimmedWebsiteUrl || undefined,
           api_key: authType === 'api_key' ? apiKey : undefined,
           risk_level: riskLevel,
         })
@@ -99,6 +103,16 @@ function AccountEditor({
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
               placeholder={preset?.base_url || 'https://...'}
+            />
+          </Field>
+        </div>
+        <div className="sm:col-span-2">
+          <Field label="官网地址">
+            <Input
+              value={websiteUrl}
+              onChange={(event) => setWebsiteUrl(event.target.value)}
+              placeholder="https://..."
+              type="url"
             />
           </Field>
         </div>
@@ -609,6 +623,16 @@ export function AccountsPage() {
                 <div className="font-mono text-xs text-mist">
                   {account.provider} · {account.base_url}
                 </div>
+                {account.website_url ? (
+                  <a
+                    className="mt-1 inline-flex items-center gap-1 text-xs text-signal hover:underline"
+                    href={account.website_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    官网 <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                  </a>
+                ) : null}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge

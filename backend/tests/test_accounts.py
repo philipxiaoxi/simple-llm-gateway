@@ -60,6 +60,47 @@ def test_update_account_base_url(client: TestClient, auth_headers: dict[str, str
     assert updated.json()["base_url"] == "https://proxy.example/v1"
 
 
+def test_create_and_update_account_website_url(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={
+            "name": "DS",
+            "provider": "deepseek",
+            "api_key": "sk-up",
+            "website_url": " https://platform.deepseek.com/ ",
+        },
+    )
+    assert created.status_code == 200
+    account_id = created.json()["id"]
+    assert created.json()["website_url"] == "https://platform.deepseek.com/"
+
+    updated = client.patch(
+        f"/api/admin/accounts/{account_id}",
+        headers=auth_headers,
+        json={"website_url": " https://console.example/ "},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["website_url"] == "https://console.example/"
+
+    cleared = client.patch(
+        f"/api/admin/accounts/{account_id}",
+        headers=auth_headers,
+        json={"website_url": ""},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["website_url"] is None
+
+
+def test_account_website_url_requires_http_or_https(client: TestClient, auth_headers: dict[str, str]) -> None:
+    response = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "website_url": "javascript:alert(1)"},
+    )
+    assert response.status_code == 422
+
+
 def test_delete_account(client: TestClient, auth_headers: dict[str, str]) -> None:
     created = client.post(
         "/api/admin/accounts",

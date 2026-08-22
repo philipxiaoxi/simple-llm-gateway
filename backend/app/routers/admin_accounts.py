@@ -59,6 +59,7 @@ def create_account(
         provider=payload.provider,
         auth_type=provider.auth_type,
         base_url=(payload.base_url or "").strip() or provider.default_base_url,
+        website_url=(payload.website_url or "").strip() or None,
         api_key_encrypted=encrypted,
         status=payload.status,
         risk_level=payload.risk_level,
@@ -111,6 +112,8 @@ def update_account(
         stripped = payload.base_url.strip()
         if stripped:
             account.base_url = stripped
+    if payload.website_url is not None:
+        account.website_url = payload.website_url.strip() or None
     if payload.status is not None:
         account.status = payload.status
     if payload.risk_level is not None:

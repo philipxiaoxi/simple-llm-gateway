@@ -2,8 +2,19 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def normalize_website_url(value: str | None) -> str | None:
+    normalized = (value or "").strip()
+    if not normalized:
+        return ""
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("官网地址必须是有效的 HTTP(S) 地址")
+    return normalized
 
 
 class LoginRequest(BaseModel):
@@ -26,9 +37,12 @@ class AccountCreate(BaseModel):
     name: str
     provider: str
     base_url: str | None = None
+    website_url: str | None = None
     api_key: str | None = None
     status: str = "active"
     risk_level: str = "low"
+
+    _normalize_website_url = field_validator("website_url")(normalize_website_url)
 
 
 class AccountExportRequest(BaseModel):
@@ -43,9 +57,12 @@ class AccountImportRequest(BaseModel):
 class AccountUpdate(BaseModel):
     name: str | None = None
     base_url: str | None = None
+    website_url: str | None = None
     api_key: str | None = None
     status: str | None = None
     risk_level: str | None = None
+
+    _normalize_website_url = field_validator("website_url")(normalize_website_url)
 
 
 class OauthCallbackComplete(BaseModel):
@@ -61,6 +78,7 @@ class AccountOut(BaseModel):
     provider: str
     auth_type: str
     base_url: str
+    website_url: str | None
     status: str
     risk_level: str
     has_credential: bool
