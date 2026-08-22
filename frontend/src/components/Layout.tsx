@@ -138,7 +138,7 @@ export function Layout() {
       {/* 移动端：侧拉抽屉；桌面端：固定侧边栏 */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[80vw] flex-col border-r border-line bg-panel transition-transform duration-300 ease-out lg:static lg:z-auto lg:h-svh lg:w-auto lg:max-w-none lg:translate-x-0 lg:overflow-hidden lg:border-r lg:bg-panel/80',
+          'safe-area-drawer fixed inset-y-0 left-0 z-50 flex w-72 max-w-[80vw] flex-col border-r border-line bg-panel transition-transform duration-300 ease-out lg:static lg:z-auto lg:h-svh lg:w-auto lg:max-w-none lg:translate-x-0 lg:overflow-hidden lg:border-r lg:bg-panel/80',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >

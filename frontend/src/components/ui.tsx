@@ -106,8 +106,8 @@ export function Dialog({
 
   // 挂载到 body，避免被祖先的 transform/filter 等属性限制（fixed 定位失效）
   return createPortal(
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60">
-      <div className="mx-auto my-[15vh] w-[calc(100%-2rem)] max-w-lg rounded-xl border border-line bg-panel p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+    <div className="safe-area-modal fixed inset-0 z-50 overflow-y-auto bg-black/60">
+      <div className="mx-auto my-[15vh] w-full max-w-lg rounded-xl border border-line bg-panel p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button

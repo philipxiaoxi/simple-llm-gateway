@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -88,6 +88,21 @@ if FRONTEND_DIST.exists():
     @app.get("/favicon.svg")
     def frontend_favicon() -> FileResponse:
         return FileResponse(FRONTEND_DIST / "favicon.svg")
+
+    @app.get("/apple-touch-icon.png")
+    @app.get("/pwa-192x192.png")
+    @app.get("/pwa-512x512.png")
+    def frontend_pwa_icon(request: Request) -> FileResponse:
+        return FileResponse(FRONTEND_DIST / request.url.path.lstrip("/"))
+
+    @app.get("/manifest.webmanifest")
+    @app.get("/sw.js")
+    def frontend_pwa_file(request: Request) -> FileResponse:
+        return FileResponse(FRONTEND_DIST / request.url.path.lstrip("/"))
+
+    @app.get("/workbox-{filename}.js")
+    def frontend_workbox_file(filename: str) -> FileResponse:
+        return FileResponse(FRONTEND_DIST / f"workbox-{filename}.js")
 
     @app.get("/icons.svg")
     def frontend_icons() -> FileResponse:
