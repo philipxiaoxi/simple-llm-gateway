@@ -118,3 +118,40 @@ def test_benchmark_omits_speed_without_usage(client: TestClient, auth_headers: d
     assert body["ok"] is True
     assert body["output_tokens_per_second"] is None
     assert body["estimated_output_tokens"] == round(len("只有正文") / 4)
+
+
+def test_dashboard_counts_saved_benchmark_runs(client: TestClient, auth_headers: dict[str, str]) -> None:
+    empty = client.get("/api/admin/dashboard", headers=auth_headers)
+    assert empty.status_code == 200
+    assert empty.json()["benchmark_count"] == 0
+
+    saved = client.post(
+        "/api/admin/benchmark/history",
+        headers=auth_headers,
+        json={
+            "prompt": "测速",
+            "max_tokens": 32,
+            "results": [
+                {
+                    "account_id": 1,
+                    "account_name": "DS",
+                    "provider": "deepseek",
+                    "model": "deepseek-chat",
+                    "ok": True,
+                    "timeout": False,
+                    "first_token_ms": 120,
+                    "total_ms": 800,
+                    "output_chars": 16,
+                    "estimated_output_tokens": 40,
+                    "output_tokens_per_second": 50,
+                    "preview": "ok",
+                    "error": None,
+                }
+            ],
+        },
+    )
+    assert saved.status_code == 200
+
+    dashboard = client.get("/api/admin/dashboard", headers=auth_headers)
+    assert dashboard.status_code == 200
+    assert dashboard.json()["benchmark_count"] == 1

@@ -170,6 +170,7 @@ export type Dashboard = {
   today_tokens: number
   total_requests: number
   total_tokens: number
+  benchmark_count: number
 }
 
 export type GatewayAgent = {

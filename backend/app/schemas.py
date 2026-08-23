@@ -192,6 +192,7 @@ class DashboardOut(BaseModel):
     today_tokens: int
     total_requests: int
     total_tokens: int
+    benchmark_count: int
 
 
 class ProviderOut(BaseModel):

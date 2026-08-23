@@ -14,6 +14,7 @@ export function DashboardPage() {
     { label: '今日 Token', value: formatTokenCount(data?.today_tokens), to: '/logs' },
     { label: '总请求', value: data?.total_requests ?? '—', to: '/logs' },
     { label: '总 Token', value: formatTokenCount(data?.total_tokens), to: '/logs' },
+    { label: '测速条数', value: data?.benchmark_count ?? '—', to: '/benchmark/history' },
   ]
 
   return (
