@@ -165,7 +165,7 @@ export function Layout() {
             <NavLink
               key={link.to}
               to={link.to}
-              end={link.to === '/'}
+              end={link.to === '/' || link.to === '/benchmark'}
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 cn(
