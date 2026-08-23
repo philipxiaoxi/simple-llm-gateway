@@ -26,7 +26,7 @@ def test_spa_unknown_path_returns_index(client: TestClient) -> None:
         pytest.skip("frontend dist 不存在")
     response = client.get("/accounts")
     assert response.status_code == 200
-    assert "中转台" in response.text
+    assert "AI一体化服务平台" in response.text
     assert response.headers["cache-control"] == "no-cache"
 
 
@@ -62,4 +62,4 @@ def test_spa_does_not_serve_repo_files(client: TestClient) -> None:
     response = client.get("/.env")
     assert response.status_code == 200
     assert "APP_SECRET_KEY" not in response.text
-    assert "中转台" in response.text
+    assert "AI一体化服务平台" in response.text

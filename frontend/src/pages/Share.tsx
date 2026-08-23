@@ -29,9 +29,9 @@ function aiConfigText(lookup: ShareLookup, apiKey: string) {
       ? lookup.models.map((modelName) => `- ${modelName}`).join('\n')
       : '- （暂无模型列表，请联系管理员先获取模型）'
   return [
-    '请帮我把下面这个 LLM 中转配置接入到我正在使用的客户端。',
+    '请帮我把下面这个AI一体化服务平台配置接入到我正在使用的客户端。',
     '',
-    '这是一个同时兼容 OpenAI 和 Anthropic 协议的中转网关。请根据我用的客户端选择对应协议，不要混用 Base URL。',
+    '这是一个同时兼容 OpenAI 和 Anthropic 协议的 AI 服务平台。请根据我用的客户端选择对应协议，不要混用 Base URL。',
     '',
     `API Key：${apiKey}`,
     `备注：${lookup.name}`,
@@ -209,7 +209,7 @@ export function SharePage() {
     <div className="page-enter min-h-svh px-4 py-10">
       <div className="mx-auto w-full max-w-3xl space-y-5">
         <div>
-          <div className="font-mono text-xs tracking-[0.28em] text-signal">SIGNAL DESK</div>
+          <div className="font-mono text-xs tracking-[0.28em] text-signal">PIVOT DESK</div>
           <h1 className="mt-2 text-2xl font-semibold">API Key 自助查询</h1>
           <p className="mt-1 text-sm text-mist">
             把管理员发给你的完整 API Key 粘贴进来，查询绑定账号、可用情况和用量。

@@ -125,7 +125,7 @@ export function Layout() {
         >
           <Menu size={20} />
         </button>
-        <div className="font-mono text-sm tracking-[0.2em] text-signal">中转台</div>
+        <div className="font-mono text-sm text-signal">AI一体化服务平台</div>
         <div className="min-w-11" aria-hidden="true" />
       </header>
 
@@ -147,7 +147,7 @@ export function Layout() {
         )}
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-4 lg:hidden">
-          <div className="font-mono text-xs tracking-[0.28em] text-signal">SIGNAL DESK</div>
+          <div className="font-mono text-xs tracking-[0.28em] text-signal">PIVOT DESK</div>
           <button
             type="button"
             onClick={() => setOpen(false)}
@@ -158,8 +158,8 @@ export function Layout() {
           </button>
         </div>
         <div className="hidden border-b border-line px-5 py-6 lg:block">
-          <div className="font-mono text-xs tracking-[0.28em] text-signal">SIGNAL DESK</div>
-          <div className="mt-1 text-lg font-semibold">中转台</div>
+          <div className="font-mono text-xs tracking-[0.28em] text-signal">PIVOT DESK</div>
+          <div className="mt-1 text-lg font-semibold">AI一体化服务平台</div>
         </div>
         <nav className="flex flex-col gap-1 p-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
           {links.map((link) => (

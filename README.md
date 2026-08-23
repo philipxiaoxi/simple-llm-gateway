@@ -1,6 +1,6 @@
 <div align="center">
-  <h1>中转台</h1>
-  <p>自建 LLM 中转站：对外提供 OpenAI / Anthropic 协议，把请求转到 OpenCode Go、Grok（xAI OAuth）或 DeepSeek</p>
+  <h1>AI一体化服务平台</h1>
+  <p>自建AI一体化服务平台：对外提供 OpenAI / Anthropic 协议，把请求转到 OpenCode Go、Grok（xAI OAuth）或 DeepSeek；后续将覆盖 Skills 等能力</p>
   <p>
     <a href="#-功能特性">功能特性</a> •
     <a href="#快速开始">快速开始</a> •

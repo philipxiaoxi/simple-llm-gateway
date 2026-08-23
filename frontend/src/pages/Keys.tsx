@@ -155,7 +155,7 @@ function KeyEditDialog({
 
 function shareText(shareUrl: string, apiKey: string) {
   return [
-    '管理员通过中转台给你下发了 新的api-key：',
+    '管理员通过AI一体化服务平台给你下发了 新的api-key：',
     '------',
     `使用链接：${shareUrl}`,
     `api-key：${apiKey}`,

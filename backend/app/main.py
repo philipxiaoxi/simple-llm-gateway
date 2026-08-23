@@ -56,7 +56,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="LLM Gateway",
+    title="AI一体化服务平台",
     version="0.1.0",
     lifespan=lifespan,
     docs_url=None,

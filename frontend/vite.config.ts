@@ -12,9 +12,9 @@ export default defineConfig({
       injectRegister: false,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: '中转台',
-        short_name: '中转台',
-        description: 'LLM Gateway 管理后台',
+        name: 'AI一体化服务平台',
+        short_name: 'AI一体化服务平台',
+        description: 'AI一体化服务平台',
         theme_color: '#0b0d11',
         background_color: '#0b0d11',
         display: 'standalone',

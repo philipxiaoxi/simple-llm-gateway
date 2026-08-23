@@ -19,7 +19,7 @@ export function DashboardPage() {
   return (
     <div>
       <h1 className="text-2xl font-semibold">概览</h1>
-      <p className="mt-1 text-sm text-mist">当前中转台的运行切片，点卡片进入对应列表。</p>
+      <p className="mt-1 text-sm text-mist">当前AI一体化服务平台的运行切片，点卡片进入对应列表。</p>
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <Link key={card.label} to={card.to}>

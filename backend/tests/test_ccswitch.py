@@ -19,7 +19,7 @@ def test_openai_style_endpoint_appends_v1() -> None:
 def test_build_ccswitch_url_matches_official_protocol() -> None:
     url = build_ccswitch_url(
         app="claude",
-        name="中转台 Key",
+        name="AI一体化服务平台 Key",
         endpoint="http://127.0.0.1:8000",
         api_key="sk-demo",
         model="glm-5.3",
