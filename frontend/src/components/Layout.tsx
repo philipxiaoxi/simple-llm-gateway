@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, KeyRound, Menu, MessageSquareText, RadioTower, ServerCog, X } from 'lucide-react'
+import { Activity, Gauge, KeyRound, Menu, MessageSquareText, RadioTower, ServerCog, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
@@ -12,6 +12,8 @@ const links = [
   { to: '/accounts', label: '上游账号', icon: RadioTower },
   { to: '/agents', label: '网关 Agent', icon: ServerCog },
   { to: '/keys', label: 'API Key', icon: KeyRound },
+  { to: '/benchmark', label: '模型测速', icon: Gauge },
+  { to: '/benchmark/history', label: '测速历史', icon: Activity },
   { to: '/logs', label: '记录审计', icon: MessageSquareText },
 ]
 

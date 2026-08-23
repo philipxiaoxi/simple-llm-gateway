@@ -102,6 +102,9 @@ def _ensure_columns(engine: Engine) -> None:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN session_key VARCHAR(128)"))
         if "reasoning_json" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN reasoning_json TEXT"))
+        benchmark_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(benchmark_results)"))}
+        if benchmark_columns and "timeout" not in benchmark_columns:
+            connection.execute(text("ALTER TABLE benchmark_results ADD COLUMN timeout BOOLEAN DEFAULT 0 NOT NULL"))
         admin_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(admins)"))}
         if "token_version" not in admin_columns:
             connection.execute(text("ALTER TABLE admins ADD COLUMN token_version INTEGER DEFAULT 0 NOT NULL"))

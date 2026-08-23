@@ -179,3 +179,37 @@ class RequestLogMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     log: Mapped[RequestLog] = relationship(back_populates="messages")
+
+
+class BenchmarkRun(Base):
+    __tablename__ = "benchmark_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    max_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    results: Mapped[list[BenchmarkResult]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="BenchmarkResult.id"
+    )
+
+
+class BenchmarkResult(Base):
+    __tablename__ = "benchmark_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("benchmark_runs.id", ondelete="CASCADE"), index=True, nullable=False)
+    account_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    account_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    ok: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    timeout: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    first_token_ms: Mapped[float | None] = mapped_column(nullable=True)
+    total_ms: Mapped[float | None] = mapped_column(nullable=True)
+    output_chars: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    estimated_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens_per_second: Mapped[float | None] = mapped_column(nullable=True)
+    preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    run: Mapped[BenchmarkRun] = relationship(back_populates="results")

@@ -14,6 +14,8 @@ from app.db import get_session_factory, init_db
 from app.routers import (
     admin_accounts,
     admin_auth,
+    admin_benchmark,
+    admin_benchmark_history,
     admin_dashboard,
     admin_keys,
     admin_logs,
@@ -66,6 +68,8 @@ app.include_router(health.router)
 app.include_router(local_agent.router)
 app.include_router(admin_auth.router)
 app.include_router(admin_accounts.router)
+app.include_router(admin_benchmark.router)
+app.include_router(admin_benchmark_history.router)
 app.include_router(admin_keys.router)
 app.include_router(admin_logs.router)
 app.include_router(admin_dashboard.router)

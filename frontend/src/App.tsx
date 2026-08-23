@@ -8,6 +8,8 @@ import { AgentDetailPage } from './pages/AgentDetail'
 import { AgentsPage } from './pages/Agents'
 import { DashboardPage } from './pages/Dashboard'
 import { KeysPage } from './pages/Keys'
+import { BenchmarkPage } from './pages/Benchmark'
+import { BenchmarkHistoryPage } from './pages/BenchmarkHistory'
 import { LogDetailPage } from './pages/LogDetail'
 import { LoginPage } from './pages/Login'
 import { LogsPage } from './pages/Logs'
@@ -41,6 +43,8 @@ export default function App() {
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/agents/:agentId" element={<AgentDetailPage />} />
             <Route path="/keys" element={<KeysPage />} />
+            <Route path="/benchmark" element={<BenchmarkPage />} />
+            <Route path="/benchmark/history" element={<BenchmarkHistoryPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/logs/:id" element={<LogDetailPage />} />
           </Route>

@@ -239,6 +239,21 @@ export const api = {
   createKey: (payload: { name: string; account_id: number }) =>
     request<ApiKeyItem>('/api/admin/keys', { method: 'POST', body: JSON.stringify(payload) }),
   key: (id: number) => request<ApiKeyItem>(`/api/admin/keys/${id}`),
+  benchmark: (payload: { account_id: number; model: string; prompt: string; max_tokens: number }) =>
+    request<BenchmarkResult>('/api/admin/benchmark', { method: 'POST', body: JSON.stringify(payload) }),
+  saveBenchmarkRun: (payload: { prompt: string; max_tokens: number; results: BenchmarkResult[] }) =>
+    request<BenchmarkRun>('/api/admin/benchmark/history', { method: 'POST', body: JSON.stringify(payload) }),
+  benchmarkHistory: (page = 1, pageSize = 20) =>
+    request<BenchmarkHistory>(`/api/admin/benchmark/history?page=${page}&page_size=${pageSize}`),
+  benchmarkRun: (id: number) => request<BenchmarkRun>(`/api/admin/benchmark/history/${id}`),
+  exportBenchmarkHistory: async () => {
+    const headers = new Headers()
+    const token = getToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch('/api/admin/benchmark/history/export', { headers })
+    if (!response.ok) throw new ApiError(response.status, '导出测速结果失败')
+    return response.blob()
+  },
   ccSwitch: (id: number) =>
     request<{
       display_name: string
@@ -277,4 +292,37 @@ export const api = {
     sonnet_model?: string
     opus_model?: string
   }) => request<{ url: string }>('/api/share/cc-switch', { method: 'POST', body: JSON.stringify(payload) }),
+}
+
+export type BenchmarkResult = {
+  ok: boolean
+  account_id: number
+  account_name: string
+  provider: string
+  model: string
+  timeout?: boolean
+  first_token_ms?: number
+  total_ms?: number
+  output_chars?: number
+  estimated_output_tokens?: number
+  output_tokens_per_second?: number
+  preview?: string
+  error?: string
+}
+
+export type BenchmarkRun = {
+  id: number
+  prompt: string
+  max_tokens: number
+  created_at: string
+  result_count: number
+  success_count: number
+  results?: BenchmarkResult[]
+}
+
+export type BenchmarkHistory = {
+  items: BenchmarkRun[]
+  total: number
+  page: number
+  page_size: number
 }
