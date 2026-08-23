@@ -96,7 +96,7 @@ export function BenchmarkPage() {
 
   return <div className="mx-auto flex h-full min-h-0 max-w-7xl min-w-0 flex-col">
     <div className="mb-4 flex shrink-0 flex-wrap items-end justify-between gap-4">
-      <div><div className="mb-2 font-mono text-xs tracking-[0.28em] text-signal">BENCHMARK LAB / LIVE</div><h1 className="text-3xl font-semibold tracking-tight">模型测速</h1><p className="mt-2 max-w-2xl text-sm text-mist">用同一条提示词测量真实链路。首 token 取第一个非空思考/答案/工具增量；输出速度 = 上游 completion_tokens（含思考）÷ 首 token 后的生成窗口。</p></div>
+      <div><div className="mb-2 font-mono text-xs tracking-[0.28em] text-signal">BENCHMARK LAB / LIVE</div><h1 className="text-3xl font-semibold tracking-tight">模型测速</h1><p className="mt-2 max-w-2xl text-sm text-mist">用同一条提示词测量真实链路。</p></div>
       <div className="flex flex-wrap justify-end gap-2"><Button variant="ghost" onClick={() => void exportResults()}><Download size={16} />导出历史</Button><Button variant="ghost" onClick={() => void saveResults()} disabled={running || !visibleResults.length}><Save size={16} />保存本次</Button><Button variant="ghost" onClick={() => setResults({})}><RotateCcw size={16} />清空结果</Button>{running ? <Button variant="danger" onClick={stop}><CircleStop size={16} />停止</Button> : <Button onClick={() => void run()} disabled={isLoading || !visibleTargets.length}><Play size={16} />开始测速</Button>}</div>
     </div>
     <div className={cn('grid min-h-0 flex-1 gap-6', configCollapsed ? 'xl:grid-cols-[56px_minmax(0,1fr)]' : 'xl:grid-cols-2')}>

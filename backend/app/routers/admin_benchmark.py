@@ -25,7 +25,7 @@ from app.services.credentials import CredentialError, require_upstream_credentia
 
 router = APIRouter(prefix="/api/admin/benchmark", tags=["admin-benchmark"], dependencies=[Depends(get_current_admin)])
 
-FIRST_TOKEN_TIMEOUT_SECONDS = 60
+TOTAL_TIMEOUT_SECONDS = 60
 
 
 class BenchmarkRequest(BaseModel):
@@ -33,6 +33,18 @@ class BenchmarkRequest(BaseModel):
     model: str = Field(min_length=1, max_length=200)
     prompt: str = Field(default="用一句话介绍你自己。", min_length=1, max_length=2000)
     max_tokens: int = Field(default=64, ge=1, le=512)
+
+
+def timeout_result(account: UpstreamAccount, model: str) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "timeout": True,
+        "account_id": account.id,
+        "account_name": account.name,
+        "provider": account.provider,
+        "model": model,
+        "error": f"测速超过 {TOTAL_TIMEOUT_SECONDS} 秒",
+    }
 
 
 @router.post("")
@@ -51,50 +63,34 @@ async def benchmark(payload: BenchmarkRequest, db: Session = Depends(get_db), _:
         token = "agent-managed" if account.source == "agent" else require_upstream_credential(account)
         provider = get_provider(account.provider)
         started = time.perf_counter()
-        response = await provider.complete(
-            account,
-            [{"role": "user", "content": payload.prompt}],
-            payload.model,
-            True,
-            ensure_stream_usage({"max_tokens": payload.max_tokens}),
-            token,
-        )
+        try:
+            response = await asyncio.wait_for(
+                provider.complete(
+                    account,
+                    [{"role": "user", "content": payload.prompt}],
+                    payload.model,
+                    True,
+                    ensure_stream_usage({"max_tokens": payload.max_tokens}),
+                    token,
+                ),
+                timeout=TOTAL_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            return timeout_result(account, payload.model)
         first_token_ms: float | None = None
         output_text = ""
         output_tokens: int | None = None
         response_iterator = response.__aiter__()
         while True:
-            if first_token_ms is None:
-                remaining = FIRST_TOKEN_TIMEOUT_SECONDS - (time.perf_counter() - started)
-                if remaining <= 0:
-                    return {
-                        "ok": False,
-                        "timeout": True,
-                        "account_id": account.id,
-                        "account_name": account.name,
-                        "provider": account.provider,
-                        "model": payload.model,
-                        "error": "首 token 等待超过 60 秒",
-                    }
-                try:
-                    chunk = await asyncio.wait_for(response_iterator.__anext__(), timeout=remaining)
-                except TimeoutError:
-                    return {
-                        "ok": False,
-                        "timeout": True,
-                        "account_id": account.id,
-                        "account_name": account.name,
-                        "provider": account.provider,
-                        "model": payload.model,
-                        "error": "首 token 等待超过 60 秒",
-                    }
-                except StopAsyncIteration:
-                    break
-            else:
-                try:
-                    chunk = await response_iterator.__anext__()
-                except StopAsyncIteration:
-                    break
+            remaining = TOTAL_TIMEOUT_SECONDS - (time.perf_counter() - started)
+            if remaining <= 0:
+                return timeout_result(account, payload.model)
+            try:
+                chunk = await asyncio.wait_for(response_iterator.__anext__(), timeout=remaining)
+            except TimeoutError:
+                return timeout_result(account, payload.model)
+            except StopAsyncIteration:
+                break
 
             payload_chunk = chunk_to_dict(chunk)
             usage_tokens = output_tokens_from_chunk(payload_chunk)

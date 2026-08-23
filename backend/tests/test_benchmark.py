@@ -120,6 +120,36 @@ def test_benchmark_omits_speed_without_usage(client: TestClient, auth_headers: d
     assert body["estimated_output_tokens"] == round(len("只有正文") / 4)
 
 
+def test_benchmark_times_out_on_total_duration(client: TestClient, auth_headers: dict[str, str]) -> None:
+    account_id = _account(client, auth_headers)
+
+    async def fake_complete(*_args, **_kwargs):
+        async def chunks():
+            yield {"choices": [{"delta": {"content": "先出字"}}]}
+            await asyncio.sleep(0.2)
+            yield {"choices": [{"delta": {"content": "不该再等到这里"}}]}
+
+        return chunks()
+
+    provider = AsyncMock()
+    provider.complete = fake_complete
+    with (
+        patch("app.routers.admin_benchmark.get_provider", return_value=provider),
+        patch("app.routers.admin_benchmark.TOTAL_TIMEOUT_SECONDS", 0.05),
+    ):
+        response = client.post(
+            "/api/admin/benchmark",
+            headers=auth_headers,
+            json={"account_id": account_id, "model": "deepseek-chat", "prompt": "hi", "max_tokens": 32},
+        )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["ok"] is False
+    assert body["timeout"] is True
+    assert "测速超过" in body["error"]
+
+
 def test_dashboard_counts_saved_benchmark_runs(client: TestClient, auth_headers: dict[str, str]) -> None:
     empty = client.get("/api/admin/dashboard", headers=auth_headers)
     assert empty.status_code == 200
