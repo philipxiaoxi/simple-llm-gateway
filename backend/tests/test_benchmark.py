@@ -1,0 +1,120 @@
+from __future__ import annotations
+
+import asyncio
+from unittest.mock import AsyncMock, patch
+
+from fastapi.testclient import TestClient
+
+from app.services.benchmark import compute_tokens_per_second, is_token_delta, output_tokens_from_chunk
+
+
+def test_is_token_delta_ignores_empty_heartbeat() -> None:
+    assert is_token_delta({"choices": [{"delta": {"role": "assistant", "content": None, "reasoning_content": ""}}]}) is False
+    assert is_token_delta({"choices": [{"delta": {"content": ""}}]}) is False
+    assert is_token_delta({"choices": []}) is False
+
+
+def test_is_token_delta_accepts_reasoning_text_and_tool() -> None:
+    assert is_token_delta({"choices": [{"delta": {"reasoning_content": "think"}}]}) is True
+    assert is_token_delta({"choices": [{"delta": {"content": "hi"}}]}) is True
+    assert is_token_delta({"choices": [{"delta": {"tool_calls": [{"function": {"name": "search"}}]}}]}) is True
+    assert is_token_delta({"choices": [{"delta": {"tool_calls": [{"function": {"arguments": "{"}}]}}]}) is True
+
+
+def test_output_tokens_use_completion_and_include_reasoning() -> None:
+    assert output_tokens_from_chunk({
+        "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 40,
+            "completion_tokens_details": {"reasoning_tokens": 30},
+        }
+    }) == 40
+    assert output_tokens_from_chunk({"usage": {"output_tokens": 12}}) == 12
+    assert output_tokens_from_chunk({"choices": [{"delta": {"content": "x"}}]}) is None
+
+
+def test_tokens_per_second_uses_decode_window_only() -> None:
+    assert compute_tokens_per_second(100, 5_000) == 20
+    assert compute_tokens_per_second(30, 2_000) == 15
+    assert compute_tokens_per_second(None, 5_000) is None
+    assert compute_tokens_per_second(10, 0) is None
+    assert compute_tokens_per_second(10, -3) is None
+
+
+def _account(client: TestClient, auth_headers: dict[str, str]) -> int:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    assert created.status_code == 200
+    return created.json()["id"]
+
+
+def test_benchmark_follows_dsh_usage_and_decode_window(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    account_id = _account(client, auth_headers)
+    captured: dict = {}
+
+    async def fake_complete(_account, _messages, _model, stream, extra, _token):
+        captured["stream"] = stream
+        captured["extra"] = extra
+
+        async def chunks():
+            yield {"choices": [{"delta": {"role": "assistant", "content": None, "reasoning_content": ""}}]}
+            yield {"choices": [{"delta": {"content": None, "reasoning_content": "先想一下"}}]}
+            await asyncio.sleep(0.05)
+            yield {"choices": [{"delta": {"content": "你好世界你好世界你好世界你好世界"}}]}
+            yield {"choices": [], "usage": {"prompt_tokens": 8, "completion_tokens": 40, "total_tokens": 48}}
+
+        return chunks()
+
+    provider = AsyncMock()
+    provider.complete = fake_complete
+    with patch("app.routers.admin_benchmark.get_provider", return_value=provider):
+        response = client.post(
+            "/api/admin/benchmark",
+            headers=auth_headers,
+            json={"account_id": account_id, "model": "deepseek-reasoner", "prompt": "hi", "max_tokens": 64},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert captured["stream"] is True
+    assert captured["extra"]["stream_options"]["include_usage"] is True
+    assert body["ok"] is True
+    assert body["estimated_output_tokens"] == 40
+    assert body["first_token_ms"] is not None
+    assert body["total_ms"] > body["first_token_ms"]
+    assert body["output_tokens_per_second"] == compute_tokens_per_second(
+        40, body["total_ms"] - body["first_token_ms"]
+    )
+    char_estimate = round(len("你好世界你好世界你好世界你好世界") / 4)
+    assert body["output_tokens_per_second"] != compute_tokens_per_second(
+        char_estimate, body["total_ms"]
+    )
+
+
+def test_benchmark_omits_speed_without_usage(client: TestClient, auth_headers: dict[str, str]) -> None:
+    account_id = _account(client, auth_headers)
+
+    async def fake_complete(*_args, **_kwargs):
+        async def chunks():
+            yield {"choices": [{"delta": {"content": "只有正文"}}]}
+
+        return chunks()
+
+    provider = AsyncMock()
+    provider.complete = fake_complete
+    with patch("app.routers.admin_benchmark.get_provider", return_value=provider):
+        response = client.post(
+            "/api/admin/benchmark",
+            headers=auth_headers,
+            json={"account_id": account_id, "model": "deepseek-chat", "prompt": "hi", "max_tokens": 32},
+        )
+
+    body = response.json()
+    assert body["ok"] is True
+    assert body["output_tokens_per_second"] is None
+    assert body["estimated_output_tokens"] == round(len("只有正文") / 4)

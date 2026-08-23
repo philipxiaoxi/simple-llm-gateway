@@ -29,7 +29,7 @@ function RunDetails({ runId }: { runId: number }) {
               <span className={result.timeout ? 'text-warning' : result.ok ? 'text-success' : 'text-danger'}>{result.timeout ? '超时' : result.ok ? '成功' : '失败'}</span>
             </div>
             <div className="mt-1 truncate text-mist">{result.account_name} · {result.provider}</div>
-            <div className="mt-1 font-mono text-mist">首 token {result.first_token_ms ?? '—'} ms · 总耗时 {result.total_ms ?? '—'} ms</div>
+            <div className="mt-1 font-mono text-mist">首 token {result.first_token_ms ?? '—'} ms · 总耗时 {result.total_ms ?? '—'} ms · {result.output_tokens_per_second ?? '—'} tok/s</div>
             {result.error ? <div className="mt-1 truncate text-danger" title={result.error}>{result.error}</div> : null}
           </div>
         ))}
