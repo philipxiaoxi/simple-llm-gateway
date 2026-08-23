@@ -337,7 +337,7 @@ export function KeysPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">API Key</h1>
-          <p className="mt-1 text-sm text-mist">创建时绑定一个上游账号或网关 Agent 账号。需要时直接复制完整 Key。</p>
+          <p className="mt-1 text-sm text-mist">创建时绑定一个上游账号或网关代理账号。需要时直接复制完整 Key。</p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <Field label="排序">

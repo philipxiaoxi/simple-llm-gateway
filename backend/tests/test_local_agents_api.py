@@ -80,7 +80,7 @@ def test_refresh_agent_route_models_rejects_offline_agent(client: TestClient, au
     _sync_agent("macbook-studio", {"deepseek-local": {"id": "deepseek-local", "name": "DeepSeek", "provider": "deepseek"}})
     response = client.post("/api/admin/agents/macbook-studio/routes/deepseek-local/models", headers=auth_headers)
     assert response.status_code == 503
-    assert response.json() == {"detail": "Agent 当前离线，无法刷新模型"}
+    assert response.json() == {"detail": "网关代理当前离线，无法刷新模型"}
 
 
 def test_refresh_agent_route_models_syncs_upstream_result(client: TestClient, auth_headers: dict[str, str], monkeypatch) -> None:

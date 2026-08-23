@@ -11,7 +11,7 @@ import { Button, Dialog, Field, Input } from './ui'
 const links = [
   { to: '/', label: '概览', icon: Activity },
   { to: '/accounts', label: '上游账号', icon: RadioTower },
-  { to: '/agents', label: '网关 Agent', icon: ServerCog },
+  { to: '/agents', label: '网关代理', icon: ServerCog },
   { to: '/keys', label: 'API Key', icon: KeyRound },
   { to: '/benchmark', label: '模型测速', icon: Gauge },
   { to: '/benchmark/history', label: '测速历史', icon: Activity },

@@ -24,7 +24,7 @@
 - **多上游账号**: OpenCode Go、Grok（xAI OAuth）、DeepSeek，以及通用 OpenAI / 官方 Anthropic
 - **管理后台**: 探测上游是否可用、查询额度、拉取模型列表
 - **一键导入**: 分享页按 Key 查询归属，支持 CC Switch 导入
-- **本地 Agent**: 可将受限网络中的固定上游地址安全地反向接入 Gateway
+- **网关代理**: 可将受限网络中的固定上游地址安全地反向接入 Gateway
 
 ## 环境要求
 
@@ -104,9 +104,9 @@ docker compose up --build
 
 镜像会先构建前端 `dist`，再由 FastAPI 同源托管页面和接口。
 
-## 本地 Agent
+## 网关代理
 
-Gateway 直接承载 Agent 的 WSS 连接，不需要单独部署 Relay 容器。为网关设置随机的 `LOCAL_AGENT_TOKEN`，然后在能访问本地上游的机器上执行：
+Gateway 直接承载网关代理的 WSS 连接，不需要单独部署 Relay 容器。为网关设置随机的 `LOCAL_AGENT_TOKEN`，然后在能访问本地上游的机器上执行：
 
 ```bash
 cd agent
@@ -116,7 +116,7 @@ cp config.example.json config.json
 npm start
 ```
 
-Agent 只会访问 `config.json` 中声明的 `targetBaseUrl`。在管理后台创建账号时，将上游地址填为 `http://127.0.0.1:8000/r/<route-id>/v1`；Docker 部署则填 `http://gateway:8000/r/<route-id>/v1`。账号的上游 Key 仍只保存在 Gateway。
+网关代理只会访问 `config.json` 中声明的 `targetBaseUrl`。在管理后台创建账号时，将上游地址填为 `http://127.0.0.1:8000/r/<route-id>/v1`；Docker 部署则填 `http://gateway:8000/r/<route-id>/v1`。账号的上游 Key 仍只保存在 Gateway。
 
 ## 项目结构
 

@@ -39,7 +39,7 @@ def get_agent(agent_id: str) -> dict[str, object] | JSONResponse:
     try:
         agent = session.scalar(select(GatewayAgent).where(GatewayAgent.agent_id == agent_id))
         if agent is None:
-            return JSONResponse(status_code=404, content={"detail": "网关 Agent 不存在"})
+            return JSONResponse(status_code=404, content={"detail": "网关代理不存在"})
         return _agent_to_out(agent)
     finally:
         session.close()
@@ -56,9 +56,9 @@ async def refresh_agent_route_models(agent_id: str, route_id: str) -> JSONRespon
         )
         account = session.scalar(select(UpstreamAccount).where(UpstreamAccount.agent_route_id == route_id))
         if route is None or account is None:
-            return JSONResponse(status_code=404, content={"detail": "Agent 路由不存在"})
+            return JSONResponse(status_code=404, content={"detail": "网关代理路由不存在"})
         if not local_agent_relay.is_agent_online(agent_id):
-            return JSONResponse(status_code=503, content={"detail": "Agent 当前离线，无法刷新模型"})
+            return JSONResponse(status_code=503, content={"detail": "网关代理当前离线，无法刷新模型"})
         from app.services.probe import list_account_models
 
         result = await list_account_models(account)

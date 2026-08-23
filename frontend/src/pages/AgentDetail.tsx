@@ -25,13 +25,13 @@ export function AgentDetailPage() {
     onError: (caught) => notifyBad(errorMessage(caught, '刷新模型失败')),
   })
 
-  if (isLoading) return <div className="py-12 text-sm text-mist">正在加载 Agent 详情...</div>
-  if (!agent) return <div className="py-12 text-sm text-mist">未找到该 Gateway Agent。</div>
+  if (isLoading) return <div className="py-12 text-sm text-mist">正在加载网关代理详情...</div>
+  if (!agent) return <div className="py-12 text-sm text-mist">未找到该网关代理。</div>
 
   return (
     <div className="space-y-5">
       <Link to="/agents" className="inline-flex items-center gap-1.5 text-sm text-mist hover:text-paper">
-        <ArrowLeft size={16} /> 返回网关 Agent
+        <ArrowLeft size={16} /> 返回网关代理
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
@@ -69,13 +69,13 @@ export function AgentDetailPage() {
                   </div>
                   <div className="mt-2 text-xs text-mist">上次同步：{formatTime(route.models_updated_at)}</div>
                 </div>
-                <Button variant="line" disabled={agent.status !== 'online' || pending} onClick={() => refreshModels.mutate(route.id)} title={agent.status === 'online' ? '从上游刷新模型' : 'Agent 离线时无法刷新模型'}>
+                <Button variant="line" disabled={agent.status !== 'online' || pending} onClick={() => refreshModels.mutate(route.id)} title={agent.status === 'online' ? '从上游刷新模型' : '网关代理离线时无法刷新模型'}>
                   <RefreshCw size={16} className={pending ? 'animate-spin' : ''} /> 刷新模型
                 </Button>
               </div>
             )
           })}
-          {!agent.routes.length ? <div className="px-4 py-10 text-center text-sm text-mist">该 Agent 尚未注册路由。</div> : null}
+          {!agent.routes.length ? <div className="px-4 py-10 text-center text-sm text-mist">该网关代理尚未注册路由。</div> : null}
         </div>
       </section>
     </div>
