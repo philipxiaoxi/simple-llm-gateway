@@ -1,5 +1,8 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from app.db import get_session_factory
+from app.models import UpstreamAccount
 from app.routers.local_agent import _mark_agent_offline, _sync_agent
 from app.services.local_agent_relay import AgentConnection, local_agent_relay
 
@@ -60,6 +63,17 @@ def test_agents_keep_registered_machine_and_routes_after_disconnect(client: Test
     assert detail.status_code == 200
     assert detail.json()["status"] == "offline"
     assert [route["id"] for route in detail.json()["routes"]] == ["deepseek-local", "vendor-a"]
+
+
+def test_agent_routes_use_local_relay_base_url(client: TestClient) -> None:
+    _sync_agent("macbook-studio", {"deepseek-local": {"id": "deepseek-local", "name": "DeepSeek", "provider": "deepseek"}})
+    session = get_session_factory()()
+    try:
+        account = session.scalar(select(UpstreamAccount).where(UpstreamAccount.agent_route_id == "deepseek-local"))
+        assert account is not None
+        assert account.base_url == "http://127.0.0.1:8000/r/deepseek-local/v1"
+    finally:
+        session.close()
 
 
 def test_refresh_agent_route_models_rejects_offline_agent(client: TestClient, auth_headers: dict[str, str]) -> None:

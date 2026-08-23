@@ -20,6 +20,7 @@ from app.services.local_agent_relay import (
 )
 
 router = APIRouter(tags=["local-agent"])
+LOCAL_RELAY_BASE_URL = "http://127.0.0.1:8000"
 
 
 @router.get("/api/admin/agents", dependencies=[Depends(get_current_admin)])
@@ -146,7 +147,7 @@ def _sync_agent(agent_id: str, routes: dict[str, dict[str, object]]) -> None:
                     source="agent",
                     agent_route_id=route_id,
                     auth_type=provider.auth_type,
-                    base_url=f"{get_settings().app_base_url.rstrip('/')}/r/{route_id}/v1",
+                        base_url=f"{LOCAL_RELAY_BASE_URL}/r/{route_id}/v1",
                     status="active",
                     risk_level="medium",
                 )
@@ -155,7 +156,7 @@ def _sync_agent(agent_id: str, routes: dict[str, dict[str, object]]) -> None:
                 account.name = str(route["name"])
                 account.provider = provider_id
                 account.auth_type = provider.auth_type
-                account.base_url = f"{get_settings().app_base_url.rstrip('/')}/r/{route_id}/v1"
+                account.base_url = f"{LOCAL_RELAY_BASE_URL}/r/{route_id}/v1"
             if stored_route is None:
                 session.add(
                     GatewayAgentRoute(
