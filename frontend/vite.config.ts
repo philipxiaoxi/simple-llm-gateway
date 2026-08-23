@@ -9,7 +9,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: 'inline',
+      injectRegister: false,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: '中转台',
@@ -35,8 +35,22 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        navigateFallbackDenylist: [/^\/api\//, /^\/v1\//, /^\/anthropic\//, /^\/chat\//, /^\/responses\//, /^\/models\//, /^\/health$/],
+        globPatterns: ['**/*.{js,css,svg,png,woff2}'],
+        navigateFallback: null,
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'html-pages',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 },
+            },
+          },
+        ],
       },
     }),
   ],

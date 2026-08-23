@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { Layout } from './components/Layout'
+import { PwaUpdater } from './components/PwaUpdate'
 import { getToken } from './lib/api'
 import { AccountsPage } from './pages/Accounts'
 import { AgentDetailPage } from './pages/AgentDetail'
@@ -26,6 +27,7 @@ function Guard({ children }: { children: ReactElement }) {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <PwaUpdater />
       <Toaster theme="dark" position="top-center" richColors closeButton />
       <BrowserRouter>
         <Routes>

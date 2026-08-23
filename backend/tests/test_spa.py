@@ -41,6 +41,19 @@ def test_pwa_update_files_do_not_use_stale_cache(client: TestClient, path: str) 
     assert response.headers["cache-control"] == "no-cache"
 
 
+def test_workbox_runtime_file_does_not_use_stale_cache(client: TestClient) -> None:
+    from app.main import FRONTEND_DIST
+
+    if not FRONTEND_DIST.exists():
+        pytest.skip("frontend dist 不存在")
+    workbox_files = sorted(FRONTEND_DIST.glob("workbox-*.js"))
+    if not workbox_files:
+        pytest.skip("workbox 运行时文件不存在")
+    response = client.get(f"/{workbox_files[0].name}")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-cache"
+
+
 def test_spa_does_not_serve_repo_files(client: TestClient) -> None:
     from app.main import FRONTEND_DIST
 

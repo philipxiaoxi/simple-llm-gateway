@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Gauge, KeyRound, Menu, MessageSquareText, RadioTower, ServerCog, X } from 'lucide-react'
+import { Activity, Gauge, KeyRound, LogOut, Menu, MessageSquareText, RadioTower, ServerCog, UserRoundPen, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { MIN_PASSWORD_LENGTH, cn, errorMessage } from '../lib/utils'
+import { ForceUpdateButton } from './PwaUpdate'
 import { Button, Dialog, Field, Input } from './ui'
 
 const links = [
@@ -180,10 +181,13 @@ export function Layout() {
           ))}
         </nav>
         <div className="flex flex-col gap-1 p-3">
+          <ForceUpdateButton className="w-full justify-start text-mist" />
           <Button variant="ghost" className="w-full justify-start text-mist" onClick={() => setProfile(true)}>
+            <UserRoundPen size={16} />
             修改账号
           </Button>
           <Button variant="ghost" className="w-full justify-start text-mist" onClick={logout}>
+            <LogOut size={16} />
             退出登录
           </Button>
         </div>

@@ -110,7 +110,7 @@ if FRONTEND_DIST.exists():
 
     @app.get("/workbox-{filename}.js")
     def frontend_workbox_file(filename: str) -> FileResponse:
-        return FileResponse(FRONTEND_DIST / f"workbox-{filename}.js")
+        return FileResponse(FRONTEND_DIST / f"workbox-{filename}.js", headers=no_cache_headers)
 
     @app.get("/icons.svg")
     def frontend_icons() -> FileResponse:

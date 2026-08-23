@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ForceUpdateButton } from '../components/PwaUpdate'
 import { Button, Card, Field, Input } from '../components/ui'
 import { api, setToken } from '../lib/api'
 import { errorMessage } from '../lib/utils'
@@ -55,6 +56,7 @@ export function LoginPage() {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? '登录中…' : '进入控制台'}
           </Button>
+          <ForceUpdateButton className="w-full text-mist" />
         </form>
       </Card>
     </div>
