@@ -23,10 +23,11 @@ def client(tmp_path, monkeypatch) -> TestClient:
 
     from app.main import app
     from app.db import init_db
-    from app.seed import seed_admin
+    from app.seed import seed_admin, seed_skill_categories
 
     init_db()
     seed_admin()
+    seed_skill_categories()
     with TestClient(app) as test_client:
         yield test_client
 

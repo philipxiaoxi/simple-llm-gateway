@@ -213,3 +213,52 @@ class BenchmarkResult(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     run: Mapped[BenchmarkRun] = relationship(back_populates="results")
+
+
+class SkillCategory(Base):
+    __tablename__ = "skill_categories"
+    __table_args__ = (UniqueConstraint("name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    keywords_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_protected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class SkillClassificationSettings(Base):
+    __tablename__ = "skill_classification_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("upstream_accounts.id"), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    report_account_id: Mapped[int | None] = mapped_column(ForeignKey("upstream_accounts.id"), nullable=True)
+    report_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    report_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class Skill(Base):
+    __tablename__ = "skills"
+    __table_args__ = (UniqueConstraint("slug"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(80), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    category: Mapped[str] = mapped_column(String(64), default="其他", nullable=False)
+    platforms_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    license: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    author: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    storage_dir: Mapped[str] = mapped_column(String(160), nullable=False)
+    file_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    skill_md: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    analysis_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    analysis_generated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

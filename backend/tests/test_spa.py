@@ -63,3 +63,10 @@ def test_spa_does_not_serve_repo_files(client: TestClient) -> None:
     assert response.status_code == 200
     assert "APP_SECRET_KEY" not in response.text
     assert "AI一体化服务平台" in response.text
+
+
+def test_spa_does_not_swallow_unknown_api_posts(client: TestClient) -> None:
+    response = client.post("/api/does-not-exist")
+    assert response.status_code == 404
+    assert "Method Not Allowed" not in response.text
+    assert response.headers.get("cache-control") == "no-store"

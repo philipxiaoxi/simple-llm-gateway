@@ -6,6 +6,7 @@ from app.config import get_settings, validate_bootstrap_admin_password
 from app.crypto import hash_password
 from app.db import get_session_factory
 from app.models import Admin
+from app.services.skills import ensure_skill_categories
 
 
 def seed_admin() -> None:
@@ -22,6 +23,15 @@ def seed_admin() -> None:
                 password_hash=hash_password(settings.admin_password),
             )
         )
+        session.commit()
+    finally:
+        session.close()
+
+
+def seed_skill_categories() -> None:
+    session = get_session_factory()()
+    try:
+        ensure_skill_categories(session)
         session.commit()
     finally:
         session.close()

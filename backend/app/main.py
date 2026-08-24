@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -19,13 +19,14 @@ from app.routers import (
     admin_dashboard,
     admin_keys,
     admin_logs,
+    admin_skills,
     health,
     local_agent,
     oauth,
     proxy,
     share,
 )
-from app.seed import seed_admin
+from app.seed import seed_admin, seed_skill_categories
 from app.services.grok_oauth import cleanup_expired_oauth_states, run_oauth_refresh_loop
 from app.services.quota import run_quota_refresh_loop
 
@@ -35,6 +36,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     validate_app_secret_key(get_settings().app_secret_key)
     init_db()
     seed_admin()
+    seed_skill_categories()
     session = get_session_factory()()
     try:
         cleanup_expired_oauth_states(session)
@@ -73,9 +75,36 @@ app.include_router(admin_benchmark_history.router)
 app.include_router(admin_keys.router)
 app.include_router(admin_logs.router)
 app.include_router(admin_dashboard.router)
+app.include_router(admin_skills.router)
 app.include_router(oauth.router)
 app.include_router(proxy.router)
 app.include_router(share.router)
+
+
+class DisableApiCacheMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not str(scope.get("path", "")).startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                headers = [
+                    (key, value)
+                    for key, value in message.get("headers", [])
+                    if key.lower() != b"cache-control"
+                ]
+                headers.append((b"cache-control", b"no-store"))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
+app.add_middleware(DisableApiCacheMiddleware)
 
 
 def _frontend_dist() -> Path:
@@ -116,7 +145,13 @@ if FRONTEND_DIST.exists():
     def frontend_icons() -> FileResponse:
         return FileResponse(FRONTEND_DIST / "icons.svg")
 
-    @app.get("/{full_path:path}")
-    def spa(full_path: str) -> FileResponse:
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+    def spa(full_path: str, request: Request) -> FileResponse:
+        # API 路径不能回落到 SPA，否则未注册的 POST 会变成 405 而不是 404。
+        is_api = full_path == "health" or full_path.startswith(
+            ("api/", "v1/", "anthropic/", "chat", "responses", "models")
+        )
+        if is_api or request.method not in {"GET", "HEAD"}:
+            raise HTTPException(status_code=404, detail="Not Found")
         # 前端路由一律回 index.html，不把用户路径拼到磁盘上。
         return FileResponse(FRONTEND_DIST / "index.html", headers=no_cache_headers)

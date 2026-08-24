@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     quota_refresh_interval_seconds: int = 3600
     jwt_expire_days: int = 7
     frontend_dist: str = ""
+    skills_path: str = ""
     xai_oauth_client_id: str = "b1a00492-073a-47ea-816f-4c329264a828"
     xai_oauth_authorize_url: str = "https://auth.x.ai/oauth2/authorize"
     xai_oauth_token_url: str = "https://auth.x.ai/oauth2/token"
@@ -60,6 +61,17 @@ class Settings(BaseSettings):
         path = Path(self.database_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         return f"sqlite:///{path.resolve()}"
+
+    @property
+    def resolved_skills_path(self) -> Path:
+        if self.skills_path:
+            path = Path(self.skills_path)
+        elif self.database_path == ":memory:":
+            path = Path("data") / "skills"
+        else:
+            path = Path(self.database_path).expanduser().resolve().parent / "skills"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
 
 @lru_cache

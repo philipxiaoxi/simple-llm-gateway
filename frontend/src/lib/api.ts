@@ -22,10 +22,13 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
-  headers.set('Content-Type', 'application/json')
+  if (init.body !== undefined && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
   const token = getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  const response = await fetch(path, { ...init, headers })
+  // 管理接口禁止复用浏览器缓存。/api/admin/skills 曾被缓存成 index.html，导致列表一直为空。
+  const response = await fetch(path, { ...init, cache: 'no-store', headers })
   // 401 强制登出只对管理后台接口生效，/api/share 等自助页面无需登录
   if (response.status === 401 && path.startsWith('/api/admin') && !path.endsWith('/login')) {
     clearToken()
@@ -44,6 +47,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(response.status, typeof message === 'string' ? message : JSON.stringify(message))
   }
   if (response.status === 204) return undefined as T
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.includes('application/json')) {
+    throw new ApiError(response.status, '接口返回了非 JSON 响应，请刷新页面后重试')
+  }
   return response.json() as Promise<T>
 }
 
@@ -90,6 +97,17 @@ export type Account = {
   models_updated_at: string | null
   oauth_expires_at: string | null
   created_at: string
+}
+
+export type SkillClassificationSettings = {
+  account_id: number | null
+  account_name: string | null
+  model: string | null
+  enabled: boolean
+  report_account_id: number | null
+  report_account_name: string | null
+  report_model: string | null
+  report_enabled: boolean
 }
 
 export type CcSwitchTarget = {
@@ -171,6 +189,80 @@ export type Dashboard = {
   total_requests: number
   total_tokens: number
   benchmark_count: number
+  skill_count: number
+}
+
+export type SkillItem = {
+  id: number
+  slug: string
+  name: string
+  description: string
+  category: string
+  platforms: string[]
+  license: string | null
+  version: string | null
+  author: string | null
+  source_name: string | null
+  file_count: number
+  size_bytes: number
+  created_at: string
+  updated_at: string
+}
+
+export type SkillFile = {
+  path: string
+  size: number
+  is_text: boolean
+}
+
+export type SkillDetail = SkillItem & {
+  skill_md: string
+  files: SkillFile[]
+  analysis: SkillAnalysis | null
+  analysis_generated_at: string | null
+}
+
+export type SkillAnalysis = {
+  summary: string
+  use_cases: string[]
+  capabilities: string[]
+  inputs_outputs: string[]
+  trigger_and_workflow: string[]
+  dependencies: string[]
+  permissions_and_risks: string[]
+  limitations: string[]
+  setup_suggestions: string[]
+  example_tasks: string[]
+  recommendation: string
+  fit_score: number | null
+  generated_by: string
+}
+
+export type SkillCategory = {
+  name: string
+  count: number
+}
+
+export type SkillCategoryItem = {
+  id: number
+  name: string
+  sort_order: number
+  keywords: string[]
+  is_protected: boolean
+  count: number
+  created_at: string
+}
+
+export type SkillList = {
+  items: SkillItem[]
+  total: number
+  categories: SkillCategory[]
+}
+
+export type SkillUploadResult = {
+  items: SkillItem[]
+  created: number
+  skipped: { name: string; reason: string }[]
 }
 
 export type GatewayAgent = {
@@ -293,6 +385,124 @@ export const api = {
     sonnet_model?: string
     opus_model?: string
   }) => request<{ url: string }>('/api/share/cc-switch', { method: 'POST', body: JSON.stringify(payload) }),
+  skills: (query: { q?: string; category?: string } = {}) => {
+    const params = new URLSearchParams()
+    if (query.q) params.set('q', query.q)
+    if (query.category) params.set('category', query.category)
+    const suffix = params.toString() ? `?${params}` : ''
+    // 走 /list，避开浏览器把 GET /api/admin/skills 缓存成 HTML 的问题。
+    return request<SkillList>(`/api/admin/skills/list${suffix}`)
+  },
+  skill: (id: number) => request<SkillDetail>(`/api/admin/skills/${id}`),
+  analyzeSkill: (id: number) => request<SkillAnalysis>(`/api/admin/skills/${id}/analysis`, { method: 'POST' }),
+  updateSkill: (id: number, payload: { name?: string; description?: string; category?: string }) =>
+    request<SkillItem>(`/api/admin/skills/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteSkill: (id: number) => request<{ ok: boolean }>(`/api/admin/skills/${id}`, { method: 'DELETE' }),
+  skillCategories: () => request<{ items: SkillCategoryItem[] }>('/api/admin/skills/categories'),
+  createSkillCategory: (payload: { name: string; keywords?: string[] }) =>
+    request<SkillCategoryItem>('/api/admin/skills/categories', { method: 'POST', body: JSON.stringify(payload) }),
+  updateSkillCategory: (id: number, payload: { name?: string; keywords?: string[]; sort_order?: number }) =>
+    request<SkillCategoryItem>(`/api/admin/skills/categories/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteSkillCategory: (id: number) => request<{ ok: boolean }>(`/api/admin/skills/categories/${id}`, { method: 'DELETE' }),
+  skillClassificationSettings: () => request<SkillClassificationSettings>('/api/admin/skills/classification-settings'),
+  updateSkillClassificationSettings: (payload: {
+    account_id: number | null
+    model: string | null
+    enabled: boolean
+    report_account_id: number | null
+    report_model: string | null
+    report_enabled: boolean
+  }) => request<SkillClassificationSettings>('/api/admin/skills/classification-settings', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }),
+  uploadSkills: async (files: File[], category = '自动识别') => {
+    const body = new FormData()
+    body.append('category', category)
+    files.forEach((file) => {
+      const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath
+      body.append('files', file, relative || file.name)
+    })
+    const headers = new Headers()
+    const token = getToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch('/api/admin/skills/upload', { method: 'POST', headers, body })
+    if (response.status === 401) {
+      clearToken()
+      if (!window.location.pathname.startsWith('/login')) window.location.href = '/login'
+    }
+    if (!response.ok) {
+      let message = `请求失败 (${response.status})`
+      try {
+        const payload = await response.json()
+        message = payload.detail || payload.message || message
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError(response.status, typeof message === 'string' ? message : JSON.stringify(message))
+    }
+    return response.json() as Promise<SkillUploadResult>
+  },
+  replaceSkill: async (id: number, files: File[], category = '自动识别') => {
+    const body = new FormData()
+    body.append('category', category)
+    files.forEach((file) => {
+      const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath
+      body.append('files', file, relative || file.name)
+    })
+    const headers = new Headers()
+    const token = getToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`/api/admin/skills/${id}/replace`, { method: 'POST', headers, body })
+    if (!response.ok) {
+      let message = `请求失败 (${response.status})`
+      try {
+        const payload = await response.json()
+        message = payload.detail || payload.message || message
+      } catch { /* ignore */ }
+      throw new ApiError(response.status, typeof message === 'string' ? message : JSON.stringify(message))
+    }
+    return response.json() as Promise<SkillItem>
+  },
+  bulkUpdateSkills: async (files: File[], category = '自动识别') => {
+    const body = new FormData()
+    body.append('category', category)
+    files.forEach((file) => {
+      const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath
+      body.append('files', file, relative || file.name)
+    })
+    const headers = new Headers()
+    const token = getToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch('/api/admin/skills/bulk-update', { method: 'POST', headers, body })
+    if (!response.ok) {
+      let message = `请求失败 (${response.status})`
+      try {
+        const payload = await response.json()
+        message = payload.detail || payload.message || message
+      } catch { /* ignore */ }
+      throw new ApiError(response.status, typeof message === 'string' ? message : JSON.stringify(message))
+    }
+    return response.json() as Promise<SkillUploadResult>
+  },
+  downloadSkill: async (id: number) => {
+    const headers = new Headers()
+    const token = getToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`/api/admin/skills/${id}/download`, { headers })
+    if (!response.ok) throw new ApiError(response.status, '下载 Skill 失败')
+    return response.blob()
+  },
+  downloadSkillFile: async (id: number, path: string) => {
+    const headers = new Headers()
+    const token = getToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`/api/admin/skills/${id}/files/${path.split('/').map(encodeURIComponent).join('/')}`, {
+      headers,
+    })
+    if (!response.ok) throw new ApiError(response.status, '下载文件失败')
+    return response.blob()
+  },
 }
 
 export type BenchmarkResult = {

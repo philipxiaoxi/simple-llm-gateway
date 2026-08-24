@@ -1,6 +1,6 @@
 <div align="center">
   <h1>AI一体化服务平台</h1>
-  <p>自建AI一体化服务平台：对外提供 OpenAI / Anthropic 协议，把请求转到 OpenCode Go、Grok（xAI OAuth）或 DeepSeek；后续将覆盖 Skills 等能力</p>
+  <p>自建AI一体化服务平台：对外提供 OpenAI / Anthropic 协议，把请求转到 OpenCode Go、Grok（xAI OAuth）或 DeepSeek；后台可管理本地 Agent Skills</p>
   <p>
     <a href="#-功能特性">功能特性</a> •
     <a href="#快速开始">快速开始</a> •
@@ -25,6 +25,7 @@
 - **管理后台**: 探测上游是否可用、查询额度、拉取模型列表
 - **一键导入**: 分享页按 Key 查询归属，支持 CC Switch 导入
 - **网关代理**: 可将受限网络中的固定上游地址安全地反向接入 Gateway
+- **Skills 仓库**: 上传符合 `SKILL.md` 规范的目录 / zip / tar，按分类浏览、编辑元数据并下载
 
 ## 环境要求
 
@@ -50,6 +51,7 @@ cp .env.example .env
 | `REQUEST_TIMEOUT_SECONDS` | 默认 120 |
 | `QUOTA_REFRESH_INTERVAL_SECONDS` | 上游额度自动刷新间隔，默认 3600（1 小时） |
 | `XAI_OAUTH_CLIENT_ID` | Grok OAuth 客户端，可覆盖默认值 |
+| `SKILLS_PATH` | Skills 文件目录。默认与数据库同级的 `skills/`（例如 `data/skills`） |
 
 
 ### 2. 启动后端
@@ -92,6 +94,20 @@ base_url = https://你的站/v1
 
 创建 Key 时必须选一个上游账号，这把 Key 只会打到那个账号。
 
+## Skills 管理
+
+后台「Skills」页是本地 Agent Skills 仓库，参考 [SkillHot](https://skillhot.savs-ai.com/) 的分类与卡片浏览，但文件保存在本机，不爬取 GitHub。
+
+每个 Skill 必须是一个目录，根目录有 `SKILL.md`，并带 YAML frontmatter（至少 `name`、`description`）。支持：
+
+- 上传单个 zip / tar / tar.gz
+- 上传整个目录（浏览器会带上相对路径）
+- 一次导入合集压缩包里的多个 Skill
+- 按分类筛选、搜索、编辑名称/分类/描述
+- 下载整个 Skill 为 zip，或单独下载某个文件
+
+文件默认写在与数据库同级的 `skills/`（Docker 下即 `/data/skills`，已被 `./data` 卷覆盖）。可用 `SKILLS_PATH` 改路径。单次上传上限 20MB，解压后 40MB / 400 个文件。
+
 ## 生产部署
 
 ```bash
@@ -130,7 +146,7 @@ llm-gateway/
 │   └── tests/
 ├── frontend/                # Vite + React 管理端
 │   └── src/
-│       ├── pages/           # 概览、账号、Key、记录审计
+│       ├── pages/           # 概览、账号、Key、Skills、记录审计
 │       └── lib/             # API 封装
 ├── docs/                    # 设计文档
 ├── agent/                   # 本地网络常驻 Node.js Agent

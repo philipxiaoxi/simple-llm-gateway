@@ -79,12 +79,31 @@ def _ensure_columns(engine: Engine) -> None:
         "risk_level": "ALTER TABLE upstream_accounts ADD COLUMN risk_level VARCHAR(16) DEFAULT 'low' NOT NULL",
         "website_url": "ALTER TABLE upstream_accounts ADD COLUMN website_url VARCHAR(512)",
     }
+    skill_settings_statements = {
+        "report_account_id": "ALTER TABLE skill_classification_settings ADD COLUMN report_account_id INTEGER",
+        "report_model": "ALTER TABLE skill_classification_settings ADD COLUMN report_model VARCHAR(128)",
+        "report_enabled": "ALTER TABLE skill_classification_settings ADD COLUMN report_enabled BOOLEAN DEFAULT 0 NOT NULL",
+    }
+    skill_statements = {
+        "analysis_json": "ALTER TABLE skills ADD COLUMN analysis_json TEXT",
+        "analysis_generated_at": "ALTER TABLE skills ADD COLUMN analysis_generated_at DATETIME",
+    }
     with engine.begin() as connection:
         account_columns = {
             row[1] for row in connection.execute(text("PRAGMA table_info(upstream_accounts)"))
         }
         for column, statement in account_statements.items():
             if column not in account_columns:
+                connection.execute(text(statement))
+        settings_columns = {
+            row[1] for row in connection.execute(text("PRAGMA table_info(skill_classification_settings)"))
+        }
+        for column, statement in skill_settings_statements.items():
+            if column not in settings_columns:
+                connection.execute(text(statement))
+        skill_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(skills)"))}
+        for column, statement in skill_statements.items():
+            if column not in skill_columns:
                 connection.execute(text(statement))
         connection.execute(
             text("CREATE UNIQUE INDEX IF NOT EXISTS ix_upstream_accounts_agent_route_id ON upstream_accounts (agent_route_id)")
@@ -127,6 +146,9 @@ def _ensure_columns(engine: Engine) -> None:
                     "WHERE account_name IS NULL"
                 )
             )
+        skill_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(skills)"))}
+        if skill_columns and "category" in skill_columns:
+            connection.execute(text("UPDATE skills SET category = substr(category, 1, 64) WHERE length(category) > 64"))
 
 
 def _request_logs_have_parent_fks(engine: Engine) -> bool:

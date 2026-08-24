@@ -97,6 +97,26 @@ class AccountOut(BaseModel):
     created_at: datetime
 
 
+class SkillClassificationSettingsOut(BaseModel):
+    account_id: int | None = None
+    account_name: str | None = None
+    model: str | None = None
+    enabled: bool = False
+    report_account_id: int | None = None
+    report_account_name: str | None = None
+    report_model: str | None = None
+    report_enabled: bool = False
+
+
+class SkillClassificationSettingsUpdate(BaseModel):
+    account_id: int | None = None
+    model: str | None = None
+    enabled: bool = False
+    report_account_id: int | None = None
+    report_model: str | None = None
+    report_enabled: bool = False
+
+
 class CcSwitchBuildRequest(BaseModel):
     app: str
     model: str | None = None
@@ -193,6 +213,106 @@ class DashboardOut(BaseModel):
     total_requests: int
     total_tokens: int
     benchmark_count: int
+    skill_count: int = 0
+
+
+class SkillUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    category: str | None = None
+
+
+class SkillFileOut(BaseModel):
+    path: str
+    size: int
+    is_text: bool
+
+
+class SkillOut(BaseModel):
+    id: int
+    slug: str
+    name: str
+    description: str
+    category: str
+    platforms: list[str] = Field(default_factory=list)
+    license: str | None = None
+    version: str | None = None
+    author: str | None = None
+    source_name: str | None = None
+    file_count: int
+    size_bytes: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SkillDetailOut(SkillOut):
+    skill_md: str
+    files: list[SkillFileOut] = Field(default_factory=list)
+    analysis: "SkillAnalysisOut | None" = None
+    analysis_generated_at: datetime | None = None
+
+
+class SkillAnalysisOut(BaseModel):
+    summary: str = ""
+    use_cases: list[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
+    inputs_outputs: list[str] = Field(default_factory=list)
+    trigger_and_workflow: list[str] = Field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list)
+    permissions_and_risks: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    setup_suggestions: list[str] = Field(default_factory=list)
+    example_tasks: list[str] = Field(default_factory=list)
+    recommendation: str = ""
+    fit_score: int | None = Field(default=None, ge=0, le=100)
+    generated_by: str = "gateway-ai"
+
+
+class SkillSkippedOut(BaseModel):
+    name: str
+    reason: str
+
+
+class SkillUploadOut(BaseModel):
+    items: list[SkillOut] = Field(default_factory=list)
+    created: int = 0
+    skipped: list[SkillSkippedOut] = Field(default_factory=list)
+
+
+class SkillCategoryOut(BaseModel):
+    name: str
+    count: int
+
+
+class SkillCategoryManageOut(BaseModel):
+    id: int
+    name: str
+    sort_order: int
+    keywords: list[str] = Field(default_factory=list)
+    is_protected: bool = False
+    count: int = 0
+    created_at: datetime
+
+
+class SkillCategoryCreate(BaseModel):
+    name: str
+    keywords: list[str] = Field(default_factory=list)
+
+
+class SkillCategoryUpdate(BaseModel):
+    name: str | None = None
+    keywords: list[str] | None = None
+    sort_order: int | None = None
+
+
+class SkillCategoryListOut(BaseModel):
+    items: list[SkillCategoryManageOut] = Field(default_factory=list)
+
+
+class SkillListOut(BaseModel):
+    items: list[SkillOut]
+    total: int
+    categories: list[SkillCategoryOut] = Field(default_factory=list)
 
 
 class ProviderOut(BaseModel):

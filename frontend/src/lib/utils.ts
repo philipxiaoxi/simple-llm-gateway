@@ -43,6 +43,13 @@ export function formatTokenCount(value: number | null | undefined) {
   return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
 }
 
+export function formatBytes(value: number | null | undefined) {
+  if (value == null) return '—'
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1).replace(/\.0$/, '')} KB`
+  return `${(value / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB`
+}
+
 export function formatTokens(item: {
   total_tokens?: number | null
   prompt_tokens?: number | null
