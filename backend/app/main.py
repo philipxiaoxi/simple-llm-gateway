@@ -20,13 +20,15 @@ from app.routers import (
     admin_keys,
     admin_logs,
     admin_skills,
+    admin_tools,
     health,
     local_agent,
     oauth,
     proxy,
     share,
 )
-from app.seed import seed_admin, seed_skill_categories
+from app.seed import seed_admin, seed_desktop_tools, seed_skill_categories
+from app.services.desktop_tools import reconcile_stuck_downloads
 from app.services.grok_oauth import cleanup_expired_oauth_states, run_oauth_refresh_loop
 from app.services.quota import run_quota_refresh_loop
 
@@ -37,8 +39,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     init_db()
     seed_admin()
     seed_skill_categories()
+    seed_desktop_tools()
     session = get_session_factory()()
     try:
+        reconcile_stuck_downloads(session)
         cleanup_expired_oauth_states(session)
         session.commit()
     finally:
@@ -76,6 +80,7 @@ app.include_router(admin_keys.router)
 app.include_router(admin_logs.router)
 app.include_router(admin_dashboard.router)
 app.include_router(admin_skills.router)
+app.include_router(admin_tools.router)
 app.include_router(oauth.router)
 app.include_router(proxy.router)
 app.include_router(share.router)

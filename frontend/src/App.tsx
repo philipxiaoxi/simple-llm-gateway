@@ -17,6 +17,7 @@ import { LogsPage } from './pages/Logs'
 import { SharePage } from './pages/Share'
 import { SkillDetailPage } from './pages/SkillDetail'
 import { SkillsPage } from './pages/Skills'
+import { ToolsPage } from './pages/Tools'
 import type { ReactElement } from 'react'
 
 const queryClient = new QueryClient()
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="/keys" element={<KeysPage />} />
             <Route path="/skills" element={<SkillsPage />} />
             <Route path="/skills/:skillId" element={<SkillDetailPage />} />
+            <Route path="/tools" element={<ToolsPage />} />
             <Route path="/benchmark" element={<BenchmarkPage />} />
             <Route path="/benchmark/history" element={<BenchmarkHistoryPage />} />
             <Route path="/logs" element={<LogsPage />} />

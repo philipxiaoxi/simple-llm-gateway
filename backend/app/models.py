@@ -262,3 +262,44 @@ class Skill(Base):
     analysis_generated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class DesktopTool(Base):
+    __tablename__ = "desktop_tools"
+    __table_args__ = (UniqueConstraint("tool_id", "platform"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tool_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    platform: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    icon: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    script_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="not_downloaded", nullable=False)
+    file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    file_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class DesktopToolRun(Base):
+    __tablename__ = "desktop_tool_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tool_id: Mapped[int] = mapped_column(Integer, ForeignKey("desktop_tools.id"), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="running", nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class DesktopToolRunLog(Base):
+    __tablename__ = "desktop_tool_run_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(Integer, ForeignKey("desktop_tool_runs.id"), index=True, nullable=False)
+    line_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    line: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

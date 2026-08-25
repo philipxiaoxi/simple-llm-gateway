@@ -22,6 +22,51 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class DesktopToolOut(BaseModel):
+    id: int
+    tool_id: str
+    platform: str
+    name: str
+    description: str
+    icon: str | None
+    script_name: str
+    status: str
+    file_name: str | None
+    file_size: int | None
+    version: str | None
+    error_message: str | None
+    updated_at: datetime
+
+
+class DesktopToolRunOut(BaseModel):
+    id: int
+    tool_id: int
+    status: str
+    error_message: str | None
+    started_at: datetime
+    finished_at: datetime | None
+
+
+class DesktopToolRunDetail(DesktopToolRunOut):
+    lines: list[str]
+
+
+class DesktopToolUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    icon: str | None = None
+    platform: str | None = None
+
+
+class DesktopToolCreate(BaseModel):
+    tool_id: str
+    platform: str
+    name: str
+    description: str = ""
+    icon: str | None = None
+    script: str
+
+
 class LoginResponse(BaseModel):
     token: str
     username: str

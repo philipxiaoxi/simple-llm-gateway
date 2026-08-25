@@ -110,6 +110,33 @@ export type SkillClassificationSettings = {
   report_enabled: boolean
 }
 
+export type DesktopTool = {
+  id: number
+  tool_id: string
+  platform: string
+  name: string
+  description: string
+  icon: string | null
+  script_name: string
+  status: 'not_downloaded' | 'downloading' | 'downloaded' | 'failed'
+  file_name: string | null
+  file_size: number | null
+  version: string | null
+  error_message: string | null
+  updated_at: string
+}
+
+export type DesktopToolRun = {
+  id: number
+  tool_id: number
+  status: 'running' | 'downloaded' | 'failed' | 'stopped'
+  error_message: string | null
+  started_at: string
+  finished_at: string | null
+}
+
+export type DesktopToolRunDetail = DesktopToolRun & { lines: string[] }
+
 export type CcSwitchTarget = {
   app: string
   label: string
@@ -392,6 +419,29 @@ export const api = {
     const suffix = params.toString() ? `?${params}` : ''
     // 走 /list，避开浏览器把 GET /api/admin/skills 缓存成 HTML 的问题。
     return request<SkillList>(`/api/admin/skills/list${suffix}`)
+  },
+  desktopTools: () => request<DesktopTool[]>('/api/admin/tools'),
+  createDesktopTool: (payload: { tool_id: string; platform: string; name: string; description?: string; icon?: string; script: string }) =>
+    request<DesktopTool>('/api/admin/tools', { method: 'POST', body: JSON.stringify(payload) }),
+  updateDesktopTool: (id: number, payload: { name?: string; description?: string; icon?: string; platform?: string }) =>
+    request<DesktopTool>(`/api/admin/tools/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  desktopToolScript: (id: number) => request<{ script: string }>(`/api/admin/tools/${id}/script`),
+  saveDesktopToolScript: (id: number, content: string) => {
+    const body = new FormData()
+    body.set('content', content)
+    return request<{ ok: boolean; script: string }>(`/api/admin/tools/${id}/script`, { method: 'POST', body })
+  },
+  preDownloadTool: (id: number) => request<DesktopTool>(`/api/admin/tools/${id}/pre-download`, { method: 'POST' }),
+  stopDownloadTool: (id: number) => request<DesktopTool>(`/api/admin/tools/${id}/stop`, { method: 'POST' }),
+  desktopToolRuns: (id: number) => request<DesktopToolRun[]>(`/api/admin/tools/${id}/runs`),
+  desktopToolRun: (toolId: number, runId: number) => request<DesktopToolRunDetail>(`/api/admin/tools/${toolId}/runs/${runId}`),
+  downloadDesktopTool: async (id: number) => {
+    const headers = new Headers()
+    const token = getToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`/api/admin/tools/${id}/download`, { headers })
+    if (!response.ok) throw new ApiError(response.status, '工具尚未预下载成功')
+    return response.blob()
   },
   skill: (id: number) => request<SkillDetail>(`/api/admin/skills/${id}`),
   analyzeSkill: (id: number) => request<SkillAnalysis>(`/api/admin/skills/${id}/analysis`, { method: 'POST' }),

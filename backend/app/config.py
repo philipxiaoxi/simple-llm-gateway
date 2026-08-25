@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     jwt_expire_days: int = 7
     frontend_dist: str = ""
     skills_path: str = ""
+    tools_path: str = ""
+    tools_download_timeout_seconds: int = 3600
     xai_oauth_client_id: str = "b1a00492-073a-47ea-816f-4c329264a828"
     xai_oauth_authorize_url: str = "https://auth.x.ai/oauth2/authorize"
     xai_oauth_token_url: str = "https://auth.x.ai/oauth2/token"
@@ -71,6 +73,13 @@ class Settings(BaseSettings):
         else:
             path = Path(self.database_path).expanduser().resolve().parent / "skills"
         path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def resolved_tools_path(self) -> Path:
+        path = Path(self.tools_path) if self.tools_path else Path(self.database_path).expanduser().resolve().parent / "tools"
+        (path / "scripts").mkdir(parents=True, exist_ok=True)
+        (path / "downloads").mkdir(parents=True, exist_ok=True)
         return path
 
 
