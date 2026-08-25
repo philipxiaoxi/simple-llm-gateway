@@ -36,6 +36,8 @@ def download_environment() -> dict[str, str]:
         "APPDATA", "COMSPEC", "HOME", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA",
         "NO_PROXY", "PATH", "PATHEXT", "PROGRAMDATA", "PROGRAMFILES", "SYSTEMROOT",
         "TEMP", "TMP", "USERPROFILE", "WINDIR", "HTTP_PROXY", "HTTPS_PROXY",
+        "DISPLAY", "WAYLAND_DISPLAY", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
+        "XDG_RUNTIME_DIR", "LANG", "LC_ALL", "LC_CTYPE",
     }
     environment = {key: value for key, value in os.environ.items() if key.upper() in allowed}
     environment["PYTHONIOENCODING"] = "utf-8"
@@ -213,7 +215,7 @@ def _run_process_sync(
                 process.kill()
                 process.wait()
                 lines.append("执行超时")
-                append_run_log(_run_ids[item_id], item_id, "执行超时")
+                append_run_log_safely(run_id, item_id, "执行超时")
                 break
             time.sleep(0.1)
         reader_done.wait(timeout=5)
