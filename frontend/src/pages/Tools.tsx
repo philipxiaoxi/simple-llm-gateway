@@ -29,15 +29,6 @@ import {
 import { errorMessage, formatBytes } from "../lib/utils";
 import { notifyBad, notifyOk } from "../lib/toast";
 
-function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 const statusText: Record<DesktopTool["status"], string> = {
   not_downloaded: "未下载",
   downloading: "下载中",
@@ -410,10 +401,8 @@ export function ToolsPage() {
   });
   async function download(tool: DesktopTool) {
     try {
-      triggerDownload(
-        await api.downloadDesktopTool(tool.id),
-        tool.file_name || `${tool.tool_id}-${tool.platform}`,
-      );
+      const { url } = await api.downloadDesktopTool(tool.id);
+      window.open(url, "_blank", "noopener,noreferrer");
       notifyOk("已开始下载");
     } catch (caught) {
       notifyBad(errorMessage(caught, "下载失败"));

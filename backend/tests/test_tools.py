@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -101,3 +102,27 @@ def test_tool_run_history_is_persisted_and_queryable(client: TestClient, auth_he
     detail = client.get(f"/api/admin/tools/{tool.id}/runs/{run_id}", headers=auth_headers)
     assert detail.status_code == 200
     assert detail.json()["lines"] == ["开始下载", "网络中断"]
+
+
+def test_download_url_streams_cached_file_without_bearer_header(client: TestClient, auth_headers: dict[str, str], tmp_path: Path) -> None:
+    tool = _add_tool("downloaded")
+    cached_file = tmp_path / "tools" / "downloads" / "tool-downloaded-windows" / "installer.bin"
+    cached_file.parent.mkdir(parents=True)
+    cached_file.write_bytes(b"large-file-content")
+
+    session = get_session_factory()()
+    try:
+        item = session.get(DesktopTool, tool.id)
+        assert item is not None
+        item.file_path = str(cached_file)
+        item.file_name = cached_file.name
+        session.commit()
+    finally:
+        session.close()
+
+    response = client.post(f"/api/admin/tools/{tool.id}/download-url", headers=auth_headers)
+    assert response.status_code == 200
+    download = client.get(response.json()["url"])
+    assert download.status_code == 200, download.text
+    assert download.content == b"large-file-content"
+    assert "attachment" in download.headers["content-disposition"]

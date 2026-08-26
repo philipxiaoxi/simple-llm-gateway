@@ -435,14 +435,8 @@ export const api = {
   stopDownloadTool: (id: number) => request<DesktopTool>(`/api/admin/tools/${id}/stop`, { method: 'POST' }),
   desktopToolRuns: (id: number) => request<DesktopToolRun[]>(`/api/admin/tools/${id}/runs`),
   desktopToolRun: (toolId: number, runId: number) => request<DesktopToolRunDetail>(`/api/admin/tools/${toolId}/runs/${runId}`),
-  downloadDesktopTool: async (id: number) => {
-    const headers = new Headers()
-    const token = getToken()
-    if (token) headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`/api/admin/tools/${id}/download`, { headers })
-    if (!response.ok) throw new ApiError(response.status, '工具尚未预下载成功')
-    return response.blob()
-  },
+  downloadDesktopTool: (id: number) =>
+    request<{ url: string }>(`/api/admin/tools/${id}/download-url`, { method: 'POST' }),
   skill: (id: number) => request<SkillDetail>(`/api/admin/skills/${id}`),
   analyzeSkill: (id: number) => request<SkillAnalysis>(`/api/admin/skills/${id}/analysis`, { method: 'POST' }),
   updateSkill: (id: number, payload: { name?: string; description?: string; category?: string }) =>

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
 
+import jwt
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
@@ -13,12 +15,14 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import get_db, get_session_factory
 from app.deps import get_current_admin
-from app.models import DesktopTool, DesktopToolRun, DesktopToolRunLog
+from app.models import Admin, DesktopTool, DesktopToolRun, DesktopToolRunLog
 from app.schemas import DesktopToolCreate, DesktopToolOut, DesktopToolRunDetail, DesktopToolRunOut, DesktopToolUpdate
 from app.services.desktop_tools import active_run_id, has_active_job, job_done, logs_for, persisted_logs_for, script_path, start_download, stop_download, tool_dict
 
 router = APIRouter(prefix="/api/admin/tools", tags=["admin-tools"], dependencies=[Depends(get_current_admin)])
+download_router = APIRouter(prefix="/api/tools", tags=["tool-downloads"])
 _SAFE_TOOL_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+_DOWNLOAD_TOKEN_TTL = timedelta(minutes=5)
 
 @router.post("", response_model=DesktopToolOut, status_code=201)
 def create_tool(payload: DesktopToolCreate, db: Session = Depends(get_db)):
@@ -158,10 +162,39 @@ def get_run(tool_id: int, run_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "执行记录不存在")
     return {**run_dict(run), "lines": persisted_logs_for(run.id)}
 
-@router.get("/{tool_id}/download")
-def download(tool_id: int, db: Session = Depends(get_db)):
+@router.post("/{tool_id}/download-url")
+def create_download_url(tool_id: int, admin=Depends(get_current_admin), db: Session = Depends(get_db)):
     item = db.get(DesktopTool, tool_id)
     if item is None or item.status != "downloaded" or not item.file_path: raise HTTPException(409, "工具尚未预下载成功")
+    path = Path(item.file_path)
+    download_root = get_settings().resolved_tools_path.joinpath("downloads").resolve()
+    if not path.is_file() or not path.resolve().is_relative_to(download_root):
+        raise HTTPException(404, "缓存文件不存在")
+    now = datetime.now(timezone.utc)
+    token = jwt.encode(
+        {"sub": admin.username, "ver": int(admin.token_version or 0), "tool_id": tool_id,
+         "iat": now, "exp": now + _DOWNLOAD_TOKEN_TTL},
+        get_settings().app_secret_key,
+        algorithm="HS256",
+    )
+    return {"url": f"/api/tools/{tool_id}/download?token={token}"}
+
+
+@download_router.get("/{tool_id}/download")
+def download(tool_id: int, token: str, db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, get_settings().app_secret_key, algorithms=["HS256"])
+    except jwt.PyJWTError as error:
+        raise HTTPException(401, "下载链接已失效") from error
+    if payload.get("tool_id") != tool_id:
+        raise HTTPException(403, "下载链接无效")
+    admin = db.scalar(select(Admin).where(Admin.username == payload.get("sub")))
+    token_version = payload.get("ver")
+    if admin is None or not isinstance(token_version, int) or int(admin.token_version or 0) != token_version:
+        raise HTTPException(401, "下载链接已失效")
+    item = db.get(DesktopTool, tool_id)
+    if item is None or item.status != "downloaded" or not item.file_path:
+        raise HTTPException(409, "工具尚未预下载成功")
     path = Path(item.file_path)
     download_root = get_settings().resolved_tools_path.joinpath("downloads").resolve()
     if not path.is_file() or not path.resolve().is_relative_to(download_root):
