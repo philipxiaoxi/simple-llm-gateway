@@ -132,6 +132,14 @@ def _sync_agent(agent_id: str, routes: dict[str, dict[str, object]]) -> None:
             agent.status = "online"
             agent.last_connected_at = now
             agent.updated_at = now
+        registered_route_ids = set(routes)
+        for stored_route in agent.routes:
+            if stored_route.route_id in registered_route_ids:
+                continue
+            account = session.scalar(select(UpstreamAccount).where(UpstreamAccount.agent_route_id == stored_route.route_id))
+            if account is not None and account.source == "agent":
+                session.delete(account)
+            session.delete(stored_route)
         for route_id, route in routes.items():
             provider_id = str(route["provider"])
             try:

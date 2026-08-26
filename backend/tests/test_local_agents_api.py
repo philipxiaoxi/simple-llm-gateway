@@ -76,6 +76,27 @@ def test_agent_routes_use_local_relay_base_url(client: TestClient) -> None:
         session.close()
 
 
+def test_agent_reconnect_removes_routes_not_in_registration(client: TestClient, auth_headers: dict[str, str]) -> None:
+    _sync_agent(
+        "macbook-studio",
+        {
+            "deepseek-local": {"id": "deepseek-local", "name": "DeepSeek", "provider": "deepseek"},
+            "vendor-a": {"id": "vendor-a", "name": "Vendor A", "provider": "openai_generic"},
+        },
+    )
+
+    _sync_agent("macbook-studio", {"deepseek-local": {"id": "deepseek-local", "name": "DeepSeek", "provider": "deepseek"}})
+
+    detail = client.get("/api/admin/agents/macbook-studio", headers=auth_headers)
+    assert [route["id"] for route in detail.json()["routes"]] == ["deepseek-local"]
+    session = get_session_factory()()
+    try:
+        assert session.scalar(select(UpstreamAccount).where(UpstreamAccount.agent_route_id == "vendor-a")) is None
+        assert session.scalar(select(UpstreamAccount).where(UpstreamAccount.agent_route_id == "deepseek-local")) is not None
+    finally:
+        session.close()
+
+
 def test_refresh_agent_route_models_rejects_offline_agent(client: TestClient, auth_headers: dict[str, str]) -> None:
     _sync_agent("macbook-studio", {"deepseek-local": {"id": "deepseek-local", "name": "DeepSeek", "provider": "deepseek"}})
     response = client.post("/api/admin/agents/macbook-studio/routes/deepseek-local/models", headers=auth_headers)
