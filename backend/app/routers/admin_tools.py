@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -72,6 +73,33 @@ def update_tool(tool_id: int, payload: DesktopToolUpdate, db: Session = Depends(
         setattr(item, key, value)
     db.commit(); db.refresh(item)
     return DesktopToolOut(**tool_dict(item))
+
+@router.delete("/{tool_id}", status_code=204)
+async def delete_tool(tool_id: int, db: Session = Depends(get_db)):
+    item = db.get(DesktopTool, tool_id)
+    if item is None:
+        raise HTTPException(404, "工具不存在")
+    if item.status == "downloading" or has_active_job(tool_id):
+        raise HTTPException(409, "工具正在下载，请先停止下载")
+
+    script = script_path(item)
+    download_root = get_settings().resolved_tools_path.joinpath("downloads").resolve()
+    cache_dir = download_root / f"{item.tool_id}-{item.platform}"
+    if item.file_path:
+        file_path = Path(item.file_path)
+        if file_path.is_file() and file_path.resolve().is_relative_to(download_root):
+            file_path.unlink()
+
+    run_ids = db.scalars(select(DesktopToolRun.id).where(DesktopToolRun.tool_id == tool_id)).all()
+    if run_ids:
+        db.query(DesktopToolRunLog).filter(DesktopToolRunLog.run_id.in_(run_ids)).delete(synchronize_session=False)
+        db.query(DesktopToolRun).filter(DesktopToolRun.id.in_(run_ids)).delete(synchronize_session=False)
+    db.delete(item)
+    db.commit()
+    if script.is_file():
+        script.unlink()
+    if cache_dir.is_dir() and cache_dir.resolve().is_relative_to(download_root):
+        shutil.rmtree(cache_dir)
 
 @router.post("/{tool_id}/script")
 async def upload_script(tool_id: int, script: UploadFile | None = File(default=None), content: str = Form(default=""), db: Session = Depends(get_db)):

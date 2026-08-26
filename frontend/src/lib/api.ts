@@ -425,6 +425,7 @@ export const api = {
     request<DesktopTool>('/api/admin/tools', { method: 'POST', body: JSON.stringify(payload) }),
   updateDesktopTool: (id: number, payload: { name?: string; description?: string; icon?: string; platform?: string }) =>
     request<DesktopTool>(`/api/admin/tools/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteDesktopTool: (id: number) => request<void>(`/api/admin/tools/${id}`, { method: 'DELETE' }),
   desktopToolScript: (id: number) => request<{ script: string }>(`/api/admin/tools/${id}/script`),
   saveDesktopToolScript: (id: number, content: string) => {
     const body = new FormData()

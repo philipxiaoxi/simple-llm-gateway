@@ -9,6 +9,7 @@ import {
   Search,
   Square,
   Terminal,
+  Trash2,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -399,6 +400,19 @@ export function ToolsPage() {
     },
     onError: (caught) => notifyBad(errorMessage(caught, "停止失败")),
   });
+  const deleteTool = useMutation({
+    mutationFn: api.deleteDesktopTool,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["desktop-tools"] });
+      notifyOk("工具已删除");
+    },
+    onError: (caught) => notifyBad(errorMessage(caught, "删除失败")),
+  });
+  function remove(tool: DesktopTool) {
+    if (window.confirm(`确定删除工具“${tool.name}”吗？相关脚本、缓存和执行历史都会被删除。`)) {
+      deleteTool.mutate(tool.id);
+    }
+  }
   async function download(tool: DesktopTool) {
     try {
       const { url } = await api.downloadDesktopTool(tool.id);
@@ -542,6 +556,15 @@ export function ToolsPage() {
               >
                 <Download size={16} />
                 下载
+              </Button>
+              <Button
+                variant="danger"
+                aria-label={`删除 ${tool.name}`}
+                title="删除工具"
+                disabled={deleteTool.isPending || tool.status === "downloading"}
+                onClick={() => remove(tool)}
+              >
+                <Trash2 size={16} />
               </Button>
             </div>
             <div className="flex items-center gap-3 text-xs">

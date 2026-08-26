@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.db import get_session_factory
 from app.models import DesktopTool, DesktopToolRun, DesktopToolRunLog
@@ -126,3 +127,49 @@ def test_download_url_streams_cached_file_without_bearer_header(client: TestClie
     assert download.status_code == 200, download.text
     assert download.content == b"large-file-content"
     assert "attachment" in download.headers["content-disposition"]
+
+
+def test_delete_tool_removes_records_script_and_cache(client: TestClient, auth_headers: dict[str, str], tmp_path: Path) -> None:
+    tool = _add_tool("downloaded")
+    script = tmp_path / "tools" / "scripts" / tool.script_name
+    cached_file = tmp_path / "tools" / "downloads" / "tool-downloaded-windows" / "installer.bin"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("print('download')", encoding="utf-8")
+    cached_file.parent.mkdir(parents=True)
+    cached_file.write_bytes(b"cached-installer")
+
+    session = get_session_factory()()
+    try:
+        item = session.get(DesktopTool, tool.id)
+        assert item is not None
+        item.file_path = str(cached_file)
+        run = DesktopToolRun(tool_id=tool.id, status="downloaded")
+        session.add(run)
+        session.commit()
+        session.add(DesktopToolRunLog(run_id=run.id, line_number=1, line="下载完成"))
+        session.commit()
+        run_id = run.id
+    finally:
+        session.close()
+
+    response = client.delete(f"/api/admin/tools/{tool.id}", headers=auth_headers)
+    assert response.status_code == 204
+    assert not script.exists()
+    assert not cached_file.parent.exists()
+
+    session = get_session_factory()()
+    try:
+        assert session.get(DesktopTool, tool.id) is None
+        assert session.get(DesktopToolRun, run_id) is None
+        assert not session.scalars(select(DesktopToolRunLog).where(DesktopToolRunLog.run_id == run_id)).all()
+    finally:
+        session.close()
+
+
+def test_delete_downloading_tool_requires_stopping_first(client: TestClient, auth_headers: dict[str, str]) -> None:
+    tool = _add_tool("downloading")
+
+    response = client.delete(f"/api/admin/tools/{tool.id}", headers=auth_headers)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "工具正在下载，请先停止下载"
