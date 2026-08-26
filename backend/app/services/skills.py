@@ -45,6 +45,7 @@ MAX_EXTRACTED_BYTES = 40 * 1024 * 1024
 MAX_FILE_COUNT = 400
 MAX_FILE_BYTES = 4 * 1024 * 1024
 MAX_SKILL_MD_BYTES = 256 * 1024
+MAX_ANALYSIS_TEXT_FILE_CHARS = 2000
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL)
@@ -443,7 +444,7 @@ async def analyze_skill_with_gateway(db: Session, skill: Skill) -> dict | None:
         "version": skill.version,
         "author": skill.author,
         "files": list_skill_files(skill),
-        "skill_md": skill.skill_md[:12000],
+        **_build_skill_analysis_material(skill),
     }
     messages = [
         {
@@ -511,6 +512,32 @@ def list_skill_files(skill: Skill) -> list[dict]:
             }
         )
     return files
+
+
+def _build_skill_analysis_material(skill: Skill) -> dict:
+    root = skill_dir(skill)
+    if not root.exists():
+        return {"directory_structure": [], "text_files": []}
+
+    directory_structure: list[str] = []
+    text_files: list[dict[str, str]] = []
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        if path.is_dir():
+            directory_structure.append(f"{relative}/")
+            continue
+        if not path.is_file():
+            continue
+        directory_structure.append(relative)
+        data = path.read_bytes()
+        if _is_text_data(data):
+            text_files.append(
+                {
+                    "path": relative,
+                    "content": _decode_text(data)[:MAX_ANALYSIS_TEXT_FILE_CHARS],
+                }
+            )
+    return {"directory_structure": directory_structure, "text_files": text_files}
 
 
 def read_skill_file(skill: Skill, relative_path: str) -> tuple[bytes, str]:
@@ -907,6 +934,19 @@ def _is_text_name(path: str) -> bool:
     if Path(lowered).name.lower() == "skill.md":
         return True
     return Path(lowered).suffix in _TEXT_SUFFIXES
+
+
+def _is_text_data(data: bytes) -> bool:
+    if b"\x00" in data:
+        return False
+    for encoding in ("utf-8", "utf-8-sig", "gb18030"):
+        try:
+            text = data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        control_count = sum(ord(char) < 32 and char not in "\t\n\r\f" for char in text)
+        return control_count <= max(1, len(text) // 100)
+    return False
 
 
 def _decode_text(data: bytes) -> str:

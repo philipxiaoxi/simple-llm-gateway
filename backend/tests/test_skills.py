@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import io
+import json
 import zipfile
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+from app.models import Skill, SkillClassificationSettings, UpstreamAccount
+from app.services import skills as skills_service
 
 
 SKILL_MD = """---
@@ -128,6 +133,76 @@ def test_upload_directory_and_collection_zip(client: TestClient, auth_headers: d
     assert listed.json()["total"] == 1
     dashboard = client.get("/api/admin/dashboard", headers=auth_headers)
     assert dashboard.json()["skill_count"] == 3
+
+
+def test_skill_analysis_sends_text_files_and_directory_structure(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    payload = _zip_bytes(
+        {
+            "analyzed/SKILL.md": SKILL_MD,
+            "analyzed/references/guide.md": "g" * 2001,
+            "analyzed/scripts/run.py": "print('run')\n",
+            "analyzed/assets/logo.png": b"\x89PNG\r\n\x1a\n\x00binary",
+            "analyzed/LICENSE": "Example license text",
+        }
+    )
+    uploaded = client.post(
+        "/api/admin/skills/upload",
+        headers=auth_headers,
+        files=[("files", ("analyzed.zip", payload, "application/zip"))],
+    )
+    skill_id = uploaded.json()["items"][0]["id"]
+
+    from app.db import get_session_factory
+
+    with get_session_factory()() as db:
+        account = UpstreamAccount(
+            name="analysis-account",
+            provider="openai_generic",
+            auth_type="api_key",
+            base_url="https://example.test/v1",
+            models_json='["analysis-model"]',
+            api_key_encrypted="encrypted",
+        )
+        db.add(account)
+        db.flush()
+        settings = db.scalar(select(SkillClassificationSettings))
+        assert settings is not None
+        settings.report_enabled = True
+        settings.report_account_id = account.id
+        settings.report_model = "analysis-model"
+        db.commit()
+
+    captured: dict = {}
+
+    async def fake_call_chat(*args, **kwargs):
+        captured["messages"] = args[1]
+        return {"choices": [{"message": {"content": '{"summary":"ok"}'}}]}
+
+    monkeypatch.setattr(skills_service, "call_chat", fake_call_chat)
+    monkeypatch.setattr(skills_service, "require_upstream_credential", lambda account: "credential")
+
+    response = client.post(f"/api/admin/skills/{skill_id}/analysis", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    sent_skill = json.loads(captured["messages"][1]["content"])["skill"]
+    assert set(sent_skill["directory_structure"]) == {
+        "SKILL.md",
+        "assets/",
+        "assets/logo.png",
+        "references/",
+        "references/guide.md",
+        "scripts/",
+        "scripts/run.py",
+        "LICENSE",
+    }
+    assert {item["path"] for item in sent_skill["text_files"]} == {
+        "SKILL.md",
+        "references/guide.md",
+        "scripts/run.py",
+        "LICENSE",
+    }
+    assert next(item for item in sent_skill["text_files"] if item["path"] == "references/guide.md")["content"] == "g" * 2000
 
 
 def test_upload_rejects_missing_skill_md_and_zip_slip(client: TestClient, auth_headers: dict[str, str]) -> None:
