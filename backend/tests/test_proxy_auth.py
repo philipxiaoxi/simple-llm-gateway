@@ -1,5 +1,10 @@
-from fastapi.testclient import TestClient
+import json
+from unittest.mock import AsyncMock, patch
 
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+from app.models import UpstreamAccount
 
 def _make_key(client: TestClient, auth_headers: dict[str, str], status: str = "active") -> tuple[str, int]:
     account = client.post(
@@ -57,3 +62,48 @@ def test_disabled_account(client: TestClient, auth_headers: dict[str, str]) -> N
         json={"model": "deepseek-chat", "messages": [{"role": "user", "content": "hi"}]},
     )
     assert response.status_code == 403
+    assert response.json()["error"]["message"] == "绑定的上游账号已停用，请联系管理员启用"
+
+
+def test_configured_model_is_validated_before_forwarding(client: TestClient, auth_headers: dict[str, str]) -> None:
+    plaintext, account_id = _make_key(client, auth_headers)
+    from app.db import get_session_factory
+
+    with get_session_factory()() as db:
+        account = db.scalar(select(UpstreamAccount).where(UpstreamAccount.id == account_id))
+        assert account is not None
+        account.models_json = json.dumps(["deepseek-chat"])
+        db.commit()
+    with patch("app.services.proxy.call_chat", new=AsyncMock()) as call_chat:
+        response = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {plaintext}"},
+            json={"model": "unknown-model", "messages": [{"role": "user", "content": "hi"}]},
+        )
+    assert response.status_code == 400
+    assert response.json()["error"]["message"] == "模型“unknown-model”不在该上游账号已配置的模型列表中"
+    call_chat.assert_not_awaited()
+
+
+def test_missing_upstream_credential_is_validated_before_forwarding(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    account = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "未授权账号", "provider": "deepseek"},
+    ).json()
+    plaintext = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "k", "account_id": account["id"]},
+    ).json()["key"]
+    with patch("app.services.proxy.call_chat", new=AsyncMock()) as call_chat:
+        response = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {plaintext}"},
+            json={"model": "deepseek-chat", "messages": [{"role": "user", "content": "hi"}]},
+        )
+    assert response.status_code == 403
+    assert response.json()["error"]["message"] == "上游账号尚未配置密钥或授权"
+    call_chat.assert_not_awaited()
