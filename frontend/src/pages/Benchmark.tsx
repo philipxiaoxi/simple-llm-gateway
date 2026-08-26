@@ -94,12 +94,12 @@ export function BenchmarkPage() {
     } catch (error) { notifyBad(errorMessage(error, '导出测速结果失败')) }
   }
 
-  return <div className="mx-auto flex h-full min-h-0 max-w-7xl min-w-0 flex-col">
+  return <div className="flex h-full min-h-0 min-w-0 w-full flex-col">
     <div className="mb-4 flex shrink-0 flex-wrap items-end justify-between gap-4">
       <div><div className="mb-2 font-mono text-xs tracking-[0.28em] text-signal">BENCHMARK LAB / LIVE</div><h1 className="text-3xl font-semibold tracking-tight">模型测速</h1><p className="mt-2 max-w-2xl text-sm text-mist">用同一条提示词测量真实链路。</p></div>
       <div className="flex flex-wrap justify-end gap-2"><Button variant="ghost" onClick={() => void exportResults()}><Download size={16} />导出历史</Button><Button variant="ghost" onClick={() => void saveResults()} disabled={running || !visibleResults.length}><Save size={16} />保存本次</Button><Button variant="ghost" onClick={() => setResults({})}><RotateCcw size={16} />清空结果</Button>{running ? <Button variant="danger" onClick={stop}><CircleStop size={16} />停止</Button> : <Button onClick={() => void run()} disabled={isLoading || !visibleTargets.length}><Play size={16} />开始测速</Button>}</div>
     </div>
-    <div className={cn('grid min-h-0 flex-1 gap-6', configCollapsed ? 'xl:grid-cols-[56px_minmax(0,1fr)]' : 'xl:grid-cols-2')}>
+    <div className={cn('grid min-h-0 flex-1 gap-6', configCollapsed ? 'xl:grid-cols-[56px_minmax(0,1fr)]' : 'xl:grid-cols-[minmax(390px,0.82fr)_minmax(0,1.8fr)]')}>
       <section className={cn('flex min-h-0 flex-col overflow-hidden border border-line bg-panel/60', configCollapsed ? 'items-center p-2' : 'p-5')}>
         <div className={cn('flex items-center', configCollapsed ? 'flex-col gap-3' : 'mb-5 justify-between')}>
           {!configCollapsed ? <div className="flex items-center gap-2"><h2 className="font-semibold">测试配置</h2><Gauge size={19} className="text-signal" /></div> : <Gauge size={19} className="text-signal" />}
