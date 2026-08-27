@@ -11,6 +11,7 @@ import { DashboardPage } from './pages/Dashboard'
 import { KeysPage } from './pages/Keys'
 import { BenchmarkPage } from './pages/Benchmark'
 import { BenchmarkHistoryPage } from './pages/BenchmarkHistory'
+import { LeaderboardPage } from './pages/Leaderboard'
 import { LogDetailPage } from './pages/LogDetail'
 import { LoginPage } from './pages/Login'
 import { LogsPage } from './pages/Logs'
@@ -53,6 +54,7 @@ export default function App() {
             <Route path="/tools" element={<ToolsPage />} />
             <Route path="/benchmark" element={<BenchmarkPage />} />
             <Route path="/benchmark/history" element={<BenchmarkHistoryPage />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/logs/:id" element={<LogDetailPage />} />
           </Route>

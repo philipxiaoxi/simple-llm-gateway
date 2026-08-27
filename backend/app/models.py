@@ -303,3 +303,14 @@ class DesktopToolRunLog(Base):
     line_number: Mapped[int] = mapped_column(Integer, nullable=False)
     line: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class LeaderboardSnapshot(Base):
+    __tablename__ = "leaderboard_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    entries_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    source_updated_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

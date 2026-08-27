@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     skills_path: str = ""
     tools_path: str = ""
     tools_download_timeout_seconds: int = 3600
+    aihot_leaderboard_url: str = "https://aihot.virxact.com/leaderboard"
+    aihot_leaderboard_ttl_seconds: int = 43200
+    aihot_leaderboard_min_refresh_seconds: int = 60
     xai_oauth_client_id: str = "b1a00492-073a-47ea-816f-4c329264a828"
     xai_oauth_authorize_url: str = "https://auth.x.ai/oauth2/authorize"
     xai_oauth_token_url: str = "https://auth.x.ai/oauth2/token"

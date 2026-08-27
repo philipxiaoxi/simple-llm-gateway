@@ -18,6 +18,7 @@ from app.routers import (
     admin_benchmark_history,
     admin_dashboard,
     admin_keys,
+    admin_leaderboard,
     admin_logs,
     admin_skills,
     admin_tools,
@@ -77,6 +78,7 @@ app.include_router(admin_accounts.router)
 app.include_router(admin_benchmark.router)
 app.include_router(admin_benchmark_history.router)
 app.include_router(admin_keys.router)
+app.include_router(admin_leaderboard.router)
 app.include_router(admin_logs.router)
 app.include_router(admin_dashboard.router)
 app.include_router(admin_skills.router)

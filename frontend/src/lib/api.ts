@@ -219,6 +219,68 @@ export type Dashboard = {
   skill_count: number
 }
 
+export type LeaderboardComponent = {
+  score: number | null
+  coverage: number | null
+  metric_count: number | null
+}
+
+export type LeaderboardLocalMatch = {
+  kind: string
+  account_id: number
+  account_name: string
+  provider: string
+  agent_id: string | null
+  agent_route_id: string | null
+  matched_model: string
+}
+
+export type LeaderboardEntry = {
+  rank: number | null
+  previous_rank: number | null
+  rank_change: number | null
+  slug: string
+  name: string
+  provider: string
+  provider_slug: string | null
+  released_at: string | null
+  context_window_tokens: number | null
+  pricing_kind: string | null
+  pricing_official_model_id: string | null
+  input_price_per_million_usd: number | null
+  output_price_per_million_usd: number | null
+  input_price_per_million_cny: number | null
+  output_price_per_million_cny: number | null
+  price_quote: string | null
+  pricing_source_name: string | null
+  pricing_source_url: string | null
+  score: number | null
+  uncertainty: number | null
+  coverage: number | null
+  confidence: string | null
+  possible_rank_from: number | null
+  possible_rank_to: number | null
+  metric_count: number | null
+  summary: string | null
+  components: Record<string, LeaderboardComponent>
+  local_covered?: boolean
+  local_matches?: LeaderboardLocalMatch[]
+}
+
+export type Leaderboard = {
+  source_url: string
+  source_page: string
+  fetched_at: string | null
+  stale: boolean
+  ttl_seconds: number
+  min_refresh_seconds: number
+  source_updated_label: string | null
+  error_message: string | null
+  unofficial: boolean
+  items: LeaderboardEntry[]
+  total: number
+}
+
 export type SkillItem = {
   id: number
   slug: string
@@ -548,6 +610,8 @@ export const api = {
     if (!response.ok) throw new ApiError(response.status, '下载文件失败')
     return response.blob()
   },
+  leaderboard: (refresh = false) =>
+    request<Leaderboard>(`/api/admin/leaderboard${refresh ? '?refresh=true' : ''}`),
 }
 
 export type BenchmarkResult = {

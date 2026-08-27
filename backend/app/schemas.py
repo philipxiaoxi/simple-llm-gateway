@@ -366,3 +366,65 @@ class ProviderOut(BaseModel):
     auth_type: str
     base_url: str
     models: list[str] = Field(default_factory=list)
+
+
+class LeaderboardComponentOut(BaseModel):
+    score: float | None = None
+    coverage: float | None = None
+    metric_count: int | None = None
+
+
+class LeaderboardLocalMatchOut(BaseModel):
+    kind: str
+    account_id: int
+    account_name: str
+    provider: str
+    agent_id: str | None = None
+    agent_route_id: str | None = None
+    matched_model: str
+
+
+class LeaderboardEntryOut(BaseModel):
+    rank: int | None = None
+    previous_rank: int | None = None
+    rank_change: int | None = None
+    slug: str
+    name: str
+    provider: str
+    provider_slug: str | None = None
+    released_at: str | None = None
+    context_window_tokens: int | None = None
+    pricing_kind: str | None = None
+    pricing_official_model_id: str | None = None
+    input_price_per_million_usd: float | None = None
+    output_price_per_million_usd: float | None = None
+    input_price_per_million_cny: float | None = None
+    output_price_per_million_cny: float | None = None
+    price_quote: str | None = None
+    pricing_source_name: str | None = None
+    pricing_source_url: str | None = None
+    score: float | None = None
+    uncertainty: float | None = None
+    coverage: float | None = None
+    confidence: str | None = None
+    possible_rank_from: int | None = None
+    possible_rank_to: int | None = None
+    metric_count: int | None = None
+    summary: str | None = None
+    components: dict[str, LeaderboardComponentOut] = Field(default_factory=dict)
+    local_covered: bool = False
+    local_matches: list[LeaderboardLocalMatchOut] = Field(default_factory=list)
+
+
+class LeaderboardOut(BaseModel):
+    source_url: str
+    source_page: str
+    fetched_at: datetime | None = None
+    stale: bool = False
+    ttl_seconds: int
+    min_refresh_seconds: int
+    source_updated_label: str | None = None
+    error_message: str | None = None
+    unofficial: bool = True
+    items: list[LeaderboardEntryOut] = Field(default_factory=list)
+    total: int = 0
