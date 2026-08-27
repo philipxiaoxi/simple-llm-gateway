@@ -219,6 +219,39 @@ def attach_local_coverage(db: Session, items: list[dict[str, Any]]) -> None:
         item["local_matches"] = matches
 
 
+def mask_public_label(value: str | None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    length = len(text)
+    if length == 1:
+        return "*"
+    if length == 2:
+        return f"{text[0]}*"
+    if length <= 6:
+        return f"{text[0]}{'*' * (length - 2)}{text[-1]}"
+    return f"{text[:2]}{'*' * (length - 4)}{text[-2:]}"
+
+
+def mask_local_matches(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    masked: list[dict[str, Any]] = []
+    for match in matches:
+        agent_id = mask_public_label(match.get("agent_id"))
+        agent_route_id = mask_public_label(match.get("agent_route_id"))
+        masked.append(
+            {
+                "kind": match.get("kind") or "account",
+                "account_id": 0,
+                "account_name": mask_public_label(match.get("account_name")),
+                "provider": str(match.get("provider") or ""),
+                "agent_id": agent_id or None,
+                "agent_route_id": agent_route_id or None,
+                "matched_model": match.get("matched_model") or "",
+            }
+        )
+    return masked
+
+
 def _latest_snapshot(db: Session) -> LeaderboardSnapshot | None:
     return db.scalar(select(LeaderboardSnapshot).order_by(LeaderboardSnapshot.id.desc()).limit(1))
 
@@ -229,6 +262,7 @@ def snapshot_to_payload(
     *,
     stale: bool = False,
     error_message: str | None = None,
+    public: bool = False,
 ) -> dict[str, Any]:
     settings = get_settings()
     items: list[dict[str, Any]] = []
@@ -240,6 +274,9 @@ def snapshot_to_payload(
         except json.JSONDecodeError:
             items = []
     attach_local_coverage(db, items)
+    if public:
+        for item in items:
+            item["local_matches"] = mask_local_matches(item.get("local_matches") or [])
     return {
         "source_url": settings.aihot_leaderboard_url,
         "source_page": settings.aihot_leaderboard_url,
@@ -314,13 +351,24 @@ async def get_leaderboard(
     db: Session,
     *,
     force: bool = False,
+    public: bool = False,
     client: httpx.AsyncClient | None = None,
 ) -> dict[str, Any]:
     snapshot = _latest_snapshot(db)
+    if public:
+        has_entries = bool(snapshot and snapshot.entries_json and snapshot.entries_json != "[]")
+        return snapshot_to_payload(
+            db,
+            snapshot,
+            stale=has_entries and not cache_is_fresh(snapshot),
+            public=True,
+        )
     if not force and cache_is_fresh(snapshot):
         return snapshot_to_payload(db, snapshot)
     if force and refresh_is_too_soon(snapshot):
-        return snapshot_to_payload(db, snapshot, stale=False, error_message="刷新过于频繁，已返回缓存")
+        return snapshot_to_payload(
+            db, snapshot, stale=False, error_message="刷新过于频繁，已返回缓存"
+        )
     try:
         text = await fetch_leaderboard_text(client)
         entries = parse_leaderboard_payload(text)

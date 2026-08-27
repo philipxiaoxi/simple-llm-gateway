@@ -15,6 +15,7 @@ import { LeaderboardPage } from './pages/Leaderboard'
 import { LogDetailPage } from './pages/LogDetail'
 import { LoginPage } from './pages/Login'
 import { LogsPage } from './pages/Logs'
+import { PublicLeaderboardPage } from './pages/PublicLeaderboard'
 import { SharePage } from './pages/Share'
 import { SkillDetailPage } from './pages/SkillDetail'
 import { SkillsPage } from './pages/Skills'
@@ -37,6 +38,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/share" element={<SharePage />} />
+          <Route path="/share/leaderboard" element={<PublicLeaderboardPage />} />
           <Route
             element={
               <Guard>

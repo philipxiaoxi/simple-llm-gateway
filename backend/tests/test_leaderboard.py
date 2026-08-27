@@ -10,7 +10,7 @@ from app.clock import utcnow
 from app.db import get_session_factory
 from app.models import LeaderboardSnapshot, UpstreamAccount
 from app.routers.local_agent import _sync_agent
-from app.services.leaderboard import canonical_model_key, parse_leaderboard_payload
+from app.services.leaderboard import canonical_model_key, mask_public_label, parse_leaderboard_payload
 
 
 RSC_PAYLOAD = (
@@ -40,6 +40,15 @@ def test_parse_leaderboard_payload() -> None:
 def test_canonical_model_key_strips_dates_and_qualifiers() -> None:
     assert canonical_model_key("anthropic/claude-fable-5-20260609") == "claude-fable-5"
     assert canonical_model_key("Claude Fable 5 Latest") == "claude-fable-5"
+
+
+def test_mask_public_label_keeps_edges() -> None:
+    assert mask_public_label("") == ""
+    assert mask_public_label("A") == "*"
+    assert mask_public_label("AB") == "A*"
+    assert mask_public_label("ABC") == "A*C"
+    assert mask_public_label("Claude Direct") == "Cl*********ct"
+    assert mask_public_label("macbook-studio") == "ma**********io"
 
 
 def test_leaderboard_requires_auth(client: TestClient) -> None:
@@ -117,9 +126,7 @@ def test_leaderboard_fails_without_cache(client: TestClient, auth_headers: dict[
     assert response.json()["detail"] == "拉取榜单失败"
 
 
-def test_leaderboard_local_coverage_lists_accounts_and_agents(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def _seed_local_coverage(client: TestClient, auth_headers: dict[str, str]) -> None:
     created = client.post(
         "/api/admin/accounts",
         headers=auth_headers,
@@ -150,6 +157,11 @@ def test_leaderboard_local_coverage_lists_accounts_and_agents(
     finally:
         session.close()
 
+
+def test_leaderboard_local_coverage_lists_accounts_and_agents(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    _seed_local_coverage(client, auth_headers)
     with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)):
         response = client.get("/api/admin/leaderboard", headers=auth_headers)
     assert response.status_code == 200
@@ -166,3 +178,36 @@ def test_leaderboard_local_coverage_lists_accounts_and_agents(
     agent_match = next(match for match in item["local_matches"] if match["kind"] == "agent")
     assert agent_match["agent_id"] == "macbook-studio"
     assert agent_match["agent_route_id"] == "claude-local"
+
+
+def test_public_leaderboard_masks_account_info(client: TestClient, auth_headers: dict[str, str]) -> None:
+    _seed_local_coverage(client, auth_headers)
+    with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)):
+        seeded = client.get("/api/admin/leaderboard", headers=auth_headers)
+        assert seeded.status_code == 200
+        response = client.get("/api/share/leaderboard")
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["local_covered"] is True
+    names = {match["account_name"] for match in item["local_matches"]}
+    assert names == {"Cl*********ct", "Cl********nt"}
+    assert all(match["account_id"] == 0 for match in item["local_matches"])
+    agent_match = next(match for match in item["local_matches"] if match["kind"] == "agent")
+    assert agent_match["agent_id"] == "ma**********io"
+    assert agent_match["agent_route_id"] == "cl********al"
+    assert "Claude Direct" not in response.text
+    assert "macbook-studio" not in response.text
+
+
+def test_public_leaderboard_does_not_fetch(client: TestClient, auth_headers: dict[str, str]) -> None:
+    with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)) as fetch:
+        empty = client.get("/api/share/leaderboard")
+        assert empty.status_code == 200
+        assert empty.json()["items"] == []
+        assert fetch.await_count == 0
+        created = client.get("/api/admin/leaderboard", headers=auth_headers)
+        assert created.status_code == 200
+        public = client.get("/api/share/leaderboard?refresh=true")
+        assert public.status_code == 200
+        assert public.json()["items"][0]["slug"] == "claude-fable-5"
+        assert fetch.await_count == 1

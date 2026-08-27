@@ -612,6 +612,7 @@ export const api = {
   },
   leaderboard: (refresh = false) =>
     request<Leaderboard>(`/api/admin/leaderboard${refresh ? '?refresh=true' : ''}`),
+  publicLeaderboard: () => request<Leaderboard>('/api/share/leaderboard'),
 }
 
 export type BenchmarkResult = {

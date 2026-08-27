@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -9,7 +8,7 @@ from app.db import get_db
 from app.deps import resolve_api_key
 from app.models import ApiKey, RequestLog
 from app.providers import find_provider
-from app.schemas import ShareCcSwitchRequest, ShareLookupRequest
+from app.schemas import LeaderboardOut, ShareCcSwitchRequest, ShareLookupRequest
 from app.services.ccswitch import (
     CCS_SWITCH_TARGETS,
     build_ccswitch_url_for_app,
@@ -18,6 +17,7 @@ from app.services.ccswitch import (
     gateway_endpoint,
     parse_models_json,
 )
+from app.services.leaderboard import LeaderboardError, get_leaderboard
 
 router = APIRouter(prefix="/api/share", tags=["share"])
 
@@ -125,3 +125,12 @@ def build_share_cc_switch(payload: ShareCcSwitchRequest, db: Session = Depends(g
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return {"url": url}
+
+
+@router.get("/leaderboard", response_model=LeaderboardOut)
+async def public_leaderboard(db: Session = Depends(get_db)) -> LeaderboardOut:
+    try:
+        payload = await get_leaderboard(db, force=False, public=True)
+    except LeaderboardError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    return LeaderboardOut.model_validate(payload)
