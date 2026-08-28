@@ -8,8 +8,8 @@ from app.db import get_db
 from app.deps import extract_raw_api_key, resolve_api_key
 from app.errors import protocol_error
 from app.services.bridge import prepare_credential
-from app.services.ccswitch import parse_models_json
 from app.services.credentials import CredentialError
+from app.services.key_models import active_bound_accounts, build_model_catalog, resolve_model
 from app.services.proxy import handle_chat, handle_count_tokens, list_models_payload
 
 router = APIRouter(tags=["proxy"])
@@ -28,26 +28,35 @@ async def _authenticate(
         return None, protocol_error(protocol, 401, "无效的 API Key")
     if api_key.status != "active":
         return None, protocol_error(protocol, 401, "API Key 已停用")
-    account = api_key.account
-    if account is None:
-        return None, protocol_error(protocol, 403, "绑定的上游账号不存在", "permission_error")
-    if account.status == "disabled":
-        return None, protocol_error(protocol, 403, "绑定的上游账号已停用，请联系管理员启用", "permission_error")
-    if account.status != "active":
+    active_accounts = active_bound_accounts(api_key)
+    if not active_accounts:
+        account = api_key.account
+        if account is None:
+            return None, protocol_error(protocol, 403, "绑定的上游账号不存在", "permission_error")
+        if account.status == "disabled":
+            return None, protocol_error(protocol, 403, "绑定的上游账号已停用，请联系管理员启用", "permission_error")
         return None, protocol_error(protocol, 403, f"绑定的上游账号当前不可用（状态：{account.status}）", "permission_error")
-    return (api_key, account), None
+    return (api_key, active_accounts[0]), None
 
 
-def _validate_model(protocol: str, account, body: dict) -> JSONResponse | None:
-    models = parse_models_json(account.models_json)
-    if not models:
-        return None
+def _resolve_request_account(protocol: str, api_key, body: dict):
+    catalog = build_model_catalog(api_key)
+    active_accounts = active_bound_accounts(api_key)
+    single_account = active_accounts[0] if len(active_accounts) == 1 else None
     model = str(body.get("model") or "").strip()
+    if not catalog:
+        if single_account is not None:
+            return single_account, None
+        return None, protocol_error(protocol, 400, "该 Key 没有可用的上游模型")
     if not model:
-        return protocol_error(protocol, 400, "请求缺少模型名称")
-    if model not in models:
-        return protocol_error(protocol, 400, f"模型“{model}”不在该上游账号已配置的模型列表中")
-    return None
+        return None, protocol_error(protocol, 400, "请求缺少模型名称")
+    entry = resolve_model(catalog, model, single_account=single_account)
+    if entry is None:
+        if single_account is not None:
+            return None, protocol_error(protocol, 400, f"模型“{model}”不在该上游账号已配置的模型列表中")
+        return None, protocol_error(protocol, 400, f"模型“{model}”不在该 Key 已配置的模型列表中")
+    body["model"] = entry.raw_id
+    return entry.account, None
 
 
 async def _validate_upstream_credential(protocol: str, account, db: Session) -> JSONResponse | None:
@@ -71,9 +80,9 @@ async def chat_completions(
     resolved, error = await _authenticate(request, db, protocol, authorization, x_api_key)
     if error:
         return error
-    api_key, account = resolved
+    api_key, _primary = resolved
     body = await request.json()
-    error = _validate_model(protocol, account, body)
+    account, error = _resolve_request_account(protocol, api_key, body)
     if error:
         return error
     error = await _validate_upstream_credential(protocol, account, db)
@@ -94,9 +103,9 @@ async def responses(
     resolved, error = await _authenticate(request, db, protocol, authorization, x_api_key)
     if error:
         return error
-    api_key, account = resolved
+    api_key, _primary = resolved
     body = await request.json()
-    error = _validate_model(protocol, account, body)
+    account, error = _resolve_request_account(protocol, api_key, body)
     if error:
         return error
     error = await _validate_upstream_credential(protocol, account, db)
@@ -117,9 +126,9 @@ async def messages(
     resolved, error = await _authenticate(request, db, protocol, authorization, x_api_key)
     if error:
         return error
-    api_key, account = resolved
+    api_key, _primary = resolved
     body = await request.json()
-    error = _validate_model(protocol, account, body)
+    account, error = _resolve_request_account(protocol, api_key, body)
     if error:
         return error
     error = await _validate_upstream_credential(protocol, account, db)
@@ -140,9 +149,9 @@ async def count_tokens(
     resolved, error = await _authenticate(request, db, protocol, authorization, x_api_key)
     if error:
         return error
-    _api_key, account = resolved
+    api_key, _primary = resolved
     body = await request.json()
-    error = _validate_model(protocol, account, body)
+    account, error = _resolve_request_account(protocol, api_key, body)
     if error:
         return error
     error = await _validate_upstream_credential(protocol, account, db)
@@ -163,5 +172,5 @@ async def models(
     resolved, error = await _authenticate(request, db, protocol, authorization, x_api_key)
     if error:
         return error
-    _api_key, account = resolved
-    return JSONResponse(list_models_payload(account))
+    api_key, _primary = resolved
+    return JSONResponse(list_models_payload(api_key))

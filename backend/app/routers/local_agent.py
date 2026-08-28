@@ -6,6 +6,7 @@ import secrets
 from fastapi import APIRouter, Depends, Header, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import select
+from sqlalchemy.orm import object_session
 
 from app.clock import utcnow
 from app.config import get_settings
@@ -13,6 +14,7 @@ from app.db import get_session_factory
 from app.deps import get_current_admin
 from app.models import GatewayAgent, GatewayAgentRoute, UpstreamAccount
 from app.providers import get_provider
+from app.services.key_models import ensure_account_prefix
 from app.services.local_agent_relay import (
     AgentConnection,
     local_agent_relay,
@@ -138,6 +140,7 @@ def _sync_agent(agent_id: str, routes: dict[str, dict[str, object]]) -> None:
                 continue
             account = session.scalar(select(UpstreamAccount).where(UpstreamAccount.agent_route_id == stored_route.route_id))
             if account is not None and account.source == "agent":
+                _unbind_account_keys(session, account)
                 session.delete(account)
             session.delete(stored_route)
         for route_id, route in routes.items():
@@ -155,11 +158,13 @@ def _sync_agent(agent_id: str, routes: dict[str, dict[str, object]]) -> None:
                     source="agent",
                     agent_route_id=route_id,
                     auth_type=provider.auth_type,
-                        base_url=f"{LOCAL_RELAY_BASE_URL}/r/{route_id}/v1",
+                    base_url=f"{LOCAL_RELAY_BASE_URL}/r/{route_id}/v1",
                     status="active",
                     risk_level="medium",
                 )
                 session.add(account)
+                session.flush()
+                ensure_account_prefix(account)
             else:
                 account.name = str(route["name"])
                 account.provider = provider_id
@@ -183,6 +188,21 @@ def _sync_agent(agent_id: str, routes: dict[str, dict[str, object]]) -> None:
     finally:
         session.close()
 
+def _unbind_account_keys(session, account: UpstreamAccount) -> None:
+    for link in list(account.key_links):
+        api_key = link.api_key
+        session.delete(link)
+        session.flush()
+        remaining = [item for item in api_key.account_links if item.account_id != account.id]
+        if remaining:
+            remaining.sort(key=lambda item: item.sort_order)
+            api_key.account_id = remaining[0].account_id
+            api_key.account = remaining[0].account
+        else:
+            api_key.account_id = None
+            api_key.account = None
+            api_key.status = "disabled"
+
 
 def _mark_agent_offline(agent_id: str) -> None:
     if local_agent_relay.is_agent_online(agent_id):
@@ -201,6 +221,12 @@ def _mark_agent_offline(agent_id: str) -> None:
 
 
 def _agent_to_out(agent: GatewayAgent) -> dict[str, object]:
+    accounts: dict[str, UpstreamAccount] = {}
+    db = object_session(agent)
+    route_ids = [route.route_id for route in agent.routes]
+    if db is not None and route_ids:
+        rows = db.scalars(select(UpstreamAccount).where(UpstreamAccount.agent_route_id.in_(route_ids))).all()
+        accounts = {account.agent_route_id: account for account in rows if account.agent_route_id}
     return {
         "agent_id": agent.agent_id,
         "status": "online" if local_agent_relay.is_agent_online(agent.agent_id) else "offline",
@@ -213,6 +239,8 @@ def _agent_to_out(agent: GatewayAgent) -> dict[str, object]:
                 "provider": route.provider,
                 "models": json.loads(route.models_json) if route.models_json else [],
                 "models_updated_at": route.models_updated_at.isoformat() if route.models_updated_at else None,
+                "account_id": accounts[route.route_id].id if route.route_id in accounts else None,
+                "model_prefix": accounts[route.route_id].model_prefix if route.route_id in accounts else None,
             }
             for route in agent.routes
         ],

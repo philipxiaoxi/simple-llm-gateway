@@ -15,6 +15,7 @@ from app.providers import get_provider, list_providers
 from app.schemas import AccountCreate, AccountExportRequest, AccountImportRequest, AccountOut, AccountUpdate, ProviderOut
 from app.serializers import account_to_out
 from app.services.account_transfer import export_accounts, import_accounts
+from app.services.key_models import ensure_account_prefix, normalize_model_prefix
 from app.services.probe import list_account_models, probe_account
 from app.services.quota import refresh_quota
 
@@ -69,8 +70,13 @@ def create_account(
         risk_level=payload.risk_level,
         updated_at=utcnow(),
     )
+    try:
+        account.model_prefix = normalize_model_prefix(payload.model_prefix)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     db.add(account)
     db.flush()
+    ensure_account_prefix(account)
     initial_quota = provider.initial_quota()
     if initial_quota is not None:
         provider.store_quota(account, initial_quota)
@@ -124,6 +130,12 @@ def update_account(
         account.risk_level = payload.risk_level
     if payload.api_key:
         account.api_key_encrypted = encrypt_secret(payload.api_key, get_settings().app_secret_key)
+    if "model_prefix" in payload.model_fields_set:
+        try:
+            prefix = normalize_model_prefix(payload.model_prefix)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        account.model_prefix = prefix or ensure_account_prefix(account)
     account.updated_at = utcnow()
     return account_to_out(account)
 
@@ -131,7 +143,7 @@ def update_account(
 @router.delete("/accounts/{account_id}")
 def delete_account(account_id: int, db: Session = Depends(get_db)) -> dict[str, bool]:
     account = _get_account(db, account_id)
-    if account.api_keys:
+    if account.api_keys or account.key_links:
         raise HTTPException(status_code=400, detail="请先删除绑定在该账号上的 API Key")
     db.execute(
         update(RequestLog)
@@ -172,7 +184,11 @@ async def models(account_id: int, db: Session = Depends(get_db)) -> dict:
 def _get_account(db: Session, account_id: int) -> UpstreamAccount:
     account = db.scalar(
         select(UpstreamAccount)
-        .options(joinedload(UpstreamAccount.oauth_token), joinedload(UpstreamAccount.api_keys))
+        .options(
+            joinedload(UpstreamAccount.oauth_token),
+            joinedload(UpstreamAccount.api_keys),
+            joinedload(UpstreamAccount.key_links),
+        )
         .where(UpstreamAccount.id == account_id)
     )
     if account is None:

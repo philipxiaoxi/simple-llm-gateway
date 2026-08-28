@@ -17,7 +17,7 @@ from app.db import get_session_factory
 from app.errors import protocol_error
 from app.models import ApiKey, RequestLog, UpstreamAccount
 from app.providers import get_provider
-from app.services.ccswitch import parse_models_json
+from app.services.key_models import build_model_catalog
 from app.services.bridge import (
     AnthropicStreamTranslator,
     ResponsesStreamCollector,
@@ -816,17 +816,17 @@ async def handle_count_tokens(
     return JSONResponse({"input_tokens": tokens})
 
 
-def list_models_payload(account: UpstreamAccount) -> dict[str, Any]:
-    models = parse_models_json(account.models_json)
+def list_models_payload(api_key: ApiKey) -> dict[str, Any]:
+    catalog = build_model_catalog(api_key)
     return {
         "object": "list",
         "data": [
             {
-                "id": name,
+                "id": entry.public_id,
                 "object": "model",
                 "created": int(time.time()),
-                "owned_by": account.provider,
+                "owned_by": entry.account.provider,
             }
-            for name in models
+            for entry in catalog
         ],
     }

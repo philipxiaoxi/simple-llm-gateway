@@ -17,6 +17,7 @@ from app.crypto import (
 from app.models import UpstreamAccount
 from app.providers import get_provider
 from app.schemas import normalize_website_url
+from app.services.key_models import ensure_account_prefix, normalize_model_prefix
 
 
 def unique_account_name(taken: set[str], name: str) -> str:
@@ -47,6 +48,7 @@ def export_accounts(db: Session, password: str) -> dict[str, object]:
                 "website_url": account.website_url,
                 "status": account.status,
                 "risk_level": account.risk_level,
+                "model_prefix": account.model_prefix,
                 "api_key": api_key,
             }
         )
@@ -95,6 +97,12 @@ def import_accounts(db: Session, password: str, envelope: dict[str, object]) -> 
             website_url = normalize_website_url(entry.get("website_url") if isinstance(entry.get("website_url"), str) else None)
         except ValueError:
             website_url = None
+        try:
+            model_prefix = normalize_model_prefix(
+                str(entry.get("model_prefix")) if entry.get("model_prefix") is not None else None
+            )
+        except ValueError:
+            model_prefix = None
         account = UpstreamAccount(
             name=name,
             provider=provider.id,
@@ -104,9 +112,13 @@ def import_accounts(db: Session, password: str, envelope: dict[str, object]) -> 
             api_key_encrypted=encrypted,
             status=status,
             risk_level=risk_level,
+            model_prefix=model_prefix,
             updated_at=utcnow(),
         )
         db.add(account)
+        db.flush()
+        if not account.model_prefix:
+            ensure_account_prefix(account)
         db.flush()
         initial_quota = provider.initial_quota()
         if initial_quota is not None:

@@ -94,6 +94,7 @@ export type Account = {
   quota: AccountQuota | null
   quota_updated_at: string | null
   models: string[]
+  model_prefix?: string | null
   models_updated_at: string | null
   oauth_expires_at: string | null
   created_at: string
@@ -167,12 +168,21 @@ export type ShareLookup = {
 
 export type ApiKeySort = 'created_at' | 'tokens' | 'last_used'
 
+export type KeyBoundAccount = {
+  id: number
+  name: string
+  provider: string
+  source: 'upstream' | 'agent'
+  status: string
+  model_prefix?: string | null
+}
+
 export type ApiKeyItem = {
   id: number
   name: string
   key_prefix: string
   key?: string | null
-  account_id: number
+  account_id: number | null
   account_name: string
   provider: string
   account_source: 'upstream' | 'agent'
@@ -182,6 +192,8 @@ export type ApiKeyItem = {
   last_used_at: string | null
   today_tokens: number
   total_tokens: number
+  account_ids?: number[]
+  accounts?: KeyBoundAccount[]
 }
 
 export type LogItem = {
@@ -365,6 +377,8 @@ export type GatewayAgent = {
     provider: string
     models: string[]
     models_updated_at: string | null
+    account_id?: number | null
+    model_prefix?: string | null
   }[]
 }
 
@@ -418,7 +432,7 @@ export const api = {
   completeOauth: (payload: { account_id?: number; callback_url?: string; code?: string; state?: string }) =>
     request<{ ok: boolean }>('/api/admin/oauth/grok/callback', { method: 'POST', body: JSON.stringify(payload) }),
   keys: (sort: ApiKeySort = 'last_used') => request<ApiKeyItem[]>(`/api/admin/keys?sort=${sort}`),
-  createKey: (payload: { name: string; account_id: number }) =>
+  createKey: (payload: { name: string; account_ids: number[] }) =>
     request<ApiKeyItem>('/api/admin/keys', { method: 'POST', body: JSON.stringify(payload) }),
   key: (id: number) => request<ApiKeyItem>(`/api/admin/keys/${id}`),
   benchmark: (payload: { account_id: number; model: string; prompt: string; max_tokens: number }) =>

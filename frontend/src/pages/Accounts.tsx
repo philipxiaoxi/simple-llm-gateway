@@ -28,6 +28,7 @@ function AccountEditor({
   const [websiteUrl, setWebsiteUrl] = useState(account?.website_url ?? '')
   const [apiKey, setApiKey] = useState('')
   const [riskLevel, setRiskLevel] = useState(account?.risk_level ?? 'low')
+  const [modelPrefix, setModelPrefix] = useState(account?.model_prefix ?? '')
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
 
@@ -57,6 +58,7 @@ function AccountEditor({
           website_url: trimmedWebsiteUrl || null,
           api_key: authType === 'api_key' && apiKey.trim() ? apiKey.trim() : undefined,
           risk_level: riskLevel,
+          model_prefix: modelPrefix.trim() || undefined,
         })
         onSaved('账号已更新')
       } else {
@@ -67,6 +69,7 @@ function AccountEditor({
           website_url: trimmedWebsiteUrl || undefined,
           api_key: authType === 'api_key' ? apiKey : undefined,
           risk_level: riskLevel,
+          model_prefix: modelPrefix.trim() || undefined,
         })
         onSaved('账号已创建')
       }
@@ -131,6 +134,19 @@ function AccountEditor({
             {editing ? 'OAuth 授权请在卡片上点「去授权」。' : '创建后点「去授权」完成 Grok OAuth。'}
           </div>
         )}
+        <div className="sm:col-span-2">
+          <Field label="模型前缀">
+            <Input
+              className="font-mono"
+              value={modelPrefix}
+              onChange={(event) => setModelPrefix(event.target.value)}
+              placeholder="留空则按显示名自动生成"
+            />
+          </Field>
+          <div className="mt-1.5 text-xs text-mist">
+            同一 Key 绑定多个账号且模型名冲突时，后绑账号使用此前缀，例如 prefix/model。仅字母数字、下划线和短横线，最长 32 位。
+          </div>
+        </div>
         <div className="sm:col-span-2">
           <Field label="风险等级">
             <Select value={riskLevel} onChange={(event) => setRiskLevel(event.target.value)}>

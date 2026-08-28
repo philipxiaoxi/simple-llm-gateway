@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Children, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
-import { api, type ApiKeySort, type CcSwitchTarget, type GatewayAgent } from '../lib/api'
+import { api, type Account, type ApiKeyItem, type ApiKeySort, type CcSwitchTarget, type GatewayAgent } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { cn, errorMessage, formatTime, formatTokenCount, RISK_LEVELS } from '../lib/utils'
 
@@ -26,7 +26,6 @@ function MoreMenu({ children }: { children: ReactNode }) {
     const next = !open
     setOpen(next)
     if (next) {
-      // 打开时判断：下方空间不足则向上弹出
       const rect = containerRef.current?.getBoundingClientRect()
       if (rect) {
         const itemCount = Children.count(children)
@@ -78,23 +77,119 @@ function MenuItem({
   )
 }
 
+function accountSourceLabel(source: 'upstream' | 'agent') {
+  return source === 'agent' ? '[网关]' : '[上游]'
+}
+
+function keyBoundIds(item: ApiKeyItem): number[] {
+  if (item.account_ids?.length) return item.account_ids
+  if (item.accounts?.length) return item.accounts.map((account) => account.id)
+  return item.account_id != null ? [item.account_id] : []
+}
+
+function BoundAccountList({
+  accounts,
+  selectedIds,
+  onChange,
+}: {
+  accounts: Account[]
+  selectedIds: number[]
+  onChange: (ids: number[]) => void
+}) {
+  const [addId, setAddId] = useState<number | ''>('')
+  const remaining = accounts.filter((account) => !selectedIds.includes(account.id))
+
+  function move(index: number, delta: number) {
+    const target = index + delta
+    if (target < 0 || target >= selectedIds.length) return
+    const next = [...selectedIds]
+    const current = next[index]
+    next[index] = next[target]
+    next[target] = current
+    onChange(next)
+    notifyInfo('调整顺序后，重复模型的裸名会归到排第一的账号')
+  }
+
+  function remove(index: number) {
+    if (selectedIds.length <= 1) return
+    onChange(selectedIds.filter((_, itemIndex) => itemIndex !== index))
+  }
+
+  function add() {
+    if (!addId || selectedIds.includes(addId)) return
+    onChange([...selectedIds, addId])
+    setAddId('')
+  }
+
+  return (
+    <div className="grid gap-2">
+      {selectedIds.map((accountId, index) => {
+        const account = accounts.find((item) => item.id === accountId)
+        const label = account
+          ? `${accountSourceLabel(account.source)} ${account.name} (${account.provider})`
+          : `账号 #${accountId}`
+        return (
+          <div
+            key={accountId}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-ink/40 px-3 py-2"
+          >
+            <div className="min-w-0 flex-1 text-sm">
+              {label}
+              {index === 0 ? <span className="ml-2 text-xs text-signal">优先 / 裸名</span> : null}
+            </div>
+            <Button type="button" variant="line" disabled={index === 0} onClick={() => move(index, -1)}>
+              上移
+            </Button>
+            <Button
+              type="button"
+              variant="line"
+              disabled={index === selectedIds.length - 1}
+              onClick={() => move(index, 1)}
+            >
+              下移
+            </Button>
+            <Button type="button" variant="line" disabled={selectedIds.length <= 1} onClick={() => remove(index)}>
+              移除
+            </Button>
+          </div>
+        )
+      })}
+      {remaining.length ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <Select value={addId} onChange={(event) => setAddId(event.target.value ? Number(event.target.value) : '')}>
+            <option value="">添加账号</option>
+            {remaining.map((account) => (
+              <option key={account.id} value={account.id}>
+                {accountSourceLabel(account.source)} {account.name} ({account.provider})
+              </option>
+            ))}
+          </Select>
+          <Button type="button" variant="line" disabled={!addId} onClick={add}>
+            添加
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function KeyEditDialog({
   keyId,
   initialName,
-  initialAccountId,
+  initialAccountIds,
   accounts,
   onClose,
   onSaved,
 }: {
   keyId: number
   initialName: string
-  initialAccountId: number
-  accounts: { id: number; name: string; provider: string; source: 'upstream' | 'agent' }[]
+  initialAccountIds: number[]
+  accounts: Account[]
   onClose: () => void
   onSaved: () => void
 }) {
   const [name, setName] = useState(initialName)
-  const [accountId, setAccountId] = useState<number | ''>(initialAccountId)
+  const [accountIds, setAccountIds] = useState<number[]>(initialAccountIds)
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
 
@@ -104,14 +199,14 @@ function KeyEditDialog({
       setError('请填写备注')
       return
     }
-    if (!accountId) {
-      setError('请选择上游账号')
+    if (!accountIds.length) {
+      setError('请至少绑定一个上游账号')
       return
     }
     setPending(true)
     setError('')
     try {
-      await api.updateKey(keyId, { name: trimmed, account_id: Number(accountId) })
+      await api.updateKey(keyId, { name: trimmed, account_ids: accountIds })
       onSaved()
     } catch (caught) {
       setError(errorMessage(caught, '保存失败'))
@@ -127,17 +222,7 @@ function KeyEditDialog({
           <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="给同事 A" />
         </Field>
         <Field label="绑定上游">
-          <Select
-            value={accountId}
-            onChange={(event) => setAccountId(event.target.value ? Number(event.target.value) : '')}
-          >
-            <option value="">选择账号</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {accountSourceLabel(account.source)} {account.name} ({account.provider})
-              </option>
-            ))}
-          </Select>
+          <BoundAccountList accounts={accounts} selectedIds={accountIds} onChange={setAccountIds} />
         </Field>
         {error ? <div className="text-sm text-danger">{error}</div> : null}
         <div className="flex justify-end gap-2">
@@ -164,10 +249,6 @@ function shareText(shareUrl: string, apiKey: string) {
   ].join('\n')
 }
 
-function accountSourceLabel(source: 'upstream' | 'agent') {
-  return source === 'agent' ? '[网关]' : '[上游]'
-}
-
 export function KeysPage() {
   const queryClient = useQueryClient()
   const { data: accounts = [] } = useQuery({ queryKey: ['key-accounts'], queryFn: api.keyAccounts })
@@ -175,7 +256,7 @@ export function KeysPage() {
   const [sort, setSort] = useState<ApiKeySort>('last_used')
   const { data: keys = [] } = useQuery({ queryKey: ['keys', sort], queryFn: () => api.keys(sort) })
   const [name, setName] = useState('')
-  const [accountId, setAccountId] = useState<number | ''>('')
+  const [accountIds, setAccountIds] = useState<number[]>([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [accountFilter, setAccountFilter] = useState('')
@@ -189,10 +270,10 @@ export function KeysPage() {
     label: string
     models: string[]
   } | null>(null)
-  const [editDialog, setEditDialog] = useState<{ keyId: number; name: string; accountId: number } | null>(null)
+  const [editDialog, setEditDialog] = useState<{ keyId: number; name: string; accountIds: number[] } | null>(null)
 
   const createMutation = useMutation({
-    mutationFn: () => api.createKey({ name, account_id: Number(accountId) }),
+    mutationFn: () => api.createKey({ name, account_ids: accountIds }),
     onSuccess: (item) => {
       queryClient.invalidateQueries({ queryKey: ['keys'] })
       if (item.key) {
@@ -205,21 +286,34 @@ export function KeysPage() {
         notifyOk('已创建。请点「复制 Key」再发给对方。')
       }
       setName('')
+      setAccountIds([])
     },
     onError: (error: Error) => notifyBad(error.message),
   })
 
   const filteredKeys = useMemo(() => {
     const keyword = search.trim().toLowerCase()
+    const filterId = accountFilter ? Number(accountFilter) : null
     return keys.filter((item) => {
       if (statusFilter && item.status !== statusFilter) return false
-      if (accountFilter && item.account_id !== Number(accountFilter)) return false
+      if (filterId != null) {
+        const bound = keyBoundIds(item)
+        const matches =
+          bound.includes(filterId) ||
+          item.accounts?.some((account) => account.id === filterId) ||
+          item.account_id === filterId
+        if (!matches) return false
+      }
       if (!keyword) return true
+      const boundNames = (item.accounts ?? []).map((account) => account.name.toLowerCase())
+      const boundProviders = (item.accounts ?? []).map((account) => account.provider.toLowerCase())
       return (
         item.name.toLowerCase().includes(keyword) ||
         item.key_prefix.toLowerCase().includes(keyword) ||
         item.account_name.toLowerCase().includes(keyword) ||
-        item.provider.toLowerCase().includes(keyword)
+        item.provider.toLowerCase().includes(keyword) ||
+        boundNames.some((value) => value.includes(keyword)) ||
+        boundProviders.some((value) => value.includes(keyword))
       )
     })
   }, [keys, search, statusFilter, accountFilter])
@@ -337,7 +431,9 @@ export function KeysPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">API Key</h1>
-          <p className="mt-1 text-sm text-mist">创建时绑定一个上游账号或网关代理账号。需要时直接复制完整 Key。</p>
+          <p className="mt-1 text-sm text-mist">
+            创建时绑定一个或多个上游账号、网关代理账号。排第一的优先使用裸名，其余冲突模型需加前缀。需要时直接复制完整 Key。
+          </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <Field label="排序">
@@ -366,25 +462,15 @@ export function KeysPage() {
           </Button>
         </div>
       </div>
-      <Card className="grid gap-3 md:grid-cols-3">
+      <Card className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]">
         <Field label="备注">
           <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="给同事 A" />
         </Field>
         <Field label="绑定上游">
-          <Select
-            value={accountId}
-            onChange={(event) => setAccountId(event.target.value ? Number(event.target.value) : '')}
-          >
-            <option value="">选择账号</option>
-            {availableAccounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {accountSourceLabel(account.source)} {account.name} ({account.provider})
-              </option>
-            ))}
-          </Select>
+          <BoundAccountList accounts={availableAccounts} selectedIds={accountIds} onChange={setAccountIds} />
         </Field>
         <div className="flex items-end">
-          <Button disabled={!name || !accountId || createMutation.isPending} onClick={() => createMutation.mutate()}>
+          <Button disabled={!name || !accountIds.length || createMutation.isPending} onClick={() => createMutation.mutate()}>
             生成 Key
           </Button>
         </div>
@@ -417,6 +503,17 @@ export function KeysPage() {
       </Card>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {filteredKeys.map((item) => {
+          const boundAccounts = item.accounts?.length
+            ? item.accounts
+            : [
+                {
+                  id: item.account_id ?? 0,
+                  name: item.account_name,
+                  provider: item.provider,
+                  source: item.account_source,
+                  status: item.status,
+                },
+              ]
           return (
             <Card key={item.id} className="flex flex-col space-y-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -431,8 +528,15 @@ export function KeysPage() {
                     </Badge>
                     <Badge tone={item.status === 'active' ? 'ok' : 'mist'}>{item.status}</Badge>
                   </div>
-                  <div className="mt-1 font-mono text-xs text-mist">
-                    {item.key_prefix} · {accountSourceLabel(item.account_source)} {item.account_name} · {item.provider}
+                  <div className="mt-1 font-mono text-xs text-mist">{item.key_prefix}</div>
+                  <div className="mt-2 grid gap-1 text-xs text-mist">
+                    {boundAccounts.map((account, index) => (
+                      <div key={`${item.id}-${account.id || index}`}>
+                        {accountSourceLabel(account.source)} {account.name} · {account.provider}
+                        {index === 0 ? <span className="ml-1 text-signal">优先 / 裸名</span> : null}
+                        {account.model_prefix ? <span className="ml-1 font-mono">/{account.model_prefix}</span> : null}
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -462,7 +566,7 @@ export function KeysPage() {
                 </Button>
                 <MoreMenu>
                   <MenuItem
-                    onClick={() => setEditDialog({ keyId: item.id, name: item.name, accountId: item.account_id })}
+                    onClick={() => setEditDialog({ keyId: item.id, name: item.name, accountIds: keyBoundIds(item) })}
                   >
                     编辑
                   </MenuItem>
@@ -533,8 +637,8 @@ export function KeysPage() {
         <KeyEditDialog
           keyId={editDialog.keyId}
           initialName={editDialog.name}
-          initialAccountId={editDialog.accountId}
-          accounts={accounts}
+          initialAccountIds={editDialog.accountIds}
+          accounts={availableAccounts}
           onClose={() => setEditDialog(null)}
           onSaved={() => {
             queryClient.invalidateQueries({ queryKey: ['keys'] })

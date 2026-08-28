@@ -45,6 +45,7 @@ def init_db() -> None:
     _migrate_legacy_logs(engine)
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
+    _ensure_api_keys_account_id_nullable(engine)
     _ensure_request_logs_have_no_parent_fks(engine)
 
 
@@ -78,6 +79,7 @@ def _ensure_columns(engine: Engine) -> None:
         "models_updated_at": "ALTER TABLE upstream_accounts ADD COLUMN models_updated_at DATETIME",
         "risk_level": "ALTER TABLE upstream_accounts ADD COLUMN risk_level VARCHAR(16) DEFAULT 'low' NOT NULL",
         "website_url": "ALTER TABLE upstream_accounts ADD COLUMN website_url VARCHAR(512)",
+        "model_prefix": "ALTER TABLE upstream_accounts ADD COLUMN model_prefix VARCHAR(32)",
     }
     skill_settings_statements = {
         "report_account_id": "ALTER TABLE skill_classification_settings ADD COLUMN report_account_id INTEGER",
@@ -149,6 +151,128 @@ def _ensure_columns(engine: Engine) -> None:
         skill_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(skills)"))}
         if skill_columns and "category" in skill_columns:
             connection.execute(text("UPDATE skills SET category = substr(category, 1, 64) WHERE length(category) > 64"))
+        _ensure_api_key_accounts(connection)
+        _backfill_account_model_prefixes(connection)
+
+
+def _ensure_api_key_accounts(connection) -> None:  # type: ignore[no-untyped-def]
+    connection.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS api_key_accounts (
+                id INTEGER NOT NULL PRIMARY KEY,
+                api_key_id INTEGER NOT NULL,
+                account_id INTEGER NOT NULL,
+                sort_order INTEGER NOT NULL,
+                FOREIGN KEY(api_key_id) REFERENCES api_keys (id) ON DELETE CASCADE,
+                FOREIGN KEY(account_id) REFERENCES upstream_accounts (id),
+                UNIQUE (api_key_id, account_id)
+            )
+            """
+        )
+    )
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_api_key_accounts_api_key_id ON api_key_accounts (api_key_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_api_key_accounts_account_id ON api_key_accounts (account_id)"))
+    tables = {
+        row[0]
+        for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+    }
+    if "api_keys" not in tables:
+        return
+    connection.execute(
+        text(
+            """
+            INSERT INTO api_key_accounts (api_key_id, account_id, sort_order)
+            SELECT api_keys.id, api_keys.account_id, 0
+            FROM api_keys
+            WHERE api_keys.account_id IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM api_key_accounts
+                  WHERE api_key_accounts.api_key_id = api_keys.id
+                    AND api_key_accounts.account_id = api_keys.account_id
+              )
+            """
+        )
+    )
+
+
+def _backfill_account_model_prefixes(connection) -> None:  # type: ignore[no-untyped-def]
+    from app.services.key_models import default_model_prefix
+
+    tables = {
+        row[0]
+        for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+    }
+    if "upstream_accounts" not in tables:
+        return
+    rows = connection.execute(text("SELECT id, name, model_prefix FROM upstream_accounts")).all()
+    for account_id, name, prefix in rows:
+        if str(prefix or "").strip():
+            continue
+        connection.execute(
+            text("UPDATE upstream_accounts SET model_prefix = :prefix WHERE id = :id"),
+            {"prefix": default_model_prefix(str(name or ""), int(account_id)), "id": account_id},
+        )
+
+
+def _api_keys_account_id_not_null(engine: Engine) -> bool:
+    with engine.connect() as connection:
+        columns = list(connection.execute(text("PRAGMA table_info(api_keys)")))
+        for row in columns:
+            if row[1] == "account_id":
+                return bool(row[3])
+    return False
+
+
+def _ensure_api_keys_account_id_nullable(engine: Engine) -> None:
+    if not _api_keys_account_id_not_null(engine):
+        return
+    raw_connection = engine.raw_connection()
+    try:
+        cursor = raw_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=OFF")
+        cursor.execute("BEGIN")
+        cursor.execute(
+            """
+            CREATE TABLE api_keys_new (
+                id INTEGER NOT NULL PRIMARY KEY,
+                name VARCHAR(128) NOT NULL,
+                key_hash VARCHAR(64) NOT NULL,
+                key_encrypted TEXT NOT NULL,
+                key_prefix VARCHAR(32) NOT NULL,
+                account_id INTEGER,
+                status VARCHAR(16) NOT NULL,
+                created_at DATETIME NOT NULL,
+                last_used_at DATETIME,
+                FOREIGN KEY(account_id) REFERENCES upstream_accounts (id),
+                UNIQUE (key_hash)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO api_keys_new (
+                id, name, key_hash, key_encrypted, key_prefix, account_id, status, created_at, last_used_at
+            )
+            SELECT
+                id, name, key_hash, key_encrypted, key_prefix, account_id, status, created_at, last_used_at
+            FROM api_keys
+            """
+        )
+        cursor.execute("DROP TABLE api_keys")
+        cursor.execute("ALTER TABLE api_keys_new RENAME TO api_keys")
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_api_keys_key_hash ON api_keys (key_hash)")
+        cursor.execute("COMMIT")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+    except Exception:
+        try:
+            raw_connection.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        raw_connection.close()
 
 
 def _request_logs_have_parent_fks(engine: Engine) -> bool:

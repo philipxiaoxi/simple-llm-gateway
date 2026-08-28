@@ -15,8 +15,8 @@ from app.services.ccswitch import (
     build_vscode_config,
     describe_ccswitch_targets,
     gateway_endpoint,
-    parse_models_json,
 )
+from app.services.key_models import active_bound_accounts, public_model_ids
 from app.services.leaderboard import LeaderboardError, get_leaderboard
 
 router = APIRouter(prefix="/api/share", tags=["share"])
@@ -65,7 +65,7 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
     item = _require_key(db, raw_key)
     settings = get_settings()
     account = item.account
-    models = parse_models_json(account.models_json if account else None)
+    models = public_model_ids(item)
     origin = settings.app_base_url.rstrip("/")
     provider = account.provider if account else ""
     registered = find_provider(provider) if provider else None
@@ -103,13 +103,13 @@ def build_share_cc_switch(payload: ShareCcSwitchRequest, db: Session = Depends(g
     item = _require_key(db, raw_key)
     if item.status != "active":
         raise HTTPException(status_code=403, detail="该 Key 已停用")
-    if item.account is None or item.account.status != "active":
+    if not active_bound_accounts(item):
         raise HTTPException(status_code=403, detail="绑定的上游账号不可用")
     allowed = {target[0] for target in CCS_SWITCH_TARGETS}
     if payload.app not in allowed:
         raise HTTPException(status_code=400, detail="不支持的 CC Switch 应用")
     settings = get_settings()
-    models = parse_models_json(item.account.models_json)
+    models = public_model_ids(item)
     try:
         url = build_ccswitch_url_for_app(
             app=payload.app,

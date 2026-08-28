@@ -37,6 +37,30 @@ def test_create_key_returns_plaintext_and_can_reveal_later(
     assert detail.json()["key"] == plaintext
 
 
+def test_reveal_key_returns_400_when_secret_cannot_decrypt(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    account_id = _account(client, auth_headers)
+    created = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "同事A", "account_id": account_id},
+    )
+    key_id = created.json()["id"]
+    session = get_session_factory()()
+    try:
+        item = session.get(ApiKey, key_id)
+        assert item is not None
+        item.key_encrypted = "gAAAAABnot-a-valid-fernet-token-xxxxxxxxxxxx"
+        session.commit()
+    finally:
+        session.close()
+
+    detail = client.get(f"/api/admin/keys/{key_id}", headers=auth_headers)
+    assert detail.status_code == 400
+    assert "无法解密密钥" in detail.json()["detail"]
+
+
 def test_cc_switch_links(client: TestClient, auth_headers: dict[str, str]) -> None:
     from unittest.mock import AsyncMock, patch
 

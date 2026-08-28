@@ -6,7 +6,8 @@ from typing import Any
 from app.config import get_settings
 from app.crypto import decrypt_secret
 from app.models import ApiKey, RequestLog, UpstreamAccount
-from app.schemas import AccountOut, KeyOut, LogOut
+from app.schemas import AccountOut, KeyBoundAccountOut, KeyOut, LogOut
+from app.services.key_models import bound_accounts
 from app.services.proxy import parse_json
 
 
@@ -53,6 +54,7 @@ def account_to_out(account: UpstreamAccount, reveal: bool = False) -> AccountOut
         quota_updated_at=account.quota_updated_at,
         models=models,
         models_updated_at=account.models_updated_at,
+        model_prefix=account.model_prefix,
         oauth_expires_at=account.oauth_token.expires_at if account.oauth_token else None,
         created_at=account.created_at,
     )
@@ -68,21 +70,35 @@ def key_to_out(
     plaintext = None
     if reveal:
         plaintext = decrypt_secret(item.key_encrypted, settings.app_secret_key)
+    accounts = bound_accounts(item)
+    primary = accounts[0] if accounts else item.account
     return KeyOut(
         id=item.id,
         name=item.name,
         key_prefix=item.key_prefix,
         key=plaintext,
-        account_id=item.account_id,
-        account_name=item.account.name if item.account else "",
-        provider=item.account.provider if item.account else "",
-        account_source=item.account.source if item.account else "upstream",
-        risk_level=item.account.risk_level if item.account else "low",
+        account_id=primary.id if primary else None,
+        account_name=primary.name if primary else "",
+        provider=primary.provider if primary else "",
+        account_source=primary.source if primary else "upstream",
+        risk_level=primary.risk_level if primary else "low",
         status=item.status,
         created_at=item.created_at,
         last_used_at=item.last_used_at,
         today_tokens=today_tokens,
         total_tokens=total_tokens,
+        account_ids=[account.id for account in accounts],
+        accounts=[
+            KeyBoundAccountOut(
+                id=account.id,
+                name=account.name,
+                provider=account.provider,
+                source=account.source,
+                status=account.status,
+                model_prefix=account.model_prefix,
+            )
+            for account in accounts
+        ],
     )
 
 

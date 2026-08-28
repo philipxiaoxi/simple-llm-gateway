@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def normalize_website_url(value: str | None) -> str | None:
@@ -86,6 +86,7 @@ class AccountCreate(BaseModel):
     api_key: str | None = None
     status: str = "active"
     risk_level: str = "low"
+    model_prefix: str | None = None
 
     _normalize_website_url = field_validator("website_url")(normalize_website_url)
 
@@ -105,6 +106,7 @@ class AccountUpdate(BaseModel):
     website_url: str | None = None
     api_key: str | None = None
     status: str | None = None
+    model_prefix: str | None = None
     risk_level: str | None = None
 
     _normalize_website_url = field_validator("website_url")(normalize_website_url)
@@ -137,6 +139,7 @@ class AccountOut(BaseModel):
     quota: Any | None = None
     quota_updated_at: datetime | None
     models: list[str] = Field(default_factory=list)
+    model_prefix: str | None = None
     models_updated_at: datetime | None = None
     oauth_expires_at: datetime | None = None
     created_at: datetime
@@ -178,15 +181,46 @@ class ShareCcSwitchRequest(CcSwitchBuildRequest):
     api_key: str
 
 
+class KeyBoundAccountOut(BaseModel):
+    id: int
+    name: str
+    provider: str
+    source: str
+    status: str
+    model_prefix: str | None = None
+
+
 class KeyCreate(BaseModel):
     name: str
-    account_id: int
+    account_id: int | None = None
+    account_ids: list[int] | None = None
+
+    @model_validator(mode="after")
+    def require_accounts(self) -> KeyCreate:
+        if not self.resolved_account_ids():
+            raise ValueError("请至少绑定一个上游账号")
+        return self
+
+    def resolved_account_ids(self) -> list[int]:
+        if self.account_ids:
+            return list(self.account_ids)
+        if self.account_id is not None:
+            return [self.account_id]
+        return []
 
 
 class KeyUpdate(BaseModel):
     name: str | None = None
     status: str | None = None
     account_id: int | None = None
+    account_ids: list[int] | None = None
+
+    def resolved_account_ids(self) -> list[int] | None:
+        if self.account_ids is not None:
+            return list(self.account_ids)
+        if self.account_id is not None:
+            return [self.account_id]
+        return None
 
 
 class KeyOut(BaseModel):
@@ -194,7 +228,7 @@ class KeyOut(BaseModel):
     name: str
     key_prefix: str
     key: str | None = None
-    account_id: int
+    account_id: int | None = None
     account_name: str
     provider: str
     account_source: str
@@ -204,6 +238,8 @@ class KeyOut(BaseModel):
     last_used_at: datetime | None
     today_tokens: int = 0
     total_tokens: int = 0
+    account_ids: list[int] = Field(default_factory=list)
+    accounts: list[KeyBoundAccountOut] = Field(default_factory=list)
 
 
 class LogOut(BaseModel):

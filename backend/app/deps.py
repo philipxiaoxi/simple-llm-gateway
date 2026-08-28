@@ -5,12 +5,12 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.config import get_settings
 from app.crypto import hash_api_key
 from app.db import get_db
-from app.models import Admin, ApiKey
+from app.models import Admin, ApiKey, ApiKeyAccount
 
 
 def create_access_token(admin: Admin) -> str:
@@ -64,5 +64,10 @@ def resolve_api_key(db: Session, raw_key: str | None) -> ApiKey | None:
         return None
     digest = hash_api_key(raw_key)
     return db.scalar(
-        select(ApiKey).options(joinedload(ApiKey.account)).where(ApiKey.key_hash == digest)
+        select(ApiKey)
+        .options(
+            joinedload(ApiKey.account),
+            selectinload(ApiKey.account_links).selectinload(ApiKeyAccount.account),
+        )
+        .where(ApiKey.key_hash == digest)
     )

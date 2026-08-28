@@ -45,11 +45,13 @@ class UpstreamAccount(Base):
     quota_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     models_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     models_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    model_prefix: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     oauth_token: Mapped[OAuthToken | None] = relationship(back_populates="account", uselist=False)
     api_keys: Mapped[list[ApiKey]] = relationship(back_populates="account")
+    key_links: Mapped[list[ApiKeyAccount]] = relationship(back_populates="account")
 
 
 class GatewayAgent(Base):
@@ -117,12 +119,30 @@ class ApiKey(Base):
     key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     key_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     key_prefix: Mapped[str] = mapped_column(String(32), nullable=False)
-    account_id: Mapped[int] = mapped_column(ForeignKey("upstream_accounts.id"), nullable=False)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("upstream_accounts.id"), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    account: Mapped[UpstreamAccount] = relationship(back_populates="api_keys")
+    account: Mapped[UpstreamAccount | None] = relationship(back_populates="api_keys")
+    account_links: Mapped[list[ApiKeyAccount]] = relationship(
+        back_populates="api_key",
+        cascade="all, delete-orphan",
+        order_by="ApiKeyAccount.sort_order",
+    )
+
+
+class ApiKeyAccount(Base):
+    __tablename__ = "api_key_accounts"
+    __table_args__ = (UniqueConstraint("api_key_id", "account_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    api_key_id: Mapped[int] = mapped_column(ForeignKey("api_keys.id", ondelete="CASCADE"), index=True, nullable=False)
+    account_id: Mapped[int] = mapped_column(ForeignKey("upstream_accounts.id"), index=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    api_key: Mapped[ApiKey] = relationship(back_populates="account_links")
+    account: Mapped[UpstreamAccount] = relationship(back_populates="key_links")
 
 
 class RequestLog(Base):

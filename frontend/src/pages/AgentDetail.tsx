@@ -1,10 +1,60 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, CircleDot, RefreshCw, Route, Server } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Badge, Button, Card } from '../components/ui'
+import { Badge, Button, Card, Field, Input } from '../components/ui'
 import { api } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
+
+function RoutePrefixEditor({
+  accountId,
+  initialPrefix,
+  onSaved,
+}: {
+  accountId: number
+  initialPrefix: string
+  onSaved: () => void
+}) {
+  const [prefix, setPrefix] = useState(initialPrefix)
+  const [pending, setPending] = useState(false)
+
+  useEffect(() => {
+    setPrefix(initialPrefix)
+  }, [initialPrefix])
+
+  async function save() {
+    setPending(true)
+    try {
+      await api.updateAccount(accountId, { model_prefix: prefix.trim() || undefined })
+      notifyOk('已保存模型前缀')
+      onSaved()
+    } catch (caught) {
+      notifyBad(errorMessage(caught, '保存前缀失败'))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 grid gap-2">
+      <Field label="模型前缀">
+        <Input
+          className="font-mono"
+          value={prefix}
+          onChange={(event) => setPrefix(event.target.value)}
+          placeholder="留空则按显示名自动生成"
+        />
+      </Field>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" variant="line" disabled={pending} onClick={() => void save()}>
+          保存前缀
+        </Button>
+        <span className="text-xs text-mist">冲突模型对外显示为 prefix/model</span>
+      </div>
+    </div>
+  )
+}
 
 export function AgentDetailPage() {
   const { agentId = '' } = useParams()
@@ -61,6 +111,17 @@ export function AgentDetailPage() {
                   <div className="flex items-center gap-2"><Route size={16} className="text-info" /><span className="font-medium text-paper">{route.name}</span></div>
                   <code className="mt-2 block truncate text-xs text-mist">{route.id}</code>
                   <Badge tone="info" title="上游协议提供商"><span>{route.provider}</span></Badge>
+                  {route.account_id ? (
+                    <RoutePrefixEditor
+                      accountId={route.account_id}
+                      initialPrefix={route.model_prefix ?? ''}
+                      onSaved={() => {
+                        void queryClient.invalidateQueries({ queryKey: ['agent', agentId] })
+                        void queryClient.invalidateQueries({ queryKey: ['agents'] })
+                        void queryClient.invalidateQueries({ queryKey: ['key-accounts'] })
+                      }}
+                    />
+                  ) : null}
                 </div>
                 <div>
                   <div className="flex flex-wrap gap-1.5">
