@@ -433,7 +433,9 @@ function ModelList({
       <div className="flex flex-wrap gap-2">
         {visible.map((modelName) => (
           <Badge key={modelName} tone="info">
-            {modelName}
+            <span className="max-w-[11rem] truncate" title={modelName}>
+              {modelName}
+            </span>
           </Badge>
         ))}
       </div>
@@ -587,31 +589,40 @@ export function AccountsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">上游账号</h1>
-          <p className="mt-1 text-sm text-mist">
-            预设 OpenCode Go、Grok、DeepSeek，也可选通用 OpenAI / Anthropic。探测只在你点的时候发生。
-          </p>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex items-start justify-between gap-3 lg:block lg:min-w-0 lg:flex-1">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold">上游账号</h1>
+            <p className="mt-1 text-sm text-mist">
+              预设 OpenCode Go、Grok、DeepSeek，也可选通用 OpenAI / Anthropic。探测只在你点的时候发生。
+            </p>
+          </div>
+          <Button type="button" className="shrink-0 lg:hidden" onClick={() => setEditor('new')}>
+            新建账号
+          </Button>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="line" onClick={() => setTransfer('export')}>
+        <div className="grid grid-cols-2 items-end gap-2 lg:flex lg:shrink-0 lg:flex-nowrap">
+          <Button type="button" variant="line" className="w-full lg:w-auto" onClick={() => setTransfer('export')}>
             导出
           </Button>
-          <Button type="button" variant="line" onClick={() => setTransfer('import')}>
+          <Button type="button" variant="line" className="w-full lg:w-auto" onClick={() => setTransfer('import')}>
             导入
           </Button>
-          <Button onClick={() => setEditor('new')}>新建账号</Button>
+          <Button type="button" className="hidden lg:inline-flex" onClick={() => setEditor('new')}>
+            新建账号
+          </Button>
         </div>
       </div>
-      <Card className="grid gap-3 md:grid-cols-3">
-        <Field label="搜索">
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="搜索名称 / 供应商 / URL"
-          />
-        </Field>
+      <Card className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <div className="col-span-2 min-w-0 lg:col-span-1">
+          <Field label="搜索">
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="搜索名称 / 供应商 / URL"
+            />
+          </Field>
+        </div>
         <Field label="状态">
           <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
             <option value="">全部状态</option>
@@ -630,71 +641,110 @@ export function AccountsPage() {
           </Select>
         </Field>
       </Card>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
         {filteredAccounts.map((account) => (
-          <Card key={account.id} className="flex flex-col space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="text-lg font-medium">{account.name}</div>
-                <div className="font-mono text-xs text-mist">
+          <Card key={account.id} className="flex min-w-0 flex-col space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-lg font-medium" title={account.name}>
+                  {account.name}
+                </div>
+                <div className="truncate font-mono text-xs text-mist" title={`${account.provider} · ${account.base_url}`}>
                   {account.provider} · {account.base_url}
                 </div>
                 {account.website_url ? (
                   <a
-                    className="mt-1 inline-flex items-center gap-1 text-xs text-signal hover:underline"
+                    className="mt-1 inline-flex max-w-full items-center gap-1 text-xs text-signal hover:underline"
                     href={account.website_url}
                     target="_blank"
                     rel="noreferrer"
+                    title={account.website_url}
                   >
-                    官网 <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                    <span className="truncate">官网</span>
+                    <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
                   </a>
                 ) : null}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge
-                  tone={RISK_LEVELS[account.risk_level]?.tone ?? 'mist'}
-                  title={`上游账号风险：${RISK_LEVELS[account.risk_level]?.hint ?? ''}`}
-                >
-                  {RISK_LEVELS[account.risk_level]?.label ?? account.risk_level}
+              <span className="shrink-0">
+                <Badge tone={account.status === 'active' ? 'ok' : 'mist'}>
+                  {account.status === 'active' ? '启用' : '停用'}
                 </Badge>
-                <Badge tone={account.status === 'active' ? 'ok' : 'mist'}>{account.status}</Badge>
-                <Badge tone={account.has_credential ? 'info' : 'warn'}>
-                  {account.has_credential ? '已配置凭证' : '缺凭证'}
-                </Badge>
-                {account.last_probe_ok === true ? <Badge tone="ok">探测正常</Badge> : null}
-                {account.last_probe_ok === false ? <Badge tone="bad">探测失败</Badge> : null}
-              </div>
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge
+                tone={RISK_LEVELS[account.risk_level]?.tone ?? 'mist'}
+                title={`上游账号风险：${RISK_LEVELS[account.risk_level]?.hint ?? ''}`}
+              >
+                {RISK_LEVELS[account.risk_level]?.label ?? account.risk_level}
+              </Badge>
+              <Badge tone={account.has_credential ? 'info' : 'warn'}>
+                {account.has_credential ? '已配置凭证' : '缺凭证'}
+              </Badge>
+              {account.last_probe_ok === true ? <Badge tone="ok">探测正常</Badge> : null}
+              {account.last_probe_ok === false ? <Badge tone="bad">探测失败</Badge> : null}
             </div>
             <CollapsibleSection>
-              <div className="text-sm text-mist">
+              <div className="break-all text-sm text-mist [overflow-wrap:anywhere]">
                 上次探测：{formatTime(account.last_probe_at)}
                 {account.last_probe_latency_ms != null ? ` · ${account.last_probe_latency_ms}ms` : ''}
                 {account.last_probe_message ? ` · ${account.last_probe_message}` : ''}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="line" disabled={busyId === account.id} onClick={() => runProbe(account.id)}>
-                  探测
-                </Button>
-                <Button variant="line" disabled={busyId === account.id} onClick={() => runQuota(account.id)}>
-                  刷新额度
-                </Button>
-                <Button type="button" variant="line" disabled={busyId === account.id} onClick={() => runModels(account.id)}>
-                  获取模型
-                </Button>
-                {account.auth_type === 'oauth' ? (
-                  <Button type="button" variant="line" disabled={busyId === account.id} onClick={() => startOauth(account.id)}>
-                    去授权
+              <div className="space-y-2 border-t border-line pt-3">
+                <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
+                  <Button
+                    variant="line"
+                    className="w-full md:w-auto"
+                    disabled={busyId === account.id}
+                    onClick={() => runProbe(account.id)}
+                  >
+                    探测
                   </Button>
-                ) : null}
-                <Button variant="line" onClick={() => setEditor(account)}>
-                  编辑
-                </Button>
-                <Button variant="ghost" onClick={() => toggle(account)}>
-                  {account.status === 'active' ? '停用' : '启用'}
-                </Button>
-                <Button variant="danger" disabled={busyId === account.id} onClick={() => void removeAccount(account)}>
-                  删除
-                </Button>
+                  <Button
+                    variant="line"
+                    className="w-full md:w-auto"
+                    disabled={busyId === account.id}
+                    onClick={() => runQuota(account.id)}
+                  >
+                    刷新额度
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="line"
+                    className="w-full md:w-auto"
+                    disabled={busyId === account.id}
+                    onClick={() => runModels(account.id)}
+                  >
+                    获取模型
+                  </Button>
+                  {account.auth_type === 'oauth' ? (
+                    <Button
+                      type="button"
+                      variant="line"
+                      className="w-full md:w-auto"
+                      disabled={busyId === account.id}
+                      onClick={() => startOauth(account.id)}
+                    >
+                      去授权
+                    </Button>
+                  ) : null}
+                  <Button variant="line" className="w-full md:w-auto" onClick={() => setEditor(account)}>
+                    编辑
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 md:flex">
+                  <Button variant="line" className="w-full md:w-auto" onClick={() => toggle(account)}>
+                    {account.status === 'active' ? '停用' : '启用'}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    className="w-full md:w-auto"
+                    disabled={busyId === account.id}
+                    onClick={() => void removeAccount(account)}
+                  >
+                    删除
+                  </Button>
+                </div>
               </div>
               <div>
                 <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
@@ -730,6 +780,9 @@ export function AccountsPage() {
             </CollapsibleSection>
           </Card>
         ))}
+        {filteredAccounts.length === 0 ? (
+          <Card className="col-span-full px-4 py-10 text-center text-sm text-mist">暂无匹配账号</Card>
+        ) : null}
       </div>
       {transfer === 'export' ? <ExportDialog onClose={() => setTransfer(null)} /> : null}
       {transfer === 'import' ? (
