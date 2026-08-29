@@ -149,6 +149,6 @@ def test_refresh_agent_route_models_syncs_upstream_result(client: TestClient, au
         assert response.status_code == 200
         assert response.json() == {"ok": True, "models": ["deepseek-chat", "deepseek-reasoner"], "source": "upstream"}
         detail = client.get("/api/admin/agents/macbook-studio", headers=auth_headers)
-        assert detail.json()["routes"][0]["models"] == ["deepseek-chat", "deepseek-reasoner"]
+        assert [item["id"] for item in detail.json()["routes"][0]["models"]] == ["deepseek-chat", "deepseek-reasoner"]
     finally:
         local_agent_relay._routes.clear()

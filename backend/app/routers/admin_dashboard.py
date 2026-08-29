@@ -50,6 +50,8 @@ def _leaderboard_top(db: Session, limit: int = 3) -> list[DashboardLeaderboardTo
                 provider=str(item.get("provider") or ""),
                 score=item.get("score"),
                 slug=str(item.get("slug") or ""),
+                context_window_tokens=item.get("context_window_tokens"),
+                max_output_tokens=item.get("max_output_tokens"),
             )
         )
     return top

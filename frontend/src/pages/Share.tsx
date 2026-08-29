@@ -1,11 +1,13 @@
 import { RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
+import { ModelPickDialog } from '../components/ModelPickDialog'
+import { VscodeImportDialog } from '../components/VscodeImportDialog'
 import { Badge, Button, Card, Field, Input } from '../components/ui'
-import { api, type CcSwitchTarget, type ShareLookup } from '../lib/api'
+import { api, type CcSwitchTarget, type ModelCaps, type ShareLookup } from '../lib/api'
 import { listenForShareApiKey } from '../lib/shareTransfer'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { MIN_KEY_LENGTH, cn, errorMessage, formatTokenCount } from '../lib/utils'
+import { MIN_KEY_LENGTH, cn, errorMessage, formatContextWindow, formatTokenCount } from '../lib/utils'
 
 const RISK_META: Record<string, { label: string; hint: string; className: string }> = {
   low: { label: '低风险', hint: '官方模型或数据泄露可能性较低', className: 'border-signal/30 bg-signal/10 text-signal' },
@@ -73,10 +75,38 @@ function BoundAccountCard({
   )
 }
 
-function aiConfigText(lookup: ShareLookup, apiKey: string) {
+function modelCapsOf(lookup: ShareLookup, modelName: string) {
+  return lookup.model_caps?.find((item) => item.id === modelName)
+}
+
+function modelHint(caps?: ModelCaps) {
+  if (!caps) return ''
+  const extras = [
+    caps.context_window ? `上下文 ${formatContextWindow(caps.context_window)}` : null,
+    caps.max_output_tokens ? `输出 ${formatContextWindow(caps.max_output_tokens)}` : null,
+    caps.reasoning ? (caps.reasoning_efforts?.length ? `思考 ${caps.reasoning_efforts.join('/')}` : '思考') : null,
+    caps.modalities?.input?.includes('image') ? '视觉' : null,
+  ].filter(Boolean)
+  return extras.join(' · ')
+}
+
+function modelDetailLine(modelName: string, lookup: ShareLookup) {
+  const caps = modelCapsOf(lookup, modelName)
+  if (!caps) return `- ${modelName}`
+  const extras = [
+    caps.context_window != null ? `上下文 ${caps.context_window}` : null,
+    caps.max_output_tokens != null ? `最大输出 ${caps.max_output_tokens}` : null,
+    caps.reasoning ? (caps.reasoning_efforts?.length ? `思考 ${caps.reasoning_efforts.join('/')}` : '思考') : '不思考',
+    `输入 ${caps.modalities?.input?.join('/') || 'text'}`,
+    `输出 ${caps.modalities?.output?.join('/') || 'text'}`,
+  ].filter(Boolean)
+  return `- ${modelName}（${extras.join('，')}）`
+}
+
+function aiConfigText(lookup: ShareLookup, apiKey: string, modelIds: string[]) {
   const models =
-    lookup.models.length > 0
-      ? lookup.models.map((modelName) => `- ${modelName}`).join('\n')
+    modelIds.length > 0
+      ? modelIds.map((modelName) => modelDetailLine(modelName, lookup)).join('\n')
       : '- （暂无模型列表，请联系管理员先获取模型）'
   return [
     `请先询问我希望为这项配置使用什么名称；默认建议名称是「${lookup.name}」，确认或修改名称后，再将以下 AI 服务接入我正在使用的客户端。根据客户端协议选择对应的 Base URL，不要混用。`,
@@ -139,10 +169,8 @@ export function SharePage() {
     app: string
     label: string
   } | null>(null)
-  const [aiCopied, setAiCopied] = useState(false)
-  const aiCopiedTimerRef = useRef<number | undefined>(undefined)
-
-  useEffect(() => () => window.clearTimeout(aiCopiedTimerRef.current), [])
+  const [vscodeDialog, setVscodeDialog] = useState(false)
+  const [aiConfigDialog, setAiConfigDialog] = useState(false)
 
   useEffect(() => listenForShareApiKey(setRawKey), [])
 
@@ -195,7 +223,7 @@ export function SharePage() {
     })
   }
 
-  async function importToVscode() {
+  function importToVscode() {
     if (!lookup) return
     if (lookup.status !== 'active') {
       notifyBad('该 Key 已停用，无法导入。')
@@ -205,26 +233,16 @@ export function SharePage() {
       notifyBad('这个 Key 绑定的账号还没有模型列表，请联系管理员先「获取模型」。')
       return
     }
-    try {
-      const text = JSON.stringify(lookup.vscode, null, 2)
-      await navigator.clipboard.writeText(text)
-      notifyOk('VSCode 配置已复制，粘贴到 chatLanguageModels.json 即可。')
-    } catch (item) {
-      notifyBad(errorMessage(item, '复制 VSCode 配置失败'))
-    }
+    setVscodeDialog(true)
   }
 
-  async function copyAiConfig() {
+  function openAiConfig() {
     if (!lookup) return
-    try {
-      await navigator.clipboard.writeText(aiConfigText(lookup, rawKey.trim()))
-      setAiCopied(true)
-      notifyOk('已复制 AI 配置说明，发给任意 AI 即可。')
-      window.clearTimeout(aiCopiedTimerRef.current)
-      aiCopiedTimerRef.current = window.setTimeout(() => setAiCopied(false), 1500)
-    } catch (item) {
-      notifyBad(errorMessage(item, '复制 AI 配置说明失败'))
+    if (lookup.models.length === 0) {
+      notifyBad('这个 Key 绑定的账号还没有模型列表，请联系管理员先「获取模型」。')
+      return
     }
+    setAiConfigDialog(true)
   }
 
   async function copyModel(modelName: string) {
@@ -362,7 +380,7 @@ export function SharePage() {
               {lookup.models.length > 0 ? (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {lookup.models.map((modelName) => (
-                    <span key={modelName} className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-xs">
+                    <span key={modelName} className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-xs" title={modelHint(modelCapsOf(lookup, modelName)) || modelName}>
                       {modelName}
                     </span>
                   ))}
@@ -392,7 +410,7 @@ export function SharePage() {
                   {target.label}
                 </Button>
               ))}
-              <Button type="button" variant="line" disabled={!usable} onClick={() => void importToVscode()}>
+              <Button type="button" variant="line" disabled={!usable} onClick={importToVscode}>
                 VSCode
               </Button>
             </div>
@@ -465,17 +483,29 @@ export function SharePage() {
               <div>
                 <h2 className="text-lg font-medium">AI 配置</h2>
                 <p className="mt-1 text-sm text-mist">
-                  复制这段说明发给任意 AI，让它按你的客户端帮你配好供应商。包含 API Key、Base URL 和可用模型。
+                  先勾选模型，再复制说明发给任意 AI。说明里会带上 API Key、Base URL，以及所选模型的上下文、输出、思考和模态。
                 </p>
               </div>
-              <Button type="button" variant="line" onClick={() => void copyAiConfig()}>
-                {aiCopied ? '已复制' : '复制配置说明'}
+              <Button type="button" variant="line" onClick={openAiConfig}>
+                选择模型并复制
               </Button>
             </div>
           </Card>
         ) : null}
       </div>
 
+      {aiConfigDialog && lookup ? (
+        <ModelPickDialog
+          title="复制 AI 配置"
+          description="勾选要写进说明的模型。每条会带上上下文、最大输出、思考档位和输入输出模态。"
+          models={lookup.models.map((modelName) => ({ id: modelName, hint: modelHint(modelCapsOf(lookup, modelName)) }))}
+          confirmLabel="复制配置说明"
+          successMessage={(count) => `已复制 ${count} 个模型的 AI 配置说明，发给任意 AI 即可。`}
+          buildText={(selectedIds) => aiConfigText(lookup, rawKey.trim(), selectedIds)}
+          onClose={() => setAiConfigDialog(false)}
+        />
+      ) : null}
+      {vscodeDialog && lookup ? <VscodeImportDialog config={lookup.vscode} onClose={() => setVscodeDialog(false)} /> : null}
       {dialog && lookup ? (
         <CcSwitchDialog
           label={dialog.label}

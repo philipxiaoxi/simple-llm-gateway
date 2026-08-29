@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Card } from '../components/ui'
 import { api, type DashboardBenchmarkTop, type DashboardLeaderboardTop } from '../lib/api'
-import { cn, formatTokenCount } from '../lib/utils'
+import { cn, formatContextWindow, formatTokenCount } from '../lib/utils'
 
 type Metric = {
   label: string
@@ -89,6 +89,10 @@ function LeaderboardTopSection({ items }: { items: DashboardLeaderboardTop[] }) 
                       </div>
                       <div className="mt-1 truncate text-xs text-mist" title={item.provider || undefined}>
                         {item.provider || '—'}
+                      </div>
+                      <div className="mt-2 truncate font-mono text-[11px] tabular-nums text-mist">
+                        上下文 {formatContextWindow(item.context_window_tokens)}
+                        {item.max_output_tokens ? ` · 输出 ${formatContextWindow(item.max_output_tokens)}` : ''}
                       </div>
                     </div>
                     <div className="shrink-0 font-mono text-xl tabular-nums text-signal">{formatScore(item.score)}</div>

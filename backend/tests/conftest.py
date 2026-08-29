@@ -4,6 +4,17 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+@pytest.fixture(autouse=True)
+def _empty_model_catalog(monkeypatch) -> None:
+    from app.services.model_caps import CatalogIndex, reset_catalog_cache
+
+    reset_catalog_cache()
+    empty = CatalogIndex()
+    monkeypatch.setattr("app.services.model_caps.load_catalog_index", lambda force=False: empty)
+    monkeypatch.setattr("app.providers.base.load_catalog_index", lambda force=False: empty)
+    monkeypatch.setattr("app.services.model_caps._fetch_models_dev", lambda: None)
+
+
 @pytest.fixture()
 def client(tmp_path, monkeypatch) -> TestClient:
     monkeypatch.setenv("APP_SECRET_KEY", "unit-test-secret-key")

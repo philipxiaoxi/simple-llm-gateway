@@ -74,6 +74,18 @@ export type AccountQuota = {
   items?: QuotaItem[]
 }
 
+export type ModelCaps = {
+  id: string
+  context_window: number | null
+  max_output_tokens: number | null
+  reasoning: boolean
+  reasoning_efforts: string[] | null
+  modalities: { input: string[]; output: string[] }
+  source: string
+  overridden: string[]
+  overrides: Record<string, unknown>
+}
+
 export type Account = {
   id: number
   name: string
@@ -93,7 +105,7 @@ export type Account = {
   last_probe_at: string | null
   quota: AccountQuota | null
   quota_updated_at: string | null
-  models: string[]
+  models: ModelCaps[]
   model_prefix?: string | null
   models_updated_at: string | null
   oauth_expires_at: string | null
@@ -166,6 +178,7 @@ export type ShareLookup = {
   today_tokens: number
   total_tokens: number
   models: string[]
+  model_caps?: ModelCaps[]
   gateway: {
     origin: string
     anthropic_base_url: string
@@ -235,6 +248,8 @@ export type DashboardLeaderboardTop = {
   provider: string
   score: number | null
   slug: string
+  context_window_tokens: number | null
+  max_output_tokens: number | null
 }
 
 export type DashboardBenchmarkTop = {
@@ -291,6 +306,7 @@ export type LeaderboardEntry = {
   provider_slug: string | null
   released_at: string | null
   context_window_tokens: number | null
+  max_output_tokens: number | null
   pricing_kind: string | null
   pricing_official_model_id: string | null
   input_price_per_million_usd: number | null
@@ -409,7 +425,7 @@ export type GatewayAgent = {
     id: string
     name: string
     provider: string
-    models: string[]
+    models: ModelCaps[]
     models_updated_at: string | null
     account_id?: number | null
     model_prefix?: string | null
@@ -433,7 +449,7 @@ export const api = {
   agents: () => request<{ items: GatewayAgent[]; total: number }>('/api/admin/agents'),
   agent: (agentId: string) => request<GatewayAgent>(`/api/admin/agents/${encodeURIComponent(agentId)}`),
   refreshAgentRouteModels: (agentId: string, routeId: string) =>
-    request<{ ok: boolean; models: string[]; message?: string; source?: string }>(
+    request<{ ok: boolean; models: ModelCaps[]; message?: string; source?: string }>(
       `/api/admin/agents/${encodeURIComponent(agentId)}/routes/${encodeURIComponent(routeId)}/models`,
       { method: 'POST' },
     ),
@@ -460,8 +476,13 @@ export const api = {
   probe: (id: number) => request<{ ok: boolean; latency_ms: number; message: string }>(`/api/admin/accounts/${id}/probe`, { method: 'POST' }),
   quota: (id: number) => request<AccountQuota>(`/api/admin/accounts/${id}/quota`, { method: 'POST' }),
   models: (id: number) =>
-    request<{ ok: boolean; models: string[]; message?: string; source?: string }>(`/api/admin/accounts/${id}/models`, {
+    request<{ ok: boolean; models: ModelCaps[]; message?: string; source?: string }>(`/api/admin/accounts/${id}/models`, {
       method: 'POST',
+    }),
+  updateAccountModel: (id: number, modelId: string, payload: Record<string, unknown>) =>
+    request<ModelCaps>(`/api/admin/accounts/${id}/models/${encodeURIComponent(modelId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
     }),
   oauthStart: (id: number) => request<{ authorize_url: string; needs_paste: boolean }>(`/api/admin/accounts/${id}/oauth/start`),
   completeOauth: (payload: { account_id?: number; callback_url?: string; code?: string; state?: string }) =>
@@ -489,6 +510,7 @@ export const api = {
     request<{
       display_name: string
       models: string[]
+      model_caps?: ModelCaps[]
       targets: CcSwitchTarget[]
       vscode: Record<string, unknown>
     }>(`/api/admin/keys/${id}/cc-switch`),

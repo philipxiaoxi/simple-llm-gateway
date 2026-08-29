@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.clock import utcnow
 from app.config import get_settings
 from app.models import GatewayAgent, GatewayAgentRoute, LeaderboardSnapshot, UpstreamAccount
-from app.services.ccswitch import parse_models_json
+from app.services import model_caps as model_caps_service
 
 USER_AGENT = "simple-llm-gateway/0.1 (internal cache; not a public mirror)"
 RSC_HEADERS = {
@@ -165,14 +165,14 @@ def _local_model_sources(db: Session) -> list[dict[str, Any]]:
     sources: list[dict[str, Any]] = []
     accounts = db.scalars(select(UpstreamAccount).order_by(UpstreamAccount.id.asc())).all()
     for account in accounts:
-        models = parse_models_json(account.models_json)
+        models = model_caps_service.parse_models_json(account.models_json)
         agent_id = None
         if account.source == "agent" and account.agent_route_id:
             route = routes.get(account.agent_route_id)
             if route is not None:
                 agent = agents.get(route.agent_id)
                 agent_id = agent.agent_id if agent is not None else None
-                for model in parse_models_json(route.models_json):
+                for model in model_caps_service.parse_models_json(route.models_json):
                     if model not in models:
                         models.append(model)
         sources.append(
@@ -217,6 +217,39 @@ def attach_local_coverage(db: Session, items: list[dict[str, Any]]) -> None:
                 )
         item["local_covered"] = bool(matches)
         item["local_matches"] = matches
+
+
+def _catalog_caps_for_entry(item: dict[str, Any], catalog):
+    candidates: list[str] = []
+    for raw in (item.get("pricing_official_model_id"), item.get("slug"), item.get("name")):
+        if not raw:
+            continue
+        text = str(raw)
+        candidates.append(text)
+        key = canonical_model_key(text)
+        if key:
+            candidates.append(key)
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        matched = model_caps_service.match_catalog(candidate, None, catalog)
+        if matched is not None:
+            return matched
+    return None
+
+
+def attach_catalog_windows(items: list[dict[str, Any]]) -> None:
+    catalog = model_caps_service.load_catalog_index()
+    for item in items:
+        caps = _catalog_caps_for_entry(item, catalog)
+        if caps is None:
+            item.setdefault("max_output_tokens", None)
+            continue
+        if not item.get("context_window_tokens"):
+            item["context_window_tokens"] = caps.context_window
+        item["max_output_tokens"] = caps.max_output_tokens
 
 
 def mask_public_label(value: str | None) -> str:
@@ -274,6 +307,7 @@ def snapshot_to_payload(
         except json.JSONDecodeError:
             items = []
     attach_local_coverage(db, items)
+    attach_catalog_windows(items)
     if public:
         for item in items:
             item["local_matches"] = mask_local_matches(item.get("local_matches") or [])

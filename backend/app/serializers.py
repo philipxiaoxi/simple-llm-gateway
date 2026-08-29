@@ -8,6 +8,7 @@ from app.crypto import decrypt_secret
 from app.models import ApiKey, RequestLog, UpstreamAccount
 from app.schemas import AccountOut, KeyBoundAccountOut, KeyOut, LogOut
 from app.services.key_models import bound_accounts
+from app.services.model_caps import parse_model_records, serialize_record
 from app.services.proxy import parse_json
 
 
@@ -22,14 +23,7 @@ def account_to_out(account: UpstreamAccount, reveal: bool = False) -> AccountOut
             quota = json.loads(account.quota_json)
         except json.JSONDecodeError:
             quota = account.quota_json
-    models: list[str] = []
-    if account.models_json:
-        try:
-            parsed = json.loads(account.models_json)
-            if isinstance(parsed, list):
-                models = [str(item) for item in parsed]
-        except json.JSONDecodeError:
-            models = []
+    models = [serialize_record(record) for record in parse_model_records(account.models_json)]
     has_credential = account.source == "agent" or bool(account.api_key_encrypted) or (
         account.oauth_token is not None and bool(account.oauth_token.access_token_encrypted)
     )

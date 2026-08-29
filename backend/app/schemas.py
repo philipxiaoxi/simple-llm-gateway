@@ -112,6 +112,27 @@ class AccountUpdate(BaseModel):
     _normalize_website_url = field_validator("website_url")(normalize_website_url)
 
 
+class ModelCapsOut(BaseModel):
+    id: str
+    context_window: int | None = None
+    max_output_tokens: int | None = None
+    reasoning: bool = False
+    reasoning_efforts: list[str] | None = None
+    modalities: dict[str, list[str]] = Field(default_factory=lambda: {"input": ["text"], "output": ["text"]})
+    source: str = "heuristic"
+    overridden: list[str] = Field(default_factory=list)
+    overrides: dict[str, Any] = Field(default_factory=dict)
+
+
+class ModelOverrideUpdate(BaseModel):
+    context_window: int | None = None
+    max_output_tokens: int | None = None
+    reasoning: bool | None = None
+    reasoning_efforts: list[str] | None = None
+    modalities: dict[str, list[str]] | None = None
+    clear: bool = False
+
+
 class OauthCallbackComplete(BaseModel):
     account_id: int | None = None
     callback_url: str | None = None
@@ -138,7 +159,7 @@ class AccountOut(BaseModel):
     last_probe_at: datetime | None
     quota: Any | None = None
     quota_updated_at: datetime | None
-    models: list[str] = Field(default_factory=list)
+    models: list[ModelCapsOut] = Field(default_factory=list)
     model_prefix: str | None = None
     models_updated_at: datetime | None = None
     oauth_expires_at: datetime | None = None
@@ -292,6 +313,8 @@ class DashboardLeaderboardTopOut(BaseModel):
     provider: str = ""
     score: float | None = None
     slug: str = ""
+    context_window_tokens: int | None = None
+    max_output_tokens: int | None = None
 
 
 class DashboardBenchmarkTopOut(BaseModel):
@@ -455,6 +478,7 @@ class LeaderboardEntryOut(BaseModel):
     provider_slug: str | None = None
     released_at: str | None = None
     context_window_tokens: int | None = None
+    max_output_tokens: int | None = None
     pricing_kind: str | None = None
     pricing_official_model_id: str | None = None
     input_price_per_million_usd: float | None = None

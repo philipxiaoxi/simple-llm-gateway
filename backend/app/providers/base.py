@@ -11,6 +11,7 @@ from app.clock import utcnow
 from app.config import get_settings
 from app.models import UpstreamAccount
 from app.services.credentials import get_upstream_credential, require_upstream_credential
+from app.services.model_caps import dump_model_records, enrich_model_records, extract_model_entries, load_catalog_index, serialize_record
 
 GENERIC_QUOTA_UNSUPPORTED = "通用供应商不支持查询余额"
 
@@ -38,27 +39,6 @@ class QuotaView:
         if self.message:
             payload["message"] = self.message
         return payload
-
-
-def extract_model_ids(payload: object) -> list[str]:
-    names: list[str] = []
-    if isinstance(payload, dict):
-        entries = payload.get("data") or payload.get("models") or payload.get("items") or []
-        if isinstance(entries, list):
-            _collect_model_ids(entries, names)
-    elif isinstance(payload, list):
-        _collect_model_ids(payload, names)
-    return names
-
-
-def _collect_model_ids(entries: list[Any], names: list[str]) -> None:
-    for entry in entries:
-        if isinstance(entry, str):
-            names.append(entry)
-        elif isinstance(entry, dict):
-            model_id = entry.get("id") or entry.get("name") or entry.get("model")
-            if model_id:
-                names.append(str(model_id))
 
 
 class Provider:
@@ -225,11 +205,21 @@ class Provider:
                 except ValueError:
                     last_error = "上游返回的不是 JSON"
                     continue
-                models = extract_model_ids(payload)
-                if models:
-                    account.models_json = json.dumps(models, ensure_ascii=False)
+                entries = extract_model_entries(payload)
+                if entries:
+                    records = enrich_model_records(
+                        entries,
+                        account.models_json,
+                        provider=account.provider,
+                        catalog=load_catalog_index(),
+                    )
+                    account.models_json = dump_model_records(records)
                     account.models_updated_at = utcnow()
-                    return {"ok": True, "models": models, "source": url}
+                    return {
+                        "ok": True,
+                        "models": [serialize_record(record) for record in records],
+                        "source": url,
+                    }
                 last_error = f"{url} 没有解析到模型"
         return {"ok": False, "models": [], "message": last_error}
 

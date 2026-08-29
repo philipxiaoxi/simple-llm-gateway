@@ -477,8 +477,11 @@ def test_models_endpoint(client: TestClient, auth_headers: dict[str, str]) -> No
 
     response = client.get("/v1/models", headers={"Authorization": f"Bearer {key}"})
     assert response.status_code == 200
-    ids = {item["id"] for item in response.json()["data"]}
-    assert ids == {"deepseek-chat", "deepseek-reasoner"}
+    by_id = {item["id"]: item for item in response.json()["data"]}
+    assert set(by_id) == {"deepseek-chat", "deepseek-reasoner"}
+    assert by_id["deepseek-chat"]["context_window"] == 128000
+    assert by_id["deepseek-chat"]["max_output_tokens"] == 16000
+    assert by_id["deepseek-reasoner"]["reasoning"] is True
 
 
 def test_anthropic_followup_injects_stored_reasoning(client: TestClient, auth_headers: dict[str, str]) -> None:

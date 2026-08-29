@@ -34,6 +34,7 @@ def test_parse_leaderboard_payload() -> None:
     assert items[0]["score"] == 89.2
     assert items[0]["released_at"] == "2026-06-09T00:00:00.000Z"
     assert items[0]["summary"] == "by 6 families"
+    assert items[0]["context_window_tokens"] == 1000000
     assert items[0]["components"]["artificial-analysis"]["coverage"] == 0.3
 
 
@@ -56,6 +57,27 @@ def test_leaderboard_requires_auth(client: TestClient) -> None:
     assert response.status_code == 401
 
 
+def test_leaderboard_fills_output_window_from_catalog(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    from app.services.model_caps import CatalogIndex, ModelCaps
+
+    index = CatalogIndex()
+    index.by_norm["claude-fable-5"] = ModelCaps(
+        context_window=200000,
+        max_output_tokens=128000,
+        reasoning=True,
+        source="catalog",
+    )
+    monkeypatch.setattr("app.services.model_caps.load_catalog_index", lambda force=False: index)
+    with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)):
+        response = client.get("/api/admin/leaderboard", headers=auth_headers)
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["context_window_tokens"] == 1000000
+    assert item["max_output_tokens"] == 128000
+
+
 def test_dashboard_includes_leaderboard_top(client: TestClient, auth_headers: dict[str, str]) -> None:
     with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)):
         seeded = client.get("/api/admin/leaderboard", headers=auth_headers)
@@ -69,6 +91,8 @@ def test_dashboard_includes_leaderboard_top(client: TestClient, auth_headers: di
     assert top[0]["provider"] == "Anthropic"
     assert top[0]["score"] == 89.2
     assert top[0]["slug"] == "claude-fable-5"
+    assert top[0]["context_window_tokens"] == 1000000
+    assert top[0]["max_output_tokens"] is None
 
 
 def test_leaderboard_fetches_and_caches(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -82,6 +106,8 @@ def test_leaderboard_fetches_and_caches(client: TestClient, auth_headers: dict[s
         assert body["items"][0]["name"] == "Claude Fable 5"
         assert body["items"][0]["released_at"] == "2026-06-09T00:00:00.000Z"
         assert body["items"][0]["summary"] == "by 6 families"
+        assert body["items"][0]["context_window_tokens"] == 1000000
+        assert body["items"][0]["max_output_tokens"] is None
         assert body["items"][0]["local_covered"] is False
         assert body["items"][0]["local_matches"] == []
         assert body["stale"] is False
