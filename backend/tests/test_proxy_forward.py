@@ -96,6 +96,14 @@ def test_follow_up_reuses_same_log(client: TestClient, auth_headers: dict[str, s
     assert any(item["content"] == "再来一句" for item in by_id[continued_id]["items"])
     assert any(item["content"] == "新开的对话" for item in by_id[fresh_id]["items"])
     assert fresh_id != continued_id
+    continued = next(item for item in listed["items"] if item["id"] == continued_id)
+    fresh = next(item for item in listed["items"] if item["id"] == fresh_id)
+    assert continued["prompt_tokens"] == 6
+    assert continued["completion_tokens"] == 4
+    assert continued["total_tokens"] == 10
+    assert fresh["prompt_tokens"] == 3
+    assert fresh["completion_tokens"] == 2
+    assert fresh["total_tokens"] == 5
 
 
 def test_claude_session_id_merges_same_length_turns(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -273,6 +281,17 @@ def test_extract_usage_keeps_zero_and_alias_keys() -> None:
     assert pick_usage_from_chunk({"choices": [], "usage": {"prompt_tokens": 3, "completion_tokens": 2}}) == (3, 2, 5)
 
 
+def test_accumulate_usage_sums_each_request_like_external_gateways() -> None:
+    from app.services.proxy import accumulate_usage, billed_total
+
+    assert billed_total(10, 20, 30) == 30
+    assert billed_total(10, 20, None) == 30
+    assert billed_total(None, None, None) is None
+    assert accumulate_usage((10, 20, 30), (40, 15, 55)) == (50, 35, 85)
+    assert accumulate_usage((10, 20, 30), (None, None, None)) == (10, 20, 30)
+    assert accumulate_usage((10, 20, 30), (None, 5, None)) == (10, 25, 35)
+
+
 def test_stream_requests_include_usage(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
     captured: dict = {}
@@ -347,6 +366,7 @@ def test_follow_up_does_not_wipe_tokens(client: TestClient, auth_headers: dict[s
 
             async def chunks():
                 yield {"choices": [{"delta": {"content": "再来"}, "index": 0, "finish_reason": "stop"}]}
+                yield {"choices": [], "usage": {"prompt_tokens": 40, "completion_tokens": 15, "total_tokens": 55}}
 
             return chunks()
         return UsageResponse()
@@ -383,9 +403,9 @@ def test_follow_up_does_not_wipe_tokens(client: TestClient, auth_headers: dict[s
     listed = client.get("/api/admin/logs", headers=auth_headers).json()
     assert listed["total"] == 1
     detail = client.get(f"/api/admin/logs/{listed['items'][0]['id']}", headers=auth_headers).json()
-    assert detail["prompt_tokens"]
-    assert detail["completion_tokens"] >= 5
-    assert detail["total_tokens"]
+    assert detail["prompt_tokens"] == 51
+    assert detail["completion_tokens"] == 20
+    assert detail["total_tokens"] == 71
 
 
 def test_stream_reconstructs_log(client: TestClient, auth_headers: dict[str, str]) -> None:
