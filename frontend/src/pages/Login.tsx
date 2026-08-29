@@ -28,7 +28,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="page-enter flex min-h-svh items-center justify-center px-4">
+    <div className="page-enter flex min-h-svh items-center justify-center bg-ink px-4 py-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       <Card className="w-full max-w-md">
         <div className="font-mono text-xs tracking-[0.28em] text-signal">PIVOT DESK</div>
         <h1 className="mt-2 text-2xl font-semibold">登录AI一体化服务平台</h1>

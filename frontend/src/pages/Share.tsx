@@ -279,7 +279,7 @@ export function SharePage() {
   const usable = Boolean(lookup && lookup.status === 'active' && lookup.models.length > 0 && boundAccounts.some(isAccountAvailable))
 
   return (
-    <div className="page-enter min-h-svh px-4 py-10">
+    <div className="page-enter min-h-svh bg-ink px-4 pt-[max(2.5rem,calc(env(safe-area-inset-top)+1.5rem))] pb-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))]">
       <div className="mx-auto w-full max-w-3xl space-y-5">
         <div>
           <div className="font-mono text-xs tracking-[0.28em] text-signal">PIVOT DESK</div>
