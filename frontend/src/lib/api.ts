@@ -229,6 +229,24 @@ export type LogItem = {
   response_body?: unknown
 }
 
+export type DashboardLeaderboardTop = {
+  rank: number | null
+  name: string
+  provider: string
+  score: number | null
+  slug: string
+}
+
+export type DashboardBenchmarkTop = {
+  model: string
+  account_name: string
+  provider: string
+  output_tokens_per_second: number
+  first_token_ms: number | null
+  total_ms: number | null
+  run_id: number | null
+}
+
 export type Dashboard = {
   account_count: number
   unhealthy_count: number
@@ -239,6 +257,12 @@ export type Dashboard = {
   total_tokens: number
   benchmark_count: number
   skill_count: number
+  key_count: number
+  tool_count: number
+  agent_count: number
+  agent_online_count: number
+  leaderboard_top: DashboardLeaderboardTop[]
+  benchmark_speed_top: DashboardBenchmarkTop[]
 }
 
 export type LeaderboardComponent = {

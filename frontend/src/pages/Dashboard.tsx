@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Card } from '../components/ui'
-import { api } from '../lib/api'
+import { api, type DashboardBenchmarkTop, type DashboardLeaderboardTop } from '../lib/api'
 import { cn, formatTokenCount } from '../lib/utils'
 
 type Metric = {
@@ -52,6 +52,104 @@ function MetricSection({
   )
 }
 
+function formatScore(value: number | null | undefined) {
+  if (value == null) return '—'
+  return value.toFixed(1)
+}
+
+function formatSpeed(value: number | null | undefined) {
+  if (value == null) return '—'
+  const rounded = Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, '')
+  return `${rounded} tok/s`
+}
+
+function rankLabel(rank: number | null | undefined, index: number) {
+  return rank ?? index + 1
+}
+
+function LeaderboardTopSection({ items }: { items: DashboardLeaderboardTop[] }) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-xs uppercase tracking-[0.16em] text-mist">排行榜前三</h2>
+        <Link to="/leaderboard" className="text-xs text-signal hover:underline">
+          查看全部
+        </Link>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-3">
+        {items.length
+          ? items.map((item, index) => (
+              <Link key={`${item.slug || item.name}-${index}`} to="/leaderboard" className="block min-h-11 min-w-0">
+                <Card className="h-full hover:border-signal/40">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-mist">#{rankLabel(item.rank, index)}</div>
+                      <div className="mt-2 truncate font-medium" title={item.name}>
+                        {item.name}
+                      </div>
+                      <div className="mt-1 truncate text-xs text-mist" title={item.provider || undefined}>
+                        {item.provider || '—'}
+                      </div>
+                    </div>
+                    <div className="shrink-0 font-mono text-xl tabular-nums text-signal">{formatScore(item.score)}</div>
+                  </div>
+                </Card>
+              </Link>
+            ))
+          : (
+              <Card className="col-span-full text-sm text-mist">暂无榜单缓存，去模型榜页拉取后即可展示。</Card>
+            )}
+      </div>
+    </section>
+  )
+}
+
+function BenchmarkSpeedTopSection({ items }: { items: DashboardBenchmarkTop[] }) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-xs uppercase tracking-[0.16em] text-mist">测速速度前三</h2>
+        <Link to="/benchmark/history" className="text-xs text-signal hover:underline">
+          查看历史
+        </Link>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-3">
+        {items.length
+          ? items.map((item, index) => (
+              <Link
+                key={`${item.run_id ?? 'x'}-${item.model}-${item.account_name}-${index}`}
+                to="/benchmark/history"
+                className="block min-h-11 min-w-0"
+              >
+                <Card className="h-full hover:border-signal/40">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-mist">#{index + 1}</div>
+                      <div className="mt-2 truncate font-medium" title={item.model}>
+                        {item.model}
+                      </div>
+                      <div className="mt-1 truncate text-xs text-mist" title={`${item.account_name} · ${item.provider}`}>
+                        {item.account_name} · {item.provider || '—'}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="font-mono text-lg tabular-nums text-signal">{formatSpeed(item.output_tokens_per_second)}</div>
+                      <div className="mt-1 font-mono text-[10px] tabular-nums text-mist">
+                        首 token {item.first_token_ms ?? '—'} ms
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              </Link>
+            ))
+          : (
+              <Card className="col-span-full text-sm text-mist">暂无成功测速记录。</Card>
+            )}
+      </div>
+    </section>
+  )
+}
+
 export function DashboardPage() {
   const { data } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard })
   const today: Metric[] = [
@@ -66,6 +164,13 @@ export function DashboardPage() {
   const resources: Metric[] = [
     { label: '上游账号', value: data?.account_count ?? '—', to: '/accounts' },
     { label: '异常账号', value: data?.unhealthy_count ?? '—', to: '/accounts', warn: true },
+    { label: 'API Key', value: data?.key_count ?? '—', to: '/keys' },
+    {
+      label: '网关在线',
+      value: data ? `${data.agent_online_count}/${data.agent_count}` : '—',
+      to: '/agents',
+    },
+    { label: '工具', value: data?.tool_count ?? '—', to: '/tools' },
     { label: 'Skills', value: data?.skill_count ?? '—', to: '/skills' },
     { label: '测速条数', value: data?.benchmark_count ?? '—', to: '/benchmark/history' },
   ]
@@ -79,6 +184,8 @@ export function DashboardPage() {
       <MetricSection title="今日" items={today} className="grid grid-cols-2 gap-3 lg:grid-cols-3" />
       <MetricSection title="累计" items={totals} className="grid grid-cols-2 gap-3 lg:max-w-xl" />
       <MetricSection title="资源" items={resources} className="grid grid-cols-2 gap-3 lg:grid-cols-4" />
+      <LeaderboardTopSection items={data?.leaderboard_top ?? []} />
+      <BenchmarkSpeedTopSection items={data?.benchmark_speed_top ?? []} />
     </div>
   )
 }

@@ -286,6 +286,24 @@ class LogMessageListOut(BaseModel):
     page_size: int
 
 
+class DashboardLeaderboardTopOut(BaseModel):
+    rank: int | None = None
+    name: str
+    provider: str = ""
+    score: float | None = None
+    slug: str = ""
+
+
+class DashboardBenchmarkTopOut(BaseModel):
+    model: str
+    account_name: str
+    provider: str = ""
+    output_tokens_per_second: float
+    first_token_ms: float | None = None
+    total_ms: float | None = None
+    run_id: int | None = None
+
+
 class DashboardOut(BaseModel):
     account_count: int
     unhealthy_count: int
@@ -296,6 +314,12 @@ class DashboardOut(BaseModel):
     total_tokens: int
     benchmark_count: int
     skill_count: int = 0
+    key_count: int = 0
+    tool_count: int = 0
+    agent_count: int = 0
+    agent_online_count: int = 0
+    leaderboard_top: list[DashboardLeaderboardTopOut] = Field(default_factory=list)
+    benchmark_speed_top: list[DashboardBenchmarkTopOut] = Field(default_factory=list)
 
 
 class SkillUpdate(BaseModel):

@@ -56,6 +56,21 @@ def test_leaderboard_requires_auth(client: TestClient) -> None:
     assert response.status_code == 401
 
 
+def test_dashboard_includes_leaderboard_top(client: TestClient, auth_headers: dict[str, str]) -> None:
+    with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)):
+        seeded = client.get("/api/admin/leaderboard", headers=auth_headers)
+        assert seeded.status_code == 200
+    dashboard = client.get("/api/admin/dashboard", headers=auth_headers)
+    assert dashboard.status_code == 200
+    top = dashboard.json()["leaderboard_top"]
+    assert len(top) == 1
+    assert top[0]["rank"] == 1
+    assert top[0]["name"] == "Claude Fable 5"
+    assert top[0]["provider"] == "Anthropic"
+    assert top[0]["score"] == 89.2
+    assert top[0]["slug"] == "claude-fable-5"
+
+
 def test_leaderboard_fetches_and_caches(client: TestClient, auth_headers: dict[str, str]) -> None:
     with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)) as fetch:
         first = client.get("/api/admin/leaderboard", headers=auth_headers)
