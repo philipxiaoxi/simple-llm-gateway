@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, RadioTower, ServerCog, Sparkles, Trophy, UserRoundPen, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
@@ -20,6 +20,25 @@ const links = [
   { to: '/leaderboard', label: '模型榜', icon: Trophy },
   { to: '/logs', label: '记录审计', icon: MessageSquareText },
 ]
+
+const tabLinks = [
+  { to: '/', label: '概览', icon: Activity },
+  { to: '/accounts', label: '账号', icon: RadioTower },
+  { to: '/keys', label: 'Key', icon: KeyRound },
+  { to: '/skills', label: 'Skills', icon: Sparkles },
+  { to: '/logs', label: '记录', icon: MessageSquareText },
+]
+
+function isPathActive(to: string, pathname: string) {
+  if (to === '/') return pathname === '/'
+  return pathname === to || pathname.startsWith(`${to}/`)
+}
+
+function currentPageLabel(pathname: string) {
+  const ranked = [...links].sort((left, right) => right.to.length - left.to.length)
+  const match = ranked.find((link) => isPathActive(link.to, pathname))
+  return match?.label ?? '控制台'
+}
 
 function ProfileDialog({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
@@ -104,12 +123,83 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
+function useMobileSwipeDrawer(open: boolean, setOpen: (next: boolean) => void) {
+  useEffect(() => {
+    const mobile = window.matchMedia('(max-width: 1023px)')
+    let startX = 0
+    let startY = 0
+    let tracking = false
+
+    function isIgnored(target: EventTarget | null) {
+      return target instanceof Element && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+    }
+
+    function onStart(event: TouchEvent) {
+      if (!mobile.matches || event.touches.length !== 1 || isIgnored(event.target)) {
+        tracking = false
+        return
+      }
+      const touch = event.touches[0]
+      const height = window.innerHeight
+      if (touch.clientX < 20) return
+      if (touch.clientY < 72 || touch.clientY > height - 88) return
+      startX = touch.clientX
+      startY = touch.clientY
+      tracking = true
+    }
+
+    function onMove(event: TouchEvent) {
+      if (!tracking || event.touches.length !== 1) return
+      const touch = event.touches[0]
+      const dx = touch.clientX - startX
+      const dy = touch.clientY - startY
+      if (Math.abs(dy) > 36 && Math.abs(dy) > Math.abs(dx)) {
+        tracking = false
+        return
+      }
+      if (!open && dx > 56 && Math.abs(dy) < 40) {
+        tracking = false
+        setOpen(true)
+      }
+      if (open && dx < -56 && Math.abs(dy) < 40) {
+        tracking = false
+        setOpen(false)
+      }
+    }
+
+    function onEnd() {
+      tracking = false
+    }
+
+    document.addEventListener('touchstart', onStart, { passive: true })
+    document.addEventListener('touchmove', onMove, { passive: true })
+    document.addEventListener('touchend', onEnd)
+    document.addEventListener('touchcancel', onEnd)
+    return () => {
+      document.removeEventListener('touchstart', onStart)
+      document.removeEventListener('touchmove', onMove)
+      document.removeEventListener('touchend', onEnd)
+      document.removeEventListener('touchcancel', onEnd)
+    }
+  }, [open, setOpen])
+}
+
 export function Layout() {
   const [open, setOpen] = useState(false)
   const [profile, setProfile] = useState(false)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const location = useLocation()
+  useMobileSwipeDrawer(open, setOpen)
+
+  useEffect(() => {
+    if (!open) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [open])
 
   function logout() {
     clearToken()
@@ -118,21 +208,22 @@ export function Layout() {
   }
 
   return (
-    <div className="min-h-svh lg:h-svh lg:overflow-hidden lg:grid lg:grid-cols-[240px_1fr]">
-      <header className="flex items-center justify-between border-b border-line px-4 py-3 lg:hidden">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="inline-flex min-h-11 min-w-11 items-center justify-center text-paper"
-          aria-label="打开菜单"
-        >
-          <Menu size={20} />
-        </button>
-        <div className="font-mono text-sm text-signal">AI一体化服务平台</div>
-        <div className="min-w-11" aria-hidden="true" />
+    <div className="min-h-svh bg-ink lg:h-svh lg:overflow-hidden lg:grid lg:grid-cols-[240px_1fr]">
+      <header className="fixed inset-x-0 top-0 z-30 border-b border-line bg-panel/95 pt-[env(safe-area-inset-top)] backdrop-blur-md lg:hidden">
+        <div className="flex h-12 items-center justify-between px-2">
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center text-paper"
+            aria-label="打开菜单"
+          >
+            <Menu size={20} />
+          </button>
+          <div className="min-w-0 truncate font-medium">{currentPageLabel(location.pathname)}</div>
+          <div className="min-w-11" aria-hidden="true" />
+        </div>
       </header>
 
-      {/* 移动端：侧拉抽屉遮罩 */}
       <div
         className={cn(
           'fixed inset-0 z-40 bg-black/60 transition-opacity duration-300 lg:hidden',
@@ -142,10 +233,9 @@ export function Layout() {
         aria-hidden="true"
       />
 
-      {/* 移动端：侧拉抽屉；桌面端：固定侧边栏 */}
       <aside
         className={cn(
-          'safe-area-drawer fixed inset-y-0 left-0 z-50 flex w-72 max-w-[80vw] flex-col border-r border-line bg-panel transition-transform duration-300 ease-out lg:static lg:z-auto lg:h-svh lg:w-auto lg:max-w-none lg:translate-x-0 lg:overflow-hidden lg:border-r lg:bg-panel/80',
+          'safe-area-drawer fixed inset-y-0 left-0 z-50 flex w-72 max-w-[80vw] flex-col border-r border-line bg-panel transition-transform duration-300 ease-out lg:static lg:z-auto lg:h-svh lg:w-auto lg:max-w-none lg:translate-x-0 lg:overflow-hidden lg:bg-panel/80',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
@@ -196,11 +286,34 @@ export function Layout() {
         </div>
       </aside>
       {profile ? <ProfileDialog onClose={() => setProfile(false)} /> : null}
-      <main className="px-4 py-6 lg:h-svh lg:overflow-y-auto lg:px-8">
+      <main className="bg-ink px-4 pb-[calc(var(--app-tab)+env(safe-area-inset-bottom)+0.75rem)] pt-[calc(var(--app-header)+env(safe-area-inset-top)+0.75rem)] lg:h-svh lg:overflow-y-auto lg:px-8 lg:pb-6 lg:pt-6">
         <div key={location.pathname} className="page-enter">
           <Outlet />
         </div>
       </main>
+
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-panel/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
+        <div className="grid h-14 grid-cols-5">
+          {tabLinks.map((link) => {
+            const active = isPathActive(link.to, location.pathname)
+            return (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                end={link.to === '/'}
+                onClick={() => setOpen(false)}
+                className={cn(
+                  'flex min-h-11 flex-col items-center justify-center gap-0.5 text-[11px] leading-none',
+                  active ? 'text-signal' : 'text-mist',
+                )}
+              >
+                <link.icon size={18} />
+                {link.label}
+              </NavLink>
+            )
+          })}
+        </div>
+      </nav>
     </div>
   )
 }

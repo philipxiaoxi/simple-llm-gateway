@@ -37,8 +37,8 @@ function MoreMenu({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div ref={containerRef} className="relative">
-      <Button type="button" variant="line" onClick={toggle}>
+    <div ref={containerRef} className="relative w-full md:w-auto">
+      <Button type="button" variant="line" className="w-full md:w-auto" onClick={toggle}>
         更多
       </Button>
       {open ? (
@@ -461,44 +461,57 @@ export function KeysPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">API Key</h1>
-          <p className="mt-1 text-sm text-mist">
-            创建时绑定一个或多个上游账号、网关代理账号。排第一的账号优先使用。需要时直接复制完整 Key。
-          </p>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex items-start justify-between gap-3 lg:block lg:min-w-0 lg:flex-1">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold">API Key</h1>
+            <p className="mt-1 text-sm text-mist">
+              创建时绑定一个或多个上游账号、网关代理账号。排第一的账号优先使用。需要时直接复制完整 Key。
+            </p>
+          </div>
+          <Button type="button" className="shrink-0 lg:hidden" onClick={() => setCreateDialog(true)}>
+            生成 Key
+          </Button>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <Field label="排序">
-            <Select
-              className="w-44"
-              value={sort}
-              onChange={(event) => setSort(event.target.value as ApiKeySort)}
-            >
-              <option value="created_at">按创建时间</option>
-              <option value="tokens">按 Token 消耗</option>
-              <option value="last_used">按最近使用</option>
-            </Select>
-          </Field>
+        <div className="grid grid-cols-2 items-end gap-2 lg:flex lg:shrink-0 lg:flex-nowrap">
+          <div className="col-span-2 min-w-0 lg:w-44">
+            <Field label="排序">
+              <Select
+                className="w-full"
+                value={sort}
+                onChange={(event) => setSort(event.target.value as ApiKeySort)}
+              >
+                <option value="created_at">按创建时间</option>
+                <option value="tokens">按 Token 消耗</option>
+                <option value="last_used">按最近使用</option>
+              </Select>
+            </Field>
+          </div>
           <Button
             type="button"
             variant="line"
+            className="w-full lg:w-auto"
             onClick={() => {
               void navigator.clipboard.writeText(`${window.location.origin}/share`)
               notifyOk('已复制自助查询页地址，把链接和 Key 发给对方即可。')
             }}
           >
-            复制自助查询页
+            复制查询页
           </Button>
-          <Button type="button" variant="line" onClick={() => window.open('/share', '_blank', 'noopener')}>
-            打开自助查询
+          <Button
+            type="button"
+            variant="line"
+            className="w-full lg:w-auto"
+            onClick={() => window.open('/share', '_blank', 'noopener')}
+          >
+            打开查询页
           </Button>
-          <Button type="button" onClick={() => setCreateDialog(true)}>
+          <Button type="button" className="hidden lg:inline-flex" onClick={() => setCreateDialog(true)}>
             生成 Key
           </Button>
         </div>
       </div>
-      <Card className="grid gap-3 md:grid-cols-3">
+      <Card className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <Field label="搜索">
           <Input
             value={search}
@@ -513,6 +526,7 @@ export function KeysPage() {
             <option value="disabled">停用</option>
           </Select>
         </Field>
+        <div className="col-span-2 md:col-span-1">
         <Field label="绑定账号">
           <Select value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}>
             <option value="">全部账号</option>
@@ -523,6 +537,7 @@ export function KeysPage() {
             ))}
           </Select>
         </Field>
+        </div>
       </Card>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {filteredKeys.map((item) => {
@@ -596,19 +611,20 @@ export function KeysPage() {
                 <span>最近使用：{formatTime(item.last_used_at)}</span>
                 <span>创建时间：{formatTime(item.created_at)}</span>
               </div>
-              <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
-                <Button type="button" variant="line" onClick={() => void queryKey(item.id)}>
+              <div className="grid grid-cols-2 gap-2 border-t border-line pt-3 md:flex md:flex-wrap md:items-center">
+                <Button type="button" variant="line" className="w-full md:w-auto" onClick={() => void queryKey(item.id)}>
                   查询
                 </Button>
-                <Button variant="line" onClick={() => void copyKey(item.id)}>
+                <Button variant="line" className="w-full md:w-auto" onClick={() => void copyKey(item.id)}>
                   复制 Key
                 </Button>
-                <Button type="button" variant="line" onClick={() => void shareKey(item.id)}>
+                <Button type="button" variant="line" className="w-full md:w-auto" onClick={() => void shareKey(item.id)}>
                   分享
                 </Button>
-                <Button type="button" variant="line" onClick={() => loadImport(item.id)}>
+                <Button type="button" variant="line" className="w-full md:w-auto" onClick={() => loadImport(item.id)}>
                   导入
                 </Button>
+                <div className="col-span-2 md:col-auto md:w-auto">
                 <MoreMenu>
                   <MenuItem
                     onClick={() => setEditDialog({ keyId: item.id, name: item.name, accountIds: keyBoundIds(item) })}
@@ -643,6 +659,7 @@ export function KeysPage() {
                     删除
                   </MenuItem>
                 </MoreMenu>
+                </div>
               </div>
               {ccPanel[item.id] ? (
                 <div className="space-y-2">

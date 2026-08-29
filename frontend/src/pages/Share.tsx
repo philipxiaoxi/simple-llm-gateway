@@ -34,6 +34,45 @@ function isAccountAvailable(account: ShareLookup['accounts'][number]) {
   return account.source === 'agent' ? account.status === 'online' : account.status === 'active'
 }
 
+function BoundAccountCard({
+  account,
+  index,
+}: {
+  account: ShareLookup['accounts'][number]
+  index: number
+}) {
+  const risk = RISK_META[account.risk_level]
+  const prefix = account.model_prefix ? account.model_prefix : '自动生成'
+  const meta = [accountStatusLabel(account), index === 0 ? '优先使用' : null, `前缀 ${prefix}`]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <li className="px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="w-4 shrink-0 text-center font-mono text-xs text-mist" aria-hidden="true">
+          {index + 1}
+        </span>
+        <span className="shrink-0 text-xs text-mist">{accountSourceLabel(account.source)}</span>
+        <span className="min-w-0 truncate text-sm font-medium text-paper" title={account.name}>
+          {account.name}
+        </span>
+        <span
+          title={risk?.hint}
+          className={cn(
+            'ml-auto inline-flex shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium',
+            risk?.className ?? 'border-line bg-ink/40 text-mist',
+          )}
+        >
+          {risk?.label ?? account.risk_level}
+        </span>
+      </div>
+      <div className="mt-0.5 truncate pl-6 text-xs text-mist" title={meta}>
+        {meta}
+      </div>
+    </li>
+  )
+}
+
 function aiConfigText(lookup: ShareLookup, apiKey: string) {
   const models =
     lookup.models.length > 0
@@ -240,7 +279,7 @@ export function SharePage() {
   const usable = Boolean(lookup && lookup.status === 'active' && lookup.models.length > 0 && boundAccounts.some(isAccountAvailable))
 
   return (
-    <div className="page-enter min-h-svh px-4 py-10">
+    <div className="page-enter min-h-svh bg-ink px-4 pt-[max(2.5rem,calc(env(safe-area-inset-top)+1.5rem))] pb-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))]">
       <div className="mx-auto w-full max-w-3xl space-y-5">
         <div>
           <div className="font-mono text-xs tracking-[0.28em] text-signal">PIVOT DESK</div>
@@ -286,42 +325,27 @@ export function SharePage() {
                 </Badge>
               </div>
             </div>
-            <div className="rounded-lg border border-line bg-ink/30 p-3">
-              <div className="flex flex-wrap items-end justify-between gap-2">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.16em] text-mist">绑定账号风险</div>
-                  <div className="mt-1 text-sm text-mist">风险等级来自各上游账号，与本站无关。</div>
+            <div className="overflow-hidden rounded-lg border border-line bg-ink/40">
+              <div className="border-b border-line px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1 truncate text-xs uppercase tracking-[0.16em] text-mist">绑定账号</div>
+                  <span className="shrink-0 whitespace-nowrap">
+                    <Badge tone={boundAccounts.length > 1 ? 'info' : 'mist'}>
+                      {boundAccounts.length} 个账号
+                    </Badge>
+                  </span>
                 </div>
-                <Badge tone={lookup.accounts.length > 1 ? 'info' : 'mist'}>
-                  {lookup.accounts.length} 个账号
-                </Badge>
+                <div className="mt-1 text-xs leading-relaxed text-mist">风险等级来自各上游账号，与本站无关。排第一的账号优先使用。</div>
               </div>
-              <div className="mt-3 grid gap-2">
-                {boundAccounts.map((account, index) => {
-                  const risk = RISK_META[account.risk_level]
-                  return (
-                    <div
-                      key={account.id}
-                      className={cn('flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2.5', risk?.className ?? 'border-line bg-ink/40 text-mist')}
-                    >
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 font-medium">
-                          <span>{accountSourceLabel(account.source)} {account.name}</span>
-                          <Badge tone={isAccountAvailable(account) ? 'ok' : 'bad'}>
-                            {accountStatusLabel(account)}
-                          </Badge>
-                          {index === 0 ? <Badge tone="info">优先使用</Badge> : <span className="text-xs opacity-70">第 {index + 1} 个</span>}
-                        </div>
-                        <div className="mt-1 text-xs opacity-70">模型前缀：{'model_prefix' in account && account.model_prefix ? account.model_prefix : '自动生成'}</div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className="font-semibold">{risk?.label ?? account.risk_level}</div>
-                        <div className="mt-1 max-w-xs text-xs opacity-70">{risk?.hint ?? ''}</div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+              <ul className="divide-y divide-line">
+                {boundAccounts.map((account, index) => (
+                  <BoundAccountCard
+                    key={`${account.source}-${account.id}-${index}`}
+                    account={account}
+                    index={index}
+                  />
+                ))}
+              </ul>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-lg border border-line bg-ink/40 px-3 py-3">

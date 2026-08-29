@@ -72,6 +72,32 @@ def elapsed_ms(started: float) -> int:
     return int((time.perf_counter() - started) * 1000)
 
 
+def billed_total(prompt: int | None, completion: int | None, total: int | None) -> int | None:
+    if total is not None:
+        return total
+    if prompt is not None or completion is not None:
+        return (prompt or 0) + (completion or 0)
+    return None
+
+
+def accumulate_usage(
+    stored: tuple[int | None, int | None, int | None],
+    incoming: tuple[int | None, int | None, int | None],
+) -> tuple[int | None, int | None, int | None]:
+    stored_prompt, stored_completion, stored_total = stored
+    prompt, completion, total = incoming
+    billed = billed_total(prompt, completion, total)
+    next_prompt = stored_prompt if prompt is None else (stored_prompt or 0) + prompt
+    next_completion = stored_completion if completion is None else (stored_completion or 0) + completion
+    if billed is not None:
+        next_total = (stored_total or 0) + billed
+    elif next_prompt is not None or next_completion is not None:
+        next_total = (next_prompt or 0) + (next_completion or 0)
+    else:
+        next_total = stored_total
+    return next_prompt, next_completion, next_total
+
+
 def _finalize_stream_log(
     *,
     account_id: int,
@@ -263,16 +289,10 @@ def save_log(
         existing.status = status
         existing.http_status = http_status
         existing.error_message = error_message
-        if prompt is not None:
-            existing.prompt_tokens = prompt
-        if completion is not None:
-            existing.completion_tokens = (existing.completion_tokens or 0) + completion
-        stored_prompt = existing.prompt_tokens
-        stored_completion = existing.completion_tokens
-        if stored_prompt is not None or stored_completion is not None:
-            existing.total_tokens = (stored_prompt or 0) + (stored_completion or 0)
-        elif total is not None:
-            existing.total_tokens = total
+        existing.prompt_tokens, existing.completion_tokens, existing.total_tokens = accumulate_usage(
+            (existing.prompt_tokens, existing.completion_tokens, existing.total_tokens),
+            (prompt, completion, total),
+        )
         existing.latency_ms = (existing.latency_ms or 0) + latency_ms
         existing.updated_at = now
         if session_key:
@@ -300,11 +320,7 @@ def save_log(
         error_message=error_message,
         prompt_tokens=prompt,
         completion_tokens=completion,
-        total_tokens=(
-            total
-            if total is not None
-            else ((prompt or 0) + (completion or 0) if prompt is not None or completion is not None else None)
-        ),
+        total_tokens=billed_total(prompt, completion, total),
         latency_ms=latency_ms,
         created_at=now,
         updated_at=now,

@@ -11,17 +11,15 @@ export function PublicLeaderboardPage() {
   })
 
   return (
-    <div className="page-enter min-h-svh px-4 py-10">
+    <div className="page-enter min-h-svh bg-ink px-4 pt-[max(2.5rem,calc(env(safe-area-inset-top)+1.5rem))] pb-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))]">
       <div className="mx-auto w-full max-w-6xl space-y-5">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <div className="font-mono text-xs tracking-[0.28em] text-signal">PIVOT DESK</div>
             <h1 className="mt-2 text-2xl font-semibold">模型榜</h1>
-            <p className="mt-1 text-sm text-mist">
-              AIHOT 总榜前 30 名以及本站覆盖情况。
-            </p>
+            <p className="mt-1 text-sm text-mist">AIHOT 总榜前 30 名以及本站覆盖情况。</p>
           </div>
-          <a href="https://aihot.virxact.com/leaderboard" target="_blank" rel="noreferrer">
+          <a className="shrink-0" href="https://aihot.virxact.com/leaderboard" target="_blank" rel="noreferrer">
             <Button type="button" variant="line">
               <ExternalLink size={16} />
               原站

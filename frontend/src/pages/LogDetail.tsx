@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { Pagination } from '../components/Pagination'
 import { Badge, Button, Card } from '../components/ui'
 import { api } from '../lib/api'
 import { LOG_PAGE_SIZE, cn, formatTime } from '../lib/utils'
@@ -10,6 +11,12 @@ const COLLAPSE_LINE_LIMIT = 8
 
 function accountSourceLabel(source: 'upstream' | 'agent') {
   return source === 'agent' ? '[网关]' : '[上游]'
+}
+
+function statusLabel(status: string) {
+  if (status === 'success') return '成功'
+  if (status === 'error') return '失败'
+  return status
 }
 
 function isLongText(text: string): boolean {
@@ -47,54 +54,32 @@ function MessageBubble({
   const long = isLongText(text)
   const assistant = role === 'assistant'
   return (
-    <div className={assistant ? 'md:pl-8' : 'md:pr-8'}>
+    <div className={cn('min-w-0 max-w-full', assistant ? 'lg:pl-8' : 'lg:pr-8')}>
       <div className="mb-1 text-xs uppercase tracking-[0.16em] text-mist">{role}</div>
       <div
-        className={
-          assistant
-            ? 'rounded-2xl rounded-tl-sm border border-line bg-panel p-4'
-            : 'rounded-2xl rounded-tr-sm bg-signal/10 p-4'
-        }
+        className={cn(
+          'min-w-0 max-w-full overflow-hidden rounded-2xl p-4',
+          assistant ? 'rounded-tl-sm border border-line bg-panel' : 'rounded-tr-sm bg-signal/10',
+        )}
       >
         {long && expanded ? (
           <button type="button" className="mb-3 text-xs text-signal hover:underline" onClick={onToggle}>
             收起
           </button>
         ) : null}
-        <div className={cn('whitespace-pre-wrap', long && !expanded && 'line-clamp-8')}>{text}</div>
+        <div
+          className={cn(
+            'max-w-full overflow-x-auto whitespace-pre-wrap break-all [overflow-wrap:anywhere]',
+            long && !expanded && 'line-clamp-8 overflow-hidden',
+          )}
+        >
+          {text}
+        </div>
         {long ? (
           <button type="button" className="mt-3 text-xs text-signal hover:underline" onClick={onToggle}>
             {expanded ? '收起' : '展开全部'}
           </button>
         ) : null}
-      </div>
-    </div>
-  )
-}
-
-function MessagePager({
-  total,
-  page,
-  pageCount,
-  onPage,
-}: {
-  total: number
-  page: number
-  pageCount: number
-  onPage: (page: number) => void
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="text-sm text-mist">
-        共 {total} 条消息 · 第 {page} / {pageCount} 页
-      </div>
-      <div className="flex gap-2">
-        <Button type="button" variant="line" disabled={page <= 1} onClick={() => onPage(page - 1)}>
-          上一页
-        </Button>
-        <Button type="button" variant="line" disabled={page >= pageCount} onClick={() => onPage(page + 1)}>
-          下一页
-        </Button>
       </div>
     </div>
   )
@@ -132,31 +117,58 @@ export function LogDetailPage() {
   const start = (currentPage - 1) * LOG_PAGE_SIZE
 
   function goToPage(nextPage: number) {
-    setPage(nextPage)
+    const bounded = Math.min(Math.max(nextPage, 1), pageCount)
+    if (bounded === page) return
+    setPage(bounded)
     setExpanded({})
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 max-w-full space-y-5 overflow-x-hidden">
       <Link to="/logs" className="text-sm text-mist hover:text-signal">
         ← 返回列表
       </Link>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">记录 #{data.id}</h1>
-          <div className="mt-1 text-sm text-mist">
-            {data.api_key_name || '—'} ·{' '}
-            {data.account_name ? `${accountSourceLabel(data.account_source)} ${data.account_name}` : '—'} ·{' '}
-            {formatTime(data.updated_at || data.created_at)} ·{' '}
-            {data.model} · {data.latency_ms}ms
-          </div>
-        </div>
-        <Badge tone={data.status === 'success' ? 'ok' : 'bad'}>{data.status}</Badge>
-      </div>
-      {data.error_message ? <Card className="text-sm text-danger">{data.error_message}</Card> : null}
-      <MessagePager total={total} page={currentPage} pageCount={pageCount} onPage={goToPage} />
       <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="min-w-0 truncate text-2xl font-semibold">记录 #{data.id}</h1>
+          <span className="shrink-0">
+            <Badge tone={data.status === 'success' ? 'ok' : 'bad'}>{statusLabel(data.status)}</Badge>
+          </span>
+        </div>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm lg:flex lg:flex-wrap lg:gap-x-6 lg:gap-y-2">
+          <div className="min-w-0">
+            <dt className="text-xs uppercase tracking-[0.16em] text-mist">Key</dt>
+            <dd className="mt-1 truncate" title={data.api_key_name || undefined}>
+              {data.api_key_name || '—'}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-xs uppercase tracking-[0.16em] text-mist">账号</dt>
+            <dd className="mt-1 truncate" title={data.account_name ? `${accountSourceLabel(data.account_source)} ${data.account_name}` : undefined}>
+              {data.account_name ? `${accountSourceLabel(data.account_source)} ${data.account_name}` : '—'}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-xs uppercase tracking-[0.16em] text-mist">时间</dt>
+            <dd className="mt-1 truncate font-mono text-xs lg:text-sm">{formatTime(data.updated_at || data.created_at)}</dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-xs uppercase tracking-[0.16em] text-mist">模型</dt>
+            <dd className="mt-1 truncate font-mono text-xs lg:text-sm" title={data.model || undefined}>
+              {data.model || '—'}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-xs uppercase tracking-[0.16em] text-mist">耗时</dt>
+            <dd className="mt-1 font-mono text-xs tabular-nums lg:text-sm">{data.latency_ms}ms</dd>
+          </div>
+        </dl>
+      </div>
+      {data.error_message ? (
+        <Card className="break-all text-sm text-danger [overflow-wrap:anywhere]">{data.error_message}</Card>
+      ) : null}
+      <div className="min-w-0 space-y-3">
         {messages.map((message, offset) => {
           const index = start + offset
           return (
@@ -172,12 +184,12 @@ export function LogDetailPage() {
           )
         })}
       </div>
-      <MessagePager total={total} page={currentPage} pageCount={pageCount} onPage={goToPage} />
+      <Pagination page={currentPage} pageCount={pageCount} total={total} unit="条消息" onPage={goToPage} />
       <Button variant="line" onClick={() => setRaw((value) => !value)}>
         {raw ? '收起原始 JSON' : '展开原始 JSON'}
       </Button>
       {raw ? (
-        <pre className="overflow-auto rounded-xl border border-line bg-ink p-4 font-mono text-xs text-mist">
+        <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded-xl border border-line bg-ink p-4 font-mono text-xs text-mist [overflow-wrap:anywhere]">
           {JSON.stringify({ page: currentPage, total, messages }, null, 2)}
         </pre>
       ) : null}
