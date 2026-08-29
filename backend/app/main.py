@@ -31,6 +31,7 @@ from app.routers import (
 from app.seed import seed_admin, seed_desktop_tools, seed_skill_categories
 from app.services.desktop_tools import reconcile_stuck_downloads
 from app.services.grok_oauth import cleanup_expired_oauth_states, run_oauth_refresh_loop
+from app.services.model_caps import run_catalog_refresh_loop
 from app.services.quota import run_quota_refresh_loop
 
 
@@ -51,6 +52,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     background_tasks = [
         asyncio.create_task(run_oauth_refresh_loop()),
         asyncio.create_task(run_quota_refresh_loop()),
+        asyncio.create_task(run_catalog_refresh_loop()),
     ]
     try:
         yield

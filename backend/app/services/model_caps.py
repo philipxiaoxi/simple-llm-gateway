@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from collections import Counter
@@ -15,6 +16,7 @@ from app.config import get_settings
 
 MODELS_DEV_URL = "https://models.dev/api.json"
 MODELS_DEV_TTL = timedelta(hours=48)
+MODELS_DEV_FAIL_TTL = timedelta(minutes=5)
 DEFAULT_CONTEXT_WINDOW = 128_000
 DEFAULT_MAX_OUTPUT_TOKENS = 16_000
 DEFAULT_INPUT_MODALITIES = ("text",)
@@ -27,21 +29,23 @@ PROVIDER_CATALOG_IDS = {
     "anthropic_generic": "anthropic",
 }
 
-REASONING_MARKERS = (
-    "reasoner",
-    "reasoning",
-    "thinking",
-    "-r1",
-    "r1-",
-    "o1-",
-    "-o1",
-    "o3-",
-    "-o3",
-    "o4-mini",
-    "grok-4",
+REASONING_TOKENS = {"reasoner", "reasoning", "thinking", "think", "o1", "o3", "r1"}
+REASONING_FRAGMENTS = ("o4-mini", "grok-4")
+VISION_MARKERS = (
+    "vision",
+    "gpt-4o",
+    "gpt-4.1",
+    "claude-3-opus",
+    "claude-3-sonnet",
+    "claude-3-haiku",
+    "claude-3-5",
+    "claude-3.5",
+    "claude-3-7",
+    "gemini-1.5",
+    "gemini-2",
+    "gemini-3",
 )
-VISION_MARKERS = ("vision", "gpt-4o", "gpt-4.1", "claude-3", "gemini-")
-_CACHE: tuple[datetime, "CatalogIndex"] | None = None
+_CACHE: tuple[datetime, "CatalogIndex", bool] | None = None
 
 
 @dataclass(frozen=True)
@@ -206,7 +210,8 @@ def extract_model_ids(payload: object) -> list[str]:
 
 def caps_from_heuristic(model_id: str) -> ModelCaps:
     normalized = normalize_model_id(model_id)
-    reasoning = any(marker in normalized for marker in REASONING_MARKERS)
+    tokens = {part for part in normalized.split("-") if part}
+    reasoning = bool(tokens & REASONING_TOKENS) or any(fragment in normalized for fragment in REASONING_FRAGMENTS)
     vision = any(marker in normalized for marker in VISION_MARKERS)
     input_modalities = ("text", "image") if vision else DEFAULT_INPUT_MODALITIES
     return ModelCaps(
@@ -223,17 +228,18 @@ def caps_from_heuristic(model_id: str) -> ModelCaps:
 def caps_from_upstream_entry(entry: dict[str, Any] | None) -> ModelCaps | None:
     if not entry:
         return None
+    output = _first_int(
+        entry.get("max_output_tokens"),
+        entry.get("max_completion_tokens"),
+        (entry.get("top_provider") or {}).get("max_completion_tokens") if isinstance(entry.get("top_provider"), dict) else None,
+        (entry.get("limit") or {}).get("output") if isinstance(entry.get("limit"), dict) else None,
+    )
     context = _first_int(
         entry.get("context_window"),
         entry.get("context_length"),
         (entry.get("top_provider") or {}).get("context_length") if isinstance(entry.get("top_provider"), dict) else None,
         (entry.get("limit") or {}).get("context") if isinstance(entry.get("limit"), dict) else None,
-    )
-    output = _first_int(
-        entry.get("max_output_tokens"),
-        entry.get("max_tokens"),
-        (entry.get("top_provider") or {}).get("max_completion_tokens") if isinstance(entry.get("top_provider"), dict) else None,
-        (entry.get("limit") or {}).get("output") if isinstance(entry.get("limit"), dict) else None,
+        entry.get("max_tokens") if output is None else None,
     )
     reasoning = _upstream_reasoning(entry)
     efforts = _effort_values(entry.get("reasoning_options"))
@@ -293,15 +299,24 @@ def build_catalog_index(payload: dict[str, Any]) -> CatalogIndex:
     return index
 
 
-def match_catalog(model_id: str, provider: str | None, index: CatalogIndex) -> ModelCaps | None:
-    catalog_provider = PROVIDER_CATALOG_IDS.get(provider or "")
-    if catalog_provider:
-        exact = index.by_provider_id.get((catalog_provider, model_id))
+def match_catalog(
+    model_id: str,
+    provider: str | None,
+    index: CatalogIndex,
+    *,
+    catalog_provider: str | None = None,
+    fallback: bool = True,
+) -> ModelCaps | None:
+    mapped = catalog_provider or PROVIDER_CATALOG_IDS.get(provider or "")
+    if mapped:
+        exact = index.by_provider_id.get((mapped, model_id))
         if exact is not None:
             return exact
-        normalized = index.by_provider_norm.get((catalog_provider, normalize_model_id(model_id)))
+        normalized = index.by_provider_norm.get((mapped, normalize_model_id(model_id)))
         if normalized is not None:
             return normalized
+        if not fallback:
+            return None
     return index.by_norm.get(normalize_model_id(model_id))
 
 
@@ -363,12 +378,19 @@ def apply_model_override(records: list[ModelRecord], model_id: str, payload: dic
             continue
         overrides = dict(record.overrides)
         for key in ("context_window", "max_output_tokens", "reasoning", "reasoning_efforts", "modalities"):
-            if key in payload:
-                value = payload[key]
-                if value is None:
-                    overrides.pop(key, None)
-                else:
-                    overrides[key] = value
+            if key not in payload:
+                continue
+            value = payload[key]
+            if value is None:
+                overrides.pop(key, None)
+                continue
+            if key in {"context_window", "max_output_tokens"}:
+                parsed = _as_int(value)
+                if parsed is None:
+                    continue
+                overrides[key] = parsed
+                continue
+            overrides[key] = value
         updated.append(ModelRecord(id=record.id, auto=record.auto, overrides=overrides))
     if not found:
         raise ValueError("模型不存在")
@@ -382,30 +404,61 @@ def catalog_cache_path() -> Path:
     return Path(settings.database_path).expanduser().resolve().parent / "models_dev_cache.json"
 
 
-def load_catalog_index(*, force: bool = False) -> CatalogIndex:
+def _store_cache(index: CatalogIndex, fetched_at: datetime, ok: bool) -> CatalogIndex:
+    global _CACHE
+    _CACHE = (fetched_at, index, ok)
+    return index
+
+
+def _load_catalog_index_cached(*, force: bool = False) -> CatalogIndex:
     global _CACHE
     now = utcnow()
-    if not force and _CACHE is not None and now - _CACHE[0] < MODELS_DEV_TTL:
-        return _CACHE[1]
+    if _CACHE is not None:
+        fetched_at, index, ok = _CACHE
+        ttl = MODELS_DEV_TTL if ok else MODELS_DEV_FAIL_TTL
+        if not force and now - fetched_at < ttl:
+            return index
+        if ok:
+            return index
     path = catalog_cache_path()
     cached_payload, cached_at = _read_cache_file(path)
-    if not force and cached_payload is not None and cached_at is not None and now - cached_at < MODELS_DEV_TTL:
-        index = build_catalog_index(cached_payload)
-        _CACHE = (cached_at, index)
-        return index
-    fetched = _fetch_models_dev()
-    if fetched is not None:
-        _write_cache_file(path, fetched, now)
-        index = build_catalog_index(fetched)
-        _CACHE = (now, index)
-        return index
     if cached_payload is not None:
-        index = build_catalog_index(cached_payload)
-        _CACHE = (cached_at or now, index)
-        return index
-    empty = CatalogIndex()
-    _CACHE = (now, empty)
-    return empty
+        return _store_cache(build_catalog_index(cached_payload), cached_at or now, True)
+    return _store_cache(CatalogIndex(), now, False)
+
+
+def load_catalog_index(*, force: bool = False) -> CatalogIndex:
+    return _load_catalog_index_cached(force=force)
+
+
+async def refresh_catalog_index(*, force: bool = False) -> CatalogIndex:
+    now = utcnow()
+    if not force and _CACHE is not None:
+        fetched_at, index, ok = _CACHE
+        if ok and now - fetched_at < MODELS_DEV_TTL:
+            return index
+    fetched = await asyncio.to_thread(_fetch_models_dev)
+    if fetched is not None:
+        written_at = utcnow()
+        await asyncio.to_thread(_write_cache_file, catalog_cache_path(), fetched, written_at)
+        return _store_cache(build_catalog_index(fetched), written_at, True)
+    if _CACHE is not None and _CACHE[2]:
+        return _CACHE[1]
+    path = catalog_cache_path()
+    cached_payload, cached_at = await asyncio.to_thread(_read_cache_file, path)
+    if cached_payload is not None:
+        return _store_cache(build_catalog_index(cached_payload), cached_at or utcnow(), True)
+    return _store_cache(CatalogIndex(), utcnow(), False)
+
+
+async def run_catalog_refresh_loop() -> None:
+    interval = max(60, int(MODELS_DEV_FAIL_TTL.total_seconds()))
+    while True:
+        try:
+            await refresh_catalog_index()
+        except Exception:
+            pass
+        await asyncio.sleep(interval)
 
 
 def reset_catalog_cache() -> None:

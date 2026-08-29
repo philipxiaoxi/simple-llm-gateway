@@ -7,7 +7,7 @@ import { Badge, Button, Card, Field, Input } from '../components/ui'
 import { api, type CcSwitchTarget, type ModelCaps, type ShareLookup } from '../lib/api'
 import { listenForShareApiKey } from '../lib/shareTransfer'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { MIN_KEY_LENGTH, cn, errorMessage, formatContextWindow, formatTokenCount } from '../lib/utils'
+import { MIN_KEY_LENGTH, cn, errorMessage, formatTokenCount, modelCapsHint } from '../lib/utils'
 
 const RISK_META: Record<string, { label: string; hint: string; className: string }> = {
   low: { label: '低风险', hint: '官方模型或数据泄露可能性较低', className: 'border-signal/30 bg-signal/10 text-signal' },
@@ -80,14 +80,7 @@ function modelCapsOf(lookup: ShareLookup, modelName: string) {
 }
 
 function modelHint(caps?: ModelCaps) {
-  if (!caps) return ''
-  const extras = [
-    caps.context_window ? `上下文 ${formatContextWindow(caps.context_window)}` : null,
-    caps.max_output_tokens ? `输出 ${formatContextWindow(caps.max_output_tokens)}` : null,
-    caps.reasoning ? (caps.reasoning_efforts?.length ? `思考 ${caps.reasoning_efforts.join('/')}` : '思考') : null,
-    caps.modalities?.input?.includes('image') ? '视觉' : null,
-  ].filter(Boolean)
-  return extras.join(' · ')
+  return modelCapsHint(caps)
 }
 
 function modelDetailLine(modelName: string, lookup: ShareLookup) {

@@ -63,12 +63,14 @@ def test_leaderboard_fills_output_window_from_catalog(
     from app.services.model_caps import CatalogIndex, ModelCaps
 
     index = CatalogIndex()
-    index.by_norm["claude-fable-5"] = ModelCaps(
+    caps = ModelCaps(
         context_window=200000,
         max_output_tokens=128000,
         reasoning=True,
         source="catalog",
     )
+    index.by_provider_norm[("anthropic", "claude-fable-5")] = caps
+    index.by_norm["claude-fable-5"] = caps
     monkeypatch.setattr("app.services.model_caps.load_catalog_index", lambda force=False: index)
     with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)):
         response = client.get("/api/admin/leaderboard", headers=auth_headers)

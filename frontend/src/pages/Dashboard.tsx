@@ -91,8 +91,7 @@ function LeaderboardTopSection({ items }: { items: DashboardLeaderboardTop[] }) 
                         {item.provider || '—'}
                       </div>
                       <div className="mt-2 truncate font-mono text-[11px] tabular-nums text-mist">
-                        上下文 {formatContextWindow(item.context_window_tokens)}
-                        {item.max_output_tokens ? ` · 输出 ${formatContextWindow(item.max_output_tokens)}` : ''}
+                        上下文 {formatContextWindow(item.context_window_tokens)} · 输出 {formatContextWindow(item.max_output_tokens)}
                       </div>
                     </div>
                     <div className="shrink-0 font-mono text-xl tabular-nums text-signal">{formatScore(item.score)}</div>

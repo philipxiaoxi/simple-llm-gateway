@@ -5,7 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type Account, type ModelCaps, type Provider, type QuotaItem } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { MIN_PASSWORD_LENGTH, RISK_LEVELS, cn, errorMessage, formatContextWindow, formatEmbeddedTimes, formatTime } from '../lib/utils'
+import { MIN_PASSWORD_LENGTH, RISK_LEVELS, cn, errorMessage, formatEmbeddedTimes, formatTime, modelCapsHint } from '../lib/utils'
 
 const QUOTA_WARN_HIGH = 90
 const QUOTA_WARN_MEDIUM = 70
@@ -415,17 +415,6 @@ function CollapsibleSection({ children }: { children: ReactNode }) {
 
 const MODELS_COLLAPSED_COUNT = 8
 
-function modelSummary(model: ModelCaps) {
-  const inputs = model.modalities?.input ?? []
-  const extras = [
-    model.context_window ? `上下文 ${formatContextWindow(model.context_window)}` : null,
-    model.max_output_tokens ? `输出 ${formatContextWindow(model.max_output_tokens)}` : null,
-    model.reasoning ? (model.reasoning_efforts?.length ? `思考 ${model.reasoning_efforts.join('/')}` : '思考') : null,
-    inputs.includes('image') ? '视觉' : null,
-  ].filter(Boolean)
-  return extras.join(' · ')
-}
-
 function ModelList({
   models,
   expanded,
@@ -442,21 +431,23 @@ function ModelList({
 
   return (
     <div>
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5">
         {visible.map((model) => (
           <button
             key={model.id}
             type="button"
             onClick={() => onEdit(model)}
-            className="flex min-w-0 items-start justify-between gap-2 rounded-md border border-line bg-ink/40 px-2.5 py-2 text-left hover:border-mist/40"
+            className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-line bg-ink/40 px-2.5 py-1.5 text-left hover:border-mist/40 lg:py-1"
           >
             <span className="min-w-0">
-              <span className="block truncate font-mono text-xs text-paper" title={model.id}>
+              <span className="block truncate font-mono text-xs text-paper lg:inline" title={model.id}>
                 {model.id}
               </span>
-              <span className="mt-0.5 block text-[11px] leading-4 text-mist">{modelSummary(model) || '点击修改能力'}</span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-mist lg:ml-2 lg:mt-0 lg:inline">
+                {modelCapsHint(model) || '点击修改能力'}
+              </span>
             </span>
-            <span className="shrink-0 pt-0.5">
+            <span className="shrink-0">
               {model.overridden?.length ? <Badge tone="warn">已覆盖</Badge> : <Badge tone="info">识别</Badge>}
             </span>
           </button>

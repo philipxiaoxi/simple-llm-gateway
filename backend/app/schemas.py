@@ -125,12 +125,52 @@ class ModelCapsOut(BaseModel):
 
 
 class ModelOverrideUpdate(BaseModel):
-    context_window: int | None = None
-    max_output_tokens: int | None = None
+    context_window: int | None = Field(default=None, gt=0)
+    max_output_tokens: int | None = Field(default=None, gt=0)
     reasoning: bool | None = None
     reasoning_efforts: list[str] | None = None
     modalities: dict[str, list[str]] | None = None
     clear: bool = False
+
+    @field_validator("reasoning_efforts")
+    @classmethod
+    def _normalize_efforts(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        items: list[str] = []
+        for item in value:
+            text = str(item).strip()
+            if text and text not in items:
+                items.append(text)
+        return items
+
+    @field_validator("modalities")
+    @classmethod
+    def _normalize_modalities(cls, value: dict[str, list[str]] | None) -> dict[str, list[str]] | None:
+        if value is None:
+            return None
+        allowed = {"input", "output"}
+        extra = set(value) - allowed
+        if extra:
+            raise ValueError("modalities 只接受 input / output")
+        cleaned: dict[str, list[str]] = {}
+        for key in ("input", "output"):
+            raw = value.get(key)
+            if raw is None:
+                continue
+            if not isinstance(raw, list) or not raw:
+                raise ValueError(f"modalities.{key} 必须是非空字符串列表")
+            items: list[str] = []
+            for item in raw:
+                text = str(item).strip()
+                if text and text not in items:
+                    items.append(text)
+            if not items:
+                raise ValueError(f"modalities.{key} 必须是非空字符串列表")
+            cleaned[key] = items
+        if not cleaned:
+            raise ValueError("modalities 至少包含 input 或 output")
+        return cleaned
 
 
 class OauthCallbackComplete(BaseModel):

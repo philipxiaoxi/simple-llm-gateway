@@ -219,7 +219,34 @@ def attach_local_coverage(db: Session, items: list[dict[str, Any]]) -> None:
         item["local_matches"] = matches
 
 
+_LEADERBOARD_CATALOG_PROVIDERS = {
+    "anthropic": "anthropic",
+    "openai": "openai",
+    "xai": "xai",
+    "deepseek": "deepseek",
+    "google": "google",
+    "gemini": "google",
+    "moonshot": "moonshotai",
+    "moonshot ai": "moonshotai",
+    "alibaba": "alibaba",
+    "qwen": "alibaba",
+    "qianwen": "alibaba",
+    "z.ai": "zai",
+    "zai": "zai",
+    "meta": "meta",
+}
+
+
+def _leaderboard_catalog_provider(item: dict[str, Any]) -> str | None:
+    for raw in (item.get("provider_slug"), item.get("provider")):
+        key = str(raw or "").strip().lower()
+        if key in _LEADERBOARD_CATALOG_PROVIDERS:
+            return _LEADERBOARD_CATALOG_PROVIDERS[key]
+    return None
+
+
 def _catalog_caps_for_entry(item: dict[str, Any], catalog):
+    catalog_provider = _leaderboard_catalog_provider(item)
     candidates: list[str] = []
     for raw in (item.get("pricing_official_model_id"), item.get("slug"), item.get("name")):
         if not raw:
@@ -234,7 +261,19 @@ def _catalog_caps_for_entry(item: dict[str, Any], catalog):
         if candidate in seen:
             continue
         seen.add(candidate)
-        matched = model_caps_service.match_catalog(candidate, None, catalog)
+        matched = model_caps_service.match_catalog(
+            candidate,
+            None,
+            catalog,
+            catalog_provider=catalog_provider,
+            fallback=False,
+        )
+        if matched is not None:
+            return matched
+    if catalog_provider is not None:
+        return None
+    for candidate in candidates:
+        matched = model_caps_service.match_catalog(candidate, None, catalog, fallback=True)
         if matched is not None:
             return matched
     return None

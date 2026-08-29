@@ -70,6 +70,23 @@ export function formatContextWindow(value: number | null | undefined) {
   return String(value)
 }
 
+export function modelCapsHint(caps?: {
+  context_window?: number | null
+  max_output_tokens?: number | null
+  reasoning?: boolean
+  reasoning_efforts?: string[] | null
+  modalities?: { input?: string[] | null } | null
+} | null) {
+  if (!caps) return ''
+  const extras = [
+    caps.context_window ? `上下文 ${formatContextWindow(caps.context_window)}` : null,
+    caps.max_output_tokens ? `输出 ${formatContextWindow(caps.max_output_tokens)}` : null,
+    caps.reasoning ? (caps.reasoning_efforts?.length ? `思考 ${caps.reasoning_efforts.join('/')}` : '思考') : null,
+    caps.modalities?.input?.includes('image') ? '视觉' : null,
+  ].filter(Boolean)
+  return extras.join(' · ')
+}
+
 export function formatBytes(value: number | null | undefined) {
   if (value == null) return '—'
   if (value < 1024) return `${value} B`

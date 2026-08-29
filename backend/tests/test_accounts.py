@@ -502,6 +502,44 @@ def test_model_override_survives_refresh(client: TestClient, auth_headers: dict[
     assert cleared.json()["context_window"] == 128000
 
 
+def test_model_override_rejects_invalid_payload(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from unittest.mock import AsyncMock, patch
+
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    account_id = created.json()["id"]
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {"data": [{"id": "deepseek-chat"}]}
+
+    with patch("app.providers.base.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        client.post(f"/api/admin/accounts/{account_id}/models", headers=auth_headers)
+
+    negative = client.patch(
+        f"/api/admin/accounts/{account_id}/models/deepseek-chat",
+        headers=auth_headers,
+        json={"context_window": -1},
+    )
+    assert negative.status_code == 422
+    bad_modalities = client.patch(
+        f"/api/admin/accounts/{account_id}/models/deepseek-chat",
+        headers=auth_headers,
+        json={"modalities": {"foo": ["text"]}},
+    )
+    assert bad_modalities.status_code == 422
+
+
 def test_refreshing_agent_account_models_updates_agent_route(client: TestClient, auth_headers: dict[str, str], monkeypatch) -> None:
     from app.routers.local_agent import _sync_agent
 

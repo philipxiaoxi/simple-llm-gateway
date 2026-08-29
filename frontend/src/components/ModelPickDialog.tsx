@@ -55,12 +55,17 @@ export function ModelPickDialog({
     })
   }
 
+  function orderedSelected() {
+    const chosen = new Set(selected)
+    return models.filter((item) => chosen.has(item.id)).map((item) => item.id)
+  }
+
   async function copySelected() {
     if (!selected.length) {
       notifyBad('请至少选择一个模型')
       return
     }
-    const text = buildText(selected)
+    const text = buildText(orderedSelected())
     try {
       await copyText(text)
       setPreview('')
@@ -119,7 +124,7 @@ export function ModelPickDialog({
           <Button type="button" variant="ghost" className="mr-auto" onClick={onClose}>
             取消
           </Button>
-          {extraActions ? extraActions(selected) : null}
+          {extraActions ? extraActions(orderedSelected()) : null}
           <Button type="button" onClick={() => void copySelected()}>
             {confirmLabel}
           </Button>
