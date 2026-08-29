@@ -86,21 +86,18 @@ body {
   border-radius: 99px;
 }
 
-/* 路由切换动画：淡入 + 轻微上移 */
+/* 路由切换：轻微淡入，避免从全透明起步造成闪屏 */
 @keyframes page-enter {
   from {
-    opacity: 0;
-    transform: translateY(8px);
+    opacity: 0.92;
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
 .page-enter {
-  /* backwards：动画结束后不保留 transform，避免创建包含块导致 fixed 定位失效 */
-  animation: page-enter 0.28s ease-out backwards;
+  animation: page-enter 0.12s ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
