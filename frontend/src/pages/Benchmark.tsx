@@ -171,15 +171,15 @@ export function BenchmarkPage() {
           )}
         </div>
         <div className="grid grid-cols-2 items-end gap-2 lg:flex lg:shrink-0 lg:flex-nowrap">
-          <Button type="button" variant="ghost" className="w-full lg:w-auto" onClick={() => void exportResults()}>
+          <Button type="button" variant="line" className="w-full lg:w-auto" onClick={() => void exportResults()}>
             <Download size={16} />
             导出历史
           </Button>
-          <Button type="button" variant="ghost" className="w-full lg:w-auto" onClick={() => void saveResults()} disabled={running || !visibleResults.length}>
+          <Button type="button" variant="line" className="w-full lg:w-auto" onClick={() => void saveResults()} disabled={running || !visibleResults.length}>
             <Save size={16} />
             保存本次
           </Button>
-          <Button type="button" variant="ghost" className="w-full lg:w-auto" onClick={() => setResults({})}>
+          <Button type="button" variant="line" className="w-full lg:w-auto" onClick={() => setResults({})}>
             <RotateCcw size={16} />
             清空结果
           </Button>
@@ -273,7 +273,7 @@ export function BenchmarkPage() {
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-mist">
                   <span>共 {targets.length} 个可用模型</span>
-                  <Button variant="line" className="min-h-9 px-3 text-xs" onClick={() => setSelectorOpen(true)}>
+                  <Button variant="line" className="px-3" onClick={() => setSelectorOpen(true)}>
                     <Search size={14} />
                     选择模型
                   </Button>
