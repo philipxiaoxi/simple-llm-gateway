@@ -3,6 +3,7 @@ import { Children, useEffect, useMemo, useRef, useState, type ReactNode } from '
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type Account, type ApiKeyItem, type ApiKeySort, type CcSwitchTarget, type GatewayAgent } from '../lib/api'
+import { openShareWithApiKey } from '../lib/shareTransfer'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { cn, errorMessage, formatTime, formatTokenCount, RISK_LEVELS } from '../lib/utils'
 
@@ -69,7 +70,7 @@ function MenuItem({
       onClick={onClick}
       className={cn(
         'block w-full rounded-md px-3 py-2 text-left text-sm transition',
-        danger ? 'text-danger hover:bg-danger/10' : 'text-paper hover:bg-white/5',
+        danger ? 'bg-danger/15 text-danger hover:bg-danger/25' : 'text-paper hover:bg-white/5',
       )}
     >
       {children}
@@ -107,7 +108,7 @@ function BoundAccountList({
     next[index] = next[target]
     next[target] = current
     onChange(next)
-    notifyInfo('调整顺序后，重复模型的裸名会归到排第一的账号')
+    notifyInfo('调整顺序后，排第一的账号优先使用')
   }
 
   function remove(index: number) {
@@ -135,7 +136,7 @@ function BoundAccountList({
           >
             <div className="min-w-0 flex-1 text-sm">
               {label}
-              {index === 0 ? <span className="ml-2 text-xs text-signal">优先 / 裸名</span> : null}
+              {index === 0 ? <span className="ml-2 text-xs text-signal">优先</span> : null}
             </div>
             <Button type="button" variant="line" disabled={index === 0} onClick={() => move(index, -1)}>
               上移
@@ -148,15 +149,25 @@ function BoundAccountList({
             >
               下移
             </Button>
-            <Button type="button" variant="line" disabled={selectedIds.length <= 1} onClick={() => remove(index)}>
+            <Button
+              type="button"
+              variant="line"
+              className="text-danger hover:border-danger hover:bg-danger/15"
+              disabled={selectedIds.length <= 1}
+              onClick={() => remove(index)}
+            >
               移除
             </Button>
           </div>
         )
       })}
       {remaining.length ? (
-        <div className="flex flex-wrap items-end gap-2">
-          <Select value={addId} onChange={(event) => setAddId(event.target.value ? Number(event.target.value) : '')}>
+        <div className="flex items-end gap-2">
+          <Select
+            className="min-w-0 flex-1"
+            value={addId}
+            onChange={(event) => setAddId(event.target.value ? Number(event.target.value) : '')}
+          >
             <option value="">添加账号</option>
             {remaining.map((account) => (
               <option key={account.id} value={account.id}>
@@ -164,7 +175,7 @@ function BoundAccountList({
               </option>
             ))}
           </Select>
-          <Button type="button" variant="line" disabled={!addId} onClick={add}>
+          <Button type="button" variant="line" className="shrink-0" disabled={!addId} onClick={add}>
             添加
           </Button>
         </div>
@@ -261,6 +272,7 @@ export function KeysPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [accountFilter, setAccountFilter] = useState('')
   const [revealed, setRevealed] = useState<Record<number, string>>({})
+  const [createDialog, setCreateDialog] = useState(false)
   const [ccPanel, setCcPanel] = useState<
     Record<number, { models: string[]; targets: CcSwitchTarget[]; vscode: Record<string, unknown> }>
   >({})
@@ -269,6 +281,10 @@ export function KeysPage() {
     app: string
     label: string
     models: string[]
+  } | null>(null)
+  const [boundAccountsDialog, setBoundAccountsDialog] = useState<{
+    keyName: string
+    accounts: NonNullable<ApiKeyItem['accounts']>
   } | null>(null)
   const [editDialog, setEditDialog] = useState<{ keyId: number; name: string; accountIds: number[] } | null>(null)
 
@@ -287,6 +303,7 @@ export function KeysPage() {
       }
       setName('')
       setAccountIds([])
+      setCreateDialog(false)
     },
     onError: (error: Error) => notifyBad(error.message),
   })
@@ -354,6 +371,22 @@ export function KeysPage() {
       notifyOk('已复制分享文案，发给对方即可。')
     } catch (error) {
       notifyBad(errorMessage(error, '复制分享文案失败'))
+    }
+  }
+
+  async function queryKey(id: number) {
+    try {
+      const full = revealed[id] ?? (await api.key(id)).key
+      if (!full) {
+        notifyBad('无法读取完整 Key')
+        return
+      }
+      setRevealed((current) => ({ ...current, [id]: full }))
+      if (!openShareWithApiKey(full)) {
+        notifyBad('无法打开新标签页，请允许浏览器打开弹窗后重试')
+      }
+    } catch (error) {
+      notifyBad(errorMessage(error, '查询 Key 失败'))
     }
   }
 
@@ -432,7 +465,7 @@ export function KeysPage() {
         <div>
           <h1 className="text-2xl font-semibold">API Key</h1>
           <p className="mt-1 text-sm text-mist">
-            创建时绑定一个或多个上游账号、网关代理账号。排第一的优先使用裸名，其余冲突模型需加前缀。需要时直接复制完整 Key。
+            创建时绑定一个或多个上游账号、网关代理账号。排第一的账号优先使用。需要时直接复制完整 Key。
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -460,21 +493,11 @@ export function KeysPage() {
           <Button type="button" variant="line" onClick={() => window.open('/share', '_blank', 'noopener')}>
             打开自助查询
           </Button>
-        </div>
-      </div>
-      <Card className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]">
-        <Field label="备注">
-          <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="给同事 A" />
-        </Field>
-        <Field label="绑定上游">
-          <BoundAccountList accounts={availableAccounts} selectedIds={accountIds} onChange={setAccountIds} />
-        </Field>
-        <div className="flex items-end">
-          <Button disabled={!name || !accountIds.length || createMutation.isPending} onClick={() => createMutation.mutate()}>
+          <Button type="button" onClick={() => setCreateDialog(true)}>
             生成 Key
           </Button>
         </div>
-      </Card>
+      </div>
       <Card className="grid gap-3 md:grid-cols-3">
         <Field label="搜索">
           <Input
@@ -512,6 +535,7 @@ export function KeysPage() {
                   provider: item.provider,
                   source: item.account_source,
                   status: item.status,
+                  risk_level: item.risk_level,
                 },
               ]
           return (
@@ -520,23 +544,41 @@ export function KeysPage() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="text-lg font-medium">{item.name}</div>
-                    <Badge
-                      tone={RISK_LEVELS[item.risk_level]?.tone ?? 'mist'}
-                      title={`上游账号风险：${RISK_LEVELS[item.risk_level]?.hint ?? ''}`}
-                    >
-                      {RISK_LEVELS[item.risk_level]?.label ?? item.risk_level}
-                    </Badge>
+                    {boundAccounts.length > 1 ? (
+                      <Badge tone="info">多账号风险</Badge>
+                    ) : (
+                      <Badge
+                        tone={RISK_LEVELS[item.risk_level]?.tone ?? 'mist'}
+                        title={`上游账号风险：${RISK_LEVELS[item.risk_level]?.hint ?? ''}`}
+                      >
+                        {RISK_LEVELS[item.risk_level]?.label ?? item.risk_level}
+                      </Badge>
+                    )}
                     <Badge tone={item.status === 'active' ? 'ok' : 'mist'}>{item.status}</Badge>
                   </div>
                   <div className="mt-1 font-mono text-xs text-mist">{item.key_prefix}</div>
                   <div className="mt-2 grid gap-1 text-xs text-mist">
-                    {boundAccounts.map((account, index) => (
-                      <div key={`${item.id}-${account.id || index}`}>
-                        {accountSourceLabel(account.source)} {account.name} · {account.provider}
-                        {index === 0 ? <span className="ml-1 text-signal">优先 / 裸名</span> : null}
-                        {account.model_prefix ? <span className="ml-1 font-mono">/{account.model_prefix}</span> : null}
+                    {boundAccounts.length > 1 ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div>
+                          {accountSourceLabel(boundAccounts[0].source)} {boundAccounts[0].name} · {boundAccounts[0].provider}
+                        </div>
+                        <button
+                          type="button"
+                          className="text-left text-signal underline decoration-signal/50 underline-offset-2 hover:text-paper"
+                          onClick={() => setBoundAccountsDialog({ keyName: item.name, accounts: boundAccounts })}
+                        >
+                          已绑定 {boundAccounts.length} 个账号
+                        </button>
                       </div>
-                    ))}
+                    ) : boundAccounts.length === 1 ? (
+                      <div>
+                        {accountSourceLabel(boundAccounts[0].source)} {boundAccounts[0].name} · {boundAccounts[0].provider}
+                      </div>
+                    ) : null}
+                    {boundAccounts.length > 1 ? (
+                      <div className="text-xs text-mist">风险请查看已绑定账号明细</div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -555,6 +597,9 @@ export function KeysPage() {
                 <span>创建时间：{formatTime(item.created_at)}</span>
               </div>
               <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                <Button type="button" variant="line" onClick={() => void queryKey(item.id)}>
+                  查询
+                </Button>
                 <Button variant="line" onClick={() => void copyKey(item.id)}>
                   复制 Key
                 </Button>
@@ -633,12 +678,76 @@ export function KeysPage() {
           onClose={() => setDialog(null)}
         />
       ) : null}
+      {createDialog ? (
+        <Dialog title="生成 API Key" onClose={() => setCreateDialog(false)}>
+          <div className="grid gap-3">
+            <Field label="备注">
+              <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="给同事 A" />
+            </Field>
+            <Field label="绑定上游">
+              <BoundAccountList accounts={availableAccounts} selectedIds={accountIds} onChange={setAccountIds} />
+            </Field>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setCreateDialog(false)}>
+                取消
+              </Button>
+              <Button disabled={!name || !accountIds.length || createMutation.isPending} onClick={() => createMutation.mutate()}>
+                生成 Key
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      ) : null}
+      {boundAccountsDialog ? (
+        <Dialog
+          title={`绑定账号 · ${boundAccountsDialog.keyName}`}
+          onClose={() => setBoundAccountsDialog(null)}
+        >
+          <div className="grid gap-2">
+            {boundAccountsDialog.accounts.map((account, index) => {
+              const gatewayAccount = accounts.find((item) => item.id === account.id)
+              const onlineRouteIds = new Set(
+                (agentData?.items ?? [])
+                  .filter((agent: GatewayAgent) => agent.status === 'online')
+                  .flatMap((agent: GatewayAgent) => agent.routes.map((route) => route.id)),
+              )
+              const isOnline =
+                account.source !== 'agent' ||
+                onlineRouteIds.has(gatewayAccount?.agent_route_id ?? '')
+              return (
+                <div
+                  key={account.id}
+                  className="flex items-center justify-between gap-3 rounded-md border border-line bg-ink/40 px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0">
+                    {accountSourceLabel(account.source)} {account.name} · {account.provider}
+                    {index === 0 ? <span className="ml-1 text-signal">优先</span> : null}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 text-xs">
+                    <Badge tone={account.status === 'active' ? 'ok' : 'mist'}>
+                      {account.status === 'active' ? '启用' : '停用'}
+                    </Badge>
+                    <Badge tone={RISK_LEVELS[account.risk_level]?.tone ?? 'mist'}>
+                      {RISK_LEVELS[account.risk_level]?.label ?? account.risk_level}
+                    </Badge>
+                    {account.source === 'agent' ? (
+                      <Badge tone={isOnline ? 'ok' : 'bad'}>{isOnline ? '在线' : '离线'}</Badge>
+                    ) : null}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Dialog>
+      ) : null}
       {editDialog ? (
         <KeyEditDialog
           keyId={editDialog.keyId}
           initialName={editDialog.name}
           initialAccountIds={editDialog.accountIds}
-          accounts={availableAccounts}
+          accounts={accounts.filter(
+            (account) => availableAccounts.includes(account) || editDialog.accountIds.includes(account.id),
+          )}
           onClose={() => setEditDialog(null)}
           onSaved={() => {
             queryClient.invalidateQueries({ queryKey: ['keys'] })

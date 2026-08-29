@@ -80,7 +80,7 @@ def cc_switch_links(key_id: int, db: Session = Depends(get_db)) -> dict:
     item = _get_key(db, key_id)
     settings = get_settings()
     plaintext = _plaintext_key(item)
-    display_name = f"{item.name} · {item.account.name}" if item.account else item.name
+    display_name = _display_name(item)
     models = public_model_ids(item)
     return {
         "display_name": display_name,
@@ -103,7 +103,7 @@ def cc_switch_build(key_id: int, payload: CcSwitchBuildRequest, db: Session = De
         raise HTTPException(status_code=400, detail="不支持的 CC Switch 应用")
     settings = get_settings()
     plaintext = _plaintext_key(item)
-    display_name = f"{item.name} · {item.account.name}" if item.account else item.name
+    display_name = _display_name(item)
     models = public_model_ids(item)
     try:
         url = build_ccswitch_url_for_app(
@@ -169,6 +169,13 @@ def _plaintext_key(item: ApiKey) -> str:
         return decrypt_secret(item.key_encrypted, get_settings().app_secret_key)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+def _display_name(item: ApiKey) -> str:
+    accounts = item.account_links
+    if len(accounts) > 1:
+        return f"{item.name} · 多个上游账号"
+    return f"{item.name} · {item.account.name}" if item.account else item.name
 
 
 def _token_usage_by_key(db: Session, key_ids: list[int]) -> dict[int, tuple[int, int]]:

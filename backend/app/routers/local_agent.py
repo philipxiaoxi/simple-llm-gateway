@@ -241,6 +241,7 @@ def _agent_to_out(agent: GatewayAgent) -> dict[str, object]:
                 "models_updated_at": route.models_updated_at.isoformat() if route.models_updated_at else None,
                 "account_id": accounts[route.route_id].id if route.route_id in accounts else None,
                 "model_prefix": accounts[route.route_id].model_prefix if route.route_id in accounts else None,
+                "status": accounts[route.route_id].status if route.route_id in accounts else "disabled",
             }
             for route in agent.routes
         ],

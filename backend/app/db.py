@@ -123,6 +123,15 @@ def _ensure_columns(engine: Engine) -> None:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN session_key VARCHAR(128)"))
         if "reasoning_json" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN reasoning_json TEXT"))
+        if "account_source" not in log_columns:
+            connection.execute(text("ALTER TABLE request_logs ADD COLUMN account_source VARCHAR(16) DEFAULT 'upstream' NOT NULL"))
+            connection.execute(
+                text(
+                    "UPDATE request_logs SET account_source = COALESCE("
+                    "(SELECT source FROM upstream_accounts WHERE upstream_accounts.id = request_logs.account_id), "
+                    "'upstream')"
+                )
+            )
         benchmark_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(benchmark_results)"))}
         if benchmark_columns and "timeout" not in benchmark_columns:
             connection.execute(text("ALTER TABLE benchmark_results ADD COLUMN timeout BOOLEAN DEFAULT 0 NOT NULL"))
@@ -173,12 +182,33 @@ def _ensure_api_key_accounts(connection) -> None:  # type: ignore[no-untyped-def
     )
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_api_key_accounts_api_key_id ON api_key_accounts (api_key_id)"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_api_key_accounts_account_id ON api_key_accounts (account_id)"))
+    migrate_legacy_api_key_accounts(connection)
+
+
+def migrate_legacy_api_key_accounts(connection) -> list[dict[str, object]]:  # type: ignore[no-untyped-def]
+    """将旧 api_keys.account_id 转为有序的 api_key_accounts 关联。"""
     tables = {
         row[0]
         for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
     }
     if "api_keys" not in tables:
-        return
+        return []
+    pending = connection.execute(
+        text(
+            """
+            SELECT api_keys.id AS key_id, api_keys.name AS key_name,
+                   api_keys.account_id AS account_id, upstream_accounts.name AS account_name
+            FROM api_keys
+            LEFT JOIN upstream_accounts ON upstream_accounts.id = api_keys.account_id
+            WHERE api_keys.account_id IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM api_key_accounts
+                  WHERE api_key_accounts.api_key_id = api_keys.id
+                    AND api_key_accounts.account_id = api_keys.account_id
+              )
+            """
+        )
+    ).mappings().all()
     connection.execute(
         text(
             """
@@ -194,6 +224,7 @@ def _ensure_api_key_accounts(connection) -> None:  # type: ignore[no-untyped-def
             """
         )
     )
+    return [dict(row) for row in pending]
 
 
 def _backfill_account_model_prefixes(connection) -> None:  # type: ignore[no-untyped-def]
@@ -295,6 +326,7 @@ def _ensure_request_logs_have_no_parent_fks(engine: Engine) -> None:
                 id INTEGER NOT NULL PRIMARY KEY,
                 account_id INTEGER NOT NULL,
                 account_name VARCHAR(128),
+                account_source VARCHAR(16) NOT NULL,
                 api_key_id INTEGER,
                 api_key_name VARCHAR(128),
                 protocol VARCHAR(32) NOT NULL,
@@ -319,7 +351,7 @@ def _ensure_request_logs_have_no_parent_fks(engine: Engine) -> None:
         cursor.execute(
             """
             INSERT INTO request_logs_new (
-                id, account_id, account_name, api_key_id, api_key_name, protocol, model, stream, status,
+                id, account_id, account_name, account_source, api_key_id, api_key_name, protocol, model, stream, status,
                 http_status, error_message, prompt_tokens, completion_tokens, total_tokens,
                 latency_ms, request_body, response_body, session_key, reasoning_json,
                 created_at, updated_at
@@ -328,6 +360,7 @@ def _ensure_request_logs_have_no_parent_fks(engine: Engine) -> None:
                 request_logs.id,
                 request_logs.account_id,
                 COALESCE(request_logs.account_name, upstream_accounts.name),
+                COALESCE(request_logs.account_source, upstream_accounts.source, 'upstream'),
                 request_logs.api_key_id,
                 COALESCE(request_logs.api_key_name, api_keys.name),
                 request_logs.protocol,

@@ -157,8 +157,16 @@ def reasoning_map_from_log(log: RequestLog) -> dict[str, str]:
     return reasoning_map_from_openai_payload(body)
 
 
-def load_reasoning_map(db: Session, api_key_id: int, session_key: str | None) -> dict[str, str]:
-    query = select(RequestLog).where(RequestLog.api_key_id == api_key_id)
+def load_reasoning_map(
+    db: Session,
+    api_key_id: int,
+    account_id: int,
+    session_key: str | None,
+) -> dict[str, str]:
+    query = select(RequestLog).where(
+        RequestLog.api_key_id == api_key_id,
+        RequestLog.account_id == account_id,
+    )
     if session_key:
         query = query.where(RequestLog.session_key == session_key)
     logs = list(db.scalars(query.order_by(RequestLog.id.desc()).limit(20)).all())

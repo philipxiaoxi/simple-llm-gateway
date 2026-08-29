@@ -50,8 +50,8 @@ def test_agents_keep_registered_machine_and_routes_after_disconnect(client: Test
                 "last_connected_at": response.json()["items"][0]["last_connected_at"],
                 "last_disconnected_at": None,
                 "routes": [
-                    {"id": "deepseek-local", "name": "DeepSeek", "provider": "deepseek", "models": [], "models_updated_at": None},
-                    {"id": "vendor-a", "name": "Vendor A", "provider": "openai_generic", "models": [], "models_updated_at": None},
+                    {"id": "deepseek-local", "name": "DeepSeek", "provider": "deepseek", "models": [], "models_updated_at": None, "account_id": 1, "model_prefix": "DeepSeek", "status": "active"},
+                    {"id": "vendor-a", "name": "Vendor A", "provider": "openai_generic", "models": [], "models_updated_at": None, "account_id": 2, "model_prefix": "Vendor-A", "status": "active"},
                 ],
             }],
             "total": 1,
@@ -74,6 +74,32 @@ def test_agent_routes_use_local_relay_base_url(client: TestClient) -> None:
         assert account.base_url == "http://127.0.0.1:8000/r/deepseek-local/v1"
     finally:
         session.close()
+
+
+def test_disabling_agent_route_makes_its_account_unavailable(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    _sync_agent("macbook-studio", {"deepseek-local": {"id": "deepseek-local", "name": "DeepSeek", "provider": "deepseek"}})
+    session = get_session_factory()()
+    try:
+        account = session.scalar(select(UpstreamAccount).where(UpstreamAccount.agent_route_id == "deepseek-local"))
+        assert account is not None
+        account.models_json = '["deepseek-chat"]'
+        session.commit()
+        account_id = account.id
+    finally:
+        session.close()
+
+    updated = client.patch(
+        f"/api/admin/accounts/{account_id}",
+        headers=auth_headers,
+        json={"status": "disabled"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["status"] == "disabled"
+
+    detail = client.get("/api/admin/agents/macbook-studio", headers=auth_headers)
+    assert detail.json()["routes"][0]["status"] == "disabled"
 
 
 def test_agent_reconnect_removes_routes_not_in_registration(client: TestClient, auth_headers: dict[str, str]) -> None:

@@ -1,7 +1,9 @@
+import { RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
 import { Badge, Button, Card, Field, Input } from '../components/ui'
 import { api, type CcSwitchTarget, type ShareLookup } from '../lib/api'
+import { listenForShareApiKey } from '../lib/shareTransfer'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { MIN_KEY_LENGTH, cn, errorMessage, formatTokenCount } from '../lib/utils'
 
@@ -23,19 +25,24 @@ function accountSourceLabel(source: 'upstream' | 'agent') {
   return source === 'agent' ? '[网关]' : '[上游]'
 }
 
+function accountStatusLabel(account: ShareLookup['accounts'][number]) {
+  if (account.source === 'agent') return account.status === 'online' ? '在线' : '离线'
+  return account.status === 'active' ? '已启用' : '未启用'
+}
+
+function isAccountAvailable(account: ShareLookup['accounts'][number]) {
+  return account.source === 'agent' ? account.status === 'online' : account.status === 'active'
+}
+
 function aiConfigText(lookup: ShareLookup, apiKey: string) {
   const models =
     lookup.models.length > 0
       ? lookup.models.map((modelName) => `- ${modelName}`).join('\n')
       : '- （暂无模型列表，请联系管理员先获取模型）'
   return [
-    '请帮我把下面这个AI一体化服务平台配置接入到我正在使用的客户端。',
-    '',
-    '这是一个同时兼容 OpenAI 和 Anthropic 协议的 AI 服务平台。请根据我用的客户端选择对应协议，不要混用 Base URL。',
+    `请先询问我希望为这项配置使用什么名称；默认建议名称是「${lookup.name}」，确认或修改名称后，再将以下 AI 服务接入我正在使用的客户端。根据客户端协议选择对应的 Base URL，不要混用。`,
     '',
     `API Key：${apiKey}`,
-    `备注：${lookup.name}`,
-    `绑定账号：${lookup.account_name ? `${accountSourceLabel(lookup.account_source)} ${lookup.account_name}` : '未绑定'}（${lookup.provider_label}）`,
     '',
     '可用模型：',
     models,
@@ -97,6 +104,8 @@ export function SharePage() {
   const aiCopiedTimerRef = useRef<number | undefined>(undefined)
 
   useEffect(() => () => window.clearTimeout(aiCopiedTimerRef.current), [])
+
+  useEffect(() => listenForShareApiKey(setRawKey), [])
 
   useEffect(() => {
     const trimmed = rawKey.trim()
@@ -184,6 +193,18 @@ export function SharePage() {
     notifyOk(`已复制 ${modelName}`)
   }
 
+  function refreshLookup() {
+    const trimmed = rawKey.trim()
+    if (trimmed.length < MIN_KEY_LENGTH) {
+      notifyBad('请先输入完整 API Key')
+      return
+    }
+    setLookup(null)
+    setError('')
+    setRawKey('')
+    window.setTimeout(() => setRawKey(trimmed), 0)
+  }
+
   async function confirmDialog(values: CcSwitchValues) {
     if (!dialog) return
     try {
@@ -203,7 +224,20 @@ export function SharePage() {
     }
   }
 
-  const usable = lookup && lookup.status === 'active' && lookup.account_status === 'active'
+  const boundAccounts: ShareLookup['accounts'] = lookup?.accounts.length
+    ? lookup.accounts
+    : lookup
+      ? [{
+          id: 0,
+          name: lookup.account_name || '未绑定',
+          source: lookup.account_source,
+          provider: lookup.provider,
+          status: lookup.account_status,
+          risk_level: lookup.risk_level,
+          model_prefix: '',
+        }]
+      : []
+  const usable = Boolean(lookup && lookup.status === 'active' && lookup.models.length > 0 && boundAccounts.some(isAccountAvailable))
 
   return (
     <div className="page-enter min-h-svh px-4 py-10">
@@ -217,48 +251,76 @@ export function SharePage() {
         </div>
 
         <Card className="space-y-3">
-          <Field label="API Key">
-            <Input
-              value={rawKey}
-              onChange={(event) => setRawKey(event.target.value)}
-              placeholder="sk-…"
-              autoComplete="off"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-          </Field>
+          <div className="flex items-end gap-2">
+            <div className="min-w-0 flex-1">
+              <Field label="API Key">
+                <Input
+                  value={rawKey}
+                  onChange={(event) => setRawKey(event.target.value)}
+                  placeholder="sk-…"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+              </Field>
+            </div>
+            <Button type="button" variant="line" className="shrink-0" onClick={refreshLookup} disabled={loading} title="重新查询 API Key">
+              <RefreshCw size={16} className={loading ? 'animate-spin' : undefined} />
+              刷新
+            </Button>
+          </div>
           {loading ? <div className="text-sm text-mist">正在识别 Key…</div> : null}
           {error ? <div className="text-sm text-danger">{error}</div> : null}
         </Card>
 
         {lookup ? (
           <Card className="space-y-3">
-            <div
-              className={cn(
-                'rounded-md border px-3 py-2 text-sm',
-                RISK_META[lookup.risk_level]?.className ?? 'border-line bg-ink/40 text-mist',
-              )}
-            >
-              <span className="font-semibold">绑定账号 · {RISK_META[lookup.risk_level]?.label ?? lookup.risk_level}</span>
-              <span className="ml-2 opacity-80">{RISK_META[lookup.risk_level]?.hint ?? ''}</span>
-              <div className="mt-1 text-xs opacity-70">风险指绑定账号来源，与本站无关。</div>
-            </div>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <div className="text-lg font-medium">{lookup.name}</div>
-                <div className="mt-1 text-sm text-mist">
-                  绑定账号：{lookup.account_name ? `${accountSourceLabel(lookup.account_source)} ${lookup.account_name}` : '未绑定'} ·{' '}
-                  {lookup.provider_label}
-                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge tone={lookup.status === 'active' ? 'ok' : 'bad'}>
                   Key {lookup.status === 'active' ? '可用' : '已停用'}
                 </Badge>
-                <Badge tone={lookup.account_status === 'active' ? 'ok' : 'bad'}>
-                  账号 {lookup.account_status === 'active' ? '可用' : '不可用'}
+              </div>
+            </div>
+            <div className="rounded-lg border border-line bg-ink/30 p-3">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">绑定账号风险</div>
+                  <div className="mt-1 text-sm text-mist">风险等级来自各上游账号，与本站无关。</div>
+                </div>
+                <Badge tone={lookup.accounts.length > 1 ? 'info' : 'mist'}>
+                  {lookup.accounts.length} 个账号
                 </Badge>
+              </div>
+              <div className="mt-3 grid gap-2">
+                {boundAccounts.map((account, index) => {
+                  const risk = RISK_META[account.risk_level]
+                  return (
+                    <div
+                      key={account.id}
+                      className={cn('flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2.5', risk?.className ?? 'border-line bg-ink/40 text-mist')}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 font-medium">
+                          <span>{accountSourceLabel(account.source)} {account.name}</span>
+                          <Badge tone={isAccountAvailable(account) ? 'ok' : 'bad'}>
+                            {accountStatusLabel(account)}
+                          </Badge>
+                          {index === 0 ? <Badge tone="info">优先使用</Badge> : <span className="text-xs opacity-70">第 {index + 1} 个</span>}
+                        </div>
+                        <div className="mt-1 text-xs opacity-70">模型前缀：{'model_prefix' in account && account.model_prefix ? account.model_prefix : '自动生成'}</div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="font-semibold">{risk?.label ?? account.risk_level}</div>
+                        <div className="mt-1 max-w-xs text-xs opacity-70">{risk?.hint ?? ''}</div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">

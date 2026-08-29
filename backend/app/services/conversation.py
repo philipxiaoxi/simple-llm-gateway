@@ -267,6 +267,7 @@ def append_log_messages(db: Session, log_id: int, messages: list[dict[str, Any]]
 def find_continuation_log(
     db: Session,
     *,
+    account_id: int,
     api_key_id: int,
     protocol: str,
     request_body: dict[str, Any],
@@ -276,6 +277,7 @@ def find_continuation_log(
         return db.scalar(
             select(RequestLog)
             .where(
+                RequestLog.account_id == account_id,
                 RequestLog.api_key_id == api_key_id,
                 RequestLog.session_key == session_key,
                 RequestLog.protocol == protocol,
@@ -288,7 +290,11 @@ def find_continuation_log(
         return None
     candidates = db.scalars(
         select(RequestLog)
-        .where(RequestLog.api_key_id == api_key_id, RequestLog.protocol == protocol)
+        .where(
+            RequestLog.account_id == account_id,
+            RequestLog.api_key_id == api_key_id,
+            RequestLog.protocol == protocol,
+        )
         .order_by(RequestLog.id.desc())
         .limit(20)
     ).all()

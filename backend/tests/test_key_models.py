@@ -23,12 +23,16 @@ class FakeAccount:
         status: str = "active",
         models: list[str] | None = None,
         prefix: str | None = None,
+        source: str = "upstream",
+        agent_route_id: str | None = None,
     ) -> None:
         self.id = account_id
         self.name = name
         self.status = status
         self.models_json = json.dumps(models) if models is not None else None
         self.model_prefix = prefix
+        self.source = source
+        self.agent_route_id = agent_route_id
 
 
 class FakeLink:
@@ -75,6 +79,12 @@ def test_catalog_keeps_unique_raw_ids() -> None:
     assert all(entry.public_id == entry.raw_id for entry in catalog)
 
 
+def test_catalog_deduplicates_models_from_one_account() -> None:
+    key = FakeKey([FakeAccount(1, "one", models=["chat", "chat", " coder ", "coder"], prefix="one")])
+
+    assert [entry.public_id for entry in build_model_catalog(key)] == ["chat", "coder"]
+
+
 def test_catalog_prefixes_colliding_models() -> None:
     key = FakeKey(
         [
@@ -112,6 +122,14 @@ def test_catalog_skips_disabled_accounts() -> None:
     catalog = build_model_catalog(key)
     assert [entry.public_id for entry in catalog] == ["chat"]
     assert catalog[0].account.id == 2
+
+
+def test_catalog_skips_offline_agent_accounts(monkeypatch) -> None:
+    account = FakeAccount(1, "local", models=["chat"], prefix="local", source="agent", agent_route_id="local-route")
+    key = FakeKey([account])
+    monkeypatch.setattr("app.services.local_agent_relay.local_agent_relay.is_agent_online_for_route", lambda route_id: False)
+
+    assert build_model_catalog(key) == []
 
 
 def test_catalog_excludes_empty_models_when_multiple_accounts() -> None:

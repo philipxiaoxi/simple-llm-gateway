@@ -249,6 +249,7 @@ def save_log(
     if isinstance(request_body, dict):
         existing = find_continuation_log(
             db,
+            account_id=account_id,
             api_key_id=api_key_id,
             protocol=protocol,
             request_body=request_body,
@@ -288,6 +289,7 @@ def save_log(
     log = RequestLog(
         account_id=account_id,
         account_name=stored_account.name if stored_account is not None else None,
+        account_source=stored_account.source if stored_account is not None else "upstream",
         api_key_id=api_key_id,
         api_key_name=stored_key.name if stored_key is not None else None,
         protocol=protocol,
@@ -381,7 +383,7 @@ async def handle_chat(
     session_key = extract_session_key(body, request_headers)
     inbound_reasoning = reasoning_map_from_messages(messages)
     stored_reasoning = merge_reasoning_maps(
-        load_reasoning_map(db, api_key.id, session_key),
+        load_reasoning_map(db, api_key.id, account.id, session_key),
         inbound_reasoning,
     )
     inject_reasoning_into_messages(messages, stored_reasoning)

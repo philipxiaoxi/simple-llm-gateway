@@ -187,6 +187,7 @@ class KeyBoundAccountOut(BaseModel):
     provider: str
     source: str
     status: str
+    risk_level: str = "low"
     model_prefix: str | None = None
 
 

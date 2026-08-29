@@ -73,6 +73,16 @@ npm run dev
 
 浏览器打开 http://127.0.0.1:5173 ，用 `.env` 里的管理员账号登录。
 
+### 4. 迁移旧 API Key 绑定
+
+多账号绑定功能上线前，旧版本只在 `api_keys.account_id` 中保存一个上游账号。升级后可执行：
+
+```bash
+./.venv/bin/python scripts/migrate_key_accounts.py
+```
+
+脚本会把尚未迁移的旧绑定写入 `api_key_accounts`，逐条输出 Key 和账号名称，重复执行不会重复写入。旧版本没有保存其它账号绑定，因此无法自动恢复历史上的多个账号；需要在后台 API Key 页面手动编辑并添加其它账号。
+
 ## 客户端怎么填
 
 把下面的 `https://你的站` 换成网关地址，Key 在后台「API Key」页生成。

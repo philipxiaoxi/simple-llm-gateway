@@ -2,9 +2,11 @@ from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.db import get_session_factory
-from app.models import RequestLog
+from app.models import RequestLog, UpstreamAccount
+from app.routers.local_agent import _sync_agent
 
 
 def _make_key(client: TestClient, auth_headers: dict[str, str], name: str = "同事A") -> dict:
@@ -30,6 +32,76 @@ def test_share_lookup_requires_full_key(client: TestClient) -> None:
 def test_share_lookup_unknown_key(client: TestClient) -> None:
     response = client.post("/api/share/lookup", json={"api_key": "sk-not-exist-xxxxx"})
     assert response.status_code == 404
+
+
+def test_share_lookup_includes_risk_for_each_bound_account(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    first_account = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "Official", "provider": "deepseek", "api_key": "sk-official", "risk_level": "low"},
+    ).json()
+    second_account = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "Relay", "provider": "grok", "api_key": "sk-relay", "risk_level": "high"},
+    ).json()
+    created = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "多个上游", "account_ids": [first_account["id"], second_account["id"]]},
+    ).json()
+
+    response = client.post("/api/share/lookup", json={"api_key": created["key"]})
+
+    assert response.status_code == 200
+    assert response.json()["accounts"] == [
+        {
+            "id": first_account["id"],
+            "name": "Official",
+            "source": "upstream",
+            "provider": "deepseek",
+            "status": "active",
+            "risk_level": "low",
+            "model_prefix": "Official",
+        },
+        {
+            "id": second_account["id"],
+            "name": "Relay",
+            "source": "upstream",
+            "provider": "grok",
+            "status": "active",
+            "risk_level": "high",
+            "model_prefix": "Relay",
+        },
+    ]
+
+
+def test_share_lookup_marks_offline_agent_and_hides_its_models(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    _sync_agent("macbook-studio", {"deepseek-local": {"id": "deepseek-local", "name": "DeepSeek", "provider": "deepseek"}})
+    session = get_session_factory()()
+    try:
+        account = session.scalar(select(UpstreamAccount).where(UpstreamAccount.agent_route_id == "deepseek-local"))
+        assert account is not None
+        account.models_json = '["deepseek-chat"]'
+        session.commit()
+        account_id = account.id
+    finally:
+        session.close()
+    created = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "本地路由", "account_id": account_id},
+    ).json()
+
+    response = client.post("/api/share/lookup", json={"api_key": created["key"]})
+
+    assert response.status_code == 200
+    assert response.json()["accounts"][0]["status"] == "offline"
+    assert response.json()["models"] == []
 
 
 def test_share_lookup_and_cc_switch_without_admin(

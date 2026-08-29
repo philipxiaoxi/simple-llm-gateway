@@ -28,7 +28,14 @@ def parse_models_json(raw: str | None) -> list[str]:
         return []
     if not isinstance(parsed, list):
         return []
-    return [str(item) for item in parsed if str(item).strip()]
+    models: list[str] = []
+    seen: set[str] = set()
+    for item in parsed:
+        model = str(item).strip()
+        if model and model not in seen:
+            seen.add(model)
+            models.append(model)
+    return models
 
 
 def build_ccswitch_url(

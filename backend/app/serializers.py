@@ -95,6 +95,7 @@ def key_to_out(
                 provider=account.provider,
                 source=account.source,
                 status=account.status,
+                risk_level=account.risk_level,
                 model_prefix=account.model_prefix,
             )
             for account in accounts
@@ -107,7 +108,7 @@ def log_to_out(item: RequestLog, include_bodies: bool = False) -> LogOut:
         id=item.id,
         account_id=item.account_id,
         account_name=item.account_name or (item.account.name if item.account else ""),
-        account_source=item.account.source if item.account else "upstream",
+        account_source=item.account_source or (item.account.source if item.account else "upstream"),
         api_key_id=item.api_key_id,
         api_key_name=item.api_key_name or (item.api_key.name if item.api_key else ""),
         protocol=item.protocol,

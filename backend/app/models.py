@@ -151,6 +151,7 @@ class RequestLog(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     account_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
     account_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    account_source: Mapped[str] = mapped_column(String(16), default="upstream", nullable=False)
     api_key_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     api_key_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     protocol: Mapped[str] = mapped_column(String(32), nullable=False)

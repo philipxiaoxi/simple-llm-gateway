@@ -96,6 +96,9 @@ class LocalAgentRelay:
     def is_agent_online(self, agent_id: str) -> bool:
         return any(connection.agent_id == agent_id for connection in self._routes.values())
 
+    def is_agent_online_for_route(self, route_id: str) -> bool:
+        return route_id in self._routes
+
     async def disconnect(self, connection: AgentConnection, message: str = "Agent 连接已断开") -> None:
         for route_id in connection.routes:
             if self._routes.get(route_id) is connection:

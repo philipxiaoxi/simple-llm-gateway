@@ -162,9 +162,13 @@ def test_delete_account_keeps_request_logs(client: TestClient, auth_headers: dic
             json={"model": "deepseek-chat", "messages": [{"role": "user", "content": "hi"}]},
         )
     assert proxied.status_code == 200
+    log = client.get("/api/admin/logs", headers=auth_headers).json()["items"][0]
+    assert log["account_source"] == "upstream"
     assert client.delete(f"/api/admin/keys/{key_id}", headers=auth_headers).status_code == 200
-    deleted = client.delete(f"/api/admin/accounts/{account_id}", headers=auth_headers)
-    assert deleted.status_code == 200
+    assert client.delete(f"/api/admin/accounts/{account_id}", headers=auth_headers).status_code == 200
+    historical = client.get(f"/api/admin/logs/{log['id']}", headers=auth_headers)
+    assert historical.status_code == 200
+    assert historical.json()["account_source"] == "upstream"
     leftover = client.get("/api/admin/logs", headers=auth_headers).json()["items"][0]
     assert leftover["account_id"] == account_id
     assert leftover["account_name"] == "DS"

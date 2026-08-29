@@ -16,7 +16,7 @@ from app.services.ccswitch import (
     describe_ccswitch_targets,
     gateway_endpoint,
 )
-from app.services.key_models import active_bound_accounts, public_model_ids
+from app.services.key_models import active_bound_accounts, account_prefix, bound_accounts, is_account_available, public_model_ids
 from app.services.leaderboard import LeaderboardError, get_leaderboard
 
 router = APIRouter(prefix="/api/share", tags=["share"])
@@ -30,9 +30,17 @@ def _require_key(db: Session, raw_key: str) -> ApiKey:
 
 
 def _display_name(item: ApiKey) -> str:
+    if len(item.account_links) > 1:
+        return f"{item.name} · 多个上游账号"
     if item.account:
         return f"{item.name} · {item.account.name}"
     return item.name
+
+
+def _account_availability_status(account) -> str:
+    if account.source == "agent":
+        return "online" if is_account_available(account) else "offline"
+    return account.status
 
 
 def _key_token_totals(db: Session, api_key_id: int) -> tuple[int, int]:
@@ -65,6 +73,7 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
     item = _require_key(db, raw_key)
     settings = get_settings()
     account = item.account
+    bound = bound_accounts(item)
     models = public_model_ids(item)
     origin = settings.app_base_url.rstrip("/")
     provider = account.provider if account else ""
@@ -78,7 +87,19 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
         "provider_label": registered.label if registered else provider,
         "risk_level": account.risk_level if account else "low",
         "status": item.status,
-        "account_status": account.status if account else "",
+        "account_status": _account_availability_status(account) if account else "",
+        "accounts": [
+            {
+                "id": bound_account.id,
+                "name": bound_account.name,
+                "source": bound_account.source,
+                "provider": bound_account.provider,
+                "status": _account_availability_status(bound_account),
+                "risk_level": bound_account.risk_level,
+                "model_prefix": account_prefix(bound_account),
+            }
+            for bound_account in bound
+        ],
         "today_tokens": today_tokens,
         "total_tokens": total_tokens,
         "models": models,

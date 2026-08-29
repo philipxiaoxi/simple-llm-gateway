@@ -148,7 +148,10 @@ def delete_account(account_id: int, db: Session = Depends(get_db)) -> dict[str, 
     db.execute(
         update(RequestLog)
         .where(RequestLog.account_id == account_id)
-        .values(account_name=func.coalesce(RequestLog.account_name, account.name))
+        .values(
+            account_name=func.coalesce(RequestLog.account_name, account.name),
+            account_source=func.coalesce(RequestLog.account_source, account.source),
+        )
     )
     if account.oauth_token is not None:
         db.delete(account.oauth_token)

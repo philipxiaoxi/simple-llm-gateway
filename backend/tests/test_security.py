@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy import create_engine, text
 
 from app.config import reset_settings, validate_app_secret_key, validate_bootstrap_admin_password
-from app.db import get_session_factory, init_db, reset_db_runtime
+from app.db import get_session_factory, init_db, migrate_legacy_api_key_accounts, reset_db_runtime
 from app.models import OAuthState
 from app.seed import seed_admin
 from app.services.grok_oauth import cleanup_expired_oauth_states
@@ -71,6 +71,36 @@ def test_legacy_log_migration_preserves_log_metadata(tmp_path) -> None:
             text("SELECT id, request_body, response_body, status, http_status FROM request_logs")
         ).one()
     assert row == (1, None, None, "success", 200)
+
+
+def test_legacy_api_key_migration_backfills_one_account(tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'legacy-key.db'}")
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE upstream_accounts (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"))
+        connection.execute(
+            text(
+                "CREATE TABLE api_keys (id INTEGER PRIMARY KEY, name TEXT NOT NULL, account_id INTEGER)"
+            )
+        )
+        connection.execute(text("INSERT INTO upstream_accounts (id, name) VALUES (9, '旧账号')"))
+        connection.execute(text("INSERT INTO api_keys (id, name, account_id) VALUES (1, '老 Key', 9)"))
+        connection.execute(
+            text(
+                "CREATE TABLE api_key_accounts ("
+                "id INTEGER PRIMARY KEY, api_key_id INTEGER NOT NULL, account_id INTEGER NOT NULL, "
+                "sort_order INTEGER NOT NULL, UNIQUE (api_key_id, account_id))"
+            )
+        )
+
+        migrated = migrate_legacy_api_key_accounts(connection)
+        repeated = migrate_legacy_api_key_accounts(connection)
+        rows = connection.execute(
+            text("SELECT api_key_id, account_id, sort_order FROM api_key_accounts")
+        ).all()
+
+    assert migrated == [{"key_id": 1, "key_name": "老 Key", "account_id": 9, "account_name": "旧账号"}]
+    assert repeated == []
+    assert rows == [(1, 9, 0)]
 
 
 def test_cleanup_expired_oauth_states(client: TestClient, auth_headers: dict[str, str]) -> None:

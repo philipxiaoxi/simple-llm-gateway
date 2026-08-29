@@ -68,7 +68,17 @@ def bound_accounts(api_key: ApiKey) -> list[UpstreamAccount]:
 
 
 def active_bound_accounts(api_key: ApiKey) -> list[UpstreamAccount]:
-    return [account for account in bound_accounts(api_key) if account.status == "active"]
+    return [account for account in bound_accounts(api_key) if is_account_available(account)]
+
+
+def is_account_available(account: UpstreamAccount) -> bool:
+    if account.status != "active":
+        return False
+    if getattr(account, "source", None) == "agent" and account.agent_route_id:
+        from app.services.local_agent_relay import local_agent_relay
+
+        return local_agent_relay.is_agent_online_for_route(account.agent_route_id)
+    return True
 
 
 def account_prefix(account: UpstreamAccount) -> str:

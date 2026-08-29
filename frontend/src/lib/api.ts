@@ -154,6 +154,15 @@ export type ShareLookup = {
   risk_level: string
   status: string
   account_status: string
+  accounts: Array<{
+    id: number
+    name: string
+    source: 'upstream' | 'agent'
+    provider: string
+    status: string
+    risk_level: string
+    model_prefix: string
+  }>
   today_tokens: number
   total_tokens: number
   models: string[]
@@ -174,6 +183,7 @@ export type KeyBoundAccount = {
   provider: string
   source: 'upstream' | 'agent'
   status: string
+  risk_level: string
   model_prefix?: string | null
 }
 
@@ -379,6 +389,7 @@ export type GatewayAgent = {
     models_updated_at: string | null
     account_id?: number | null
     model_prefix?: string | null
+    status: string
   }[]
 }
 
