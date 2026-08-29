@@ -34,7 +34,8 @@ html,
 body,
 #root {
   min-height: 100%;
-  min-height: 100dvh;
+  min-height: 100vh;
+  min-height: 100lvh;
   background-color: #0b0d11;
 }
 
