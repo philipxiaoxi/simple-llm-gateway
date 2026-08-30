@@ -90,7 +90,7 @@ export function BenchmarkPage() {
   )
   const targets = useMemo<Target[]>(
     () => filteredAccounts.filter((account) => accountFilter === 'all' || String(account.id) === accountFilter)
-      .flatMap((account) => account.models.map((model) => ({ account, model }))),
+      .flatMap((account) => account.models.map((model) => ({ account, model: model.id }))),
     [accountFilter, filteredAccounts],
   )
   const searchedTargets = useMemo(() => {

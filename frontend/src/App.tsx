@@ -19,6 +19,7 @@ import { PublicLeaderboardPage } from './pages/PublicLeaderboard'
 import { SharePage } from './pages/Share'
 import { SkillDetailPage } from './pages/SkillDetail'
 import { SkillsPage } from './pages/Skills'
+import { JobsPage } from './pages/Jobs'
 import { ToolsPage } from './pages/Tools'
 import type { ReactElement } from 'react'
 
@@ -57,6 +58,7 @@ export default function App() {
             <Route path="/benchmark" element={<BenchmarkPage />} />
             <Route path="/benchmark/history" element={<BenchmarkHistoryPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
+            <Route path="/jobs" element={<JobsPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/logs/:id" element={<LogDetailPage />} />
           </Route>

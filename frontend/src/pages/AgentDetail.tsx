@@ -5,7 +5,7 @@ import { Link, useParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { errorMessage, formatTime } from '../lib/utils'
+import { errorMessage, formatTime, modelCapsHint } from '../lib/utils'
 
 function RoutePrefixEditor({
   accountId,
@@ -192,7 +192,11 @@ export function AgentDetailPage() {
                 </div>
                 <div>
                   <div className="flex flex-wrap gap-1.5">
-                    {route.models.map((model) => <Badge key={model} tone="mist">{model}</Badge>)}
+                    {route.models.map((model) => (
+                      <Badge key={model.id} tone="mist" title={modelCapsHint(model) || model.id}>
+                        {model.id}
+                      </Badge>
+                    ))}
                     {!route.models.length ? <span className="text-sm text-mist">尚未从上游同步模型</span> : null}
                   </div>
                   <div className="mt-2 text-xs text-mist">上次同步：{formatTime(route.models_updated_at)}</div>

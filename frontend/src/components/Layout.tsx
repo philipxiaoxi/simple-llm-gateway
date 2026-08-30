@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, RadioTower, ServerCog, Sparkles, Trophy, UserRoundPen, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, RadioTower, ServerCog, Sparkles, Timer, Trophy, UserRoundPen, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
@@ -18,6 +18,7 @@ const links = [
   { to: '/benchmark', label: '模型测速', icon: Gauge },
   { to: '/benchmark/history', label: '测速历史', icon: Activity },
   { to: '/leaderboard', label: '模型榜', icon: Trophy },
+  { to: '/jobs', label: '定时任务', icon: Timer },
   { to: '/logs', label: '记录审计', icon: MessageSquareText },
 ]
 
@@ -190,7 +191,13 @@ export function Layout() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const location = useLocation()
+  const mainRef = useRef<HTMLElement>(null)
   useMobileSwipeDrawer(open, setOpen)
+
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, left: 0 })
+    window.scrollTo({ top: 0, left: 0 })
+  }, [location.pathname])
 
   useEffect(() => {
     if (!open) return
@@ -208,7 +215,7 @@ export function Layout() {
   }
 
   return (
-    <div className="min-h-svh bg-ink lg:h-svh lg:overflow-hidden lg:grid lg:grid-cols-[240px_1fr]">
+    <div className="min-h-screen min-h-lvh bg-ink lg:h-svh lg:min-h-0 lg:overflow-hidden lg:grid lg:grid-cols-[240px_1fr]">
       <header className="fixed inset-x-0 top-0 z-30 border-b border-line bg-panel/95 pt-[env(safe-area-inset-top)] backdrop-blur-md lg:hidden">
         <div className="flex h-12 items-center justify-between px-2">
           <button
@@ -286,10 +293,8 @@ export function Layout() {
         </div>
       </aside>
       {profile ? <ProfileDialog onClose={() => setProfile(false)} /> : null}
-      <main className="bg-ink px-4 pb-[calc(var(--app-tab)+env(safe-area-inset-bottom)+0.75rem)] pt-[calc(var(--app-header)+env(safe-area-inset-top)+0.75rem)] lg:h-svh lg:overflow-y-auto lg:px-8 lg:pb-6 lg:pt-6">
-        <div key={location.pathname} className="page-enter">
-          <Outlet />
-        </div>
+      <main ref={mainRef} className="bg-ink px-4 pb-[calc(var(--app-tab)+env(safe-area-inset-bottom)+0.75rem)] pt-[calc(var(--app-header)+env(safe-area-inset-top)+0.75rem)] lg:h-svh lg:overflow-y-auto lg:px-8 lg:pb-6 lg:pt-6">
+        <Outlet />
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-panel/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">

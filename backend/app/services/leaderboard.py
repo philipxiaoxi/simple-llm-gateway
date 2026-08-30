@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.clock import utcnow
 from app.config import get_settings
 from app.models import GatewayAgent, GatewayAgentRoute, LeaderboardSnapshot, UpstreamAccount
-from app.services.ccswitch import parse_models_json
+from app.services import model_caps as model_caps_service
 
 USER_AGENT = "simple-llm-gateway/0.1 (internal cache; not a public mirror)"
 RSC_HEADERS = {
@@ -165,14 +165,14 @@ def _local_model_sources(db: Session) -> list[dict[str, Any]]:
     sources: list[dict[str, Any]] = []
     accounts = db.scalars(select(UpstreamAccount).order_by(UpstreamAccount.id.asc())).all()
     for account in accounts:
-        models = parse_models_json(account.models_json)
+        models = model_caps_service.parse_models_json(account.models_json)
         agent_id = None
         if account.source == "agent" and account.agent_route_id:
             route = routes.get(account.agent_route_id)
             if route is not None:
                 agent = agents.get(route.agent_id)
                 agent_id = agent.agent_id if agent is not None else None
-                for model in parse_models_json(route.models_json):
+                for model in model_caps_service.parse_models_json(route.models_json):
                     if model not in models:
                         models.append(model)
         sources.append(
@@ -219,6 +219,78 @@ def attach_local_coverage(db: Session, items: list[dict[str, Any]]) -> None:
         item["local_matches"] = matches
 
 
+_LEADERBOARD_CATALOG_PROVIDERS = {
+    "anthropic": "anthropic",
+    "openai": "openai",
+    "xai": "xai",
+    "deepseek": "deepseek",
+    "google": "google",
+    "gemini": "google",
+    "moonshot": "moonshotai",
+    "moonshot ai": "moonshotai",
+    "alibaba": "alibaba",
+    "qwen": "alibaba",
+    "qianwen": "alibaba",
+    "z.ai": "zai",
+    "zai": "zai",
+    "meta": "meta",
+}
+
+
+def _leaderboard_catalog_provider(item: dict[str, Any]) -> str | None:
+    for raw in (item.get("provider_slug"), item.get("provider")):
+        key = str(raw or "").strip().lower()
+        if key in _LEADERBOARD_CATALOG_PROVIDERS:
+            return _LEADERBOARD_CATALOG_PROVIDERS[key]
+    return None
+
+
+def _catalog_caps_for_entry(item: dict[str, Any], catalog):
+    catalog_provider = _leaderboard_catalog_provider(item)
+    candidates: list[str] = []
+    for raw in (item.get("pricing_official_model_id"), item.get("slug"), item.get("name")):
+        if not raw:
+            continue
+        text = str(raw)
+        candidates.append(text)
+        key = canonical_model_key(text)
+        if key:
+            candidates.append(key)
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        matched = model_caps_service.match_catalog(
+            candidate,
+            None,
+            catalog,
+            catalog_provider=catalog_provider,
+            fallback=False,
+        )
+        if matched is not None:
+            return matched
+    if catalog_provider is not None:
+        return None
+    for candidate in candidates:
+        matched = model_caps_service.match_catalog(candidate, None, catalog, fallback=True)
+        if matched is not None:
+            return matched
+    return None
+
+
+def attach_catalog_windows(items: list[dict[str, Any]]) -> None:
+    catalog = model_caps_service.load_catalog_index()
+    for item in items:
+        caps = _catalog_caps_for_entry(item, catalog)
+        if caps is None:
+            item.setdefault("max_output_tokens", None)
+            continue
+        if not item.get("context_window_tokens"):
+            item["context_window_tokens"] = caps.context_window
+        item["max_output_tokens"] = caps.max_output_tokens
+
+
 def mask_public_label(value: str | None) -> str:
     text = str(value or "").strip()
     if not text:
@@ -256,6 +328,10 @@ def _latest_snapshot(db: Session) -> LeaderboardSnapshot | None:
     return db.scalar(select(LeaderboardSnapshot).order_by(LeaderboardSnapshot.id.desc()).limit(1))
 
 
+def latest_snapshot(db: Session) -> LeaderboardSnapshot | None:
+    return _latest_snapshot(db)
+
+
 def snapshot_to_payload(
     db: Session,
     snapshot: LeaderboardSnapshot | None,
@@ -264,6 +340,8 @@ def snapshot_to_payload(
     error_message: str | None = None,
     public: bool = False,
 ) -> dict[str, Any]:
+    from app.services.job_settings import get_job_int
+
     settings = get_settings()
     items: list[dict[str, Any]] = []
     if snapshot and snapshot.entries_json:
@@ -274,6 +352,7 @@ def snapshot_to_payload(
         except json.JSONDecodeError:
             items = []
     attach_local_coverage(db, items)
+    attach_catalog_windows(items)
     if public:
         for item in items:
             item["local_matches"] = mask_local_matches(item.get("local_matches") or [])
@@ -282,8 +361,8 @@ def snapshot_to_payload(
         "source_page": settings.aihot_leaderboard_url,
         "fetched_at": snapshot.fetched_at if snapshot else None,
         "stale": stale,
-        "ttl_seconds": settings.aihot_leaderboard_ttl_seconds,
-        "min_refresh_seconds": settings.aihot_leaderboard_min_refresh_seconds,
+        "ttl_seconds": max(60, get_job_int("leaderboard", "interval_seconds", settings.aihot_leaderboard_ttl_seconds)),
+        "min_refresh_seconds": max(0, settings.aihot_leaderboard_min_refresh_seconds),
         "source_updated_label": snapshot.source_updated_label if snapshot else None,
         "error_message": error_message or (snapshot.error_message if snapshot else None),
         "unofficial": True,
@@ -295,7 +374,9 @@ def snapshot_to_payload(
 def cache_is_fresh(snapshot: LeaderboardSnapshot | None, now: datetime | None = None) -> bool:
     if snapshot is None or not snapshot.entries_json or snapshot.entries_json == "[]":
         return False
-    ttl = max(60, get_settings().aihot_leaderboard_ttl_seconds)
+    from app.services.job_settings import get_job_int
+
+    ttl = max(60, get_job_int("leaderboard", "interval_seconds", get_settings().aihot_leaderboard_ttl_seconds))
     return snapshot.fetched_at >= (now or utcnow()) - timedelta(seconds=ttl)
 
 
@@ -352,20 +433,19 @@ async def get_leaderboard(
     *,
     force: bool = False,
     public: bool = False,
+    ignore_cooldown: bool = False,
     client: httpx.AsyncClient | None = None,
 ) -> dict[str, Any]:
     snapshot = _latest_snapshot(db)
-    if public:
+    if public or not force:
         has_entries = bool(snapshot and snapshot.entries_json and snapshot.entries_json != "[]")
         return snapshot_to_payload(
             db,
             snapshot,
             stale=has_entries and not cache_is_fresh(snapshot),
-            public=True,
+            public=public,
         )
-    if not force and cache_is_fresh(snapshot):
-        return snapshot_to_payload(db, snapshot)
-    if force and refresh_is_too_soon(snapshot):
+    if force and not ignore_cooldown and refresh_is_too_soon(snapshot):
         return snapshot_to_payload(
             db, snapshot, stale=False, error_message="刷新过于频繁，已返回缓存"
         )

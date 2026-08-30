@@ -18,6 +18,7 @@ from app.errors import protocol_error
 from app.models import ApiKey, RequestLog, UpstreamAccount
 from app.providers import get_provider
 from app.services.key_models import build_model_catalog
+from app.services.model_caps import serialize_record
 from app.services.bridge import (
     AnthropicStreamTranslator,
     ResponsesStreamCollector,
@@ -836,15 +837,25 @@ async def handle_count_tokens(
 
 def list_models_payload(api_key: ApiKey) -> dict[str, Any]:
     catalog = build_model_catalog(api_key)
-    return {
-        "object": "list",
-        "data": [
-            {
-                "id": entry.public_id,
-                "object": "model",
-                "created": int(time.time()),
-                "owned_by": entry.account.provider,
-            }
-            for entry in catalog
-        ],
-    }
+    created = int(time.time())
+    data: list[dict[str, Any]] = []
+    for entry in catalog:
+        item: dict[str, Any] = {
+            "id": entry.public_id,
+            "object": "model",
+            "created": created,
+            "owned_by": entry.account.provider,
+        }
+        if entry.record is not None:
+            caps = serialize_record(entry.record)
+            item.update(
+                {
+                    "context_window": caps["context_window"],
+                    "max_output_tokens": caps["max_output_tokens"],
+                    "reasoning": caps["reasoning"],
+                    "reasoning_efforts": caps["reasoning_efforts"],
+                    "modalities": caps["modalities"],
+                }
+            )
+        data.append(item)
+    return {"object": "list", "data": data}

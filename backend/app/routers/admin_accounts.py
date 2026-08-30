@@ -12,10 +12,11 @@ from app.db import get_db
 from app.deps import get_current_admin
 from app.models import Admin, GatewayAgentRoute, OAuthState, RequestLog, UpstreamAccount
 from app.providers import get_provider, list_providers
-from app.schemas import AccountCreate, AccountExportRequest, AccountImportRequest, AccountOut, AccountUpdate, ProviderOut
+from app.schemas import AccountCreate, AccountExportRequest, AccountImportRequest, AccountOut, AccountUpdate, ModelOverrideUpdate, ProviderOut
 from app.serializers import account_to_out
 from app.services.account_transfer import export_accounts, import_accounts
 from app.services.key_models import ensure_account_prefix, normalize_model_prefix
+from app.services.model_caps import apply_model_override, dump_model_records, parse_model_records, serialize_record
 from app.services.probe import list_account_models, probe_account
 from app.services.quota import refresh_quota
 
@@ -182,6 +183,29 @@ async def models(account_id: int, db: Session = Depends(get_db)) -> dict:
             route.models_json = account.models_json
             route.models_updated_at = account.models_updated_at
     return result
+
+
+@router.patch("/accounts/{account_id}/models/{model_id:path}")
+def update_account_model(
+    account_id: int,
+    model_id: str,
+    payload: ModelOverrideUpdate,
+    db: Session = Depends(get_db),
+) -> dict:
+    account = _get_account(db, account_id)
+    records = parse_model_records(account.models_json)
+    try:
+        records = apply_model_override(records, model_id, payload.model_dump(exclude_unset=True))
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    account.models_json = dump_model_records(records)
+    if account.source == "agent" and account.agent_route_id:
+        route = db.scalar(select(GatewayAgentRoute).where(GatewayAgentRoute.route_id == account.agent_route_id))
+        if route is not None:
+            route.models_json = account.models_json
+            route.models_updated_at = account.models_updated_at
+    updated = next(record for record in records if record.id == model_id)
+    return serialize_record(updated)
 
 
 def _get_account(db: Session, account_id: int) -> UpstreamAccount:

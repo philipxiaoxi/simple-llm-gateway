@@ -89,6 +89,9 @@ def test_cc_switch_links(client: TestClient, auth_headers: dict[str, str]) -> No
     assert response.status_code == 200
     body = response.json()
     assert body["models"] == ["deepseek-chat", "deepseek-reasoner"]
+    vscode_models = {item["id"]: item for item in body["vscode"]["models"]}
+    assert vscode_models["deepseek-chat"]["maxInputTokens"] == 128000
+    assert vscode_models["deepseek-reasoner"]["maxOutputTokens"] == 16000
     targets = {item["app"]: item for item in body["targets"]}
     assert targets["opencode"]["needs_dialog"] is True
     assert "url" not in targets["opencode"]

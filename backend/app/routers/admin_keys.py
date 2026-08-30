@@ -19,7 +19,7 @@ from app.services.ccswitch import (
     build_vscode_config,
     describe_ccswitch_targets,
 )
-from app.services.key_models import public_model_ids, replace_key_accounts
+from app.services.key_models import public_model_ids, public_model_records, replace_key_accounts
 
 router = APIRouter(prefix="/api/admin/keys", tags=["admin-keys"], dependencies=[Depends(get_current_admin)])
 
@@ -82,15 +82,18 @@ def cc_switch_links(key_id: int, db: Session = Depends(get_db)) -> dict:
     plaintext = _plaintext_key(item)
     display_name = _display_name(item)
     models = public_model_ids(item)
+    records = public_model_records(item)
     return {
         "display_name": display_name,
         "models": models,
+        "model_caps": records,
         "targets": describe_ccswitch_targets(settings.app_base_url, display_name, plaintext, models),
         "vscode": build_vscode_config(
             app_base_url=settings.app_base_url,
             display_name=display_name,
             api_key=plaintext,
             models=models,
+            records=records,
         ),
     }
 

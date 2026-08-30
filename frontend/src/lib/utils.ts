@@ -13,6 +13,24 @@ export function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
+export async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    return
+  } catch {
+    const area = document.createElement('textarea')
+    area.value = text
+    area.setAttribute('readonly', '')
+    area.style.position = 'fixed'
+    area.style.left = '-9999px'
+    document.body.appendChild(area)
+    area.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(area)
+    if (!ok) throw new Error('浏览器拒绝写入剪贴板')
+  }
+}
+
 export const MIN_PASSWORD_LENGTH = 8
 
 export const RISK_LEVELS: Record<string, { label: string; tone: 'ok' | 'warn' | 'bad'; hint: string }> = {
@@ -41,6 +59,32 @@ export function formatTokenCount(value: number | null | undefined) {
   if (value < 1_000) return String(value)
   if (value < 1_000_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, '')}K`
   return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+}
+
+export function formatContextWindow(value: number | null | undefined) {
+  if (value == null || value <= 0) return '—'
+  if (value % 1_000_000 === 0) return `${value / 1_000_000}M`
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+  if (value % 1_000 === 0) return `${value / 1_000}K`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, '')}K`
+  return String(value)
+}
+
+export function modelCapsHint(caps?: {
+  context_window?: number | null
+  max_output_tokens?: number | null
+  reasoning?: boolean
+  reasoning_efforts?: string[] | null
+  modalities?: { input?: string[] | null } | null
+} | null) {
+  if (!caps) return ''
+  const extras = [
+    caps.context_window ? `上下文 ${formatContextWindow(caps.context_window)}` : null,
+    caps.max_output_tokens ? `输出 ${formatContextWindow(caps.max_output_tokens)}` : null,
+    caps.reasoning ? (caps.reasoning_efforts?.length ? `思考 ${caps.reasoning_efforts.join('/')}` : '思考') : null,
+    caps.modalities?.input?.includes('image') ? '视觉' : null,
+  ].filter(Boolean)
+  return extras.join(' · ')
 }
 
 export function formatBytes(value: number | null | undefined) {

@@ -112,6 +112,67 @@ class AccountUpdate(BaseModel):
     _normalize_website_url = field_validator("website_url")(normalize_website_url)
 
 
+class ModelCapsOut(BaseModel):
+    id: str
+    context_window: int | None = None
+    max_output_tokens: int | None = None
+    reasoning: bool = False
+    reasoning_efforts: list[str] | None = None
+    modalities: dict[str, list[str]] = Field(default_factory=lambda: {"input": ["text"], "output": ["text"]})
+    source: str = "heuristic"
+    overridden: list[str] = Field(default_factory=list)
+    overrides: dict[str, Any] = Field(default_factory=dict)
+
+
+class ModelOverrideUpdate(BaseModel):
+    context_window: int | None = Field(default=None, gt=0)
+    max_output_tokens: int | None = Field(default=None, gt=0)
+    reasoning: bool | None = None
+    reasoning_efforts: list[str] | None = None
+    modalities: dict[str, list[str]] | None = None
+    clear: bool = False
+
+    @field_validator("reasoning_efforts")
+    @classmethod
+    def _normalize_efforts(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        items: list[str] = []
+        for item in value:
+            text = str(item).strip()
+            if text and text not in items:
+                items.append(text)
+        return items
+
+    @field_validator("modalities")
+    @classmethod
+    def _normalize_modalities(cls, value: dict[str, list[str]] | None) -> dict[str, list[str]] | None:
+        if value is None:
+            return None
+        allowed = {"input", "output"}
+        extra = set(value) - allowed
+        if extra:
+            raise ValueError("modalities 只接受 input / output")
+        cleaned: dict[str, list[str]] = {}
+        for key in ("input", "output"):
+            raw = value.get(key)
+            if raw is None:
+                continue
+            if not isinstance(raw, list) or not raw:
+                raise ValueError(f"modalities.{key} 必须是非空字符串列表")
+            items: list[str] = []
+            for item in raw:
+                text = str(item).strip()
+                if text and text not in items:
+                    items.append(text)
+            if not items:
+                raise ValueError(f"modalities.{key} 必须是非空字符串列表")
+            cleaned[key] = items
+        if not cleaned:
+            raise ValueError("modalities 至少包含 input 或 output")
+        return cleaned
+
+
 class OauthCallbackComplete(BaseModel):
     account_id: int | None = None
     callback_url: str | None = None
@@ -138,7 +199,7 @@ class AccountOut(BaseModel):
     last_probe_at: datetime | None
     quota: Any | None = None
     quota_updated_at: datetime | None
-    models: list[str] = Field(default_factory=list)
+    models: list[ModelCapsOut] = Field(default_factory=list)
     model_prefix: str | None = None
     models_updated_at: datetime | None = None
     oauth_expires_at: datetime | None = None
@@ -286,6 +347,26 @@ class LogMessageListOut(BaseModel):
     page_size: int
 
 
+class DashboardLeaderboardTopOut(BaseModel):
+    rank: int | None = None
+    name: str
+    provider: str = ""
+    score: float | None = None
+    slug: str = ""
+    context_window_tokens: int | None = None
+    max_output_tokens: int | None = None
+
+
+class DashboardBenchmarkTopOut(BaseModel):
+    model: str
+    account_name: str
+    provider: str = ""
+    output_tokens_per_second: float
+    first_token_ms: float | None = None
+    total_ms: float | None = None
+    run_id: int | None = None
+
+
 class DashboardOut(BaseModel):
     account_count: int
     unhealthy_count: int
@@ -296,6 +377,12 @@ class DashboardOut(BaseModel):
     total_tokens: int
     benchmark_count: int
     skill_count: int = 0
+    key_count: int = 0
+    tool_count: int = 0
+    agent_count: int = 0
+    agent_online_count: int = 0
+    leaderboard_top: list[DashboardLeaderboardTopOut] = Field(default_factory=list)
+    benchmark_speed_top: list[DashboardBenchmarkTopOut] = Field(default_factory=list)
 
 
 class SkillUpdate(BaseModel):
@@ -431,6 +518,7 @@ class LeaderboardEntryOut(BaseModel):
     provider_slug: str | None = None
     released_at: str | None = None
     context_window_tokens: int | None = None
+    max_output_tokens: int | None = None
     pricing_kind: str | None = None
     pricing_official_model_id: str | None = None
     input_price_per_million_usd: float | None = None
@@ -465,3 +553,37 @@ class LeaderboardOut(BaseModel):
     unofficial: bool = True
     items: list[LeaderboardEntryOut] = Field(default_factory=list)
     total: int = 0
+
+
+class JobParamOut(BaseModel):
+    key: str
+    label: str
+    value: int
+    min: int
+    max: int
+    hint: str
+
+
+class JobOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    kind: str
+    source_url: str | None = None
+    running: bool = False
+    last_started_at: datetime | None = None
+    last_finished_at: datetime | None = None
+    last_ok: bool | None = None
+    last_message: str | None = None
+    error_message: str | None = None
+    next_run_at: datetime | None = None
+    cache_fetched_at: datetime | None = None
+    cache_expires_at: datetime | None = None
+    cache_ok: bool | None = None
+    ttl_seconds: int = 0
+    params: list[JobParamOut] = Field(default_factory=list)
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class JobListOut(BaseModel):
+    items: list[JobOut] = Field(default_factory=list)

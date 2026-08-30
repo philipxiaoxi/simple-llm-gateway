@@ -3,9 +3,9 @@ import { ExternalLink, FileJson, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
-import { api, type Account, type Provider, type QuotaItem } from '../lib/api'
+import { api, type Account, type ModelCaps, type Provider, type QuotaItem } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { MIN_PASSWORD_LENGTH, RISK_LEVELS, cn, errorMessage, formatEmbeddedTimes, formatTime } from '../lib/utils'
+import { MIN_PASSWORD_LENGTH, RISK_LEVELS, cn, errorMessage, formatEmbeddedTimes, formatTime, modelCapsHint } from '../lib/utils'
 
 const QUOTA_WARN_HIGH = 90
 const QUOTA_WARN_MEDIUM = 70
@@ -413,30 +413,44 @@ function CollapsibleSection({ children }: { children: ReactNode }) {
   )
 }
 
-// 默认展示两行模型（约 8 个），超出部分折叠，点击展开/收起。
 const MODELS_COLLAPSED_COUNT = 8
 
 function ModelList({
   models,
   expanded,
   onToggle,
+  onEdit,
 }: {
-  models: string[]
+  models: ModelCaps[]
   expanded: boolean
   onToggle: () => void
+  onEdit: (model: ModelCaps) => void
 }) {
   const visible = expanded ? models : models.slice(0, MODELS_COLLAPSED_COUNT)
   const hasMore = models.length > MODELS_COLLAPSED_COUNT
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2">
-        {visible.map((modelName) => (
-          <Badge key={modelName} tone="info">
-            <span className="max-w-[11rem] truncate" title={modelName}>
-              {modelName}
+      <div className="flex flex-col gap-1.5">
+        {visible.map((model) => (
+          <button
+            key={model.id}
+            type="button"
+            onClick={() => onEdit(model)}
+            className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-line bg-ink/40 px-2.5 py-1.5 text-left hover:border-mist/40 lg:py-1"
+          >
+            <span className="min-w-0">
+              <span className="block truncate font-mono text-xs text-paper lg:inline" title={model.id}>
+                {model.id}
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-mist lg:ml-2 lg:mt-0 lg:inline">
+                {modelCapsHint(model) || '点击修改能力'}
+              </span>
             </span>
-          </Badge>
+            <span className="shrink-0">
+              {model.overridden?.length ? <Badge tone="warn">已覆盖</Badge> : <Badge tone="info">识别</Badge>}
+            </span>
+          </button>
         ))}
       </div>
       {hasMore ? (
@@ -452,6 +466,116 @@ function ModelList({
   )
 }
 
+function ModelOverrideDialog({
+  accountId,
+  model,
+  onClose,
+  onSaved,
+}: {
+  accountId: number
+  model: ModelCaps
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [contextWindow, setContextWindow] = useState(model.context_window ? String(model.context_window) : '')
+  const [maxOutput, setMaxOutput] = useState(model.max_output_tokens ? String(model.max_output_tokens) : '')
+  const [reasoning, setReasoning] = useState(model.reasoning)
+  const [efforts, setEfforts] = useState((model.reasoning_efforts ?? []).join(', '))
+  const [vision, setVision] = useState((model.modalities?.input ?? []).includes('image'))
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState('')
+
+  async function save() {
+    setPending(true)
+    setError('')
+    try {
+      const parsedContext = contextWindow.trim() ? Number(contextWindow.trim()) : null
+      const parsedOutput = maxOutput.trim() ? Number(maxOutput.trim()) : null
+      if (parsedContext != null && (!Number.isInteger(parsedContext) || parsedContext <= 0)) {
+        setError('上下文窗口必须是正整数')
+        return
+      }
+      if (parsedOutput != null && (!Number.isInteger(parsedOutput) || parsedOutput <= 0)) {
+        setError('最大输出必须是正整数')
+        return
+      }
+      const effortValues = efforts
+        .split(/[,，\s]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+      await api.updateAccountModel(accountId, model.id, {
+        context_window: parsedContext,
+        max_output_tokens: parsedOutput,
+        reasoning,
+        reasoning_efforts: reasoning ? effortValues : [],
+        modalities: { input: vision ? ['text', 'image'] : ['text'], output: ['text'] },
+      })
+      notifyOk('模型能力已更新')
+      onSaved()
+    } catch (caught) {
+      setError(errorMessage(caught, '保存失败'))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  async function reset() {
+    setPending(true)
+    setError('')
+    try {
+      await api.updateAccountModel(accountId, model.id, { clear: true })
+      notifyOk('已恢复自动识别')
+      onSaved()
+    } catch (caught) {
+      setError(errorMessage(caught, '恢复失败'))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <Dialog title="修改模型能力" onClose={onClose}>
+      <div className="grid gap-3">
+        <div className="truncate font-mono text-sm text-paper" title={model.id}>
+          {model.id}
+        </div>
+        <p className="text-xs leading-5 text-mist">这里改的是本站保存的窗口、思考和模态，刷新模型列表时不会覆盖你的手改。</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="上下文窗口">
+            <Input value={contextWindow} onChange={(event) => setContextWindow(event.target.value)} placeholder="128000" inputMode="numeric" />
+          </Field>
+          <Field label="最大输出">
+            <Input value={maxOutput} onChange={(event) => setMaxOutput(event.target.value)} placeholder="16000" inputMode="numeric" />
+          </Field>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-paper">
+          <input type="checkbox" checked={reasoning} onChange={(event) => setReasoning(event.target.checked)} />
+          支持思考
+        </label>
+        <Field label="思考档位（可选，逗号分隔）">
+          <Input value={efforts} disabled={!reasoning} onChange={(event) => setEfforts(event.target.value)} placeholder="low, medium, high" />
+        </Field>
+        <label className="flex items-center gap-2 text-sm text-paper">
+          <input type="checkbox" checked={vision} onChange={(event) => setVision(event.target.checked)} />
+          支持视觉
+        </label>
+        {error ? <div className="text-sm text-danger">{error}</div> : null}
+        <div className="flex flex-wrap justify-end gap-2 pt-1">
+          <Button type="button" variant="ghost" disabled={pending} onClick={() => void reset()}>
+            恢复识别
+          </Button>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" disabled={pending} onClick={() => void save()}>
+            {pending ? '保存中…' : '保存'}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
 export function AccountsPage() {
   const queryClient = useQueryClient()
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: api.providers })
@@ -463,6 +587,7 @@ export function AccountsPage() {
   const [oauthDialog, setOauthDialog] = useState(false)
   const [oauthAccountId, setOauthAccountId] = useState<number | null>(null)
   const [expandedModels, setExpandedModels] = useState<Set<number>>(new Set())
+  const [editingModel, setEditingModel] = useState<{ accountId: number; model: ModelCaps } | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [providerFilter, setProviderFilter] = useState('')
@@ -772,6 +897,7 @@ export function AccountsPage() {
                         return next
                       })
                     }
+                    onEdit={(model) => setEditingModel({ accountId: account.id, model })}
                   />
                 ) : (
                   <div className="text-sm text-mist">还没有模型，点「获取模型」从上游拉取并入库。</div>
@@ -790,6 +916,17 @@ export function AccountsPage() {
           onClose={() => setTransfer(null)}
           onImported={() => {
             queryClient.invalidateQueries({ queryKey: ['accounts'] })
+          }}
+        />
+      ) : null}
+      {editingModel ? (
+        <ModelOverrideDialog
+          accountId={editingModel.accountId}
+          model={editingModel.model}
+          onClose={() => setEditingModel(null)}
+          onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: ['accounts'] })
+            setEditingModel(null)
           }}
         />
       ) : null}

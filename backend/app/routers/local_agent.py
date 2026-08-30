@@ -15,6 +15,7 @@ from app.deps import get_current_admin
 from app.models import GatewayAgent, GatewayAgentRoute, UpstreamAccount
 from app.providers import get_provider
 from app.services.key_models import ensure_account_prefix
+from app.services.model_caps import parse_model_records, serialize_record
 from app.services.local_agent_relay import (
     AgentConnection,
     local_agent_relay,
@@ -237,7 +238,7 @@ def _agent_to_out(agent: GatewayAgent) -> dict[str, object]:
                 "id": route.route_id,
                 "name": route.name,
                 "provider": route.provider,
-                "models": json.loads(route.models_json) if route.models_json else [],
+                "models": [serialize_record(record) for record in parse_model_records(route.models_json)],
                 "models_updated_at": route.models_updated_at.isoformat() if route.models_updated_at else None,
                 "account_id": accounts[route.route_id].id if route.route_id in accounts else None,
                 "model_prefix": accounts[route.route_id].model_prefix if route.route_id in accounts else None,

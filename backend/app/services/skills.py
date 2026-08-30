@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.models import Skill, SkillCategory, SkillClassificationSettings, UpstreamAccount
 from app.services.credentials import require_upstream_credential
 from app.services.bridge import call_chat
+from app.services.model_caps import first_model_id
 
 DEFAULT_CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
     "UI设计": ("ui", "ux", "figma", "design system", "界面", "设计"),
@@ -380,8 +381,7 @@ async def classify_with_gateway(
         return
     model = (settings.model or "").strip()
     if not model:
-        models = json.loads(account.models_json or "[]") if account.models_json else []
-        model = str(models[0]) if models else ""
+        model = first_model_id(account.models_json)
     if not model:
         return
     try:
@@ -430,8 +430,7 @@ async def analyze_skill_with_gateway(db: Session, skill: Skill) -> dict | None:
         return None
     model = (settings.report_model or "").strip()
     if not model and account.models_json:
-        models = json.loads(account.models_json)
-        model = str(models[0]) if models else ""
+        model = first_model_id(account.models_json)
     if not model:
         return None
     categories = list_category_names(db)

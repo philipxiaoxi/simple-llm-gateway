@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Children, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
+import { VscodeImportDialog } from '../components/VscodeImportDialog'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type Account, type ApiKeyItem, type ApiKeySort, type CcSwitchTarget, type GatewayAgent } from '../lib/api'
 import { openShareWithApiKey } from '../lib/shareTransfer'
@@ -282,6 +283,7 @@ export function KeysPage() {
     label: string
     models: string[]
   } | null>(null)
+  const [vscodeDialog, setVscodeDialog] = useState<Record<string, unknown> | null>(null)
   const [boundAccountsDialog, setBoundAccountsDialog] = useState<{
     keyName: string
     accounts: NonNullable<ApiKeyItem['accounts']>
@@ -405,20 +407,14 @@ export function KeysPage() {
     }
   }
 
-  async function importToVscode(id: number) {
+  function importToVscode(id: number) {
     const panel = ccPanel[id]
     if (!panel) return
     if (panel.models.length === 0) {
       notifyBad('绑定账号还没有模型，请先到「上游账号」点「获取模型」。')
       return
     }
-    try {
-      const text = JSON.stringify(panel.vscode, null, 2)
-      await navigator.clipboard.writeText(text)
-      notifyOk('VSCode 配置已复制，粘贴到 chatLanguageModels.json 即可。')
-    } catch (error) {
-      notifyBad(errorMessage(error, '复制 VSCode 配置失败'))
-    }
+    setVscodeDialog(panel.vscode)
   }
 
   function openCcTarget(keyId: number, target: CcSwitchTarget, models: string[]) {
@@ -675,7 +671,7 @@ export function KeysPage() {
                         {target.label}
                       </Button>
                     ))}
-                    <Button type="button" variant="line" onClick={() => void importToVscode(item.id)}>
+                    <Button type="button" variant="line" onClick={() => importToVscode(item.id)}>
                       VSCode
                     </Button>
                   </div>
@@ -685,6 +681,7 @@ export function KeysPage() {
           )
         })}
       </div>
+      {vscodeDialog ? <VscodeImportDialog config={vscodeDialog} onClose={() => setVscodeDialog(null)} /> : null}
       {dialog ? (
         <CcSwitchDialog
           label={dialog.label}

@@ -34,6 +34,7 @@ def test_parse_leaderboard_payload() -> None:
     assert items[0]["score"] == 89.2
     assert items[0]["released_at"] == "2026-06-09T00:00:00.000Z"
     assert items[0]["summary"] == "by 6 families"
+    assert items[0]["context_window_tokens"] == 1000000
     assert items[0]["components"]["artificial-analysis"]["coverage"] == 0.3
 
 
@@ -56,37 +57,80 @@ def test_leaderboard_requires_auth(client: TestClient) -> None:
     assert response.status_code == 401
 
 
-def test_leaderboard_fetches_and_caches(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_leaderboard_fills_output_window_from_catalog(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    from app.services.model_caps import CatalogIndex, ModelCaps
+
+    index = CatalogIndex()
+    caps = ModelCaps(
+        context_window=200000,
+        max_output_tokens=128000,
+        reasoning=True,
+        source="catalog",
+    )
+    index.by_provider_norm[("anthropic", "claude-fable-5")] = caps
+    index.by_norm["claude-fable-5"] = caps
+    monkeypatch.setattr("app.services.model_caps.load_catalog_index", lambda force=False: index)
+    _seed_leaderboard(client, auth_headers)
+    response = client.get("/api/admin/leaderboard", headers=auth_headers)
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["context_window_tokens"] == 1000000
+    assert item["max_output_tokens"] == 128000
+
+
+def test_dashboard_includes_leaderboard_top(client: TestClient, auth_headers: dict[str, str]) -> None:
+    _seed_leaderboard(client, auth_headers)
+    dashboard = client.get("/api/admin/dashboard", headers=auth_headers)
+    assert dashboard.status_code == 200
+    top = dashboard.json()["leaderboard_top"]
+    assert len(top) == 1
+    assert top[0]["rank"] == 1
+    assert top[0]["name"] == "Claude Fable 5"
+    assert top[0]["provider"] == "Anthropic"
+    assert top[0]["score"] == 89.2
+    assert top[0]["slug"] == "claude-fable-5"
+    assert top[0]["context_window_tokens"] == 1000000
+    assert top[0]["max_output_tokens"] is None
+
+
+def test_admin_leaderboard_reads_cache_without_fetching(client: TestClient, auth_headers: dict[str, str]) -> None:
     with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)) as fetch:
-        first = client.get("/api/admin/leaderboard", headers=auth_headers)
-        assert first.status_code == 200, first.text
-        body = first.json()
+        empty = client.get("/api/admin/leaderboard", headers=auth_headers)
+        assert empty.status_code == 200, empty.text
+        assert empty.json()["items"] == []
+        assert fetch.await_count == 0
+        seeded = client.post("/api/admin/jobs/leaderboard/run", headers=auth_headers)
+        assert seeded.status_code == 200, seeded.text
+        assert fetch.await_count == 1
+        cached = client.get("/api/admin/leaderboard", headers=auth_headers)
+        assert cached.status_code == 200
+        body = cached.json()
         assert body["unofficial"] is True
         assert body["source_page"] == "https://aihot.virxact.com/leaderboard"
         assert body["total"] == 1
         assert body["items"][0]["name"] == "Claude Fable 5"
         assert body["items"][0]["released_at"] == "2026-06-09T00:00:00.000Z"
         assert body["items"][0]["summary"] == "by 6 families"
+        assert body["items"][0]["context_window_tokens"] == 1000000
+        assert body["items"][0]["max_output_tokens"] is None
         assert body["items"][0]["local_covered"] is False
         assert body["items"][0]["local_matches"] == []
         assert body["stale"] is False
-        second = client.get("/api/admin/leaderboard", headers=auth_headers)
-        assert second.status_code == 200
-        assert second.json()["items"][0]["slug"] == "claude-fable-5"
+        assert body["items"][0]["slug"] == "claude-fable-5"
         assert fetch.await_count == 1
 
 
-def test_leaderboard_force_refresh_respects_min_interval(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_admin_leaderboard_ignores_refresh_query(client: TestClient, auth_headers: dict[str, str]) -> None:
     with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)) as fetch:
-        created = client.get("/api/admin/leaderboard", headers=auth_headers)
-        assert created.status_code == 200
-        refreshed = client.get("/api/admin/leaderboard?refresh=true", headers=auth_headers)
-        assert refreshed.status_code == 200
-        assert "刷新过于频繁" in (refreshed.json()["error_message"] or "")
-        assert fetch.await_count == 1
+        response = client.get("/api/admin/leaderboard?refresh=true", headers=auth_headers)
+        assert response.status_code == 200
+        assert response.json()["items"] == []
+        assert fetch.await_count == 0
 
 
-def test_leaderboard_returns_stale_cache_on_fetch_error(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_admin_leaderboard_returns_stale_cache(client: TestClient, auth_headers: dict[str, str]) -> None:
     session = get_session_factory()()
     try:
         session.add(
@@ -100,30 +144,27 @@ def test_leaderboard_returns_stale_cache_on_fetch_error(client: TestClient, auth
     finally:
         session.close()
 
-    from app.services.leaderboard import LeaderboardError
-
-    with patch(
-        "app.services.leaderboard.fetch_leaderboard_text",
-        new=AsyncMock(side_effect=LeaderboardError("拉取榜单失败")),
-    ):
+    with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)) as fetch:
         response = client.get("/api/admin/leaderboard", headers=auth_headers)
     assert response.status_code == 200
     body = response.json()
     assert body["stale"] is True
     assert body["items"][0]["slug"] == "old-model"
-    assert body["error_message"] == "拉取榜单失败"
+    assert fetch.await_count == 0
 
 
-def test_leaderboard_fails_without_cache(client: TestClient, auth_headers: dict[str, str]) -> None:
-    from app.services.leaderboard import LeaderboardError
-
-    with patch(
-        "app.services.leaderboard.fetch_leaderboard_text",
-        new=AsyncMock(side_effect=LeaderboardError("拉取榜单失败")),
-    ):
+def test_admin_leaderboard_empty_without_cache(client: TestClient, auth_headers: dict[str, str]) -> None:
+    with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)) as fetch:
         response = client.get("/api/admin/leaderboard", headers=auth_headers)
-    assert response.status_code == 502
-    assert response.json()["detail"] == "拉取榜单失败"
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+    assert fetch.await_count == 0
+
+
+def _seed_leaderboard(client: TestClient, auth_headers: dict[str, str]) -> None:
+    with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)):
+        seeded = client.post("/api/admin/jobs/leaderboard/run", headers=auth_headers)
+        assert seeded.status_code == 200, seeded.text
 
 
 def _seed_local_coverage(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -162,8 +203,8 @@ def test_leaderboard_local_coverage_lists_accounts_and_agents(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:
     _seed_local_coverage(client, auth_headers)
-    with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)):
-        response = client.get("/api/admin/leaderboard", headers=auth_headers)
+    _seed_leaderboard(client, auth_headers)
+    response = client.get("/api/admin/leaderboard", headers=auth_headers)
     assert response.status_code == 200
     item = response.json()["items"][0]
     assert item["local_covered"] is True
@@ -182,10 +223,8 @@ def test_leaderboard_local_coverage_lists_accounts_and_agents(
 
 def test_public_leaderboard_masks_account_info(client: TestClient, auth_headers: dict[str, str]) -> None:
     _seed_local_coverage(client, auth_headers)
-    with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)):
-        seeded = client.get("/api/admin/leaderboard", headers=auth_headers)
-        assert seeded.status_code == 200
-        response = client.get("/api/share/leaderboard")
+    _seed_leaderboard(client, auth_headers)
+    response = client.get("/api/share/leaderboard")
     assert response.status_code == 200
     item = response.json()["items"][0]
     assert item["local_covered"] is True
@@ -204,8 +243,11 @@ def test_public_leaderboard_does_not_fetch(client: TestClient, auth_headers: dic
         empty = client.get("/api/share/leaderboard")
         assert empty.status_code == 200
         assert empty.json()["items"] == []
+        admin = client.get("/api/admin/leaderboard", headers=auth_headers)
+        assert admin.status_code == 200
+        assert admin.json()["items"] == []
         assert fetch.await_count == 0
-        created = client.get("/api/admin/leaderboard", headers=auth_headers)
+        created = client.post("/api/admin/jobs/leaderboard/run", headers=auth_headers)
         assert created.status_code == 200
         public = client.get("/api/share/leaderboard?refresh=true")
         assert public.status_code == 200

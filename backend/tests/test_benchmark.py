@@ -184,4 +184,95 @@ def test_dashboard_counts_saved_benchmark_runs(client: TestClient, auth_headers:
 
     dashboard = client.get("/api/admin/dashboard", headers=auth_headers)
     assert dashboard.status_code == 200
-    assert dashboard.json()["benchmark_count"] == 1
+    body = dashboard.json()
+    assert body["benchmark_count"] == 1
+    assert body["benchmark_speed_top"] == [
+        {
+            "model": "deepseek-chat",
+            "account_name": "DS",
+            "provider": "deepseek",
+            "output_tokens_per_second": 50.0,
+            "first_token_ms": 120.0,
+            "total_ms": 800.0,
+            "run_id": saved.json()["id"],
+        }
+    ]
+
+
+def test_dashboard_benchmark_speed_top_orders_by_tokens_per_second(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    saved = client.post(
+        "/api/admin/benchmark/history",
+        headers=auth_headers,
+        json={
+            "prompt": "多模型",
+            "max_tokens": 32,
+            "results": [
+                {
+                    "account_id": 1,
+                    "account_name": "A",
+                    "provider": "deepseek",
+                    "model": "slow",
+                    "ok": True,
+                    "timeout": False,
+                    "first_token_ms": 200,
+                    "total_ms": 1000,
+                    "output_chars": 10,
+                    "estimated_output_tokens": 20,
+                    "output_tokens_per_second": 10,
+                    "preview": "a",
+                    "error": None,
+                },
+                {
+                    "account_id": 2,
+                    "account_name": "B",
+                    "provider": "openai",
+                    "model": "fast",
+                    "ok": True,
+                    "timeout": False,
+                    "first_token_ms": 80,
+                    "total_ms": 400,
+                    "output_chars": 20,
+                    "estimated_output_tokens": 40,
+                    "output_tokens_per_second": 120,
+                    "preview": "b",
+                    "error": None,
+                },
+                {
+                    "account_id": 3,
+                    "account_name": "C",
+                    "provider": "anthropic",
+                    "model": "mid",
+                    "ok": True,
+                    "timeout": False,
+                    "first_token_ms": 100,
+                    "total_ms": 500,
+                    "output_chars": 15,
+                    "estimated_output_tokens": 30,
+                    "output_tokens_per_second": 60,
+                    "preview": "c",
+                    "error": None,
+                },
+                {
+                    "account_id": 4,
+                    "account_name": "D",
+                    "provider": "x",
+                    "model": "fail",
+                    "ok": False,
+                    "timeout": False,
+                    "first_token_ms": None,
+                    "total_ms": None,
+                    "output_chars": None,
+                    "estimated_output_tokens": None,
+                    "output_tokens_per_second": 999,
+                    "preview": None,
+                    "error": "boom",
+                },
+            ],
+        },
+    )
+    assert saved.status_code == 200
+    top = client.get("/api/admin/dashboard", headers=auth_headers).json()["benchmark_speed_top"]
+    assert [item["model"] for item in top] == ["fast", "mid", "slow"]
+    assert [item["output_tokens_per_second"] for item in top] == [120.0, 60.0, 10.0]

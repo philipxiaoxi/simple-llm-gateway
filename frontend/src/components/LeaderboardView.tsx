@@ -2,7 +2,7 @@ import { Trophy } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Badge, Button, Card, Field, Input } from './ui'
 import type { Leaderboard, LeaderboardEntry, LeaderboardLocalMatch } from '../lib/api'
-import { errorMessage, formatTime } from '../lib/utils'
+import { errorMessage, formatContextWindow, formatTime } from '../lib/utils'
 
 const confidenceTone: Record<string, 'ok' | 'warn' | 'mist'> = {
   HIGH: 'ok',
@@ -151,6 +151,8 @@ export function LeaderboardView({
                 <th className={`${COL_NARROW} font-medium`}>排名</th>
                 <th className={`${COL} font-medium`}>模型</th>
                 <th className={`${COL} font-medium`}>上线日期</th>
+                <th className={`${COL} font-medium`}>上下文</th>
+                <th className={`${COL} font-medium`}>输出</th>
                 <th className={`${COL_NARROW} font-medium`}>分数</th>
                 <th className={`${COL} font-medium`}>覆盖</th>
                 <th className={`${COL} font-medium`}>本站覆盖</th>
@@ -172,6 +174,8 @@ export function LeaderboardView({
                     </div>
                   </td>
                   <td className={`${COL} font-mono text-mist`}>{formatReleaseDate(item.released_at)}</td>
+                  <td className={`${COL} font-mono tabular-nums text-mist`}>{formatContextWindow(item.context_window_tokens)}</td>
+                  <td className={`${COL} font-mono tabular-nums text-mist`}>{formatContextWindow(item.max_output_tokens)}</td>
                   <td className={`${COL_NARROW} font-mono tabular-nums text-signal`}>{formatScore(item.score)}</td>
                   <td className={COL}>
                     <Badge tone={confidenceTone[item.confidence || ''] || 'mist'}>{coverageText(item)}</Badge>
@@ -186,7 +190,7 @@ export function LeaderboardView({
               ))}
               {!isLoading && !filtered.length ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-sm text-mist">
+                  <td colSpan={11} className="px-4 py-12 text-center text-sm text-mist">
                     {items.length ? '没有匹配的模型' : emptyText}
                   </td>
                 </tr>
@@ -218,11 +222,21 @@ export function LeaderboardView({
                   <div className="mt-1 truncate font-mono text-xs">{formatReleaseDate(item.released_at)}</div>
                 </div>
                 <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.16em] text-mist">输入</div>
-                  <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatPrice(item.input_price_per_million_cny)}</div>
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-mist">上下文</div>
+                  <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatContextWindow(item.context_window_tokens)}</div>
                 </div>
                 <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
                   <div className="text-[10px] uppercase tracking-[0.16em] text-mist">输出</div>
+                  <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatContextWindow(item.max_output_tokens)}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-mist">输入价</div>
+                  <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatPrice(item.input_price_per_million_cny)}</div>
+                </div>
+                <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-mist">输出价</div>
                   <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatPrice(item.output_price_per_million_cny)}</div>
                 </div>
               </div>

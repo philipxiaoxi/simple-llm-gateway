@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -16,12 +16,9 @@ router = APIRouter(
 
 
 @router.get("", response_model=LeaderboardOut)
-async def read_leaderboard(
-    refresh: bool = Query(default=False),
-    db: Session = Depends(get_db),
-) -> LeaderboardOut:
+async def read_leaderboard(db: Session = Depends(get_db)) -> LeaderboardOut:
     try:
-        payload = await get_leaderboard(db, force=refresh)
+        payload = await get_leaderboard(db, force=False)
     except LeaderboardError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
     return LeaderboardOut.model_validate(payload)

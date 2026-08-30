@@ -74,6 +74,18 @@ export type AccountQuota = {
   items?: QuotaItem[]
 }
 
+export type ModelCaps = {
+  id: string
+  context_window: number | null
+  max_output_tokens: number | null
+  reasoning: boolean
+  reasoning_efforts: string[] | null
+  modalities: { input: string[]; output: string[] }
+  source: string
+  overridden: string[]
+  overrides: Record<string, unknown>
+}
+
 export type Account = {
   id: number
   name: string
@@ -93,7 +105,7 @@ export type Account = {
   last_probe_at: string | null
   quota: AccountQuota | null
   quota_updated_at: string | null
-  models: string[]
+  models: ModelCaps[]
   model_prefix?: string | null
   models_updated_at: string | null
   oauth_expires_at: string | null
@@ -166,6 +178,7 @@ export type ShareLookup = {
   today_tokens: number
   total_tokens: number
   models: string[]
+  model_caps?: ModelCaps[]
   gateway: {
     origin: string
     anthropic_base_url: string
@@ -229,6 +242,26 @@ export type LogItem = {
   response_body?: unknown
 }
 
+export type DashboardLeaderboardTop = {
+  rank: number | null
+  name: string
+  provider: string
+  score: number | null
+  slug: string
+  context_window_tokens: number | null
+  max_output_tokens: number | null
+}
+
+export type DashboardBenchmarkTop = {
+  model: string
+  account_name: string
+  provider: string
+  output_tokens_per_second: number
+  first_token_ms: number | null
+  total_ms: number | null
+  run_id: number | null
+}
+
 export type Dashboard = {
   account_count: number
   unhealthy_count: number
@@ -239,12 +272,52 @@ export type Dashboard = {
   total_tokens: number
   benchmark_count: number
   skill_count: number
+  key_count: number
+  tool_count: number
+  agent_count: number
+  agent_online_count: number
+  leaderboard_top: DashboardLeaderboardTop[]
+  benchmark_speed_top: DashboardBenchmarkTop[]
 }
 
 export type LeaderboardComponent = {
   score: number | null
   coverage: number | null
   metric_count: number | null
+}
+
+export type JobParam = {
+  key: string
+  label: string
+  value: number
+  min: number
+  max: number
+  hint: string
+}
+
+export type ScheduledJob = {
+  id: string
+  name: string
+  description: string
+  kind: 'loop' | 'on_demand' | string
+  source_url: string | null
+  running: boolean
+  last_started_at: string | null
+  last_finished_at: string | null
+  last_ok: boolean | null
+  last_message: string | null
+  error_message: string | null
+  next_run_at: string | null
+  cache_fetched_at: string | null
+  cache_expires_at: string | null
+  cache_ok: boolean | null
+  ttl_seconds: number
+  params: JobParam[]
+  details: Record<string, unknown>
+}
+
+export type JobList = {
+  items: ScheduledJob[]
 }
 
 export type LeaderboardLocalMatch = {
@@ -267,6 +340,7 @@ export type LeaderboardEntry = {
   provider_slug: string | null
   released_at: string | null
   context_window_tokens: number | null
+  max_output_tokens: number | null
   pricing_kind: string | null
   pricing_official_model_id: string | null
   input_price_per_million_usd: number | null
@@ -385,7 +459,7 @@ export type GatewayAgent = {
     id: string
     name: string
     provider: string
-    models: string[]
+    models: ModelCaps[]
     models_updated_at: string | null
     account_id?: number | null
     model_prefix?: string | null
@@ -409,7 +483,7 @@ export const api = {
   agents: () => request<{ items: GatewayAgent[]; total: number }>('/api/admin/agents'),
   agent: (agentId: string) => request<GatewayAgent>(`/api/admin/agents/${encodeURIComponent(agentId)}`),
   refreshAgentRouteModels: (agentId: string, routeId: string) =>
-    request<{ ok: boolean; models: string[]; message?: string; source?: string }>(
+    request<{ ok: boolean; models: ModelCaps[]; message?: string; source?: string }>(
       `/api/admin/agents/${encodeURIComponent(agentId)}/routes/${encodeURIComponent(routeId)}/models`,
       { method: 'POST' },
     ),
@@ -436,8 +510,13 @@ export const api = {
   probe: (id: number) => request<{ ok: boolean; latency_ms: number; message: string }>(`/api/admin/accounts/${id}/probe`, { method: 'POST' }),
   quota: (id: number) => request<AccountQuota>(`/api/admin/accounts/${id}/quota`, { method: 'POST' }),
   models: (id: number) =>
-    request<{ ok: boolean; models: string[]; message?: string; source?: string }>(`/api/admin/accounts/${id}/models`, {
+    request<{ ok: boolean; models: ModelCaps[]; message?: string; source?: string }>(`/api/admin/accounts/${id}/models`, {
       method: 'POST',
+    }),
+  updateAccountModel: (id: number, modelId: string, payload: Record<string, unknown>) =>
+    request<ModelCaps>(`/api/admin/accounts/${id}/models/${encodeURIComponent(modelId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
     }),
   oauthStart: (id: number) => request<{ authorize_url: string; needs_paste: boolean }>(`/api/admin/accounts/${id}/oauth/start`),
   completeOauth: (payload: { account_id?: number; callback_url?: string; code?: string; state?: string }) =>
@@ -465,6 +544,7 @@ export const api = {
     request<{
       display_name: string
       models: string[]
+      model_caps?: ModelCaps[]
       targets: CcSwitchTarget[]
       vscode: Record<string, unknown>
     }>(`/api/admin/keys/${id}/cc-switch`),
@@ -635,9 +715,12 @@ export const api = {
     if (!response.ok) throw new ApiError(response.status, '下载文件失败')
     return response.blob()
   },
-  leaderboard: (refresh = false) =>
-    request<Leaderboard>(`/api/admin/leaderboard${refresh ? '?refresh=true' : ''}`),
+  leaderboard: () => request<Leaderboard>('/api/admin/leaderboard'),
   publicLeaderboard: () => request<Leaderboard>('/api/share/leaderboard'),
+  jobs: () => request<JobList>('/api/admin/jobs'),
+  runJob: (id: string) => request<JobList>(`/api/admin/jobs/${id}/run`, { method: 'POST' }),
+  updateJob: (id: string, payload: Record<string, number>) =>
+    request<JobList>(`/api/admin/jobs/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
 }
 
 export type BenchmarkResult = {

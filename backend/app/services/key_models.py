@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.models import ApiKey, ApiKeyAccount, UpstreamAccount
-from app.services.ccswitch import parse_models_json
+from app.services.model_caps import ModelRecord, parse_model_records, serialize_record
 
 PREFIX_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")
 PREFIX_ERROR = "模型前缀仅允许字母、数字、下划线和短横线，最长 32 位，且不能以符号开头"
@@ -17,6 +17,7 @@ class CatalogEntry:
     public_id: str
     raw_id: str
     account: UpstreamAccount
+    record: ModelRecord | None = None
 
 
 def slug_model_prefix(name: str) -> str:
@@ -93,11 +94,12 @@ def build_model_catalog(api_key: ApiKey) -> list[CatalogEntry]:
     occupied: set[str] = set()
     entries: list[CatalogEntry] = []
     for account in accounts:
-        raw_ids = parse_models_json(account.models_json)
-        if not raw_ids:
+        records = parse_model_records(account.models_json)
+        if not records:
             continue
         prefix = account_prefix(account)
-        for raw_id in raw_ids:
+        for record in records:
+            raw_id = record.id
             if raw_id not in occupied:
                 public_id = raw_id
             else:
@@ -105,7 +107,7 @@ def build_model_catalog(api_key: ApiKey) -> list[CatalogEntry]:
                 if public_id in occupied:
                     public_id = f"{prefix}-{account.id}/{raw_id}"
             occupied.add(public_id)
-            entries.append(CatalogEntry(public_id=public_id, raw_id=raw_id, account=account))
+            entries.append(CatalogEntry(public_id=public_id, raw_id=raw_id, account=account, record=record))
     return entries
 
 
@@ -128,6 +130,18 @@ def resolve_model(
 
 def public_model_ids(api_key: ApiKey) -> list[str]:
     return [entry.public_id for entry in build_model_catalog(api_key)]
+
+
+def public_model_records(api_key: ApiKey) -> list[dict]:
+    items: list[dict] = []
+    for entry in build_model_catalog(api_key):
+        if entry.record is None:
+            items.append({"id": entry.public_id})
+            continue
+        payload = serialize_record(entry.record)
+        payload["id"] = entry.public_id
+        items.append(payload)
+    return items
 
 
 def replace_key_accounts(db: Session, item: ApiKey, account_ids: list[int]) -> list[UpstreamAccount]:

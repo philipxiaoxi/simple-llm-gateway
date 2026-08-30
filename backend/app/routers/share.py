@@ -16,7 +16,7 @@ from app.services.ccswitch import (
     describe_ccswitch_targets,
     gateway_endpoint,
 )
-from app.services.key_models import active_bound_accounts, account_prefix, bound_accounts, is_account_available, public_model_ids
+from app.services.key_models import active_bound_accounts, account_prefix, bound_accounts, is_account_available, public_model_ids, public_model_records
 from app.services.leaderboard import LeaderboardError, get_leaderboard
 
 router = APIRouter(prefix="/api/share", tags=["share"])
@@ -75,6 +75,7 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
     account = item.account
     bound = bound_accounts(item)
     models = public_model_ids(item)
+    records = public_model_records(item)
     origin = settings.app_base_url.rstrip("/")
     provider = account.provider if account else ""
     registered = find_provider(provider) if provider else None
@@ -103,6 +104,7 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
         "today_tokens": today_tokens,
         "total_tokens": total_tokens,
         "models": models,
+        "model_caps": records,
         "gateway": {
             "origin": origin,
             "anthropic_base_url": gateway_endpoint(origin, False),
@@ -114,6 +116,7 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
             display_name=_display_name(item),
             api_key=raw_key,
             models=models,
+            records=records,
         ),
     }
 

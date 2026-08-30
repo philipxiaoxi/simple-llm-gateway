@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from urllib.parse import urlencode
 
 CCS_SWITCH_TARGETS: tuple[tuple[str, str, bool, bool], ...] = (
@@ -17,25 +16,6 @@ def gateway_endpoint(app_base_url: str, include_openai_v1: bool) -> str:
     if include_openai_v1:
         return f"{root}/v1"
     return root
-
-
-def parse_models_json(raw: str | None) -> list[str]:
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(parsed, list):
-        return []
-    models: list[str] = []
-    seen: set[str] = set()
-    for item in parsed:
-        model = str(item).strip()
-        if model and model not in seen:
-            seen.add(model)
-            models.append(model)
-    return models
 
 
 def build_ccswitch_url(
@@ -121,24 +101,31 @@ def build_vscode_config(
     display_name: str,
     api_key: str,
     models: list[str],
+    records: list[dict] | None = None,
 ) -> dict:
     """生成 VSCode chatLanguageModels.json 的 Custom Endpoint 配置片段（OpenAI Chat 协议）。"""
     endpoint = f"{app_base_url.rstrip('/')}/v1/chat/completions"
-    return {
-        "name": display_name,
-        "vendor": "customendpoint",
-        "apiKey": api_key,
-        "apiType": "chat-completions",
-        "models": [
+    by_id = {item["id"]: item for item in records or [] if isinstance(item, dict) and item.get("id")}
+    items: list[dict] = []
+    for model_name in models:
+        caps = by_id.get(model_name) or {}
+        modalities = caps.get("modalities") if isinstance(caps.get("modalities"), dict) else {}
+        inputs = modalities.get("input") if isinstance(modalities.get("input"), list) else []
+        items.append(
             {
                 "id": model_name,
                 "name": model_name,
                 "url": endpoint,
                 "toolCalling": True,
-                "vision": False,
-                "maxInputTokens": 128000,
-                "maxOutputTokens": 16000,
+                "vision": "image" in inputs,
+                "maxInputTokens": int(caps.get("context_window") or 128000),
+                "maxOutputTokens": int(caps.get("max_output_tokens") or 16000),
             }
-            for model_name in models
-        ],
+        )
+    return {
+        "name": display_name,
+        "vendor": "customendpoint",
+        "apiKey": api_key,
+        "apiType": "chat-completions",
+        "models": items,
     }

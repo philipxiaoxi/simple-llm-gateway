@@ -524,12 +524,12 @@ function AiClassificationDialog({ onClose }: { onClose: () => void }) {
     setAccountId(classification.account_id ? String(classification.account_id) : '')
     setModel(classification.model || '')
     const account = accounts.find((item) => item.id === classification.account_id)
-    setCustomModel(Boolean(classification.model && account?.models.length && !account.models.includes(classification.model)))
+    setCustomModel(Boolean(classification.model && account?.models.length && !account.models.some((item) => item.id === classification.model)))
     setEnabled(classification.enabled)
     setReportAccountId(classification.report_account_id ? String(classification.report_account_id) : '')
     setReportModel(classification.report_model || '')
     const reportAccount = accounts.find((item) => item.id === classification.report_account_id)
-    setCustomReportModel(Boolean(classification.report_model && reportAccount?.models.length && !reportAccount.models.includes(classification.report_model)))
+    setCustomReportModel(Boolean(classification.report_model && reportAccount?.models.length && !reportAccount.models.some((item) => item.id === classification.report_model)))
     setReportEnabled(classification.report_enabled)
   }, [classification, accounts])
 
@@ -570,7 +570,7 @@ function AiClassificationDialog({ onClose }: { onClose: () => void }) {
             const nextAccount = availableAccounts.find((item) => item.id === Number(nextId))
             setAccountId(nextId)
             setCustomModel(false)
-            setModel(nextAccount?.models[0] || '')
+            setModel(nextAccount?.models[0]?.id || '')
           }}>
             <option value="">不使用 AI</option>
             {availableAccounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -587,7 +587,7 @@ function AiClassificationDialog({ onClose }: { onClose: () => void }) {
               } else setModel(event.target.value)
             }}>
               <option value="">使用账号默认模型</option>
-              {(selectedAccount?.models ?? []).map((item) => <option key={item} value={item}>{item}</option>)}
+              {(selectedAccount?.models ?? []).map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}
               <option value="__custom__">自定义模型...</option>
             </Select>
           )}
@@ -607,7 +607,7 @@ function AiClassificationDialog({ onClose }: { onClose: () => void }) {
               const nextAccount = availableAccounts.find((item) => item.id === Number(nextId))
               setReportAccountId(nextId)
               setCustomReportModel(false)
-              setReportModel(nextAccount?.models[0] || '')
+              setReportModel(nextAccount?.models[0]?.id || '')
             }}>
               <option value="">不使用 AI 报告</option>
               {availableAccounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -624,7 +624,7 @@ function AiClassificationDialog({ onClose }: { onClose: () => void }) {
                 } else setReportModel(event.target.value)
               }}>
                 <option value="">使用账号默认模型</option>
-                {(selectedReportAccount?.models ?? []).map((item) => <option key={item} value={item}>{item}</option>)}
+                {(selectedReportAccount?.models ?? []).map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}
                 <option value="__custom__">自定义模型...</option>
               </Select>
             )}

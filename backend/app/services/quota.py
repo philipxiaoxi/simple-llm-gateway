@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -25,11 +24,15 @@ def accounts_due_for_quota_refresh(
     now: datetime | None = None,
     interval_seconds: int | None = None,
 ) -> list[UpstreamAccount]:
-    interval = (
-        interval_seconds
-        if interval_seconds is not None
-        else get_settings().quota_refresh_interval_seconds
-    )
+    if interval_seconds is None:
+        from app.services.job_settings import get_job_int
+
+        interval_seconds = get_job_int(
+            "quota",
+            "interval_seconds",
+            get_settings().quota_refresh_interval_seconds,
+        )
+    interval = interval_seconds
     cutoff = (now or utcnow()) - timedelta(seconds=interval)
     rows = db.scalars(
         select(UpstreamAccount)
@@ -72,11 +75,14 @@ async def refresh_due_quotas() -> int:
     return refreshed
 
 
-async def run_quota_refresh_loop() -> None:
-    interval = max(1, get_settings().quota_refresh_interval_seconds)
-    while True:
-        try:
-            await refresh_due_quotas()
-        except Exception:
-            pass
-        await asyncio.sleep(interval)
+def quota_account_stats(db: Session) -> dict[str, Any]:
+    rows = db.scalars(
+        select(UpstreamAccount).where(UpstreamAccount.status == "active")
+    ).all()
+    usable = [account for account in rows if get_upstream_credential(account, allow_expired=True)]
+    timestamps = [account.quota_updated_at for account in usable if account.quota_updated_at is not None]
+    return {
+        "account_count": len(usable),
+        "oldest_quota_at": min(timestamps) if timestamps else None,
+        "newest_quota_at": max(timestamps) if timestamps else None,
+    }
