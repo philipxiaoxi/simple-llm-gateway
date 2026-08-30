@@ -59,7 +59,7 @@ def test_openai_forward_and_log(client: TestClient, auth_headers: dict[str, str]
     assert items[1]["content"] == "hi"
 
 
-def test_follow_up_reuses_same_log(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_follow_up_without_session_creates_new_log(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
     with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=FakeResponse())):
         first = client.post(
@@ -88,22 +88,11 @@ def test_follow_up_reuses_same_log(client: TestClient, auth_headers: dict[str, s
         )
         assert third.status_code == 200
 
+    # 无 session 时不猜测会话边界，每条请求独立成一条 log
     listed = client.get("/api/admin/logs", headers=auth_headers).json()
-    assert listed["total"] == 2
-    by_id = {item["id"]: _messages(client, auth_headers, item["id"]) for item in listed["items"]}
-    continued_id = next(log_id for log_id, body in by_id.items() if body["total"] == 4)
-    fresh_id = next(log_id for log_id, body in by_id.items() if body["total"] == 2)
-    assert any(item["content"] == "再来一句" for item in by_id[continued_id]["items"])
-    assert any(item["content"] == "新开的对话" for item in by_id[fresh_id]["items"])
-    assert fresh_id != continued_id
-    continued = next(item for item in listed["items"] if item["id"] == continued_id)
-    fresh = next(item for item in listed["items"] if item["id"] == fresh_id)
-    assert continued["prompt_tokens"] == 6
-    assert continued["completion_tokens"] == 4
-    assert continued["total_tokens"] == 10
-    assert fresh["prompt_tokens"] == 3
-    assert fresh["completion_tokens"] == 2
-    assert fresh["total_tokens"] == 5
+    assert listed["total"] == 3
+    totals = sorted(_messages(client, auth_headers, item["id"])["total"] for item in listed["items"])
+    assert totals == [2, 2, 4]
 
 
 def test_claude_session_id_merges_same_length_turns(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -546,6 +535,7 @@ def test_anthropic_followup_injects_stored_reasoning(client: TestClient, auth_he
 def test_openai_followup_injects_stored_reasoning(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
     captured: list[list] = []
+    session_id = "sess-reason-openai-1"
 
     async def fake_chat(_account, messages, _model, _stream, _extra, _credential):
         captured.append(messages)
@@ -559,6 +549,7 @@ def test_openai_followup_injects_stored_reasoning(client: TestClient, auth_heade
             headers={"Authorization": f"Bearer {key}"},
             json={
                 "model": "deepseek-chat",
+                "session_id": session_id,
                 "messages": [{"role": "user", "content": "读一下"}],
                 "tools": [{"type": "function", "function": {"name": "Read", "parameters": {}}}],
             },
@@ -569,6 +560,7 @@ def test_openai_followup_injects_stored_reasoning(client: TestClient, auth_heade
             headers={"Authorization": f"Bearer {key}"},
             json={
                 "model": "deepseek-chat",
+                "session_id": session_id,
                 "messages": [
                     {"role": "user", "content": "读一下"},
                     {

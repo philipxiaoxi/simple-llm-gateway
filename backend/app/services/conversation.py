@@ -186,17 +186,24 @@ def common_prefix_len(stored: list[dict[str, Any]], inbound: list[dict[str, Any]
 
 
 def new_messages_to_store(
-    stored: list[dict[str, Any]],
+    head: list[dict[str, Any]],
+    tail: list[dict[str, Any]],
     inbound: list[dict[str, Any]],
     assistant: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
-    prefix = common_prefix_len(stored, inbound)
+    """根据已存会话的头部/尾部片段计算需新增的消息。
+
+    head 为已存会话的前 len(inbound) 条（前缀匹配用），tail 为最后一条（判重用），
+    等价于原来的全量 stored，但避免整段会话加载。
+    """
+    prefix = common_prefix_len(head, inbound)
     added = [dict(item) for item in inbound[prefix:]]
     if assistant is None:
         return added
     if added and message_fingerprint(added[-1]) == message_fingerprint(assistant):
         return added
-    if not added and stored and message_fingerprint(stored[-1]) == message_fingerprint(assistant):
+    last = tail[-1] if tail else None
+    if not added and last is not None and message_fingerprint(last) == message_fingerprint(assistant):
         return []
     added.append(dict(assistant))
     return added
@@ -224,26 +231,26 @@ def encode_message_content(message: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
-def load_log_messages(db: Session, log_id: int) -> list[dict[str, Any]]:
+def load_log_messages_head(db: Session, log_id: int, limit: int) -> list[dict[str, Any]]:
+    """按 seq 升序加载会话前 limit 条消息，用于增量前缀匹配。"""
     rows = db.scalars(
-        select(RequestLogMessage).where(RequestLogMessage.log_id == log_id).order_by(RequestLogMessage.seq)
+        select(RequestLogMessage)
+        .where(RequestLogMessage.log_id == log_id)
+        .order_by(RequestLogMessage.seq.asc())
+        .limit(limit)
     ).all()
     return [decode_stored_message(row) for row in rows]
 
 
-def load_log_messages_batch(db: Session, log_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
-    """一次查询批量加载多条日志的消息，避免逐条查询的 N+1。"""
-    if not log_ids:
-        return {}
+def load_log_messages_tail(db: Session, log_id: int, limit: int) -> list[dict[str, Any]]:
+    """按 seq 升序加载会话最后 limit 条消息，用于尾部判重。"""
     rows = db.scalars(
         select(RequestLogMessage)
-        .where(RequestLogMessage.log_id.in_(log_ids))
-        .order_by(RequestLogMessage.log_id, RequestLogMessage.seq)
+        .where(RequestLogMessage.log_id == log_id)
+        .order_by(RequestLogMessage.seq.desc())
+        .limit(limit)
     ).all()
-    grouped: dict[int, list[dict[str, Any]]] = {}
-    for row in rows:
-        grouped.setdefault(row.log_id, []).append(decode_stored_message(row))
-    return grouped
+    return [decode_stored_message(row) for row in reversed(rows)]
 
 
 def append_log_messages(db: Session, log_id: int, messages: list[dict[str, Any]]) -> None:
@@ -270,46 +277,19 @@ def find_continuation_log(
     account_id: int,
     api_key_id: int,
     protocol: str,
-    request_body: dict[str, Any],
     session_key: str | None = None,
 ) -> RequestLog | None:
-    if session_key:
-        return db.scalar(
-            select(RequestLog)
-            .where(
-                RequestLog.account_id == account_id,
-                RequestLog.api_key_id == api_key_id,
-                RequestLog.session_key == session_key,
-                RequestLog.protocol == protocol,
-            )
-            .order_by(RequestLog.id.desc())
-            .limit(1)
-        )
-    inbound = extract_request_messages(request_body)
-    if not inbound:
+    # 无 session 时不猜测会话边界，直接按新会话处理，避免加载最近会话做前缀匹配。
+    if not session_key:
         return None
-    candidates = db.scalars(
+    return db.scalar(
         select(RequestLog)
         .where(
             RequestLog.account_id == account_id,
             RequestLog.api_key_id == api_key_id,
+            RequestLog.session_key == session_key,
             RequestLog.protocol == protocol,
         )
         .order_by(RequestLog.id.desc())
-        .limit(20)
-    ).all()
-    stored_by_log = load_log_messages_batch(db, [log.id for log in candidates])
-    for log in candidates:
-        stored = stored_by_log.get(log.id, [])
-        if not stored:
-            continue
-        prefix = common_prefix_len(stored, inbound)
-        if prefix == len(stored) and len(inbound) > prefix:
-            return log
-        if (
-            prefix == len(stored) - 1
-            and stored[-1].get("role") == "assistant"
-            and len(inbound) > prefix
-        ):
-            return log
-    return None
+        .limit(1)
+    )

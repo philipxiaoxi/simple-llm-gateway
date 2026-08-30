@@ -52,7 +52,8 @@ from app.services.conversation import (
     extract_request_messages,
     extract_session_key,
     find_continuation_log,
-    load_log_messages,
+    load_log_messages_head,
+    load_log_messages_tail,
     new_messages_to_store,
 )
 from app.services.credentials import CredentialError
@@ -271,17 +272,14 @@ def save_log(
 ) -> RequestLog:
     prompt, completion, total = usage
     now = utcnow()
-    existing = None
     session_key = extract_session_key(request_body if isinstance(request_body, dict) else None, request_headers)
-    if isinstance(request_body, dict):
-        existing = find_continuation_log(
-            db,
-            account_id=account_id,
-            api_key_id=api_key_id,
-            protocol=protocol,
-            request_body=request_body,
-            session_key=session_key,
-        )
+    existing = find_continuation_log(
+        db,
+        account_id=account_id,
+        api_key_id=api_key_id,
+        protocol=protocol,
+        session_key=session_key,
+    )
     inbound = extract_request_messages(request_body) if isinstance(request_body, dict) else []
     assistant = extract_assistant_message(protocol, response_body)
     if existing is not None:
@@ -302,7 +300,9 @@ def save_log(
             existing.reasoning_json = dump_reasoning_json(
                 merge_reasoning_maps(parse_reasoning_json(existing.reasoning_json), reasoning_map)
             )
-        append_log_messages(db, existing.id, new_messages_to_store(load_log_messages(db, existing.id), inbound, assistant))
+        head = load_log_messages_head(db, existing.id, len(inbound))
+        tail = load_log_messages_tail(db, existing.id, 1)
+        append_log_messages(db, existing.id, new_messages_to_store(head, tail, inbound, assistant))
         db.flush()
         return existing
     stored_key = db.get(ApiKey, api_key_id)

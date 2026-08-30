@@ -478,7 +478,7 @@ def test_responses_endpoint_reasoning_and_tools(client: TestClient, auth_headers
     assert captured["input"][2]["type"] == "function_call_output"
 
 
-def test_responses_follow_up_reuses_same_log(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_responses_follow_up_without_session_creates_new_log(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
     with patch("app.services.proxy.call_responses", new=AsyncMock(return_value=FakeResponsesResponse())):
         first = client.post(
@@ -507,13 +507,10 @@ def test_responses_follow_up_reuses_same_log(client: TestClient, auth_headers: d
         )
         assert third.status_code == 200
 
+    # 无 session 时不猜测会话边界，每条请求独立成一条 log
     listed = client.get("/api/admin/logs", headers=auth_headers).json()
-    assert listed["total"] == 2
-    by_id = {item["id"]: _messages(client, auth_headers, item["id"]) for item in listed["items"]}
-    continued_id = next(log_id for log_id, body in by_id.items() if body["total"] == 4)
-    fresh_id = next(log_id for log_id, body in by_id.items() if body["total"] == 2)
-    assert any(item["content"] == "再来一句" for item in by_id[continued_id]["items"])
-    assert any(item["content"] == "新开的对话" for item in by_id[fresh_id]["items"])
-    assert fresh_id != continued_id
+    assert listed["total"] == 3
+    totals = sorted(_messages(client, auth_headers, item["id"])["total"] for item in listed["items"])
+    assert totals == [2, 2, 4]
 
 

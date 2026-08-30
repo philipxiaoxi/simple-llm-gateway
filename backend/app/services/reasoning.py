@@ -163,13 +163,22 @@ def load_reasoning_map(
     account_id: int,
     session_key: str | None,
 ) -> dict[str, str]:
-    query = select(RequestLog).where(
-        RequestLog.api_key_id == api_key_id,
-        RequestLog.account_id == account_id,
+    # 无 session 时不猜测会话边界，避免读取最近 20 条日志的 reasoning_json（可能数 MB），
+    # 也避免把无关会话的 reasoning 误注入当前请求。
+    if not session_key:
+        return {}
+    logs = list(
+        db.scalars(
+            select(RequestLog)
+            .where(
+                RequestLog.api_key_id == api_key_id,
+                RequestLog.account_id == account_id,
+                RequestLog.session_key == session_key,
+            )
+            .order_by(RequestLog.id.desc())
+            .limit(20)
+        ).all()
     )
-    if session_key:
-        query = query.where(RequestLog.session_key == session_key)
-    logs = list(db.scalars(query.order_by(RequestLog.id.desc()).limit(20)).all())
     merged: dict[str, str] = {}
     for log in reversed(logs):
         merged.update(reasoning_map_from_log(log))
