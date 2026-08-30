@@ -286,6 +286,40 @@ export type LeaderboardComponent = {
   metric_count: number | null
 }
 
+export type JobParam = {
+  key: string
+  label: string
+  value: number
+  min: number
+  max: number
+  hint: string
+}
+
+export type ScheduledJob = {
+  id: string
+  name: string
+  description: string
+  kind: 'loop' | 'on_demand' | string
+  source_url: string | null
+  running: boolean
+  last_started_at: string | null
+  last_finished_at: string | null
+  last_ok: boolean | null
+  last_message: string | null
+  error_message: string | null
+  next_run_at: string | null
+  cache_fetched_at: string | null
+  cache_expires_at: string | null
+  cache_ok: boolean | null
+  ttl_seconds: number
+  params: JobParam[]
+  details: Record<string, unknown>
+}
+
+export type JobList = {
+  items: ScheduledJob[]
+}
+
 export type LeaderboardLocalMatch = {
   kind: string
   account_id: number
@@ -681,9 +715,12 @@ export const api = {
     if (!response.ok) throw new ApiError(response.status, '下载文件失败')
     return response.blob()
   },
-  leaderboard: (refresh = false) =>
-    request<Leaderboard>(`/api/admin/leaderboard${refresh ? '?refresh=true' : ''}`),
+  leaderboard: () => request<Leaderboard>('/api/admin/leaderboard'),
   publicLeaderboard: () => request<Leaderboard>('/api/share/leaderboard'),
+  jobs: () => request<JobList>('/api/admin/jobs'),
+  runJob: (id: string) => request<JobList>(`/api/admin/jobs/${id}/run`, { method: 'POST' }),
+  updateJob: (id: string, payload: Record<string, number>) =>
+    request<JobList>(`/api/admin/jobs/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
 }
 
 export type BenchmarkResult = {

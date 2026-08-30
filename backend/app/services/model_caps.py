@@ -17,6 +17,13 @@ from app.config import get_settings
 MODELS_DEV_URL = "https://models.dev/api.json"
 MODELS_DEV_TTL = timedelta(hours=48)
 MODELS_DEV_FAIL_TTL = timedelta(minutes=5)
+
+
+def catalog_ttl() -> timedelta:
+    from app.services.job_settings import get_job_int
+
+    seconds = max(60, get_job_int("catalog", "interval_seconds", int(MODELS_DEV_TTL.total_seconds())))
+    return timedelta(seconds=seconds)
 DEFAULT_CONTEXT_WINDOW = 128_000
 DEFAULT_MAX_OUTPUT_TOKENS = 16_000
 DEFAULT_INPUT_MODALITIES = ("text",)
@@ -415,7 +422,7 @@ def _load_catalog_index_cached(*, force: bool = False) -> CatalogIndex:
     now = utcnow()
     if _CACHE is not None:
         fetched_at, index, ok = _CACHE
-        ttl = MODELS_DEV_TTL if ok else MODELS_DEV_FAIL_TTL
+        ttl = catalog_ttl() if ok else MODELS_DEV_FAIL_TTL
         if not force and now - fetched_at < ttl:
             return index
         if ok:
@@ -435,7 +442,7 @@ async def refresh_catalog_index(*, force: bool = False) -> CatalogIndex:
     now = utcnow()
     if not force and _CACHE is not None:
         fetched_at, index, ok = _CACHE
-        if ok and now - fetched_at < MODELS_DEV_TTL:
+        if ok and now - fetched_at < catalog_ttl():
             return index
     fetched = await asyncio.to_thread(_fetch_models_dev)
     if fetched is not None:
@@ -451,14 +458,22 @@ async def refresh_catalog_index(*, force: bool = False) -> CatalogIndex:
     return _store_cache(CatalogIndex(), utcnow(), False)
 
 
-async def run_catalog_refresh_loop() -> None:
-    interval = max(60, int(MODELS_DEV_FAIL_TTL.total_seconds()))
-    while True:
-        try:
-            await refresh_catalog_index()
-        except Exception:
-            pass
-        await asyncio.sleep(interval)
+def catalog_cache_info() -> dict[str, Any]:
+    fetched_at = _CACHE[0] if _CACHE is not None else None
+    index = _CACHE[1] if _CACHE is not None else None
+    ok = bool(_CACHE[2]) if _CACHE is not None else False
+    if fetched_at is None:
+        path = catalog_cache_path()
+        cached_payload, cached_at = _read_cache_file(path)
+        if cached_payload is not None:
+            index = build_catalog_index(cached_payload)
+            fetched_at = cached_at
+            ok = True
+    return {
+        "fetched_at": fetched_at,
+        "ok": ok and index is not None and bool(index.by_norm),
+        "model_count": len(index.by_norm) if index is not None else 0,
+    }
 
 
 def reset_catalog_cache() -> None:

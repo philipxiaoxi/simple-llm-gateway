@@ -9,6 +9,11 @@ def _empty_model_catalog(monkeypatch) -> None:
     from app.services.model_caps import CatalogIndex, reset_catalog_cache
 
     reset_catalog_cache()
+    from app.services.job_settings import reset_job_settings
+    from app.services.jobs import reset_jobs
+
+    reset_job_settings()
+    reset_jobs()
     empty = CatalogIndex()
     monkeypatch.setattr("app.services.model_caps.load_catalog_index", lambda force=False: empty)
     monkeypatch.setattr("app.providers.base.load_catalog_index", lambda force=False: empty)
@@ -32,9 +37,20 @@ def client(tmp_path, monkeypatch) -> TestClient:
     reset_db_runtime()
     login_gate.reset()
 
+    from app.services.job_settings import reset_job_settings
+    from app.services.jobs import reset_jobs
+    from app.services.model_caps import reset_catalog_cache
+
+    reset_job_settings()
+    reset_jobs()
+    reset_catalog_cache()
+
+    monkeypatch.setattr("app.services.jobs.start_job_loops", lambda: [])
     from app.main import app
     from app.db import init_db
     from app.seed import seed_admin, seed_skill_categories
+
+    monkeypatch.setattr("app.main.start_job_loops", lambda: [])
 
     init_db()
     seed_admin()

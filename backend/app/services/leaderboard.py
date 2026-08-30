@@ -328,6 +328,10 @@ def _latest_snapshot(db: Session) -> LeaderboardSnapshot | None:
     return db.scalar(select(LeaderboardSnapshot).order_by(LeaderboardSnapshot.id.desc()).limit(1))
 
 
+def latest_snapshot(db: Session) -> LeaderboardSnapshot | None:
+    return _latest_snapshot(db)
+
+
 def snapshot_to_payload(
     db: Session,
     snapshot: LeaderboardSnapshot | None,
@@ -336,6 +340,8 @@ def snapshot_to_payload(
     error_message: str | None = None,
     public: bool = False,
 ) -> dict[str, Any]:
+    from app.services.job_settings import get_job_int
+
     settings = get_settings()
     items: list[dict[str, Any]] = []
     if snapshot and snapshot.entries_json:
@@ -355,8 +361,8 @@ def snapshot_to_payload(
         "source_page": settings.aihot_leaderboard_url,
         "fetched_at": snapshot.fetched_at if snapshot else None,
         "stale": stale,
-        "ttl_seconds": settings.aihot_leaderboard_ttl_seconds,
-        "min_refresh_seconds": settings.aihot_leaderboard_min_refresh_seconds,
+        "ttl_seconds": max(60, get_job_int("leaderboard", "interval_seconds", settings.aihot_leaderboard_ttl_seconds)),
+        "min_refresh_seconds": max(0, settings.aihot_leaderboard_min_refresh_seconds),
         "source_updated_label": snapshot.source_updated_label if snapshot else None,
         "error_message": error_message or (snapshot.error_message if snapshot else None),
         "unofficial": True,
@@ -368,7 +374,9 @@ def snapshot_to_payload(
 def cache_is_fresh(snapshot: LeaderboardSnapshot | None, now: datetime | None = None) -> bool:
     if snapshot is None or not snapshot.entries_json or snapshot.entries_json == "[]":
         return False
-    ttl = max(60, get_settings().aihot_leaderboard_ttl_seconds)
+    from app.services.job_settings import get_job_int
+
+    ttl = max(60, get_job_int("leaderboard", "interval_seconds", get_settings().aihot_leaderboard_ttl_seconds))
     return snapshot.fetched_at >= (now or utcnow()) - timedelta(seconds=ttl)
 
 
@@ -425,20 +433,19 @@ async def get_leaderboard(
     *,
     force: bool = False,
     public: bool = False,
+    ignore_cooldown: bool = False,
     client: httpx.AsyncClient | None = None,
 ) -> dict[str, Any]:
     snapshot = _latest_snapshot(db)
-    if public:
+    if public or not force:
         has_entries = bool(snapshot and snapshot.entries_json and snapshot.entries_json != "[]")
         return snapshot_to_payload(
             db,
             snapshot,
             stale=has_entries and not cache_is_fresh(snapshot),
-            public=True,
+            public=public,
         )
-    if not force and cache_is_fresh(snapshot):
-        return snapshot_to_payload(db, snapshot)
-    if force and refresh_is_too_soon(snapshot):
+    if force and not ignore_cooldown and refresh_is_too_soon(snapshot):
         return snapshot_to_payload(
             db, snapshot, stale=False, error_message="刷新过于频繁，已返回缓存"
         )

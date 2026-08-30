@@ -17,6 +17,7 @@ from app.routers import (
     admin_benchmark,
     admin_benchmark_history,
     admin_dashboard,
+    admin_jobs,
     admin_keys,
     admin_leaderboard,
     admin_logs,
@@ -30,9 +31,8 @@ from app.routers import (
 )
 from app.seed import seed_admin, seed_desktop_tools, seed_skill_categories
 from app.services.desktop_tools import reconcile_stuck_downloads
-from app.services.grok_oauth import cleanup_expired_oauth_states, run_oauth_refresh_loop
-from app.services.model_caps import run_catalog_refresh_loop
-from app.services.quota import run_quota_refresh_loop
+from app.services.grok_oauth import cleanup_expired_oauth_states
+from app.services.jobs import start_job_loops
 
 
 @asynccontextmanager
@@ -49,11 +49,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         session.commit()
     finally:
         session.close()
-    background_tasks = [
-        asyncio.create_task(run_oauth_refresh_loop()),
-        asyncio.create_task(run_quota_refresh_loop()),
-        asyncio.create_task(run_catalog_refresh_loop()),
-    ]
+    background_tasks = start_job_loops()
     try:
         yield
     finally:
@@ -81,6 +77,7 @@ app.include_router(admin_benchmark.router)
 app.include_router(admin_benchmark_history.router)
 app.include_router(admin_keys.router)
 app.include_router(admin_leaderboard.router)
+app.include_router(admin_jobs.router)
 app.include_router(admin_logs.router)
 app.include_router(admin_dashboard.router)
 app.include_router(admin_skills.router)

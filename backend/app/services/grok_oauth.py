@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import base64
 import hashlib
 import secrets
@@ -19,6 +18,12 @@ from app.models import OAuthState, OAuthToken, UpstreamAccount
 
 OAUTH_REFRESH_INTERVAL_SECONDS = 10 * 60
 OAUTH_REFRESH_SOON_SECONDS = 20 * 60
+
+
+def oauth_refresh_soon_seconds() -> int:
+    from app.services.job_settings import get_job_int
+
+    return max(60, get_job_int("oauth", "soon_seconds", OAUTH_REFRESH_SOON_SECONDS))
 
 
 def _pkce_pair() -> tuple[str, str]:
@@ -207,8 +212,10 @@ def accounts_due_for_oauth_refresh(
     db: Session,
     *,
     now: datetime | None = None,
-    soon_seconds: int = OAUTH_REFRESH_SOON_SECONDS,
+    soon_seconds: int | None = None,
 ) -> list[UpstreamAccount]:
+    if soon_seconds is None:
+        soon_seconds = oauth_refresh_soon_seconds()
     cutoff = (now or utcnow()) + timedelta(seconds=soon_seconds)
     rows = db.scalars(
         select(UpstreamAccount)
@@ -252,13 +259,24 @@ async def refresh_expiring_oauth_tokens() -> int:
     return refreshed
 
 
-async def run_oauth_refresh_loop() -> None:
-    while True:
-        try:
-            await refresh_expiring_oauth_tokens()
-        except Exception:
-            pass
-        await asyncio.sleep(OAUTH_REFRESH_INTERVAL_SECONDS)
+def oauth_token_stats(db: Session, *, soon_seconds: int | None = None) -> dict:
+    if soon_seconds is None:
+        soon_seconds = oauth_refresh_soon_seconds()
+    due = accounts_due_for_oauth_refresh(db, soon_seconds=soon_seconds)
+    rows = db.scalars(
+        select(UpstreamAccount)
+        .options(joinedload(UpstreamAccount.oauth_token))
+        .where(UpstreamAccount.status == "active")
+    ).all()
+    tokens = [account.oauth_token for account in rows if account.oauth_token is not None]
+    expires = [token.expires_at for token in tokens if token.expires_at is not None]
+    updated = [token.updated_at for token in tokens if token.updated_at is not None]
+    return {
+        "due_count": len(due),
+        "token_count": len(tokens),
+        "earliest_expires_at": min(expires) if expires else None,
+        "latest_updated_at": max(updated) if updated else None,
+    }
 
 
 def _store_tokens(db: Session, account: UpstreamAccount, payload: dict) -> None:

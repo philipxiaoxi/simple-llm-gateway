@@ -1,25 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { ExternalLink, RefreshCw } from 'lucide-react'
 import { LeaderboardView } from '../components/LeaderboardView'
 import { Button } from '../components/ui'
 import { api } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { errorMessage } from '../lib/utils'
 
 export function LeaderboardPage() {
-  const queryClient = useQueryClient()
-  const { data, isLoading, isError, error, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['leaderboard'],
     queryFn: () => api.leaderboard(),
-  })
-  const refreshMutation = useMutation({
-    mutationFn: () => api.leaderboard(true),
-    onSuccess: async (payload) => {
-      queryClient.setQueryData(['leaderboard'], payload)
-      if (payload.error_message) notifyBad(payload.error_message)
-      else notifyOk('榜单已刷新')
-    },
-    onError: (caught) => notifyBad(errorMessage(caught, '刷新失败')),
   })
 
   return (
@@ -29,16 +18,16 @@ export function LeaderboardPage() {
           <div className="min-w-0">
             <div className="mb-2 font-mono text-xs tracking-[0.28em] text-signal">AIHOT CACHE</div>
             <h1 className="text-2xl font-semibold">模型榜</h1>
-            <p className="mt-1 text-sm text-mist">AIHOT 总榜前 30 名以及本站覆盖率</p>
+            <p className="mt-1 text-sm text-mist">只读缓存。后台每 12 小时拉取 AIHOT 总榜前 30 名。</p>
           </div>
           <Button
             type="button"
             variant="line"
             className="shrink-0 lg:hidden"
-            disabled={refreshMutation.isPending}
-            onClick={() => refreshMutation.mutate()}
+            disabled={isFetching}
+            onClick={() => void refetch()}
           >
-            <RefreshCw size={16} className={refreshMutation.isPending ? 'animate-spin' : undefined} />
+            <RefreshCw size={16} className={isFetching ? 'animate-spin' : undefined} />
             刷新
           </Button>
         </div>
@@ -74,11 +63,11 @@ export function LeaderboardPage() {
             type="button"
             variant="line"
             className="hidden lg:inline-flex"
-            disabled={refreshMutation.isPending}
-            onClick={() => refreshMutation.mutate()}
+            disabled={isFetching}
+            onClick={() => void refetch()}
           >
-            <RefreshCw size={16} className={refreshMutation.isPending ? 'animate-spin' : undefined} />
-            刷新缓存
+            <RefreshCw size={16} className={isFetching ? 'animate-spin' : undefined} />
+            刷新
           </Button>
         </div>
       </div>
@@ -88,7 +77,7 @@ export function LeaderboardPage() {
         isLoading={isLoading}
         isError={isError}
         error={error}
-        emptyText="还没有缓存。点刷新从 AIHOT 拉取一次。"
+        emptyText="还没有缓存。后台每 12 小时拉取，也可到定时任务页立即请求。"
         onRetry={() => void refetch()}
       />
     </div>

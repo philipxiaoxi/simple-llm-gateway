@@ -553,3 +553,37 @@ class LeaderboardOut(BaseModel):
     unofficial: bool = True
     items: list[LeaderboardEntryOut] = Field(default_factory=list)
     total: int = 0
+
+
+class JobParamOut(BaseModel):
+    key: str
+    label: str
+    value: int
+    min: int
+    max: int
+    hint: str
+
+
+class JobOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    kind: str
+    source_url: str | None = None
+    running: bool = False
+    last_started_at: datetime | None = None
+    last_finished_at: datetime | None = None
+    last_ok: bool | None = None
+    last_message: str | None = None
+    error_message: str | None = None
+    next_run_at: datetime | None = None
+    cache_fetched_at: datetime | None = None
+    cache_expires_at: datetime | None = None
+    cache_ok: bool | None = None
+    ttl_seconds: int = 0
+    params: list[JobParamOut] = Field(default_factory=list)
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class JobListOut(BaseModel):
+    items: list[JobOut] = Field(default_factory=list)
