@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { Pagination } from '../components/Pagination'
 import { Badge, Button, Card } from '../components/ui'
@@ -121,18 +121,45 @@ function parseHighlight(raw: string | null): { start: number; end: number } | nu
   return { start, end }
 }
 
+function parseTargetSeq(raw: string | null): number | null {
+  if (raw == null || raw === '') return null
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < 0) return null
+  return value
+}
+
+function scrollNodeIntoMain(node: HTMLElement) {
+  const main = document.querySelector('main')
+  if (main instanceof HTMLElement && main.contains(node)) {
+    const mainRect = main.getBoundingClientRect()
+    const nodeRect = node.getBoundingClientRect()
+    const nextTop = main.scrollTop + (nodeRect.top - mainRect.top) - main.clientHeight / 2 + nodeRect.height / 2
+    main.scrollTo({ top: Math.max(0, nextTop), left: 0, behavior: 'auto' })
+    return
+  }
+  node.scrollIntoView({ block: 'center', behavior: 'auto' })
+}
+
 export function LogDetailPage() {
   const params = useParams()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const id = Number(params.id)
   const ready = Number.isFinite(id)
-  const targetSeq = Number(searchParams.get('seq'))
-  const highlight = parseHighlight(searchParams.get('hl'))
-  const hasTargetSeq = Number.isFinite(targetSeq) && targetSeq >= 0
+  const seqParam = searchParams.get('seq')
+  const hlParam = searchParams.get('hl')
+  const targetSeq = parseTargetSeq(seqParam)
+  const highlight = parseHighlight(hlParam)
+  const hasTargetSeq = targetSeq != null
   const [raw, setRaw] = useState(false)
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
   const [page, setPage] = useState(1)
   const [located, setLocated] = useState(false)
+  // Keep highlight after stripping audit query params from the URL.
+  const [pinnedHighlight, setPinnedHighlight] = useState<{ start: number; end: number } | null>(null)
+  const [pinnedSeq, setPinnedSeq] = useState<number | null>(null)
+  const scrolledRef = useRef(false)
+  const activeSeq = hasTargetSeq ? targetSeq : pinnedSeq
+  const activeHighlight = hasTargetSeq ? highlight : pinnedHighlight
   const { data, isPending } = useQuery({
     queryKey: ['log', id],
     queryFn: () => api.log(id, false),
@@ -148,17 +175,36 @@ export function LogDetailPage() {
     setRaw(false)
     setPage(1)
     setLocated(false)
-  }, [id, targetSeq])
+    setPinnedHighlight(null)
+    setPinnedSeq(null)
+    scrolledRef.current = false
+  }, [id])
+  useEffect(() => {
+    if (targetSeq == null) return
+    setLocated(false)
+    scrolledRef.current = false
+    setPinnedSeq(targetSeq)
+    setPinnedHighlight(parseHighlight(hlParam))
+  }, [targetSeq, hlParam])
   useEffect(() => {
     if (!hasTargetSeq || located || !pageData) return
     if (pageData.page !== page) setPage(pageData.page)
     setLocated(true)
   }, [hasTargetSeq, located, pageData, page])
   useEffect(() => {
-    if (!hasTargetSeq) return
+    if (!hasTargetSeq || !located || scrolledRef.current) return
     const node = document.getElementById('audit-hit')
-    node?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [hasTargetSeq, pageData])
+    if (!node) return
+    scrolledRef.current = true
+    scrollNodeIntoMain(node)
+    // Drop one-shot audit params so later visits / history won't keep auto-locating.
+    if (seqParam != null || hlParam != null) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('seq')
+      next.delete('hl')
+      setSearchParams(next, { replace: true })
+    }
+  }, [hasTargetSeq, located, pageData, seqParam, hlParam, searchParams, setSearchParams])
   if (isPending || pagePending || !data || !pageData || data.id !== id) {
     return <div className="text-mist">加载中…</div>
   }
@@ -173,7 +219,9 @@ export function LogDetailPage() {
     setLocated(true)
     setPage(bounded)
     setExpanded({})
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    const main = document.querySelector('main')
+    if (main instanceof HTMLElement) main.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    else window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
   }
 
   return (
@@ -223,7 +271,7 @@ export function LogDetailPage() {
       <div className="min-w-0 space-y-3">
         {messages.map((message) => {
           const seq = message.seq
-          const active = hasTargetSeq && seq === targetSeq
+          const active = activeSeq != null && seq === activeSeq
           return (
             <MessageBubble
               key={seq}
@@ -233,7 +281,7 @@ export function LogDetailPage() {
               onToggle={() =>
                 setExpanded((current) => ({ ...current, [seq]: !current[seq] }))
               }
-              highlight={active ? highlight : null}
+              highlight={active ? activeHighlight : null}
               active={active}
             />
           )

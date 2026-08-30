@@ -196,9 +196,18 @@ export function Layout() {
   useMobileSwipeDrawer(open, setOpen)
 
   useEffect(() => {
-    mainRef.current?.scrollTo({ top: 0, left: 0 })
-    window.scrollTo({ top: 0, left: 0 })
-  }, [location.pathname])
+    // Instant reset; also interrupts any leftover smooth scroll from previous pages.
+    const main = mainRef.current
+    if (main) {
+      main.style.scrollBehavior = 'auto'
+      main.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    }
+    const root = document.documentElement
+    const previous = root.style.scrollBehavior
+    root.style.scrollBehavior = 'auto'
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    root.style.scrollBehavior = previous
+  }, [location.pathname, location.search])
 
   useEffect(() => {
     if (!open) return
