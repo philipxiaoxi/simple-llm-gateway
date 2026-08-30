@@ -284,6 +284,33 @@ def test_batch_limit_keeps_remaining(client: TestClient, tmp_path: Path) -> None
     assert result["remaining"] == 1
 
 
+def test_oversized_log_is_skipped(client: TestClient, tmp_path: Path, monkeypatch) -> None:
+    lexicon = write_lexicon(tmp_path)
+    monkeypatch.setattr(content_audit, "MAX_AUDIT_MESSAGES", 3)
+    # 4 条消息（超过上限 3），最后一条含敏感词，若未被跳过就会被扫出
+    log = make_log(
+        messages=[
+            {"role": "user", "content": f"消息 {index}"}
+            for index in range(3)
+        ]
+        + [{"role": "user", "content": f"电话 {PHONE}"}]
+    )
+    result = content_audit.run_scan_batch_sync(batch_size=50, lexicon_directory=lexicon)
+    assert result["processed"] == 1
+    assert result["new_findings"] == 0
+    session = get_session_factory()()
+    try:
+        findings = session.scalars(
+            select(ContentAuditFinding).where(ContentAuditFinding.log_id == log.id)
+        ).all()
+        assert findings == []
+        scan = session.get(ContentAuditScan, log.id)
+        assert scan is not None
+        assert scan.status == "skipped"
+    finally:
+        session.close()
+
+
 def test_corrupt_message_is_isolated(client: TestClient, tmp_path: Path, monkeypatch) -> None:
     lexicon = write_lexicon(tmp_path)
     bad = make_log(messages=[{"role": "user", "content": "坏"}, {"role": "user", "content": f"{PHONE}"}])

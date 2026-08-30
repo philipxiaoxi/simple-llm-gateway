@@ -24,6 +24,8 @@ from app.models import ContentAuditFinding, ContentAuditScan, RequestLog, Reques
 from app.services.conversation import decode_stored_message, extract_request_messages
 
 BATCH_SIZE = 200
+# 单会话消息超过该条数则跳过审计，避免一次性全量加载超大会话（可能数百 MB）
+MAX_AUDIT_MESSAGES = 2000
 EXCERPT_LIMIT = 120
 REQUEST_BODY_SEQ = -1
 CATEGORY_SENSITIVE = "sensitive"
@@ -584,6 +586,12 @@ def _scan_one_log(
     scan: ContentAuditScan | None,
 ) -> tuple[int, str, str | None, int]:
     last_seq = scan.last_message_seq if scan else -1
+    max_message_seq = db.scalar(
+        select(func.max(RequestLogMessage.seq)).where(RequestLogMessage.log_id == log.id)
+    )
+    # 超长会话跳过审计，避免一次性全量加载数百 MB 消息
+    if max_message_seq is not None and max_message_seq + 1 > MAX_AUDIT_MESSAGES:
+        return 0, "skipped", None, max_message_seq
     added = 0
     error: str | None = None
     messages = db.scalars(
