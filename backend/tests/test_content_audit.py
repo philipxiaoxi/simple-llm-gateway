@@ -155,20 +155,20 @@ def test_lexicon_missing_directory_degrades(tmp_path: Path) -> None:
     assert state.automaton is None
     assert "词库未能加载" in (state.error_message or "")
     assert content_audit.detect_sensitive("爆炸装置", state) == []
-    hits = content_audit.detect_pii(f"电话 {PHONE}")
-    assert any(hit.rule_key == "phone" for hit in hits)
+    hits = content_audit.detect_pii(f"证件 {VALID_ID} 卡号 {VALID_CARD}")
+    assert {hit.rule_key for hit in hits} == {"id_card", "bank_card"}
 
 
 def test_lexicon_loads_categories(tmp_path: Path) -> None:
     state = content_audit.load_lexicon(write_lexicon(tmp_path), force=True)
     assert state.ok is True
     assert "暴恐词库" in state.categories
+    assert "民生词库" not in state.categories
     hits = content_audit.detect_sensitive("这里有爆炸装置和测试敏感词", state)
     by_word = {hit.rule_key: hit for hit in hits}
     assert by_word["爆炸装置"].lexicon_category == "暴恐词库"
     assert by_word["爆炸装置"].severity == "high"
-    assert by_word["测试敏感词"].lexicon_category == "民生词库"
-    assert by_word["测试敏感词"].severity == "medium"
+    assert "测试敏感词" not in by_word
 
 
 def test_lexicon_filters_single_char_entries(tmp_path: Path) -> None:
@@ -176,7 +176,7 @@ def test_lexicon_filters_single_char_entries(tmp_path: Path) -> None:
     (directory / "民生词库.txt").write_text("测试敏感词\nb\n屄\n&\n", encoding="utf-8")
     state = content_audit.load_lexicon(directory, force=True)
     assert state.ok is True
-    assert state.word_count == 2
+    assert state.word_count == 1
     hits = content_audit.detect_sensitive("这里有 b 屄 & 符号和爆炸装置", state)
     by_word = {hit.rule_key: hit for hit in hits}
     assert set(by_word) == {"爆炸装置"}
@@ -202,12 +202,11 @@ def test_extract_scan_text_covers_string_multimodal_and_tools() -> None:
 
 
 def test_pii_positive_and_negative_examples() -> None:
-    text = f"手机{PHONE} 证件{VALID_ID} 邮箱{EMAIL} 卡号{VALID_CARD}"
+    text = f"证件{VALID_ID} 卡号{VALID_CARD}"
     hits = {hit.rule_key: hit for hit in content_audit.detect_pii(text)}
-    assert hits["phone"].severity == "medium"
     assert hits["id_card"].severity == "high"
-    assert hits["email"].severity == "medium"
     assert hits["bank_card"].severity == "high"
+    assert content_audit.detect_pii(f"电话 {PHONE} 邮箱 {EMAIL}") == []
     assert content_audit.detect_pii("手机137000 证件11010119900307851A 卡号1234567890123") == []
     assert content_audit.id_card_checksum_ok("110101199003078516") is False
     assert content_audit.luhn_ok("4111111111111112") is False
@@ -221,16 +220,16 @@ def test_secret_patterns() -> None:
 
 
 def test_excerpt_dedup_and_mask() -> None:
-    text = "前" * 80 + PHONE + "后" * 80
+    text = "前" * 80 + VALID_CARD + "后" * 80
     hits = content_audit.detect_pii(text)
-    phone = next(hit for hit in hits if hit.rule_key == "phone")
-    excerpt = content_audit.make_excerpt(text, phone.start, phone.end)
+    card = next(hit for hit in hits if hit.rule_key == "bank_card")
+    excerpt = content_audit.make_excerpt(text, card.start, card.end)
     assert len(excerpt) <= 120
-    assert PHONE in excerpt
-    assert content_audit.finding_key(1, 0, phone) == (1, 0, "pii", "phone", phone.start)
-    masked = content_audit.mask_excerpt_for_list(excerpt, "pii", "phone")
-    assert PHONE not in masked
-    assert "138" in masked
+    assert VALID_CARD in excerpt
+    assert content_audit.finding_key(1, 0, card) == (1, 0, "pii", "bank_card", card.start)
+    masked = content_audit.mask_excerpt_for_list(excerpt, "pii", "bank_card")
+    assert VALID_CARD not in masked
+    assert "4111" in masked
     secret_excerpt = f"key={SK}"
     assert SK not in content_audit.mask_excerpt_for_list(secret_excerpt, "secret", "sk")
     assert "sk-a" in content_audit.mask_excerpt_for_list(secret_excerpt, "secret", "sk")
@@ -238,7 +237,7 @@ def test_excerpt_dedup_and_mask() -> None:
 
 def test_incremental_scan_skips_unchanged_and_picks_new_messages(client: TestClient, tmp_path: Path) -> None:
     lexicon = write_lexicon(tmp_path)
-    log = make_log(messages=[{"role": "user", "content": f"电话 {PHONE}"}])
+    log = make_log(messages=[{"role": "user", "content": f"密钥 {SK}"}])
     first = content_audit.run_scan_batch_sync(batch_size=50, lexicon_directory=lexicon)
     assert first["processed"] == 1
     assert first["new_findings"] >= 1
@@ -252,7 +251,7 @@ def test_incremental_scan_skips_unchanged_and_picks_new_messages(client: TestCli
                 log_id=log.id,
                 seq=1,
                 role="user",
-                content_json=encode_message_content({"role": "user", "content": f"密钥 {SK}"}),
+                content_json=encode_message_content({"role": "user", "content": f"卡号 {VALID_CARD}"}),
                 created_at=utcnow(),
             )
         )
@@ -293,7 +292,7 @@ def test_oversized_log_is_skipped(client: TestClient, tmp_path: Path, monkeypatc
             {"role": "user", "content": f"消息 {index}"}
             for index in range(3)
         ]
-        + [{"role": "user", "content": f"电话 {PHONE}"}]
+        + [{"role": "user", "content": f"卡号 {VALID_CARD}"}]
     )
     result = content_audit.run_scan_batch_sync(batch_size=50, lexicon_directory=lexicon)
     assert result["processed"] == 1
@@ -313,8 +312,8 @@ def test_oversized_log_is_skipped(client: TestClient, tmp_path: Path, monkeypatc
 
 def test_corrupt_message_is_isolated(client: TestClient, tmp_path: Path, monkeypatch) -> None:
     lexicon = write_lexicon(tmp_path)
-    bad = make_log(messages=[{"role": "user", "content": "坏"}, {"role": "user", "content": f"{PHONE}"}])
-    good = make_log(messages=[{"role": "user", "content": f"{EMAIL}"}])
+    bad = make_log(messages=[{"role": "user", "content": "坏"}, {"role": "user", "content": f"{SK}"}])
+    good = make_log(messages=[{"role": "user", "content": f"{VALID_CARD}"}])
     original = content_audit.decode_stored_message
 
     def boom(row):
@@ -332,12 +331,12 @@ def test_corrupt_message_is_isolated(client: TestClient, tmp_path: Path, monkeyp
         assert scan.status == "error"
         assert "损坏" in (scan.error_message or "")
         assert session.get(ContentAuditScan, good.id).status == "ok"
-        phones = session.scalars(
+        secrets = session.scalars(
             select(ContentAuditFinding).where(
-                ContentAuditFinding.log_id == bad.id, ContentAuditFinding.rule_key == "phone"
+                ContentAuditFinding.log_id == bad.id, ContentAuditFinding.rule_key == "sk"
             )
         ).all()
-        assert phones
+        assert secrets
     finally:
         session.close()
 
@@ -355,7 +354,8 @@ def test_lexicon_sync_overwrites_cache_and_records_time(client: TestClient, monk
     again = content_audit.sync_lexicon()
     assert fake.calls >= 1
     assert again["updated_at"] >= first["updated_at"]
-    assert "旧词" not in (cache / "民生词库.txt").read_text(encoding="utf-8")
+    # 民生词库不再是高危词库，同步后应被清理
+    assert not (cache / "民生词库.txt").exists()
     assert content_audit.lexicon_updated_at() is not None
 
 
@@ -407,7 +407,7 @@ def test_lexicon_download_failure_degrades(client: TestClient, monkeypatch) -> N
 
 
 def test_lexicon_failure_still_records_pii(client: TestClient, tmp_path: Path) -> None:
-    make_log(messages=[{"role": "user", "content": f"电话 {PHONE} 测试敏感词"}])
+    make_log(messages=[{"role": "user", "content": f"卡号 {VALID_CARD} 测试敏感词"}])
     result = content_audit.run_scan_batch_sync(batch_size=50, lexicon_directory=tmp_path / "nope")
     assert result["lexicon_ok"] is False
     assert result["new_findings"] >= 1
@@ -420,10 +420,31 @@ def test_lexicon_failure_still_records_pii(client: TestClient, tmp_path: Path) -
         session.close()
 
 
+def test_scan_start_pause_resume_stop(client: TestClient, auth_headers: dict[str, str], tmp_path: Path, monkeypatch) -> None:
+    lexicon = write_lexicon(tmp_path)
+    monkeypatch.setattr(content_audit, "lexicon_dir", lambda: lexicon)
+    monkeypatch.setattr(content_audit, "SCAN_PAUSE_SECONDS", 0.01)
+    make_log(messages=[{"role": "user", "content": f"卡号 {VALID_CARD}"}])
+    assert client.post("/api/admin/content-audit/scan/start").status_code == 401
+    started = client.post("/api/admin/content-audit/scan/start", headers=auth_headers)
+    assert started.status_code == 200
+    assert started.json()["started"] is True
+    paused = client.post("/api/admin/content-audit/scan/pause", headers=auth_headers)
+    assert paused.status_code == 200
+    summary = client.get("/api/admin/content-audit/summary", headers=auth_headers).json()
+    assert summary["paused"] is True or summary["running"] is False
+    resumed = client.post("/api/admin/content-audit/scan/resume", headers=auth_headers)
+    assert resumed.status_code == 200
+    stopped = client.post("/api/admin/content-audit/scan/stop", headers=auth_headers)
+    assert stopped.status_code == 200
+    content_audit.stop_scan()
+
+
 def test_content_audit_job_default_and_busy(client: TestClient, auth_headers: dict[str, str]) -> None:
     listed = client.get("/api/admin/jobs", headers=auth_headers)
     audit = next(item for item in listed.json()["items"] if item["id"] == "content_audit")
-    assert audit["params"][0]["value"] == 86400
+    assert audit["kind"] == "manual"
+    assert audit["params"] == []
     class Busy:
         def locked(self) -> bool:
             return True
@@ -439,7 +460,7 @@ def test_content_audit_job_default_and_busy(client: TestClient, auth_headers: di
 def test_findings_api_auth_filter_page_and_mask(client: TestClient, auth_headers: dict[str, str], tmp_path: Path) -> None:
     assert client.get("/api/admin/content-audit/findings").status_code == 401
     lexicon = write_lexicon(tmp_path)
-    make_log(messages=[{"role": "user", "content": f"电话 {PHONE} 密钥 {SK} 爆炸装置"}])
+    make_log(messages=[{"role": "user", "content": f"卡号 {VALID_CARD} 密钥 {SK} 爆炸装置"}])
     content_audit.run_scan_batch_sync(batch_size=50, lexicon_directory=lexicon)
     too_big = client.get(
         "/api/admin/content-audit/findings",
@@ -461,10 +482,10 @@ def test_findings_api_auth_filter_page_and_mask(client: TestClient, auth_headers
     pii = client.get(
         "/api/admin/content-audit/findings",
         headers=auth_headers,
-        params={"category": "pii", "severity": "medium"},
+        params={"category": "pii", "severity": "high"},
     ).json()
-    assert all(item["category"] == "pii" and item["severity"] == "medium" for item in pii["items"])
-    assert PHONE not in pii["items"][0]["excerpt"]
+    assert all(item["category"] == "pii" and item["severity"] == "high" for item in pii["items"])
+    assert VALID_CARD not in pii["items"][0]["excerpt"]
     sensitive = client.get(
         "/api/admin/content-audit/findings",
         headers=auth_headers,

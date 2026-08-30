@@ -26,10 +26,9 @@ def test_list_jobs_includes_catalog_quota_oauth_leaderboard(
     assert {item["key"] for item in leaderboard["params"]} == {"interval_seconds"}
     assert leaderboard["params"][0]["value"] == 43200
     audit = response.json()["items"][4]
-    assert audit["kind"] == "loop"
+    assert audit["kind"] == "manual"
     assert audit["name"] == "内容审计扫描"
-    assert {item["key"] for item in audit["params"]} == {"interval_seconds"}
-    assert audit["params"][0]["value"] == 86400
+    assert audit["params"] == []
 
 
 def test_update_catalog_interval(client: TestClient, auth_headers: dict[str, str]) -> None:

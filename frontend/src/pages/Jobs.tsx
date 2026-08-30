@@ -22,7 +22,9 @@ function statusLabel(job: ScheduledJob) {
 }
 
 function kindLabel(kind: string) {
-  return kind === 'loop' ? '循环' : '按需'
+  if (kind === 'loop') return '循环'
+  if (kind === 'manual') return '手动'
+  return '按需'
 }
 
 function detailText(value: unknown) {

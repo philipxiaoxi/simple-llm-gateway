@@ -23,8 +23,8 @@ JOB_QUOTA = "quota"
 JOB_OAUTH = "oauth"
 JOB_LEADERBOARD = "leaderboard"
 JOB_CONTENT_AUDIT = "content_audit"
-LOOP_JOBS = (JOB_CATALOG, JOB_QUOTA, JOB_OAUTH, JOB_LEADERBOARD, JOB_CONTENT_AUDIT)
-ALL_JOBS = LOOP_JOBS
+LOOP_JOBS = (JOB_CATALOG, JOB_QUOTA, JOB_OAUTH, JOB_LEADERBOARD)
+ALL_JOBS = LOOP_JOBS + (JOB_CONTENT_AUDIT,)
 
 PARAM_LIMITS: dict[str, tuple[int, int]] = {
     "interval_seconds": (60, 604800),
@@ -67,8 +67,8 @@ JOB_META = {
     },
     JOB_CONTENT_AUDIT: {
         "name": "内容审计扫描",
-        "description": "每 24 小时增量扫描请求正文，产出敏感词 / PII / 密钥命中",
-        "kind": "loop",
+        "description": "手动扫描请求正文，产出敏感词 / PII / 密钥命中",
+        "kind": "manual",
         "source_url": None,
     },
 }
@@ -231,7 +231,7 @@ async def _execute(job_id: str) -> dict[str, Any]:
             message = f"{error_message}（{message}）"
         return {"message": message, "total": total, "error_message": error_message}
     if job_id == JOB_CONTENT_AUDIT:
-        return await content_audit.run_scan_batch()
+        return content_audit.start_scan()
     raise ValueError("任务不存在")
 
 
@@ -299,6 +299,8 @@ def _next_run_at(job_id: str, state: JobRuntime, interval: int) -> datetime | No
 
 
 def _param_specs(job_id: str) -> list[dict[str, Any]]:
+    if JOB_META[job_id]["kind"] != "loop":
+        return []
     params = get_job_params(job_id)
     items: list[dict[str, Any]] = []
     for key, value in params.items():
@@ -434,6 +436,9 @@ def list_jobs() -> list[dict[str, Any]]:
         snapshot = _SNAPSHOTTERS[job_id]()
         source_url = snapshot.get("source_url") or meta.get("source_url")
         error_message = state.error_message or snapshot.get("error_message")
+        running = state.running
+        if job_id == JOB_CONTENT_AUDIT:
+            running = content_audit.scan_status()["running"]
         items.append(
             {
                 "id": job_id,
@@ -441,7 +446,7 @@ def list_jobs() -> list[dict[str, Any]]:
                 "description": meta["description"],
                 "kind": meta["kind"],
                 "source_url": source_url,
-                "running": state.running,
+                "running": running,
                 "last_started_at": state.last_started_at,
                 "last_finished_at": state.last_finished_at,
                 "last_ok": state.last_ok,

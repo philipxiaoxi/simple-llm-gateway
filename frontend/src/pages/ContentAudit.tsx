@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Play, RefreshCw } from 'lucide-react'
+import { Pause, Play, RefreshCw, Square } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Pagination } from '../components/Pagination'
@@ -22,6 +22,7 @@ const severityLabel: Record<string, string> = {
 
 function statusTone(status: string): 'ok' | 'bad' | 'warn' | 'mist' {
   if (status === 'running') return 'warn'
+  if (status === 'paused') return 'warn'
   if (status === 'failed') return 'bad'
   if (status === 'partial') return 'warn'
   if (status === 'ok') return 'ok'
@@ -30,6 +31,7 @@ function statusTone(status: string): 'ok' | 'bad' | 'warn' | 'mist' {
 
 function statusLabel(summary: ContentAuditSummary) {
   if (summary.status === 'running') return '运行中'
+  if (summary.status === 'paused') return '已暂停'
   if (summary.status === 'failed') return '失败'
   if (summary.status === 'partial') return '部分成功'
   if (summary.status === 'ok') return '成功'
@@ -59,7 +61,7 @@ function findingHref(item: ContentAuditFinding) {
 function EmptyState({ filtered }: { filtered: boolean }) {
   return (
     <div className="px-4 py-10 text-center text-sm text-mist">
-      {filtered ? '当前筛选没有命中项' : '尚无命中项，可到定时任务页执行内容审计扫描'}
+      {filtered ? '当前筛选没有命中项' : '尚无命中项，可在本页开始扫描'}
     </div>
   )
 }
@@ -70,7 +72,7 @@ export function ContentAuditPage() {
   const { data: summary } = useQuery({
     queryKey: ['content-audit-summary'],
     queryFn: api.contentAuditSummary,
-    refetchInterval: (query) => (query.state.data?.running ? 4000 : 15000),
+    refetchInterval: (query) => (query.state.data?.running ? 2000 : 15000),
   })
   const syncLexicon = useMutation({
     mutationFn: api.syncContentAuditLexicon,
@@ -80,16 +82,32 @@ export function ContentAuditPage() {
     },
     onError: (caught) => notifyBad(errorMessage(caught, '词库同步失败')),
   })
-  const runScan = useMutation({
-    mutationFn: () => api.runJob('content_audit'),
+  const refreshSummary = () => {
+    void queryClient.invalidateQueries({ queryKey: ['content-audit-summary'] })
+    void queryClient.invalidateQueries({ queryKey: ['content-audit-findings'] })
+  }
+  const startScan = useMutation({
+    mutationFn: api.startContentAudit,
     onSuccess: (payload) => {
-      void queryClient.invalidateQueries({ queryKey: ['content-audit-summary'] })
-      void queryClient.invalidateQueries({ queryKey: ['content-audit-findings'] })
-      const current = payload.items.find((item) => item.id === 'content_audit')
-      if (current?.error_message) notifyBad(current.error_message)
-      else notifyOk(current?.last_message || '扫描已完成')
+      refreshSummary()
+      notifyOk(payload.message || '扫描已启动')
     },
-    onError: (caught) => notifyBad(errorMessage(caught, '扫描失败')),
+    onError: (caught) => notifyBad(errorMessage(caught, '启动扫描失败')),
+  })
+  const stopScan = useMutation({
+    mutationFn: api.stopContentAudit,
+    onSuccess: () => refreshSummary(),
+    onError: (caught) => notifyBad(errorMessage(caught, '停止失败')),
+  })
+  const pauseScan = useMutation({
+    mutationFn: api.pauseContentAudit,
+    onSuccess: () => refreshSummary(),
+    onError: (caught) => notifyBad(errorMessage(caught, '暂停失败')),
+  })
+  const resumeScan = useMutation({
+    mutationFn: api.resumeContentAudit,
+    onSuccess: () => refreshSummary(),
+    onError: (caught) => notifyBad(errorMessage(caught, '恢复失败')),
   })
   const [category, setCategory] = useState('')
   const [lexiconCategory, setLexiconCategory] = useState('')
@@ -105,6 +123,8 @@ export function ContentAuditPage() {
     page,
     page_size: LOG_PAGE_SIZE,
   }
+  const totalLogs = summary?.total_logs ?? 0
+  const scanPercent = totalLogs > 0 ? Math.min(100, Math.round(((summary?.scanned_count ?? 0) / totalLogs) * 100)) : 0
   const { data, isPending } = useQuery({
     queryKey: ['content-audit-findings', query],
     queryFn: () => api.contentAuditFindings(query),
@@ -144,31 +164,74 @@ export function ContentAuditPage() {
               <span className="text-sm text-mist">
                 已扫 {summary?.scanned_count ?? '—'} / {summary?.total_logs ?? '—'} 条请求 · 命中 {summary?.finding_count ?? '—'}
               </span>
-              <Link to="/jobs" className="text-sm text-signal hover:underline">
-                定时任务
-              </Link>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-panel-2">
+                <div
+                  className="h-full rounded-full bg-signal transition-all"
+                  style={{ width: `${scanPercent}%` }}
+                />
+              </div>
+              <span className="shrink-0 text-xs tabular-nums text-mist">{scanPercent}%</span>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs text-mist lg:flex lg:flex-wrap lg:gap-x-4">
               <span>上次完成 {formatTime(summary?.last_finished_at)}</span>
               <span>词库 {summary?.lexicon_word_count ?? '—'} 条 · {lexiconCategories.length} 分类</span>
               <span>词库更新 {formatTime(summary?.lexicon_updated_at)}</span>
               <span>剩余 {summary?.remaining ?? '—'}</span>
+              <span>本次已扫 {summary?.scanned_in_run ?? '—'}</span>
               <span>敏感词 {summary?.by_category?.sensitive ?? 0}</span>
               <span>PII {summary?.by_category?.pii ?? 0}</span>
               <span>密钥 {summary?.by_category?.secret ?? 0}</span>
             </div>
           </div>
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-            <Button
-              type="button"
-              variant="line"
-              className="w-full sm:w-auto"
-              disabled={runScan.isPending || summary?.running}
-              onClick={() => runScan.mutate()}
-            >
-              <Play size={16} className={runScan.isPending ? 'animate-pulse' : undefined} />
-              {runScan.isPending || summary?.running ? '扫描中…' : '立即扫描'}
-            </Button>
+            {!summary?.running ? (
+              <Button
+                type="button"
+                className="w-full sm:w-auto"
+                disabled={startScan.isPending}
+                onClick={() => startScan.mutate()}
+              >
+                <Play size={16} className={startScan.isPending ? 'animate-pulse' : undefined} />
+                {startScan.isPending ? '启动中…' : '开始扫描'}
+              </Button>
+            ) : (
+              <>
+                {summary.paused ? (
+                  <Button
+                    type="button"
+                    className="w-full sm:w-auto"
+                    disabled={resumeScan.isPending}
+                    onClick={() => resumeScan.mutate()}
+                  >
+                    <Play size={16} />
+                    继续
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="line"
+                    className="w-full sm:w-auto"
+                    disabled={pauseScan.isPending}
+                    onClick={() => pauseScan.mutate()}
+                  >
+                    <Pause size={16} />
+                    暂停
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="line"
+                  className="w-full sm:w-auto"
+                  disabled={stopScan.isPending}
+                  onClick={() => stopScan.mutate()}
+                >
+                  <Square size={16} />
+                  停止
+                </Button>
+              </>
+            )}
             <Button
               type="button"
               variant="line"

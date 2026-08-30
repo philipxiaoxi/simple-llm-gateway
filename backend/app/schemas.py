@@ -617,6 +617,9 @@ class ContentAuditFindingListOut(BaseModel):
 class ContentAuditSummaryOut(BaseModel):
     running: bool = False
     status: str
+    paused: bool = False
+    scanned_in_run: int = 0
+    total_in_run: int = 0
     last_finished_at: datetime | None = None
     last_message: str | None = None
     error_message: str | None = None

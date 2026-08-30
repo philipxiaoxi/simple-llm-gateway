@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -74,10 +76,11 @@ def list_findings(
 @router.get("/summary", response_model=ContentAuditSummaryOut)
 def get_summary(db: Session = Depends(get_db)) -> ContentAuditSummaryOut:
     stats = content_audit.progress_stats(db)
+    scan = content_audit.scan_status()
     state = get_job_runtime(JOB_CONTENT_AUDIT)
     extra = state.extra or {}
-    if state.running:
-        status = "running"
+    if scan["running"]:
+        status = "paused" if scan["paused"] else "running"
     elif extra.get("lexicon_ok") is False and state.last_ok:
         status = "partial"
     elif state.last_ok is False:
@@ -86,11 +89,14 @@ def get_summary(db: Session = Depends(get_db)) -> ContentAuditSummaryOut:
         status = "ok"
     else:
         status = "idle"
-    error_message = state.error_message or extra.get("error_message")
+    error_message = scan.get("error") or state.error_message or extra.get("error_message")
     lexicon = content_audit.lexicon_info()
     return ContentAuditSummaryOut(
-        running=state.running,
+        running=scan["running"],
         status=status,
+        paused=scan["paused"],
+        scanned_in_run=scan["scanned"],
+        total_in_run=scan["total"],
         last_finished_at=state.last_finished_at,
         last_message=state.last_message,
         error_message=error_message,
@@ -106,6 +112,26 @@ def get_summary(db: Session = Depends(get_db)) -> ContentAuditSummaryOut:
         by_category=stats["by_category"],
         lexicon_categories=lexicon["categories"],
     )
+
+
+@router.post("/scan/start")
+def start_scan() -> dict[str, Any]:
+    return content_audit.start_scan()
+
+
+@router.post("/scan/stop")
+def stop_scan() -> dict[str, Any]:
+    return content_audit.stop_scan()
+
+
+@router.post("/scan/pause")
+def pause_scan() -> dict[str, Any]:
+    return content_audit.pause_scan()
+
+
+@router.post("/scan/resume")
+def resume_scan() -> dict[str, Any]:
+    return content_audit.resume_scan()
 
 
 @router.post("/lexicon/sync", response_model=ContentAuditLexiconSyncOut)

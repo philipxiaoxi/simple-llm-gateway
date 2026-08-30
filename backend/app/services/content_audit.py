@@ -4,6 +4,7 @@ import io
 import json
 import re
 import threading
+import time
 import zipfile
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -26,6 +27,9 @@ from app.services.conversation import decode_stored_message, extract_request_mes
 BATCH_SIZE = 200
 # 单会话消息超过该条数则跳过审计，避免一次性全量加载超大会话（可能数百 MB）
 MAX_AUDIT_MESSAGES = 2000
+# 后台扫描每批处理的日志条数，以及批间让出写锁的间隔
+SCAN_BATCH_SIZE = 20
+SCAN_PAUSE_SECONDS = 0.5
 EXCERPT_LIMIT = 120
 REQUEST_BODY_SEQ = -1
 CATEGORY_SENSITIVE = "sensitive"
@@ -79,13 +83,83 @@ class LexiconState:
     categories: list[str]
 
 
+@dataclass
+class _ScanState:
+    running: bool = False
+    paused: bool = False
+    stop_requested: bool = False
+    scanned: int = 0
+    new_findings: int = 0
+    total: int = 0
+    error: str | None = None
+
+
 _LEXICON: LexiconState | None = None
 _LEXICON_LOCK = threading.Lock()
+_scan_state = _ScanState()
+_scan_lock = threading.Lock()
+_scan_thread: threading.Thread | None = None
 
 
 def reset_content_audit_cache() -> None:
-    global _LEXICON
+    global _LEXICON, _scan_state
     _LEXICON = None
+    _scan_state = _ScanState()
+
+
+def scan_status() -> dict[str, Any]:
+    with _scan_lock:
+        return {
+            "running": _scan_state.running,
+            "paused": _scan_state.paused,
+            "scanned": _scan_state.scanned,
+            "new_findings": _scan_state.new_findings,
+            "total": _scan_state.total,
+            "error": _scan_state.error,
+        }
+
+
+def start_scan() -> dict[str, Any]:
+    global _scan_thread
+    with _scan_lock:
+        if _scan_state.running:
+            return {"started": False, "message": "扫描已在运行"}
+        _scan_state.running = True
+        _scan_state.paused = False
+        _scan_state.stop_requested = False
+        _scan_state.scanned = 0
+        _scan_state.new_findings = 0
+        _scan_state.total = 0
+        _scan_state.error = None
+    thread = threading.Thread(target=_run_scan_loop, name="content-audit-scan", daemon=True)
+    _scan_thread = thread
+    thread.start()
+    return {"started": True, "message": "扫描已启动"}
+
+
+def stop_scan() -> dict[str, Any]:
+    with _scan_lock:
+        if not _scan_state.running:
+            return {"stopped": False, "message": "扫描未在运行"}
+        _scan_state.stop_requested = True
+        _scan_state.paused = False
+    return {"stopped": True, "message": "正在停止…"}
+
+
+def pause_scan() -> dict[str, Any]:
+    with _scan_lock:
+        if not _scan_state.running:
+            return {"paused": False, "message": "扫描未在运行"}
+        _scan_state.paused = True
+    return {"paused": True, "message": "已暂停"}
+
+
+def resume_scan() -> dict[str, Any]:
+    with _scan_lock:
+        if not _scan_state.running:
+            return {"resumed": False, "message": "扫描未在运行"}
+        _scan_state.paused = False
+    return {"resumed": True, "message": "已恢复"}
 
 
 def lexicon_dir() -> Path:
@@ -99,6 +173,10 @@ def lexicon_severity(category: str) -> str:
     if any(marker in (category or "") for marker in HIGH_LEXICON_MARKERS):
         return SEVERITY_HIGH
     return SEVERITY_MEDIUM
+
+
+def _is_high_lexicon_file(name: str) -> bool:
+    return any(marker in name for marker in HIGH_LEXICON_MARKERS)
 
 
 def load_lexicon(directory: Path | None = None, *, force: bool = False) -> LexiconState:
@@ -126,6 +204,8 @@ def _lexicon_files(path: Path) -> list[Path]:
     files: list[Path] = []
     for file_path in sorted(path.glob("*.txt")):
         if file_path.name.upper() in LEXICON_SKIP_NAMES:
+            continue
+        if not _is_high_lexicon_file(file_path.name):
             continue
         files.append(file_path)
     return files
@@ -217,6 +297,8 @@ def _download_lexicon(path: Path) -> None:
             if info.is_dir():
                 continue
             name = Path(info.filename).name
+            if not _is_high_lexicon_file(name):
+                continue
             if not name.endswith(".txt") or name.upper() in LEXICON_SKIP_NAMES:
                 continue
             extracted[name] = archive.read(info)
@@ -405,13 +487,9 @@ def detect_pii(text: str) -> list[Hit]:
         hits.append(hit)
         spanned.append((hit.start, hit.end))
 
-    for match in PHONE_RE.finditer(text):
-        add(Hit(CATEGORY_PII, None, "phone", SEVERITY_MEDIUM, match.start(), match.end()))
     for match in ID_CARD_RE.finditer(text):
         if id_card_checksum_ok(match.group(0)):
             add(Hit(CATEGORY_PII, None, "id_card", SEVERITY_HIGH, match.start(), match.end()))
-    for match in EMAIL_RE.finditer(text):
-        add(Hit(CATEGORY_PII, None, "email", SEVERITY_MEDIUM, match.start(), match.end()))
     for match in BANK_CARD_RE.finditer(text):
         value = match.group(0)
         if not luhn_ok(value):
@@ -627,6 +705,56 @@ def _scan_one_log(
     return added, status, error, max_seq
 
 
+def _record_scan_result(
+    db: Session,
+    log: RequestLog,
+    lexicon: LexiconState,
+    scan: ContentAuditScan | None,
+) -> tuple[int, str | None]:
+    """扫一条日志并写回 ContentAuditScan，返回 (added, error)。
+
+    不在此处 commit，由调用方按批统一提交，避免每条日志一次写锁。
+    """
+    try:
+        added, status, error, max_seq = _scan_one_log(db, log, lexicon, scan)
+    except Exception as exc:
+        if scan is None:
+            scan = ContentAuditScan(
+                log_id=log.id,
+                last_scanned_at=utcnow(),
+                last_message_seq=-1,
+                finding_count=0,
+                status="error",
+                error_message=str(exc),
+            )
+            db.add(scan)
+        else:
+            scan.status = "error"
+            scan.error_message = str(exc)
+            scan.last_scanned_at = utcnow()
+        return 0, str(exc)
+    now = utcnow()
+    finding_count = db.scalar(select(func.count()).where(ContentAuditFinding.log_id == log.id)) or 0
+    if scan is None:
+        db.add(
+            ContentAuditScan(
+                log_id=log.id,
+                last_scanned_at=now,
+                last_message_seq=max_seq,
+                finding_count=finding_count,
+                status=status,
+                error_message=error,
+            )
+        )
+    else:
+        scan.last_scanned_at = now
+        scan.last_message_seq = max_seq
+        scan.finding_count = finding_count
+        scan.status = status
+        scan.error_message = error
+    return added, error
+
+
 def run_scan_batch_sync(batch_size: int = BATCH_SIZE, lexicon_directory: Path | None = None) -> dict[str, Any]:
     lexicon = load_lexicon(lexicon_directory, force=lexicon_directory is not None)
     session = get_session_factory()()
@@ -637,50 +765,10 @@ def run_scan_batch_sync(batch_size: int = BATCH_SIZE, lexicon_directory: Path | 
         logs = session.scalars(query.limit(max(1, batch_size))).unique().all()
         for log in logs:
             scan = session.get(ContentAuditScan, log.id)
-            try:
-                added, status, error, max_seq = _scan_one_log(session, log, lexicon, scan)
-            except Exception as exc:
-                if scan is None:
-                    scan = ContentAuditScan(
-                        log_id=log.id,
-                        last_scanned_at=utcnow(),
-                        last_message_seq=-1,
-                        finding_count=0,
-                        status="error",
-                        error_message=str(exc),
-                    )
-                    session.add(scan)
-                else:
-                    scan.status = "error"
-                    scan.error_message = str(exc)
-                    scan.last_scanned_at = utcnow()
-                session.commit()
-                processed += 1
-                continue
-            now = utcnow()
-            finding_count = session.scalar(
-                select(func.count()).where(ContentAuditFinding.log_id == log.id)
-            ) or 0
-            if scan is None:
-                session.add(
-                    ContentAuditScan(
-                        log_id=log.id,
-                        last_scanned_at=now,
-                        last_message_seq=max_seq,
-                        finding_count=finding_count,
-                        status=status,
-                        error_message=error,
-                    )
-                )
-            else:
-                scan.last_scanned_at = now
-                scan.last_message_seq = max_seq
-                scan.finding_count = finding_count
-                scan.status = status
-                scan.error_message = error
-            session.commit()
+            added, _error = _record_scan_result(session, log, lexicon, scan)
             processed += 1
             new_findings += added
+        session.commit()
         remaining = count_remaining(session)
         total_logs = session.scalar(select(func.count()).select_from(RequestLog)) or 0
         scanned_logs = session.scalar(select(func.count()).select_from(ContentAuditScan)) or 0
@@ -708,6 +796,54 @@ async def run_scan_batch(batch_size: int = BATCH_SIZE) -> dict[str, Any]:
     import asyncio
 
     return await asyncio.to_thread(run_scan_batch_sync, batch_size)
+
+
+def _run_scan_loop() -> None:
+    """后台持续扫描直到扫完或被停止，每批之间让出 SQLite 写锁。"""
+    lexicon = load_lexicon()
+    session = get_session_factory()()
+    try:
+        with _scan_lock:
+            _scan_state.total = count_remaining(session)
+        while True:
+            with _scan_lock:
+                if _scan_state.stop_requested:
+                    break
+                paused = _scan_state.paused
+            if paused:
+                time.sleep(0.5)
+                continue
+            query, _ = _due_logs_query()
+            logs = session.scalars(query.limit(SCAN_BATCH_SIZE)).unique().all()
+            if not logs:
+                break
+            for log in logs:
+                with _scan_lock:
+                    if _scan_state.stop_requested:
+                        break
+                scan = session.get(ContentAuditScan, log.id)
+                added, error = _record_scan_result(session, log, lexicon, scan)
+                with _scan_lock:
+                    _scan_state.scanned += 1
+                    _scan_state.new_findings += added
+                if error and _scan_state.error is None:
+                    with _scan_lock:
+                        _scan_state.error = error
+            # 整批一次性提交，减少写锁获取次数；随后让出写锁给 API
+            session.commit()
+            time.sleep(SCAN_PAUSE_SECONDS)
+    except Exception as error:
+        with _scan_lock:
+            _scan_state.error = str(error)
+        try:
+            session.commit()
+        except Exception:
+            pass
+    finally:
+        session.close()
+        with _scan_lock:
+            _scan_state.running = False
+            _scan_state.paused = False
 
 
 def progress_stats(db: Session | None = None) -> dict[str, Any]:

@@ -736,6 +736,14 @@ export const api = {
     return request<ContentAuditFindingList>(`/api/admin/content-audit/findings${suffix}`)
   },
   contentAuditSummary: () => request<ContentAuditSummary>('/api/admin/content-audit/summary'),
+  startContentAudit: () =>
+    request<{ started: boolean; message: string }>('/api/admin/content-audit/scan/start', { method: 'POST' }),
+  stopContentAudit: () =>
+    request<{ stopped: boolean; message: string }>('/api/admin/content-audit/scan/stop', { method: 'POST' }),
+  pauseContentAudit: () =>
+    request<{ paused: boolean; message: string }>('/api/admin/content-audit/scan/pause', { method: 'POST' }),
+  resumeContentAudit: () =>
+    request<{ resumed: boolean; message: string }>('/api/admin/content-audit/scan/resume', { method: 'POST' }),
   syncContentAuditLexicon: () =>
     request<ContentAuditLexiconSync>('/api/admin/content-audit/lexicon/sync', { method: 'POST' }),
 }
@@ -767,6 +775,9 @@ export type ContentAuditFindingList = {
 export type ContentAuditSummary = {
   running: boolean
   status: string
+  paused: boolean
+  scanned_in_run: number
+  total_in_run: number
   last_finished_at: string | null
   last_message: string | null
   error_message: string | null
