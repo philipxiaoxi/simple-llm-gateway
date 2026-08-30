@@ -264,15 +264,16 @@ async def run_job(job_id: str) -> dict[str, Any]:
 
 
 async def run_job_loop(job_id: str) -> None:
+    # 启动后先等间隔，避免发版立刻四任务同时跑；手动唤醒（reason=run）仍立即执行。
     while True:
-        try:
-            await run_job(job_id)
-        except Exception:
-            pass
         while True:
             reason = await _wait_next(job_id)
             if reason != "reload":
                 break
+        try:
+            await run_job(job_id)
+        except Exception:
+            pass
 
 
 def start_job_loops() -> list[asyncio.Task]:
@@ -294,7 +295,7 @@ def _next_run_at(job_id: str, state: JobRuntime, interval: int) -> datetime | No
     if state.running:
         return None
     if state.last_finished_at is None:
-        return utcnow()
+        return utcnow() + timedelta(seconds=interval)
     return state.last_finished_at + timedelta(seconds=interval)
 
 
