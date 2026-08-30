@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { Pagination } from '../components/Pagination'
 import { Badge, Button, Card } from '../components/ui'
 import { api } from '../lib/api'
@@ -39,27 +39,54 @@ function asText(content: unknown): string {
   return JSON.stringify(content, null, 2)
 }
 
+function HighlightedText({
+  text,
+  start,
+  end,
+}: {
+  text: string
+  start: number | null
+  end: number | null
+}) {
+  if (start == null || end == null || start < 0 || end <= start || start >= text.length) {
+    return <>{text}</>
+  }
+  const safeEnd = Math.min(end, text.length)
+  return (
+    <>
+      {text.slice(0, start)}
+      <mark className="rounded-sm bg-warn/40 text-paper">{text.slice(start, safeEnd)}</mark>
+      {text.slice(safeEnd)}
+    </>
+  )
+}
+
 function MessageBubble({
   role,
   content,
   expanded,
   onToggle,
+  highlight,
+  active,
 }: {
   role: string
   content: unknown
   expanded: boolean
   onToggle: () => void
+  highlight: { start: number; end: number } | null
+  active: boolean
 }) {
   const text = asText(content) || '（空）'
   const long = isLongText(text)
   const assistant = role === 'assistant'
   return (
-    <div className={cn('min-w-0 max-w-full', assistant ? 'lg:pl-8' : 'lg:pr-8')}>
+    <div id={active ? 'audit-hit' : undefined} className={cn('min-w-0 max-w-full', assistant ? 'lg:pl-8' : 'lg:pr-8')}>
       <div className="mb-1 text-xs uppercase tracking-[0.16em] text-mist">{role}</div>
       <div
         className={cn(
           'min-w-0 max-w-full overflow-hidden rounded-2xl p-4',
           assistant ? 'rounded-tl-sm border border-line bg-panel' : 'rounded-tr-sm bg-signal/10',
+          active && 'ring-2 ring-warn/70',
         )}
       >
         {long && expanded ? (
@@ -70,10 +97,10 @@ function MessageBubble({
         <div
           className={cn(
             'max-w-full overflow-x-auto whitespace-pre-wrap break-all [overflow-wrap:anywhere]',
-            long && !expanded && 'line-clamp-8 overflow-hidden',
+            long && !expanded && !highlight && 'line-clamp-8 overflow-hidden',
           )}
         >
-          {text}
+          {highlight ? <HighlightedText text={text} start={highlight.start} end={highlight.end} /> : text}
         </div>
         {long ? (
           <button type="button" className="mt-3 text-xs text-signal hover:underline" onClick={onToggle}>
@@ -85,40 +112,65 @@ function MessageBubble({
   )
 }
 
+function parseHighlight(raw: string | null): { start: number; end: number } | null {
+  if (!raw) return null
+  const [left, right] = raw.split('-')
+  const start = Number(left)
+  const end = Number(right)
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null
+  return { start, end }
+}
+
 export function LogDetailPage() {
   const params = useParams()
+  const [searchParams] = useSearchParams()
   const id = Number(params.id)
   const ready = Number.isFinite(id)
+  const targetSeq = Number(searchParams.get('seq'))
+  const highlight = parseHighlight(searchParams.get('hl'))
+  const hasTargetSeq = Number.isFinite(targetSeq) && targetSeq >= 0
   const [raw, setRaw] = useState(false)
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
   const [page, setPage] = useState(1)
+  const [located, setLocated] = useState(false)
   const { data, isPending } = useQuery({
     queryKey: ['log', id],
     queryFn: () => api.log(id, false),
     enabled: ready,
   })
   const { data: pageData, isPending: pagePending } = useQuery({
-    queryKey: ['log-messages', id, page],
-    queryFn: () => api.logMessages(id, page, LOG_PAGE_SIZE),
+    queryKey: ['log-messages', id, page, hasTargetSeq && !located ? targetSeq : null],
+    queryFn: () => api.logMessages(id, page, LOG_PAGE_SIZE, hasTargetSeq && !located ? targetSeq : undefined),
     enabled: ready,
   })
   useEffect(() => {
     setExpanded({})
     setRaw(false)
     setPage(1)
-  }, [id])
+    setLocated(false)
+  }, [id, targetSeq])
+  useEffect(() => {
+    if (!hasTargetSeq || located || !pageData) return
+    if (pageData.page !== page) setPage(pageData.page)
+    setLocated(true)
+  }, [hasTargetSeq, located, pageData, page])
+  useEffect(() => {
+    if (!hasTargetSeq) return
+    const node = document.getElementById('audit-hit')
+    node?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [hasTargetSeq, pageData])
   if (isPending || pagePending || !data || !pageData || data.id !== id) {
     return <div className="text-mist">加载中…</div>
   }
   const messages = pageData.items
   const total = pageData.total
   const pageCount = Math.max(1, Math.ceil(total / LOG_PAGE_SIZE))
-  const currentPage = Math.min(Math.max(page, 1), pageCount)
-  const start = (currentPage - 1) * LOG_PAGE_SIZE
+  const currentPage = pageData.page || page
 
   function goToPage(nextPage: number) {
     const bounded = Math.min(Math.max(nextPage, 1), pageCount)
     if (bounded === page) return
+    setLocated(true)
     setPage(bounded)
     setExpanded({})
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -169,17 +221,20 @@ export function LogDetailPage() {
         <Card className="break-all text-sm text-danger [overflow-wrap:anywhere]">{data.error_message}</Card>
       ) : null}
       <div className="min-w-0 space-y-3">
-        {messages.map((message, offset) => {
-          const index = start + offset
+        {messages.map((message) => {
+          const seq = message.seq
+          const active = hasTargetSeq && seq === targetSeq
           return (
             <MessageBubble
-              key={index}
+              key={seq}
               role={message.role}
               content={message.content}
-              expanded={Boolean(expanded[index])}
+              expanded={Boolean(expanded[seq] || active)}
               onToggle={() =>
-                setExpanded((current) => ({ ...current, [index]: !current[index] }))
+                setExpanded((current) => ({ ...current, [seq]: !current[seq] }))
               }
+              highlight={active ? highlight : null}
+              active={active}
             />
           )
         })}

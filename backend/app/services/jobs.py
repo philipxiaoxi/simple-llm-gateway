@@ -9,8 +9,10 @@ from typing import Any
 from app.clock import utcnow
 from app.config import get_settings
 from app.db import get_session_factory
-from app.services import grok_oauth, leaderboard as leaderboard_service, model_caps, quota
+from app.services import content_audit, grok_oauth, model_caps, quota
+from app.services import leaderboard as leaderboard_service
 from app.services.job_settings import get_job_int, get_job_params, update_job_params
+
 
 class JobBusyError(RuntimeError):
     pass
@@ -20,7 +22,8 @@ JOB_CATALOG = "catalog"
 JOB_QUOTA = "quota"
 JOB_OAUTH = "oauth"
 JOB_LEADERBOARD = "leaderboard"
-LOOP_JOBS = (JOB_CATALOG, JOB_QUOTA, JOB_OAUTH, JOB_LEADERBOARD)
+JOB_CONTENT_AUDIT = "content_audit"
+LOOP_JOBS = (JOB_CATALOG, JOB_QUOTA, JOB_OAUTH, JOB_LEADERBOARD, JOB_CONTENT_AUDIT)
 ALL_JOBS = LOOP_JOBS
 
 PARAM_LIMITS: dict[str, tuple[int, int]] = {
@@ -62,6 +65,12 @@ JOB_META = {
         "kind": "loop",
         "source_url": None,
     },
+    JOB_CONTENT_AUDIT: {
+        "name": "内容审计扫描",
+        "description": "每 24 小时增量扫描请求正文，产出敏感词 / PII / 密钥命中",
+        "kind": "loop",
+        "source_url": None,
+    },
 }
 
 
@@ -90,6 +99,10 @@ def reset_jobs() -> None:
     _wake_events = {}
     _wake_reasons = {}
     _loop_tasks = []
+
+
+def get_job_runtime(job_id: str) -> JobRuntime:
+    return _runtime[job_id]
 
 
 def _lock(job_id: str) -> asyncio.Lock:
@@ -217,6 +230,8 @@ async def _execute(job_id: str) -> dict[str, Any]:
         if error_message:
             message = f"{error_message}（{message}）"
         return {"message": message, "total": total, "error_message": error_message}
+    if job_id == JOB_CONTENT_AUDIT:
+        return await content_audit.run_scan_batch()
     raise ValueError("任务不存在")
 
 
@@ -235,7 +250,7 @@ async def run_job(job_id: str) -> dict[str, Any]:
             extra = await _execute(job_id)
             state.last_ok = True
             state.last_message = str(extra.get("message") or "已完成")
-            state.error_message = None
+            state.error_message = extra.get("error_message") if extra.get("lexicon_ok") is False else None
             state.extra = extra
             return extra
         except Exception as error:
@@ -351,6 +366,26 @@ def _oauth_snapshot() -> dict[str, Any]:
     }
 
 
+def _content_audit_snapshot() -> dict[str, Any]:
+    interval = get_job_int(JOB_CONTENT_AUDIT, "interval_seconds", 86400)
+    stats = content_audit.progress_stats()
+    state = _runtime[JOB_CONTENT_AUDIT]
+    extra = state.extra or {}
+    return {
+        "cache_fetched_at": state.last_finished_at,
+        "cache_expires_at": _expires_at(state.last_finished_at, interval) if state.last_finished_at else None,
+        "cache_ok": bool(state.last_ok),
+        "ttl_seconds": interval,
+        "processed": extra.get("processed"),
+        "new_findings": extra.get("new_findings"),
+        "remaining": stats["remaining"],
+        "lexicon_ok": extra.get("lexicon_ok"),
+        "scanned_count": stats["scanned_count"],
+        "total_logs": stats["total_logs"],
+        "finding_count": stats["finding_count"],
+    }
+
+
 def _leaderboard_snapshot() -> dict[str, Any]:
     ttl = get_job_int(JOB_LEADERBOARD, "interval_seconds", get_settings().aihot_leaderboard_ttl_seconds)
     session = get_session_factory()()
@@ -385,6 +420,7 @@ _SNAPSHOTTERS = {
     JOB_QUOTA: _quota_snapshot,
     JOB_OAUTH: _oauth_snapshot,
     JOB_LEADERBOARD: _leaderboard_snapshot,
+    JOB_CONTENT_AUDIT: _content_audit_snapshot,
 }
 
 

@@ -11,6 +11,7 @@ DEFAULTS: dict[str, dict[str, int]] = {
     "quota": {"interval_seconds": 3600},
     "oauth": {"interval_seconds": 600, "soon_seconds": 1200},
     "leaderboard": {"interval_seconds": 43200},
+    "content_audit": {"interval_seconds": 86400},
 }
 
 
@@ -23,6 +24,7 @@ def _defaults() -> dict[str, dict[str, int]]:
         "leaderboard": {
             "interval_seconds": max(60, settings.aihot_leaderboard_ttl_seconds),
         },
+        "content_audit": {"interval_seconds": 86400},
     }
 
 

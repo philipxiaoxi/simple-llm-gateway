@@ -19,6 +19,7 @@ import { PublicLeaderboardPage } from './pages/PublicLeaderboard'
 import { SharePage } from './pages/Share'
 import { SkillDetailPage } from './pages/SkillDetail'
 import { SkillsPage } from './pages/Skills'
+import { ContentAuditPage } from './pages/ContentAudit'
 import { JobsPage } from './pages/Jobs'
 import { ToolsPage } from './pages/Tools'
 import type { ReactElement } from 'react'
@@ -61,6 +62,7 @@ export default function App() {
             <Route path="/jobs" element={<JobsPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/logs/:id" element={<LogDetailPage />} />
+            <Route path="/content-audit" element={<ContentAuditPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

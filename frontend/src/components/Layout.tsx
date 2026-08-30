@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, RadioTower, ServerCog, Sparkles, Timer, Trophy, UserRoundPen, X } from 'lucide-react'
+import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, RadioTower, ServerCog, ShieldAlert, Sparkles, Timer, Trophy, UserRoundPen, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
@@ -20,6 +20,7 @@ const links = [
   { to: '/leaderboard', label: '模型榜', icon: Trophy },
   { to: '/jobs', label: '定时任务', icon: Timer },
   { to: '/logs', label: '记录审计', icon: MessageSquareText },
+  { to: '/content-audit', label: '内容审计', icon: ShieldAlert },
 ]
 
 const tabLinks = [
@@ -261,7 +262,7 @@ export function Layout() {
           <div className="font-mono text-xs tracking-[0.28em] text-signal">PIVOT DESK</div>
           <div className="mt-1 text-lg font-semibold">AI一体化服务平台</div>
         </div>
-        <nav className="flex flex-col gap-1 p-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+        <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3">
           {links.map((link) => (
             <NavLink
               key={link.to}
@@ -280,15 +281,27 @@ export function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="flex flex-col gap-1 p-3">
-          <ForceUpdateButton className="w-full justify-start text-mist" />
-          <Button variant="ghost" className="w-full justify-start text-mist" onClick={() => setProfile(true)}>
+        <div className="flex items-center gap-1 border-t border-line p-2 lg:border-t-0">
+          <ForceUpdateButton className="min-w-11 flex-1 justify-center px-0 text-mist" title="强制更新">
+            <span className="sr-only">强制更新</span>
+          </ForceUpdateButton>
+          <Button
+            variant="ghost"
+            className="min-w-11 flex-1 justify-center px-0 text-mist"
+            onClick={() => setProfile(true)}
+            title="修改账号"
+            aria-label="修改账号"
+          >
             <UserRoundPen size={16} />
-            修改账号
           </Button>
-          <Button variant="ghost" className="w-full justify-start text-mist" onClick={logout}>
+          <Button
+            variant="ghost"
+            className="min-w-11 flex-1 justify-center px-0 text-mist"
+            onClick={logout}
+            title="退出登录"
+            aria-label="退出登录"
+          >
             <LogOut size={16} />
-            退出登录
           </Button>
         </div>
       </aside>

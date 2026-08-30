@@ -115,6 +115,7 @@ def test_log_messages_are_paginated_newest_first(client: TestClient, auth_header
     assert body["total"] == 6
     assert body["page"] == 1
     assert [item["role"] for item in body["items"]] == ["assistant", "user", "user"]
+    assert [item["seq"] for item in body["items"]] == [5, 4, 3]
     assert body["items"][0]["content"] == "ok"
     assert [item["content"] for item in body["items"][1:]] == ["turn-4", "turn-3"]
 
