@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { registerSW } from 'virtual:pwa-register'
@@ -36,7 +37,15 @@ export function PwaUpdater() {
   return null
 }
 
-export function ForceUpdateButton({ className }: { className?: string }) {
+export function ForceUpdateButton({
+  className,
+  children,
+  title,
+}: {
+  className?: string
+  children?: ReactNode
+  title?: string
+}) {
   const [pending, setPending] = useState(false)
 
   async function onClick() {
@@ -51,9 +60,9 @@ export function ForceUpdateButton({ className }: { className?: string }) {
   }
 
   return (
-    <Button variant="ghost" className={className} disabled={pending} onClick={() => void onClick()}>
+    <Button variant="ghost" className={className} disabled={pending} onClick={() => void onClick()} title={title} aria-label={title}>
       <RefreshCw size={16} />
-      {pending ? '更新中…' : '强制更新'}
+      {children ?? (pending ? '更新中…' : '强制更新')}
     </Button>
   )
 }

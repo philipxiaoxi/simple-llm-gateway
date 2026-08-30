@@ -58,12 +58,21 @@ def list_log_messages(
     log_id: int,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    around_seq: int | None = None,
     db: Session = Depends(get_db),
 ) -> LogMessageListOut:
     item = db.get(RequestLog, log_id)
     if item is None:
         raise HTTPException(status_code=404, detail="记录不存在")
     total = db.scalar(select(func.count()).where(RequestLogMessage.log_id == log_id)) or 0
+    if around_seq is not None:
+        higher = db.scalar(
+            select(func.count()).where(
+                RequestLogMessage.log_id == log_id,
+                RequestLogMessage.seq > around_seq,
+            )
+        ) or 0
+        page = higher // page_size + 1
     offset = (page - 1) * page_size
     rows = db.scalars(
         select(RequestLogMessage)
@@ -77,6 +86,7 @@ def list_log_messages(
         decoded = decode_stored_message(row)
         items.append(
             LogMessageOut(
+                seq=row.seq,
                 role=decoded["role"],
                 content=decoded.get("content"),
                 tool_calls=decoded.get("tool_calls"),

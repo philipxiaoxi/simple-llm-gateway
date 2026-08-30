@@ -565,10 +565,16 @@ export const api = {
   },
   log: (id: number, includeBodies = false) =>
     request<LogItem>(`/api/admin/logs/${id}?include_bodies=${includeBodies ? 'true' : 'false'}`),
-  logMessages: (id: number, page: number, pageSize = 20) =>
-    request<{ items: { role: string; content: unknown }[]; total: number; page: number; page_size: number }>(
-      `/api/admin/logs/${id}/messages?page=${page}&page_size=${pageSize}`,
-    ),
+  logMessages: (id: number, page: number, pageSize = 20, aroundSeq?: number) => {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+    if (aroundSeq != null && Number.isFinite(aroundSeq)) params.set('around_seq', String(aroundSeq))
+    return request<{
+      items: { seq: number; role: string; content: unknown; tool_calls?: unknown }[]
+      total: number
+      page: number
+      page_size: number
+    }>(`/api/admin/logs/${id}/messages?${params}`)
+  },
   shareLookup: (apiKey: string) =>
     request<ShareLookup>('/api/share/lookup', { method: 'POST', body: JSON.stringify({ api_key: apiKey }) }),
   shareCcSwitch: (payload: {
@@ -721,6 +727,68 @@ export const api = {
   runJob: (id: string) => request<JobList>(`/api/admin/jobs/${id}/run`, { method: 'POST' }),
   updateJob: (id: string, payload: Record<string, number>) =>
     request<JobList>(`/api/admin/jobs/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  contentAuditFindings: (query: Record<string, string | number | undefined> = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<ContentAuditFindingList>(`/api/admin/content-audit/findings${suffix}`)
+  },
+  contentAuditSummary: () => request<ContentAuditSummary>('/api/admin/content-audit/summary'),
+  syncContentAuditLexicon: () =>
+    request<ContentAuditLexiconSync>('/api/admin/content-audit/lexicon/sync', { method: 'POST' }),
+}
+
+export type ContentAuditFinding = {
+  id: number
+  log_id: number
+  message_seq: number
+  category: string
+  lexicon_category: string | null
+  rule_key: string
+  severity: string
+  excerpt: string
+  start_offset: number
+  end_offset: number
+  api_key_id: number | null
+  api_key_name: string | null
+  account_name: string | null
+  created_at: string
+}
+
+export type ContentAuditFindingList = {
+  items: ContentAuditFinding[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type ContentAuditSummary = {
+  running: boolean
+  status: string
+  last_finished_at: string | null
+  last_message: string | null
+  error_message: string | null
+  scanned_count: number
+  total_logs: number
+  finding_count: number
+  remaining: number
+  processed: number | null
+  new_findings: number | null
+  lexicon_ok: boolean | null
+  lexicon_updated_at: string | null
+  lexicon_word_count: number
+  by_category: Record<string, number>
+  lexicon_categories: string[]
+}
+
+export type ContentAuditLexiconSync = {
+  ok: boolean
+  updated_at: string | null
+  word_count: number
+  categories: string[]
+  error_message: string | null
 }
 
 export type BenchmarkResult = {

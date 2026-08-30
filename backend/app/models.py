@@ -335,3 +335,47 @@ class LeaderboardSnapshot(Base):
     entries_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     source_updated_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ContentAuditFinding(Base):
+    __tablename__ = "content_audit_findings"
+    __table_args__ = (
+        UniqueConstraint(
+            "log_id",
+            "message_seq",
+            "category",
+            "rule_key",
+            "start_offset",
+            name="uq_content_audit_finding",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    log_id: Mapped[int] = mapped_column(
+        ForeignKey("request_logs.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    message_seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    category: Mapped[str] = mapped_column(String(16), nullable=False)
+    lexicon_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rule_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    excerpt: Mapped[str] = mapped_column(Text, nullable=False)
+    start_offset: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_offset: Mapped[int] = mapped_column(Integer, nullable=False)
+    api_key_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    api_key_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    account_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+
+
+class ContentAuditScan(Base):
+    __tablename__ = "content_audit_scans"
+
+    log_id: Mapped[int] = mapped_column(
+        ForeignKey("request_logs.id", ondelete="CASCADE"), primary_key=True
+    )
+    last_scanned_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    last_message_seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    finding_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="ok", nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

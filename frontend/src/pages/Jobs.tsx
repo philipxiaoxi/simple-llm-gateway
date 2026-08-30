@@ -41,6 +41,13 @@ const DETAIL_LABELS: Record<string, string> = {
   earliest_expires_at: '最早过期',
   stale: '已过期',
   total: '条目数',
+  processed: '本轮处理',
+  new_findings: '新增命中',
+  remaining: '待扫记录',
+  lexicon_ok: '词库就绪',
+  scanned_count: '已扫记录',
+  total_logs: '请求总数',
+  finding_count: '命中总数',
 }
 
 function JobCard({ job }: { job: ScheduledJob }) {
