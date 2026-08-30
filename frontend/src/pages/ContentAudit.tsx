@@ -244,8 +244,12 @@ export function ContentAuditPage() {
             </Button>
           </div>
         </div>
-        {summary?.error_message ? <div className="text-sm text-danger">{summary.error_message}</div> : null}
-        {summary?.last_message && !summary.error_message ? <div className="text-sm text-mist">{summary.last_message}</div> : null}
+        {summary?.error_message ? (
+          <div className="break-all text-sm text-danger [overflow-wrap:anywhere]">{summary.error_message}</div>
+        ) : null}
+        {summary?.last_message && !summary.error_message ? (
+          <div className="break-all text-sm text-mist [overflow-wrap:anywhere]">{summary.last_message}</div>
+        ) : null}
       </Card>
 
       <Card className="grid grid-cols-2 gap-3 lg:flex lg:flex-nowrap lg:items-end">
@@ -354,12 +358,12 @@ export function ContentAuditPage() {
         </table>
       </div>
 
-      <div className="grid gap-3 lg:hidden">
+      <div className="grid min-w-0 gap-3 lg:hidden">
         {items.map((item) => (
-          <Link key={item.id} to={findingHref(item)} className="block min-h-11">
-            <Card className="space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+          <Link key={item.id} to={findingHref(item)} className="block min-h-11 min-w-0">
+            <Card className="min-w-0 space-y-3 overflow-hidden">
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 overflow-hidden">
                   <div className="truncate font-medium" title={item.rule_key}>
                     {item.lexicon_category ? `${item.lexicon_category} / ${item.rule_key}` : item.rule_key}
                   </div>
@@ -370,7 +374,7 @@ export function ContentAuditPage() {
                   <Badge tone={severityTone(item.severity)}>{severityLabel[item.severity] || item.severity}</Badge>
                 </div>
               </div>
-              <div className="line-clamp-3 text-sm text-paper">{item.excerpt}</div>
+              <div className="line-clamp-3 break-all text-sm text-paper [overflow-wrap:anywhere]">{item.excerpt}</div>
               <div className="text-xs text-mist">{formatTime(item.created_at)}</div>
             </Card>
           </Link>
