@@ -1,5 +1,10 @@
+from sqlalchemy import func, select
+
 from app.db import get_session_factory
+from app.models import RequestLog, RequestLogMessage
 from app.services.conversation import (
+    MAX_LOG_MESSAGES,
+    append_log_messages,
     common_prefix_len,
     extract_session_key,
     find_continuation_log,
@@ -202,4 +207,34 @@ def test_load_reasoning_map_without_session_is_empty() -> None:
     try:
         assert load_reasoning_map(session, api_key_id=1, account_id=1, session_key=None) == {}
     finally:
+        session.close()
+
+
+def test_append_log_messages_caps_at_max(client) -> None:
+    session = get_session_factory()()
+    try:
+        log = RequestLog(
+            account_id=1,
+            account_source="upstream",
+            protocol="openai",
+            stream=False,
+            status="success",
+            http_status=200,
+            latency_ms=0,
+        )
+        session.add(log)
+        session.flush()
+        append_log_messages(
+            session,
+            log.id,
+            [{"role": "user", "content": f"m{index}"} for index in range(MAX_LOG_MESSAGES)],
+        )
+        session.flush()
+        # 已达上限，再追加应被忽略
+        append_log_messages(session, log.id, [{"role": "user", "content": "extra"}])
+        session.flush()
+        count = session.scalar(select(func.count()).where(RequestLogMessage.log_id == log.id))
+        assert count == MAX_LOG_MESSAGES
+    finally:
+        session.rollback()
         session.close()

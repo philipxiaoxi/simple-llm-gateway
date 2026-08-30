@@ -20,6 +20,9 @@ SESSION_HEADER_NAMES = (
     "thread-id",
 )
 
+# 单会话最多保留的消息条数，防止超长会话把 request_log_messages 表撑爆
+MAX_LOG_MESSAGES = 1000
+
 
 def extract_session_key(body: dict[str, Any] | None, headers: dict[str, str] | None = None) -> str | None:
     if isinstance(body, dict):
@@ -258,6 +261,10 @@ def append_log_messages(db: Session, log_id: int, messages: list[dict[str, Any]]
         return
     last_seq = db.scalar(select(func.max(RequestLogMessage.seq)).where(RequestLogMessage.log_id == log_id))
     next_seq = (last_seq if last_seq is not None else -1) + 1
+    # 单会话消息条数上限：超过后不再追加消息（只更新 usage 元数据），避免超长会话把表撑爆
+    if next_seq >= MAX_LOG_MESSAGES:
+        return
+    messages = messages[: MAX_LOG_MESSAGES - next_seq]
     now = utcnow()
     for offset, message in enumerate(messages):
         db.add(

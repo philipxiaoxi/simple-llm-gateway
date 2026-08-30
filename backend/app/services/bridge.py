@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -483,7 +484,8 @@ async def call_responses(
 
 async def count_openai_tokens(model: str, messages: list[dict[str, Any]]) -> int:
     try:
-        return int(litellm.token_counter(model=model, messages=messages))
+        # litellm.token_counter 是同步阻塞调用，丢到线程池避免卡住事件循环
+        return int(await asyncio.to_thread(litellm.token_counter, model=model, messages=messages))
     except Exception:
         total = 0
         for message in messages:
