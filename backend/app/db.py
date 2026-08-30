@@ -26,7 +26,8 @@ def get_engine() -> Engine:
         def _set_sqlite_pragma(database_api_connection, _connection_record) -> None:  # type: ignore[no-untyped-def]
             cursor = database_api_connection.cursor()
             cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.execute("PRAGMA busy_timeout=10000")
+            cursor.execute("PRAGMA synchronous=NORMAL")
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
 
@@ -121,6 +122,18 @@ def _ensure_columns(engine: Engine) -> None:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN updated_at DATETIME"))
         if "session_key" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN session_key VARCHAR(128)"))
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_request_logs_updated_at ON request_logs (updated_at)")
+        )
+        connection.execute(
+            text("UPDATE request_logs SET updated_at = created_at WHERE updated_at IS NULL")
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_content_audit_findings_api_key_id "
+                "ON content_audit_findings (api_key_id)"
+            )
+        )
         if "reasoning_json" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN reasoning_json TEXT"))
         if "account_source" not in log_columns:

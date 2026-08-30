@@ -169,7 +169,7 @@ class RequestLog(Base):
     session_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     reasoning_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, index=True, nullable=True)
 
     account: Mapped[UpstreamAccount | None] = relationship(
         "UpstreamAccount",
@@ -362,7 +362,7 @@ class ContentAuditFinding(Base):
     excerpt: Mapped[str] = mapped_column(Text, nullable=False)
     start_offset: Mapped[int] = mapped_column(Integer, nullable=False)
     end_offset: Mapped[int] = mapped_column(Integer, nullable=False)
-    api_key_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    api_key_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     api_key_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     account_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)

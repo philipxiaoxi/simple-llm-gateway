@@ -46,7 +46,7 @@ def list_logs(
     offset = (page - 1) * page_size
     rows = db.scalars(
         filters.options(joinedload(RequestLog.api_key), joinedload(RequestLog.account))
-        .order_by(func.coalesce(RequestLog.updated_at, RequestLog.created_at).desc(), RequestLog.id.desc())
+        .order_by(RequestLog.updated_at.desc(), RequestLog.id.desc())
         .offset(offset)
         .limit(page_size)
     ).unique().all()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
@@ -579,7 +580,8 @@ async def _stream_response(
             else:
                 yield f"data: {json.dumps({'error': {'message': error_text}}, ensure_ascii=False)}\n\n".encode()
         finally:
-            _finalize_stream_log(
+            await asyncio.to_thread(
+                _finalize_stream_log,
                 account_id=account_id,
                 api_key_id=api_key_id,
                 protocol=protocol,
@@ -792,7 +794,8 @@ def _stream_anthropic_passthrough(
                 {"type": "error", "error": {"type": "api_error", "message": error_text}},
             )
         finally:
-            _finalize_stream_log(
+            await asyncio.to_thread(
+                _finalize_stream_log,
                 account_id=account_id,
                 api_key_id=api_key_id,
                 protocol="anthropic_messages",
