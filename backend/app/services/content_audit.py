@@ -28,7 +28,7 @@ BATCH_SIZE = 200
 # 单会话消息超过该条数则跳过审计，避免一次性全量加载超大会话（可能数百 MB）
 MAX_AUDIT_MESSAGES = 2000
 # 后台扫描每批处理的日志条数，以及批间让出写锁的间隔
-SCAN_BATCH_SIZE = 20
+SCAN_BATCH_SIZE = 500
 SCAN_PAUSE_SECONDS = 0.5
 EXCERPT_LIMIT = 120
 REQUEST_BODY_SEQ = -1
