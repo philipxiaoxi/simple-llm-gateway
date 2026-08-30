@@ -131,8 +131,10 @@ if FRONTEND_DIST.exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
     @app.get("/favicon.svg")
-    def frontend_favicon() -> FileResponse:
-        return FileResponse(FRONTEND_DIST / "favicon.svg")
+    @app.get("/favicon.ico")
+    @app.get("/favicon.png")
+    def frontend_favicon(request: Request) -> FileResponse:
+        return FileResponse(FRONTEND_DIST / request.url.path.lstrip("/"))
 
     @app.get("/apple-touch-icon.png")
     @app.get("/pwa-192x192.png")

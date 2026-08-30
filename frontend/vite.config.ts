@@ -10,7 +10,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: false,
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.svg', 'favicon.ico', 'favicon.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'AI一体化服务平台',
         short_name: 'AI一体化服务平台',
