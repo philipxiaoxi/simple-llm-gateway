@@ -101,12 +101,13 @@ def accumulate_usage(
     return next_prompt, next_completion, next_total
 
 
-def _finalize_stream_log(
+def _finalize_request_log(
     *,
     account_id: int,
     api_key_id: int,
     protocol: str,
     model: str,
+    stream: bool,
     status: str,
     http_status: int,
     error_text: str | None,
@@ -115,7 +116,7 @@ def _finalize_stream_log(
     request_body: Any,
     response_body: Any,
     request_headers: dict[str, str] | None,
-    reasoning_map: dict[str, str],
+    reasoning_map: dict[str, str] | None = None,
 ) -> None:
     session = get_session_factory()()
     try:
@@ -125,7 +126,7 @@ def _finalize_stream_log(
             api_key_id=api_key_id,
             protocol=protocol,
             model=model,
-            stream=True,
+            stream=stream,
             status=status,
             http_status=http_status,
             error_message=error_text,
@@ -142,6 +143,42 @@ def _finalize_stream_log(
         session.commit()
     finally:
         session.close()
+
+
+async def _finalize_request_log_async(
+    *,
+    account_id: int,
+    api_key_id: int,
+    protocol: str,
+    model: str,
+    stream: bool,
+    status: str,
+    http_status: int,
+    error_text: str | None,
+    usage: tuple[int | None, int | None, int | None],
+    started: float,
+    request_body: Any,
+    response_body: Any,
+    request_headers: dict[str, str] | None,
+    reasoning_map: dict[str, str] | None = None,
+) -> None:
+    await asyncio.to_thread(
+        _finalize_request_log,
+        account_id=account_id,
+        api_key_id=api_key_id,
+        protocol=protocol,
+        model=model,
+        stream=stream,
+        status=status,
+        http_status=http_status,
+        error_text=error_text,
+        usage=usage,
+        started=started,
+        request_body=request_body,
+        response_body=response_body,
+        request_headers=request_headers,
+        reasoning_map=reasoning_map,
+    )
 
 
 def _output_text_from_openai(payload: dict[str, Any]) -> str:
@@ -354,8 +391,7 @@ async def handle_chat(
         credential = await prepare_credential(account, db)
     except (CredentialError, ValueError) as error:
         status_code = getattr(error, "status_code", 403)
-        save_log(
-            db,
+        await _finalize_request_log_async(
             account_id=account.id,
             api_key_id=api_key.id,
             protocol=protocol,
@@ -363,9 +399,9 @@ async def handle_chat(
             stream=stream,
             status="error",
             http_status=status_code,
-            error_message=str(error),
+            error_text=str(error),
             usage=(None, None, None),
-            latency_ms=elapsed_ms(started),
+            started=started,
             request_body=body,
             response_body=None,
             request_headers=request_headers,
@@ -431,8 +467,7 @@ async def handle_chat(
         else:
             result = await call_chat(account, messages, model, False, extra, credential)
     except Exception as error:
-        return _fail(db, api_key, account, body, protocol, model, stream, started, error, request_headers)
-
+        return await _fail(api_key, account, body, protocol, model, stream, started, error, request_headers)
     if hasattr(result, "model_dump"):
         openai_payload = result.model_dump()
     else:
@@ -453,8 +488,7 @@ async def handle_chat(
         if protocol == "openai_responses"
         else reasoning_map_from_openai_payload(openai_payload)
     )
-    save_log(
-        db,
+    await _finalize_request_log_async(
         account_id=account.id,
         api_key_id=api_key.id,
         protocol=protocol,
@@ -462,15 +496,14 @@ async def handle_chat(
         stream=False,
         status="success",
         http_status=200,
-        error_message=None,
+        error_text=None,
         usage=usage,
-        latency_ms=elapsed_ms(started),
+        started=started,
         request_body=body,
         response_body=payload,
         request_headers=request_headers,
         reasoning_map=merge_reasoning_maps(inbound_reasoning, reasoning_map),
     )
-    api_key.last_used_at = utcnow()
     return JSONResponse(payload)
 
 
@@ -495,7 +528,7 @@ async def _stream_response(
         else:
             result = await call_chat(account, messages, model, True, extra, credential)
     except Exception as error:
-        return _fail(db, api_key, account, body, protocol, model, True, started, error, request_headers)
+        return await _fail(api_key, account, body, protocol, model, True, started, error, request_headers)
 
     message_id = f"msg_{uuid.uuid4().hex}"
     account_id = account.id
@@ -580,12 +613,12 @@ async def _stream_response(
             else:
                 yield f"data: {json.dumps({'error': {'message': error_text}}, ensure_ascii=False)}\n\n".encode()
         finally:
-            await asyncio.to_thread(
-                _finalize_stream_log,
+            await _finalize_request_log_async(
                 account_id=account_id,
                 api_key_id=api_key_id,
                 protocol=protocol,
                 model=model,
+                stream=True,
                 status=status,
                 http_status=http_status,
                 error_text=error_text,
@@ -640,8 +673,7 @@ class OpenAIStreamCollector:
         return {str(tool["id"]): self.reasoning for tool in self.tools.values() if tool.get("id")}
 
 
-def _fail(
-    db: Session,
+async def _fail(
     api_key: ApiKey,
     account: UpstreamAccount,
     body: dict[str, Any],
@@ -654,8 +686,7 @@ def _fail(
 ) -> JSONResponse:
     message = str(error)
     status_code = 504 if "timeout" in message.lower() else 502
-    save_log(
-        db,
+    await _finalize_request_log_async(
         account_id=account.id,
         api_key_id=api_key.id,
         protocol=protocol,
@@ -663,9 +694,9 @@ def _fail(
         stream=stream,
         status="error",
         http_status=status_code,
-        error_message=message,
+        error_text=message,
         usage=(None, None, None),
-        latency_ms=elapsed_ms(started),
+        started=started,
         request_body=body,
         response_body=None,
         request_headers=request_headers,
@@ -700,12 +731,11 @@ async def handle_anthropic_passthrough(
             account, body, credential, request_headers
         )
     except Exception as error:
-        return _fail(db, api_key, account, body, "anthropic_messages", model, False, started, error, request_headers)
+        return await _fail(api_key, account, body, "anthropic_messages", model, False, started, error, request_headers)
 
     usage = extract_usage(payload if isinstance(payload, dict) else {})
     ok = status_code < 400
-    save_log(
-        db,
+    await _finalize_request_log_async(
         account_id=account.id,
         api_key_id=api_key.id,
         protocol="anthropic_messages",
@@ -713,9 +743,9 @@ async def handle_anthropic_passthrough(
         stream=False,
         status="success" if ok else "error",
         http_status=status_code,
-        error_message=None if ok else _anthropic_error_message(payload),
+        error_text=None if ok else _anthropic_error_message(payload),
         usage=usage,
-        latency_ms=elapsed_ms(started),
+        started=started,
         request_body=body,
         response_body=payload,
         request_headers=request_headers,
@@ -724,7 +754,6 @@ async def handle_anthropic_passthrough(
             reasoning_map_from_anthropic_content(payload.get("content") if isinstance(payload, dict) else None),
         ),
     )
-    api_key.last_used_at = utcnow()
     return JSONResponse(payload, status_code=status_code)
 
 
@@ -794,12 +823,12 @@ def _stream_anthropic_passthrough(
                 {"type": "error", "error": {"type": "api_error", "message": error_text}},
             )
         finally:
-            await asyncio.to_thread(
-                _finalize_stream_log,
+            await _finalize_request_log_async(
                 account_id=account_id,
                 api_key_id=api_key_id,
                 protocol="anthropic_messages",
                 model=model,
+                stream=True,
                 status=status,
                 http_status=http_status,
                 error_text=error_text,
