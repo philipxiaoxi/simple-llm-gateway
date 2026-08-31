@@ -16,8 +16,16 @@ from app.services.ccswitch import (
     describe_ccswitch_targets,
     gateway_endpoint,
 )
-from app.services.key_models import active_bound_accounts, account_prefix, bound_accounts, is_account_available, public_model_ids, public_model_records
+from app.services.key_models import (
+    active_bound_accounts,
+    account_prefix,
+    bound_accounts,
+    build_model_catalog,
+    is_account_available,
+    public_model_ids,
+)
 from app.services.leaderboard import LeaderboardError, get_leaderboard
+from app.services.model_caps import serialize_record
 
 router = APIRouter(prefix="/api/share", tags=["share"])
 
@@ -74,8 +82,14 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
     settings = get_settings()
     account = item.account
     bound = bound_accounts(item)
-    models = public_model_ids(item)
-    records = public_model_records(item)
+    catalog = build_model_catalog(item)
+    models = [entry.public_id for entry in catalog]
+    records = []
+    for entry in catalog:
+        record = serialize_record(entry.record) if entry.record is not None else {}
+        record["id"] = entry.public_id
+        records.append(record)
+    account_indexes = {bound_account.id: index for index, bound_account in enumerate(bound)}
     origin = settings.app_base_url.rstrip("/")
     provider = account.provider if account else ""
     registered = find_provider(provider) if provider else None
@@ -105,6 +119,18 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
         "total_tokens": total_tokens,
         "models": models,
         "model_caps": records,
+        "model_entries": [
+            {
+                "id": entry.public_id,
+                "raw_id": entry.raw_id,
+                "account_id": entry.account.id,
+                "account_name": entry.account.name,
+                "account_source": entry.account.source,
+                "provider": entry.account.provider,
+                "account_index": account_indexes.get(entry.account.id, 0),
+            }
+            for entry in catalog
+        ],
         "gateway": {
             "origin": origin,
             "anthropic_base_url": gateway_endpoint(origin, False),

@@ -1,4 +1,5 @@
 import { notifyBad, notifyOk } from '../lib/toast'
+import type { ShareModelEntry } from '../lib/api'
 import { formatContextWindow } from '../lib/utils'
 import { ModelPickDialog } from './ModelPickDialog'
 import { Button } from './ui'
@@ -45,15 +46,20 @@ function downloadText(filename: string, text: string) {
 
 export function VscodeImportDialog({
   config,
+  modelEntries,
   onClose,
 }: {
   config: Record<string, unknown>
+  modelEntries?: ShareModelEntry[]
   onClose: () => void
 }) {
   const vscode = config as VscodeConfig
+  const entryById = new Map((modelEntries ?? []).map((item) => [item.id, item]))
   const models = (Array.isArray(vscode.models) ? vscode.models.filter((item) => item?.id) : []).map((item) => ({
     id: item.id,
     hint: modelHint(item),
+    accountName: entryById.get(item.id)?.account_name,
+    accountIndex: entryById.get(item.id)?.account_index,
   }))
 
   function buildText(selectedIds: string[]) {

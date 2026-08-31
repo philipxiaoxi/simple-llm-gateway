@@ -1,11 +1,14 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { accountColor } from '../lib/accountModels'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { copyText, errorMessage } from '../lib/utils'
+import { cn, copyText, errorMessage } from '../lib/utils'
 import { Button, Dialog, Field, Input } from './ui'
 
 export type ModelPickItem = {
   id: string
   hint?: string
+  accountName?: string
+  accountIndex?: number
 }
 
 export function ModelPickDialog({
@@ -34,7 +37,9 @@ export function ModelPickDialog({
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase()
     if (!keyword) return models
-    return models.filter((item) => item.id.toLowerCase().includes(keyword) || (item.hint ?? '').toLowerCase().includes(keyword))
+    return models.filter((item) =>
+      [item.id, item.hint, item.accountName].some((value) => (value ?? '').toLowerCase().includes(keyword)),
+    )
   }, [models, query])
 
   const selectedSet = useMemo(() => new Set(selected), [selected])
@@ -94,17 +99,31 @@ export function ModelPickDialog({
           </div>
         </div>
         <div className="max-h-[40vh] overflow-y-auto rounded-md border border-line bg-ink/40 p-2">
-          {filtered.map((model) => (
-            <label key={model.id} className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 hover:bg-white/5">
-              <input type="checkbox" className="mt-1" checked={selectedSet.has(model.id)} onChange={() => toggle(model.id)} />
-              <span className="min-w-0">
-                <span className="block truncate font-mono text-xs text-paper" title={model.id}>
-                  {model.id}
+          {filtered.map((model) => {
+            const color = accountColor(model.accountIndex ?? 0)
+            return (
+              <label
+                key={model.id}
+                className={cn(
+                  'flex cursor-pointer items-start gap-2 rounded-md border-l-2 px-2 py-2 hover:bg-white/5',
+                  model.accountName ? color.border : 'border-transparent',
+                )}
+              >
+                <input type="checkbox" className="mt-1" checked={selectedSet.has(model.id)} onChange={() => toggle(model.id)} />
+                <span className="min-w-0">
+                  <span className="block truncate font-mono text-xs text-paper" title={model.id}>
+                    {model.id}
+                  </span>
+                  {model.accountName ? (
+                    <span className={cn('mt-0.5 block text-[11px] leading-4', color.text)}>
+                      优先 {(model.accountIndex ?? 0) + 1} · {model.accountName}
+                    </span>
+                  ) : null}
+                  {model.hint ? <span className="block text-[11px] leading-4 text-mist">{model.hint}</span> : null}
                 </span>
-                {model.hint ? <span className="mt-0.5 block text-[11px] leading-4 text-mist">{model.hint}</span> : null}
-              </span>
-            </label>
-          ))}
+              </label>
+            )
+          })}
           {!filtered.length ? <div className="px-2 py-6 text-center text-sm text-mist">没有匹配的模型</div> : null}
         </div>
         <div className="text-xs text-mist">

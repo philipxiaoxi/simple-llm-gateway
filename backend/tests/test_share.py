@@ -102,6 +102,7 @@ def test_share_lookup_marks_offline_agent_and_hides_its_models(
     assert response.status_code == 200
     assert response.json()["accounts"][0]["status"] == "offline"
     assert response.json()["models"] == []
+    assert response.json()["model_entries"] == []
 
 
 def test_share_lookup_and_cc_switch_without_admin(
@@ -133,6 +134,26 @@ def test_share_lookup_and_cc_switch_without_admin(
     assert body["today_tokens"] == 0
     assert body["total_tokens"] == 0
     assert body["models"] == ["deepseek-chat", "deepseek-reasoner"]
+    assert body["model_entries"] == [
+        {
+            "id": "deepseek-chat",
+            "raw_id": "deepseek-chat",
+            "account_id": body["accounts"][0]["id"],
+            "account_name": "DS",
+            "account_source": "upstream",
+            "provider": "deepseek",
+            "account_index": 0,
+        },
+        {
+            "id": "deepseek-reasoner",
+            "raw_id": "deepseek-reasoner",
+            "account_id": body["accounts"][0]["id"],
+            "account_name": "DS",
+            "account_source": "upstream",
+            "provider": "deepseek",
+            "account_index": 0,
+        },
+    ]
     assert body["gateway"]["anthropic_base_url"] == "http://testserver"
     assert body["gateway"]["openai_base_url"] == "http://testserver/v1"
     assert "api_key" not in body

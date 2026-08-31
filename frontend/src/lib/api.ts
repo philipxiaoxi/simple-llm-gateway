@@ -157,6 +157,16 @@ export type CcSwitchTarget = {
   url?: string
 }
 
+export type ShareModelEntry = {
+  id: string
+  raw_id: string
+  account_id: number
+  account_name: string
+  account_source: 'upstream' | 'agent'
+  provider: string
+  account_index: number
+}
+
 export type ShareLookup = {
   name: string
   account_name: string
@@ -179,6 +189,7 @@ export type ShareLookup = {
   total_tokens: number
   models: string[]
   model_caps?: ModelCaps[]
+  model_entries?: ShareModelEntry[]
   gateway: {
     origin: string
     anthropic_base_url: string

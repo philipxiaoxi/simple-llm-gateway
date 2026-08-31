@@ -4,7 +4,8 @@ import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialo
 import { ModelPickDialog } from '../components/ModelPickDialog'
 import { VscodeImportDialog } from '../components/VscodeImportDialog'
 import { Badge, Button, Card, Field, Input } from '../components/ui'
-import { api, type CcSwitchTarget, type ModelCaps, type ShareLookup } from '../lib/api'
+import { accountColor, shareModelEntries } from '../lib/accountModels'
+import { api, type CcSwitchTarget, type ModelCaps, type ShareLookup, type ShareModelEntry } from '../lib/api'
 import { listenForShareApiKey } from '../lib/shareTransfer'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { MIN_KEY_LENGTH, cn, errorMessage, formatTokenCount, modelCapsHint } from '../lib/utils'
@@ -83,10 +84,76 @@ function modelHint(caps?: ModelCaps) {
   return modelCapsHint(caps)
 }
 
+function AccountModelGroups({
+  lookup,
+  onModelClick,
+}: {
+  lookup: ShareLookup
+  onModelClick?: (modelName: string) => void
+}) {
+  const entries = shareModelEntries(lookup)
+  const groups = entries.reduce<Array<{ account: ShareModelEntry; models: ShareModelEntry[] }>>((items, entry) => {
+    const group = items.find((item) => item.account.account_id === entry.account_id)
+    if (group) group.models.push(entry)
+    else items.push({ account: entry, models: [entry] })
+    return items
+  }, [])
+
+  return (
+    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+      {groups.map(({ account, models }) => {
+        const color = accountColor(account.account_index)
+        return (
+          <section
+            key={`${account.account_source}-${account.account_id}`}
+            className={cn('min-w-0 rounded-lg border border-l-2 p-3', color.border, color.tint)}
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <span className={cn('size-2 shrink-0 rounded-full', color.dot)} aria-hidden="true" />
+              <span className="min-w-0 truncate text-sm font-medium" title={account.account_name}>
+                {account.account_name}
+              </span>
+              <span className="shrink-0 text-[10px] text-mist">{accountSourceLabel(account.account_source)}</span>
+              <span className={cn('ml-auto shrink-0 font-mono text-[10px]', color.text)}>优先 {account.account_index + 1}</span>
+            </div>
+            <div className="mt-1 text-[11px] text-mist">{models.length} 个模型</div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {models.map((model) => {
+                const title = [model.id, model.raw_id !== model.id ? `原始模型 ${model.raw_id}` : null, modelHint(modelCapsOf(lookup, model.id))]
+                  .filter(Boolean)
+                  .join(' · ')
+                const className = cn('max-w-full rounded-md border px-2 py-1 font-mono text-xs break-all', color.border, color.tint, color.text)
+                return onModelClick ? (
+                  <button
+                    key={model.id}
+                    type="button"
+                    onClick={() => onModelClick(model.id)}
+                    className={cn(className, 'transition', color.hover)}
+                    title={title}
+                  >
+                    {model.id}
+                  </button>
+                ) : (
+                  <span key={model.id} className={className} title={title}>
+                    {model.id}
+                  </span>
+                )
+              })}
+            </div>
+          </section>
+        )
+      })}
+    </div>
+  )
+}
+
 function modelDetailLine(modelName: string, lookup: ShareLookup) {
   const caps = modelCapsOf(lookup, modelName)
-  if (!caps) return `- ${modelName}`
+  const entry = shareModelEntries(lookup).find((item) => item.id === modelName)
+  const account = entry ? `账号 ${entry.account_name}` : null
+  if (!caps) return `- ${modelName}${account ? `（${account}）` : ''}`
   const extras = [
+    account,
     caps.context_window != null ? `上下文 ${caps.context_window}` : null,
     caps.max_output_tokens != null ? `最大输出 ${caps.max_output_tokens}` : null,
     caps.reasoning ? (caps.reasoning_efforts?.length ? `思考 ${caps.reasoning_efforts.join('/')}` : '思考') : '不思考',
@@ -371,13 +438,7 @@ export function SharePage() {
             <div>
               <div className="text-xs uppercase tracking-[0.16em] text-mist">可用模型</div>
               {lookup.models.length > 0 ? (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {lookup.models.map((modelName) => (
-                    <span key={modelName} className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-xs" title={modelHint(modelCapsOf(lookup, modelName)) || modelName}>
-                      {modelName}
-                    </span>
-                  ))}
-                </div>
+                <AccountModelGroups lookup={lookup} />
               ) : (
                 <div className="mt-2 text-sm text-warn">还没有模型列表，请让管理员先在上游账号里点「获取模型」。</div>
               )}
@@ -422,18 +483,7 @@ export function SharePage() {
             <div>
               <div className="text-xs uppercase tracking-[0.16em] text-mist">模型（点击复制）</div>
               {lookup.models.length > 0 ? (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {lookup.models.map((modelName) => (
-                    <button
-                      key={modelName}
-                      type="button"
-                      onClick={() => void copyModel(modelName)}
-                      className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-xs transition hover:bg-white/10 hover:text-signal"
-                    >
-                      {modelName}
-                    </button>
-                  ))}
-                </div>
+                <AccountModelGroups lookup={lookup} onModelClick={(modelName) => void copyModel(modelName)} />
               ) : (
                 <div className="mt-2 text-sm text-warn">还没有模型列表，请让管理员先在上游账号里点「获取模型」。</div>
               )}
@@ -491,18 +541,33 @@ export function SharePage() {
         <ModelPickDialog
           title="复制 AI 配置"
           description="勾选要写进说明的模型。每条会带上上下文、最大输出、思考档位和输入输出模态。"
-          models={lookup.models.map((modelName) => ({ id: modelName, hint: modelHint(modelCapsOf(lookup, modelName)) }))}
+          models={shareModelEntries(lookup).map((model) => ({
+            id: model.id,
+            hint: modelHint(modelCapsOf(lookup, model.id)),
+            accountName: model.account_name,
+            accountIndex: model.account_index,
+          }))}
           confirmLabel="复制配置说明"
           successMessage={(count) => `已复制 ${count} 个模型的 AI 配置说明，发给任意 AI 即可。`}
           buildText={(selectedIds) => aiConfigText(lookup, rawKey.trim(), selectedIds)}
           onClose={() => setAiConfigDialog(false)}
         />
       ) : null}
-      {vscodeDialog && lookup ? <VscodeImportDialog config={lookup.vscode} onClose={() => setVscodeDialog(false)} /> : null}
+      {vscodeDialog && lookup ? (
+        <VscodeImportDialog
+          config={lookup.vscode}
+          modelEntries={shareModelEntries(lookup)}
+          onClose={() => setVscodeDialog(false)}
+        />
+      ) : null}
       {dialog && lookup ? (
         <CcSwitchDialog
           label={dialog.label}
-          models={lookup.models}
+          models={shareModelEntries(lookup).map((model) => ({
+            id: model.id,
+            accountName: model.account_name,
+            accountIndex: model.account_index,
+          }))}
           isClaude={dialog.app === 'claude'}
           initial={{ model: lookup.models[0] ?? '', haiku: '', sonnet: '', opus: '' }}
           onConfirm={(values) => void confirmDialog(values)}
