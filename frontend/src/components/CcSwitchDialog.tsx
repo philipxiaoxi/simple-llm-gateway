@@ -8,6 +8,12 @@ export type CcSwitchValues = {
   opus: string
 }
 
+export type CcSwitchModel = {
+  id: string
+  accountName?: string
+  accountIndex?: number
+}
+
 const CLAUDE_MODEL_SLOTS = ['haiku', 'sonnet', 'opus'] as const
 
 export function CcSwitchDialog({
@@ -20,7 +26,7 @@ export function CcSwitchDialog({
   onClose,
 }: {
   label: string
-  models: string[]
+  models: Array<CcSwitchModel | string>
   isClaude: boolean
   initial: CcSwitchValues
   pending?: boolean
@@ -28,6 +34,27 @@ export function CcSwitchDialog({
   onClose: () => void
 }) {
   const [values, setValues] = useState<CcSwitchValues>(initial)
+  const normalizedModels = models.map((model) => (typeof model === 'string' ? { id: model } : model))
+  const groups = normalizedModels.reduce<CcSwitchModel[][]>((items, model) => {
+    const index = model.accountIndex ?? 0
+    if (!items[index]) items[index] = []
+    items[index].push(model)
+    return items
+  }, [])
+
+  function modelOptions() {
+    return groups.map((items, index) =>
+      items?.length ? (
+        <optgroup key={index} label={`优先 ${index + 1} · ${items[0].accountName ?? '可用模型'}`}>
+          {items.map((model) => (
+            <option key={model.id} value={model.id}>
+              {model.id}
+            </option>
+          ))}
+        </optgroup>
+      ) : null,
+    )
+  }
 
   return (
     <Dialog title={`导入到 ${label}`} onClose={onClose}>
@@ -38,11 +65,7 @@ export function CcSwitchDialog({
             value={values.model}
             onChange={(event) => setValues({ ...values, model: event.target.value })}
           >
-            {models.map((modelName) => (
-              <option key={modelName} value={modelName}>
-                {modelName}
-              </option>
-            ))}
+            {modelOptions()}
           </Select>
         </Field>
         {isClaude
@@ -53,11 +76,7 @@ export function CcSwitchDialog({
                   onChange={(event) => setValues({ ...values, [slot]: event.target.value })}
                 >
                   <option value="">不设置</option>
-                  {models.map((modelName) => (
-                    <option key={modelName} value={modelName}>
-                      {modelName}
-                    </option>
-                  ))}
+                  {modelOptions()}
                 </Select>
               </Field>
             ))
