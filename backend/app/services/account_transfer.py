@@ -17,6 +17,7 @@ from app.crypto import (
 from app.models import UpstreamAccount
 from app.providers import get_provider
 from app.schemas import normalize_website_url
+from app.services.header_spoof import default_header_spoof, normalize_header_spoof
 from app.services.key_models import ensure_account_prefix, normalize_model_prefix
 
 
@@ -49,6 +50,7 @@ def export_accounts(db: Session, password: str) -> dict[str, object]:
                 "status": account.status,
                 "risk_level": account.risk_level,
                 "model_prefix": account.model_prefix,
+                "header_spoof": account.header_spoof,
                 "api_key": api_key,
             }
         )
@@ -103,6 +105,14 @@ def import_accounts(db: Session, password: str, envelope: dict[str, object]) -> 
             )
         except ValueError:
             model_prefix = None
+        try:
+            header_spoof = (
+                normalize_header_spoof(str(entry.get("header_spoof")))
+                if entry.get("header_spoof") is not None
+                else default_header_spoof(provider.id)
+            )
+        except ValueError:
+            header_spoof = default_header_spoof(provider.id)
         account = UpstreamAccount(
             name=name,
             provider=provider.id,
@@ -113,6 +123,7 @@ def import_accounts(db: Session, password: str, envelope: dict[str, object]) -> 
             status=status,
             risk_level=risk_level,
             model_prefix=model_prefix,
+            header_spoof=header_spoof,
             updated_at=utcnow(),
         )
         db.add(account)

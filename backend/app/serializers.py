@@ -49,6 +49,7 @@ def account_to_out(account: UpstreamAccount, reveal: bool = False) -> AccountOut
         models=models,
         models_updated_at=account.models_updated_at,
         model_prefix=account.model_prefix,
+        header_spoof=account.header_spoof,
         oauth_expires_at=account.oauth_token.expires_at if account.oauth_token else None,
         created_at=account.created_at,
     )

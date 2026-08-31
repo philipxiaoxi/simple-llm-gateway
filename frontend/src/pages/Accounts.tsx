@@ -10,6 +10,20 @@ import { MIN_PASSWORD_LENGTH, RISK_LEVELS, cn, errorMessage, formatEmbeddedTimes
 const QUOTA_WARN_HIGH = 90
 const QUOTA_WARN_MEDIUM = 70
 
+const HEADER_SPOOF_OPTIONS = [
+  { value: 'none', label: '关闭' },
+  { value: 'grok', label: 'Grok CLI' },
+  { value: 'opencode', label: 'OpenCode' },
+] as const
+
+type HeaderSpoof = 'none' | 'grok' | 'opencode'
+
+function defaultHeaderSpoof(providerId: string): HeaderSpoof {
+  if (providerId === 'grok') return 'grok'
+  if (providerId === 'opencode_go') return 'opencode'
+  return 'none'
+}
+
 function AccountEditor({
   account,
   providers,
@@ -29,6 +43,9 @@ function AccountEditor({
   const [apiKey, setApiKey] = useState('')
   const [riskLevel, setRiskLevel] = useState(account?.risk_level ?? 'low')
   const [modelPrefix, setModelPrefix] = useState(account?.model_prefix ?? '')
+  const [headerSpoof, setHeaderSpoof] = useState<HeaderSpoof>(
+    account?.header_spoof ?? defaultHeaderSpoof(account?.provider ?? 'deepseek'),
+  )
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
 
@@ -39,6 +56,11 @@ function AccountEditor({
     if (editing) return
     if (preset?.base_url) setBaseUrl(preset.base_url)
   }, [editing, preset?.base_url])
+
+  useEffect(() => {
+    if (editing) return
+    setHeaderSpoof(defaultHeaderSpoof(provider))
+  }, [editing, provider])
 
   async function save() {
     const trimmedName = name.trim()
@@ -59,6 +81,7 @@ function AccountEditor({
           api_key: authType === 'api_key' && apiKey.trim() ? apiKey.trim() : undefined,
           risk_level: riskLevel,
           model_prefix: modelPrefix.trim() || undefined,
+          header_spoof: headerSpoof,
         })
         onSaved('账号已更新')
       } else {
@@ -70,6 +93,7 @@ function AccountEditor({
           api_key: authType === 'api_key' ? apiKey : undefined,
           risk_level: riskLevel,
           model_prefix: modelPrefix.trim() || undefined,
+          header_spoof: headerSpoof,
         })
         onSaved('账号已创建')
       }
@@ -145,6 +169,20 @@ function AccountEditor({
           </Field>
           <div className="mt-1.5 text-xs text-mist">
             同一 Key 绑定多个账号且模型名冲突时，后绑账号使用此前缀，例如 prefix/model。仅字母数字、下划线和短横线，最长 32 位。
+          </div>
+        </div>
+        <div className="sm:col-span-2">
+          <Field label="请求头伪装">
+            <Select value={headerSpoof} onChange={(event) => setHeaderSpoof(event.target.value as typeof headerSpoof)}>
+              {HEADER_SPOOF_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <div className="mt-1.5 text-xs text-mist">
+            转向上游时带上对应客户端的请求头。Grok 额度查询走 cli-chat-proxy 时需要 Grok CLI 伪装。
           </div>
         </div>
         <div className="sm:col-span-2">
@@ -806,6 +844,11 @@ export function AccountsPage() {
               <Badge tone={account.has_credential ? 'info' : 'warn'}>
                 {account.has_credential ? '已配置凭证' : '缺凭证'}
               </Badge>
+              {account.header_spoof && account.header_spoof !== 'none' ? (
+                <Badge tone="info">
+                  {account.header_spoof === 'grok' ? '伪装 Grok CLI' : '伪装 OpenCode'}
+                </Badge>
+              ) : null}
               {account.last_probe_ok === true ? <Badge tone="ok">探测正常</Badge> : null}
               {account.last_probe_ok === false ? <Badge tone="bad">探测失败</Badge> : null}
             </div>

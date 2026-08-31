@@ -6,6 +6,14 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.services.header_spoof import normalize_header_spoof
+
+
+def optional_header_spoof(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return normalize_header_spoof(value)
+
 
 def normalize_website_url(value: str | None) -> str | None:
     normalized = (value or "").strip()
@@ -87,8 +95,10 @@ class AccountCreate(BaseModel):
     status: str = "active"
     risk_level: str = "low"
     model_prefix: str | None = None
+    header_spoof: str | None = None
 
     _normalize_website_url = field_validator("website_url")(normalize_website_url)
+    _normalize_header_spoof = field_validator("header_spoof")(optional_header_spoof)
 
 
 class AccountExportRequest(BaseModel):
@@ -108,8 +118,10 @@ class AccountUpdate(BaseModel):
     status: str | None = None
     model_prefix: str | None = None
     risk_level: str | None = None
+    header_spoof: str | None = None
 
     _normalize_website_url = field_validator("website_url")(normalize_website_url)
+    _normalize_header_spoof = field_validator("header_spoof")(optional_header_spoof)
 
 
 class ModelCapsOut(BaseModel):
@@ -201,6 +213,7 @@ class AccountOut(BaseModel):
     quota_updated_at: datetime | None
     models: list[ModelCapsOut] = Field(default_factory=list)
     model_prefix: str | None = None
+    header_spoof: str = "none"
     models_updated_at: datetime | None = None
     oauth_expires_at: datetime | None = None
     created_at: datetime

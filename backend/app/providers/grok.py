@@ -13,7 +13,6 @@ from app.services.grok_oauth import refresh_if_needed
 
 
 GROK_WEEKLY_BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
-GROK_CLI_VERSION = "0.2.114"
 
 
 def parse_grok_weekly(raw: dict[str, Any]) -> tuple[float, str | None] | None:
@@ -46,17 +45,6 @@ def grok_quota_items(raw: dict[str, Any]) -> list[QuotaItem]:
     if resets_at:
         items.append(QuotaItem(label="周限制", type="text", value=f"重置时间：{resets_at}"))
     return items
-
-
-def grok_billing_headers(token: str) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "x-xai-token-auth": "xai-grok-cli",
-        "x-grok-client-version": GROK_CLI_VERSION,
-        "User-Agent": f"grok-pager/{GROK_CLI_VERSION} grok-shell/{GROK_CLI_VERSION} (macos; aarch64)",
-    }
 
 
 class GrokProvider(OpenAICompatibleProvider):
@@ -95,7 +83,10 @@ class GrokProvider(OpenAICompatibleProvider):
         access_token = await self._access_token(account, token)
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
             try:
-                response = await client.get(GROK_WEEKLY_BILLING_URL, headers=grok_billing_headers(access_token))
+                response = await client.get(
+                    GROK_WEEKLY_BILLING_URL,
+                    headers={**self.outbound_headers(account, access_token), "Accept": "application/json"},
+                )
             except httpx.HTTPError as error:
                 return QuotaView(ok=False, message=str(error))
         if response.status_code == 401:

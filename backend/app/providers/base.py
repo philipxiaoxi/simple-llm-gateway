@@ -11,6 +11,7 @@ from app.clock import utcnow
 from app.config import get_settings
 from app.models import UpstreamAccount
 from app.services.credentials import get_upstream_credential, require_upstream_credential
+from app.services.header_spoof import spoof_headers
 from app.services.model_caps import dump_model_records, enrich_model_records, extract_model_entries, load_catalog_index, serialize_record
 
 GENERIC_QUOTA_UNSUPPORTED = "通用供应商不支持查询余额"
@@ -64,6 +65,18 @@ class Provider:
             return {}
         return {"X-Local-Agent-Token": get_settings().local_agent_token}
 
+    def outbound_headers(
+        self,
+        account: UpstreamAccount,
+        token: str,
+        model: str | None = None,
+    ) -> dict[str, str]:
+        return {
+            **self.auth_headers(token or ""),
+            **self.relay_headers(account),
+            **spoof_headers(account.header_spoof, model=model),
+        }
+
     def can_passthrough(self, inbound_protocol: str) -> bool:
         return False
 
@@ -88,8 +101,8 @@ class Provider:
             stream=stream,
             timeout=settings.request_timeout_seconds,
             drop_params=True,
-            extra_headers=self.relay_headers(account),
             **extra,
+            extra_headers=self.outbound_headers(account, api_key, model=model),
         )
 
     async def responses(
@@ -110,8 +123,8 @@ class Provider:
             stream=stream,
             timeout=settings.request_timeout_seconds,
             drop_params=True,
-            extra_headers=self.relay_headers(account),
             **extra,
+            extra_headers=self.outbound_headers(account, api_key, model=model),
         )
 
     async def post_native(
@@ -155,7 +168,7 @@ class Provider:
 
     async def probe(self, account: UpstreamAccount) -> dict[str, Any]:
         token = "agent-managed" if account.source == "agent" else get_upstream_credential(account)
-        headers = {**self.auth_headers(token or ""), **self.relay_headers(account)}
+        headers = self.outbound_headers(account, token or "")
         last_error = "未发起请求"
         started = utcnow()
         settings = get_settings()
@@ -187,7 +200,7 @@ class Provider:
 
     async def list_models(self, account: UpstreamAccount) -> dict[str, Any]:
         token = "agent-managed" if account.source == "agent" else get_upstream_credential(account, allow_expired=True)
-        headers = {**self.auth_headers(token or ""), **self.relay_headers(account)}
+        headers = self.outbound_headers(account, token or "")
         last_error = "未发起请求"
         settings = get_settings()
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
@@ -238,7 +251,7 @@ class Provider:
 
     async def load_quota(self, account: UpstreamAccount, token: str) -> QuotaView:
         base = self.openai_api_base(account.base_url)
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = self.outbound_headers(account, token)
         candidates = [f"{base}/usage", f"{base}/billing"]
         settings = get_settings()
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:

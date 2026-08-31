@@ -107,6 +107,7 @@ export type Account = {
   quota_updated_at: string | null
   models: ModelCaps[]
   model_prefix?: string | null
+  header_spoof: 'none' | 'grok' | 'opencode'
   models_updated_at: string | null
   oauth_expires_at: string | null
   created_at: string

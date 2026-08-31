@@ -83,6 +83,7 @@ def _ensure_columns(engine: Engine) -> None:
         "risk_level": "ALTER TABLE upstream_accounts ADD COLUMN risk_level VARCHAR(16) DEFAULT 'low' NOT NULL",
         "website_url": "ALTER TABLE upstream_accounts ADD COLUMN website_url VARCHAR(512)",
         "model_prefix": "ALTER TABLE upstream_accounts ADD COLUMN model_prefix VARCHAR(32)",
+        "header_spoof": "ALTER TABLE upstream_accounts ADD COLUMN header_spoof VARCHAR(16) DEFAULT 'none' NOT NULL",
     }
     skill_settings_statements = {
         "report_account_id": "ALTER TABLE skill_classification_settings ADD COLUMN report_account_id INTEGER",
@@ -97,9 +98,19 @@ def _ensure_columns(engine: Engine) -> None:
         account_columns = {
             row[1] for row in connection.execute(text("PRAGMA table_info(upstream_accounts)"))
         }
+        added_header_spoof = "header_spoof" not in account_columns
         for column, statement in account_statements.items():
             if column not in account_columns:
                 connection.execute(text(statement))
+        if added_header_spoof:
+            connection.execute(
+                text("UPDATE upstream_accounts SET header_spoof = 'grok' WHERE provider = 'grok'")
+            )
+            connection.execute(
+                text(
+                    "UPDATE upstream_accounts SET header_spoof = 'opencode' WHERE provider = 'opencode_go'"
+                )
+            )
         settings_columns = {
             row[1] for row in connection.execute(text("PRAGMA table_info(skill_classification_settings)"))
         }

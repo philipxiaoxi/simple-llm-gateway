@@ -46,6 +46,7 @@ class UpstreamAccount(Base):
     models_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     models_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     model_prefix: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    header_spoof: Mapped[str] = mapped_column(String(16), default="none", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 

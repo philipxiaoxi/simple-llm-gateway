@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.models import UpstreamAccount
 from app.providers.base import GENERIC_QUOTA_UNSUPPORTED, Provider, QuotaView
 from app.services.credentials import get_upstream_credential
+from app.services.header_spoof import spoof_headers
 
 ANTHROPIC_VERSION = "2023-06-01"
 
@@ -73,7 +74,10 @@ class AnthropicGenericProvider(Provider):
         token: str,
         inbound_headers: dict[str, str] | None = None,
     ) -> tuple[str, dict[str, str]]:
-        return self.messages_url(account), self.merge_inbound_headers(token, inbound_headers)
+        headers = self.merge_inbound_headers(token, inbound_headers)
+        headers.update(self.relay_headers(account))
+        headers.update(spoof_headers(account.header_spoof))
+        return self.messages_url(account), headers
 
     async def complete(
         self,
@@ -93,8 +97,8 @@ class AnthropicGenericProvider(Provider):
             stream=stream,
             timeout=settings.request_timeout_seconds,
             drop_params=True,
-            extra_headers={**self.auth_headers(api_key), **self.relay_headers(account)},
             **extra,
+            extra_headers=self.outbound_headers(account, api_key, model=model),
         )
 
     async def post_native(
@@ -105,7 +109,6 @@ class AnthropicGenericProvider(Provider):
         inbound_headers: dict[str, str] | None = None,
     ) -> tuple[int, Any]:
         url, headers = self.native_request(account, token, inbound_headers)
-        headers.update(self.relay_headers(account))
         settings = get_settings()
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
             response = await client.post(url, headers=headers, json=body)
@@ -126,6 +129,7 @@ class AnthropicGenericProvider(Provider):
         url = self.count_tokens_url(account)
         headers = self.merge_inbound_headers(token, inbound_headers)
         headers.update(self.relay_headers(account))
+        headers.update(spoof_headers(account.header_spoof))
         settings = get_settings()
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
             response = await client.post(url, headers=headers, json=body)

@@ -82,7 +82,7 @@ class DeepSeekProvider(Provider):
         url = account.base_url.rstrip("/") + "/user/balance"
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
             try:
-                response = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+                response = await client.get(url, headers=self.outbound_headers(account, token))
             except httpx.HTTPError as error:
                 return QuotaView(ok=False, message=str(error))
         if response.status_code >= 400:

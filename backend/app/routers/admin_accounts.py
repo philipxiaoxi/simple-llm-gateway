@@ -15,6 +15,7 @@ from app.providers import get_provider, list_providers
 from app.schemas import AccountCreate, AccountExportRequest, AccountImportRequest, AccountOut, AccountUpdate, ModelOverrideUpdate, ProviderOut
 from app.serializers import account_to_out
 from app.services.account_transfer import export_accounts, import_accounts
+from app.services.header_spoof import default_header_spoof, normalize_header_spoof
 from app.services.key_models import ensure_account_prefix, normalize_model_prefix
 from app.services.model_caps import apply_model_override, dump_model_records, parse_model_records, serialize_record
 from app.services.probe import list_account_models, probe_account
@@ -75,6 +76,10 @@ def create_account(
         account.model_prefix = normalize_model_prefix(payload.model_prefix)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    if payload.header_spoof is None:
+        account.header_spoof = default_header_spoof(provider.id)
+    else:
+        account.header_spoof = payload.header_spoof
     db.add(account)
     db.flush()
     ensure_account_prefix(account)
@@ -137,6 +142,8 @@ def update_account(
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         account.model_prefix = prefix or ensure_account_prefix(account)
+    if payload.header_spoof is not None:
+        account.header_spoof = normalize_header_spoof(payload.header_spoof)
     account.updated_at = utcnow()
     return account_to_out(account)
 
