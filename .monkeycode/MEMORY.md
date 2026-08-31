@@ -47,3 +47,13 @@ Entries discovered by the Agent during task execution should follow this format:
   - 在内容区中部向右滑动打开侧栏，向左滑动关闭；避开 iOS 左侧返回手势
   - PC 端继续使用左侧栏，不显示底部 Tab
   - iOS 进页必须保持深色底，避免先白后黑
+
+[GitHub push 认证]
+- Date: 2026-08-30
+- Context: Discovered by Agent while pushing branch 260830-perf-optimization
+- Category: Environment Configuration
+- Instructions:
+  - credential helper 为 `/app/agent/bin/agent git-credential-helper`，可从 `git credential fill` 取 github.com 凭据
+  - 返回的 password 常为 `ghs_`（GitHub App installation token）；helper 的 username 可能不是可用 Git 用户名
+  - push 时用 `x-access-token` 作为用户名，配合该 token；可用 `git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:TOKEN' | base64 -w0)" push`
+  - 勿在回复中打印 token 或完整 Authorization 头
