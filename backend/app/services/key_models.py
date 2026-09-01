@@ -3,13 +3,17 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ApiKey, ApiKeyAccount, UpstreamAccount
+from app.models import ApiKey, ApiKeyAccount, ModelAlias, UpstreamAccount
 from app.services.model_caps import ModelRecord, parse_model_records, serialize_record
 
 PREFIX_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")
 PREFIX_ERROR = "模型前缀仅允许字母、数字、下划线和短横线，最长 32 位，且不能以符号开头"
+
+ALIAS_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$")
+ALIAS_ERROR = "别名仅允许字母、数字和 . _ / -，以字母或数字开头，最长 64 位"
 
 
 @dataclass(frozen=True)
@@ -146,6 +150,13 @@ def resolve_model(
 
 def public_model_ids(api_key: ApiKey) -> list[str]:
     return [entry.public_id for entry in build_model_catalog(api_key)]
+
+
+def resolve_alias_public_id(db: Session, api_key_id: int, alias: str) -> str | None:
+    row = db.scalar(
+        select(ModelAlias).where(ModelAlias.api_key_id == api_key_id, ModelAlias.alias == alias)
+    )
+    return row.model_public_id if row is not None else None
 
 
 def public_model_records(api_key: ApiKey) -> list[dict]:

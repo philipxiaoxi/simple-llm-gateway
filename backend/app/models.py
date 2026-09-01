@@ -131,6 +131,11 @@ class ApiKey(Base):
         cascade="all, delete-orphan",
         order_by="ApiKeyAccount.sort_order",
     )
+    aliases: Mapped[list[ModelAlias]] = relationship(
+        back_populates="api_key",
+        cascade="all, delete-orphan",
+        order_by="ModelAlias.id",
+    )
 
 
 class ApiKeyAccount(Base):
@@ -144,6 +149,20 @@ class ApiKeyAccount(Base):
 
     api_key: Mapped[ApiKey] = relationship(back_populates="account_links")
     account: Mapped[UpstreamAccount] = relationship(back_populates="key_links")
+
+
+class ModelAlias(Base):
+    __tablename__ = "model_aliases"
+    __table_args__ = (UniqueConstraint("api_key_id", "alias"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    api_key_id: Mapped[int] = mapped_column(ForeignKey("api_keys.id", ondelete="CASCADE"), index=True, nullable=False)
+    alias: Mapped[str] = mapped_column(String(128), nullable=False)
+    model_public_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    api_key: Mapped[ApiKey] = relationship(back_populates="aliases")
 
 
 class RequestLog(Base):

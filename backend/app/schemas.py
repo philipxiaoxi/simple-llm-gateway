@@ -257,6 +257,22 @@ class ShareCcSwitchRequest(CcSwitchBuildRequest):
     api_key: str
 
 
+class ShareAliasSaveRequest(BaseModel):
+    api_key: str
+    alias: str
+    model: str
+
+
+class ShareAliasDeleteRequest(BaseModel):
+    api_key: str
+    alias: str
+
+
+class AdminAliasSaveRequest(BaseModel):
+    alias: str
+    model: str
+
+
 class KeyBoundAccountOut(BaseModel):
     id: int
     name: str

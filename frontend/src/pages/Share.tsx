@@ -1,14 +1,14 @@
-import { RefreshCw } from 'lucide-react'
+import { Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
 import { ModelPickDialog } from '../components/ModelPickDialog'
 import { VscodeImportDialog } from '../components/VscodeImportDialog'
-import { Badge, Button, Card, Field, Input } from '../components/ui'
+import { Badge, Button, Card, Field, Input, Select } from '../components/ui'
 import { accountColor, shareModelEntries } from '../lib/accountModels'
-import { api, type CcSwitchTarget, type ModelCaps, type ShareLookup, type ShareModelEntry } from '../lib/api'
+import { api, type CcSwitchTarget, type ModelCaps, type ShareAlias, type ShareLookup, type ShareModelEntry } from '../lib/api'
 import { listenForShareApiKey } from '../lib/shareTransfer'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { MIN_KEY_LENGTH, cn, errorMessage, formatTokenCount, modelCapsHint } from '../lib/utils'
+import { MIN_KEY_LENGTH, ALIAS_INPUT_PATTERN, cn, errorMessage, formatTokenCount, modelCapsHint } from '../lib/utils'
 
 const RISK_META: Record<string, { label: string; hint: string; className: string }> = {
   low: { label: '低风险', hint: '官方模型或数据泄露可能性较低', className: 'border-signal/30 bg-signal/10 text-signal' },
@@ -82,6 +82,150 @@ function modelCapsOf(lookup: ShareLookup, modelName: string) {
 
 function modelHint(caps?: ModelCaps) {
   return modelCapsHint(caps)
+}
+
+function ModelAliasManager({
+  rawKey,
+  models,
+  aliases,
+  onChange,
+}: {
+  rawKey: string
+  models: string[]
+  aliases: ShareAlias[]
+  onChange: (aliases: ShareAlias[]) => void
+}) {
+  const [aliasDraft, setAliasDraft] = useState('')
+  const [aliasModelDraft, setAliasModelDraft] = useState(models[0] ?? '')
+  const [busy, setBusy] = useState(false)
+
+  async function mutate(action: () => Promise<{ aliases: ShareAlias[] }>, successText: string) {
+    if (busy) return
+    setBusy(true)
+    try {
+      const result = await action()
+      onChange(result.aliases)
+      notifyOk(successText)
+    } catch (item) {
+      notifyBad(errorMessage(item, '操作失败'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function submitAlias() {
+    const alias = aliasDraft.trim()
+    if (!ALIAS_INPUT_PATTERN.test(alias)) {
+      notifyBad('别名仅允许字母、数字和 . _ / -，以字母或数字开头，最长 64 位。')
+      return
+    }
+    if (aliases.some((item) => item.alias === alias)) {
+      notifyBad(`别名 ${alias} 已存在，可直接在列表里切换它对应的模型。`)
+      return
+    }
+    const model = aliasModelDraft || models[0]
+    if (!model) {
+      notifyBad('请选择别名对应的模型。')
+      return
+    }
+    void mutate(() => api.shareAliasSave({ api_key: rawKey, alias, model }), `已创建别名 ${alias}`)
+    setAliasDraft('')
+  }
+
+  return (
+    <Card className="space-y-3">
+      <div>
+        <h2 className="text-lg font-medium">模型别名</h2>
+        <p className="mt-1 text-sm text-mist">
+          自定义名字映射到任意可用模型。客户端模型名填别名，随时在这里切换它背后的模型，客户端不用改配置。
+        </p>
+      </div>
+      {aliases.length > 0 ? (
+        <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-ink/40">
+          {aliases.map((item) => {
+            const targetMissing = !models.includes(item.model)
+            return (
+              <li key={item.alias} className="flex flex-wrap items-center gap-2 px-3 py-2">
+                <span className="font-mono text-sm text-paper" title={item.alias}>
+                  {item.alias}
+                </span>
+                <span className="shrink-0 text-xs text-mist">→</span>
+                <Select
+                  className={cn('min-w-0 flex-1 md:w-auto md:flex-none md:min-w-56', targetMissing && 'border-warn/60 text-warn')}
+                  value={targetMissing ? '' : item.model}
+                  disabled={busy}
+                  onChange={(event) =>
+                    void mutate(
+                      () => api.shareAliasSave({ api_key: rawKey, alias: item.alias, model: event.target.value }),
+                      `别名 ${item.alias} 已切换到 ${event.target.value}`,
+                    )
+                  }
+                >
+                  {targetMissing ? <option value="">模型已移除，请重新选择</option> : null}
+                  {models.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  type="button"
+                  variant="danger"
+                  className="shrink-0 px-2"
+                  disabled={busy}
+                  title={`删除别名 ${item.alias}`}
+                  onClick={() => void mutate(() => api.shareAliasDelete({ api_key: rawKey, alias: item.alias }), `已删除别名 ${item.alias}`)}
+                >
+                  <Trash2 size={15} />
+                  删除
+                </Button>
+              </li>
+            )
+          })}
+        </ul>
+      ) : (
+        <div className="rounded-lg border border-dashed border-line bg-ink/40 px-3 py-4 text-sm text-mist">
+          还没有别名。添加一个，比如 fast 指向常用模型。
+        </div>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-40 flex-1 sm:max-w-56">
+          <Field label="别名">
+            <Input
+              value={aliasDraft}
+              onChange={(event) => setAliasDraft(event.target.value)}
+              placeholder="例如 fast"
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  submitAlias()
+                }
+              }}
+            />
+          </Field>
+        </div>
+        <div className="min-w-40 flex-1 sm:max-w-72">
+          <Field label="指向模型">
+            <Select value={aliasModelDraft} onChange={(event) => setAliasModelDraft(event.target.value)}>
+              {models.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+        <Button type="button" disabled={busy} onClick={submitAlias}>
+          <Plus size={15} />
+          添加别名
+        </Button>
+      </div>
+    </Card>
+  )
 }
 
 function AccountModelGroups({
@@ -231,6 +375,7 @@ export function SharePage() {
   } | null>(null)
   const [vscodeDialog, setVscodeDialog] = useState(false)
   const [aiConfigDialog, setAiConfigDialog] = useState(false)
+  const [aliases, setAliases] = useState<ShareAlias[]>([])
 
   useEffect(() => listenForShareApiKey(setRawKey), [])
 
@@ -238,6 +383,7 @@ export function SharePage() {
     const trimmed = rawKey.trim()
     if (trimmed.length < MIN_KEY_LENGTH) {
       setLookup(null)
+      setAliases([])
       setError('')
       setLoading(false)
       return
@@ -250,6 +396,7 @@ export function SharePage() {
         .then((result) => {
           if (cancelled) return
           setLookup(result)
+          setAliases(result.aliases ?? [])
           setError('')
         })
         .catch((item: Error) => {
@@ -444,6 +591,10 @@ export function SharePage() {
               )}
             </div>
           </Card>
+        ) : null}
+
+        {lookup && lookup.status === 'active' && lookup.models.length > 0 ? (
+          <ModelAliasManager rawKey={rawKey.trim()} models={lookup.models} aliases={aliases} onChange={setAliases} />
         ) : null}
 
         {lookup ? (

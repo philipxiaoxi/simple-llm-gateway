@@ -6,9 +6,15 @@ from app.clock import utcnow
 from app.config import get_settings
 from app.db import get_db
 from app.deps import resolve_api_key
-from app.models import ApiKey, RequestLog
+from app.models import ApiKey, ModelAlias, RequestLog
 from app.providers import find_provider
-from app.schemas import LeaderboardOut, ShareCcSwitchRequest, ShareLookupRequest
+from app.schemas import (
+    LeaderboardOut,
+    ShareAliasDeleteRequest,
+    ShareAliasSaveRequest,
+    ShareCcSwitchRequest,
+    ShareLookupRequest,
+)
 from app.services.ccswitch import (
     CCS_SWITCH_TARGETS,
     build_ccswitch_url_for_app,
@@ -17,6 +23,8 @@ from app.services.ccswitch import (
     gateway_endpoint,
 )
 from app.services.key_models import (
+    ALIAS_ERROR,
+    ALIAS_PATTERN,
     active_bound_accounts,
     account_prefix,
     bound_accounts,
@@ -73,6 +81,11 @@ def _key_token_totals(db: Session, api_key_id: int) -> tuple[int, int]:
     return int(today_tokens), int(total_tokens)
 
 
+def _serialize_aliases(item: ApiKey) -> list[dict]:
+    rows = sorted(item.aliases or [], key=lambda row: row.id)
+    return [{"alias": row.alias, "model": row.model_public_id} for row in rows]
+
+
 @router.post("/lookup")
 def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> dict:
     raw_key = payload.api_key.strip()
@@ -118,6 +131,7 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
         "today_tokens": today_tokens,
         "total_tokens": total_tokens,
         "models": models,
+        "aliases": _serialize_aliases(item),
         "model_caps": records,
         "model_entries": [
             {
@@ -175,6 +189,43 @@ def build_share_cc_switch(payload: ShareCcSwitchRequest, db: Session = Depends(g
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return {"url": url}
+
+
+@router.post("/aliases/save")
+def save_alias(payload: ShareAliasSaveRequest, db: Session = Depends(get_db)) -> dict:
+    item = _require_key(db, payload.api_key)
+    if item.status != "active":
+        raise HTTPException(status_code=403, detail="该 Key 已停用")
+    alias = payload.alias.strip()
+    if not ALIAS_PATTERN.match(alias):
+        raise HTTPException(status_code=400, detail=ALIAS_ERROR)
+    catalog_ids = {entry.public_id for entry in build_model_catalog(item, include_disabled=True)}
+    if alias in catalog_ids:
+        raise HTTPException(status_code=400, detail="别名不能与可用模型同名")
+    if payload.model not in catalog_ids:
+        raise HTTPException(status_code=400, detail="目标模型不在该 Key 的可用模型列表中")
+    row = db.scalar(select(ModelAlias).where(ModelAlias.api_key_id == item.id, ModelAlias.alias == alias))
+    if row is None:
+        row = ModelAlias(api_key_id=item.id, alias=alias, model_public_id=payload.model)
+        db.add(row)
+    else:
+        row.model_public_id = payload.model
+        row.updated_at = utcnow()
+    db.commit()
+    return {"aliases": _serialize_aliases(item)}
+
+
+@router.post("/aliases/delete")
+def delete_alias(payload: ShareAliasDeleteRequest, db: Session = Depends(get_db)) -> dict:
+    item = _require_key(db, payload.api_key)
+    row = db.scalar(
+        select(ModelAlias).where(ModelAlias.api_key_id == item.id, ModelAlias.alias == payload.alias.strip())
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="别名不存在")
+    db.delete(row)
+    db.commit()
+    return {"aliases": _serialize_aliases(item)}
 
 
 @router.get("/leaderboard", response_model=LeaderboardOut)

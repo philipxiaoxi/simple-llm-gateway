@@ -890,4 +890,9 @@ def list_models_payload(api_key: ApiKey) -> dict[str, Any]:
                 }
             )
         data.append(item)
+    known = {entry.public_id for entry in catalog}
+    for alias_row in api_key.aliases or []:
+        if alias_row.alias in known:
+            continue
+        data.append({"id": alias_row.alias, "object": "model", "created": created, "owned_by": "alias"})
     return {"object": "list", "data": data}
