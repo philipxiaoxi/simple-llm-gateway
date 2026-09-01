@@ -120,6 +120,51 @@ def test_benchmark_omits_speed_without_usage(client: TestClient, auth_headers: d
     assert body["estimated_output_tokens"] == round(len("只有正文") / 4)
 
 
+def test_benchmark_allows_disabled_model(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from unittest.mock import patch as http_patch
+
+    account_id = _account(client, auth_headers)
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {"data": [{"id": "deepseek-chat"}]}
+
+    with http_patch("app.providers.base.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        client.post(f"/api/admin/accounts/{account_id}/models", headers=auth_headers)
+
+    client.patch(
+        f"/api/admin/accounts/{account_id}/models/deepseek-chat",
+        headers=auth_headers,
+        json={"enabled": False},
+    )
+
+    async def fake_complete(*_args, **_kwargs):
+        async def chunks():
+            yield {"choices": [{"delta": {"content": "ok"}}]}
+            yield {"usage": {"completion_tokens": 1}}
+
+        return chunks()
+
+    provider = AsyncMock()
+    provider.complete = fake_complete
+    with patch("app.routers.admin_benchmark.get_provider", return_value=provider):
+        response = client.post(
+            "/api/admin/benchmark",
+            headers=auth_headers,
+            json={"account_id": account_id, "model": "deepseek-chat", "prompt": "hi", "max_tokens": 32},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+
+
 def test_benchmark_times_out_on_total_duration(client: TestClient, auth_headers: dict[str, str]) -> None:
     account_id = _account(client, auth_headers)
 

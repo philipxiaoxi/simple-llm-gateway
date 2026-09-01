@@ -40,7 +40,10 @@ async def _authenticate(
 
 
 def _resolve_request_account(protocol: str, api_key, body: dict):
-    catalog = build_model_catalog(api_key)
+    catalog = build_model_catalog(api_key, include_disabled=True)
+    enabled_catalog = [
+        entry for entry in catalog if entry.record is None or entry.record.enabled
+    ]
     active_accounts = active_bound_accounts(api_key)
     single_account = active_accounts[0] if len(active_accounts) == 1 else None
     model = str(body.get("model") or "").strip()
@@ -50,8 +53,11 @@ def _resolve_request_account(protocol: str, api_key, body: dict):
         return None, protocol_error(protocol, 400, "该 Key 没有可用的上游模型")
     if not model:
         return None, protocol_error(protocol, 400, "请求缺少模型名称")
-    entry = resolve_model(catalog, model, single_account=single_account)
+    entry = resolve_model(enabled_catalog, model, single_account=None)
     if entry is None:
+        disabled = resolve_model(catalog, model, single_account=None)
+        if disabled is not None and disabled.record is not None and not disabled.record.enabled:
+            return None, protocol_error(protocol, 400, f"模型“{model}”已关闭")
         if single_account is not None:
             return None, protocol_error(protocol, 400, f"模型“{model}”不在该上游账号已配置的模型列表中")
         return None, protocol_error(protocol, 400, f"模型“{model}”不在该 Key 已配置的模型列表中")

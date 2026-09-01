@@ -473,6 +473,54 @@ def test_models_endpoint(client: TestClient, auth_headers: dict[str, str]) -> No
     assert by_id["deepseek-reasoner"]["reasoning"] is True
 
 
+def test_models_endpoint_hides_disabled_and_chat_rejects(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    account = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    ).json()
+    key = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "k", "account_id": account["id"]},
+    ).json()["key"]
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {"data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}]}
+
+    with patch("app.providers.base.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        client.post(f"/api/admin/accounts/{account['id']}/models", headers=auth_headers)
+
+    disabled = client.patch(
+        f"/api/admin/accounts/{account['id']}/models/deepseek-chat",
+        headers=auth_headers,
+        json={"enabled": False},
+    )
+    assert disabled.status_code == 200
+
+    listed = client.get("/v1/models", headers={"Authorization": f"Bearer {key}"})
+    assert listed.status_code == 200
+    assert [item["id"] for item in listed.json()["data"]] == ["deepseek-reasoner"]
+
+    rejected = client.post(
+        "/v1/chat/completions",
+        headers={"Authorization": f"Bearer {key}"},
+        json={"model": "deepseek-chat", "messages": [{"role": "user", "content": "hi"}]},
+    )
+    assert rejected.status_code == 400
+    assert "已关闭" in rejected.json()["error"]["message"]
+
+
 def test_anthropic_followup_injects_stored_reasoning(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
     captured: list[list] = []

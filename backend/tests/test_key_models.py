@@ -112,6 +112,40 @@ def test_catalog_uses_prefix_and_account_id_on_double_collision() -> None:
     assert [entry.public_id for entry in build_model_catalog(key)] == ["chat", "ds/chat", "ds-3/chat"]
 
 
+def test_catalog_skips_disabled_models() -> None:
+    key = FakeKey(
+        [
+            FakeAccount(
+                1,
+                "one",
+                models=[{"id": "chat", "enabled": False}, "coder"],
+                prefix="one",
+            )
+        ]
+    )
+    catalog = build_model_catalog(key)
+    assert [entry.public_id for entry in catalog] == ["coder"]
+    full = build_model_catalog(key, include_disabled=True)
+    assert [entry.public_id for entry in full] == ["coder", "chat"]
+    assert full[1].record is not None and full[1].record.enabled is False
+
+
+def test_catalog_keeps_enabled_public_id_when_peer_disabled() -> None:
+    key = FakeKey(
+        [
+            FakeAccount(1, "one", models=[{"id": "chat", "enabled": False}], prefix="one"),
+            FakeAccount(2, "two", models=["chat"], prefix="two"),
+        ]
+    )
+    catalog = build_model_catalog(key)
+    assert [entry.public_id for entry in catalog] == ["chat"]
+    assert catalog[0].account.id == 2
+    full = {entry.public_id: entry for entry in build_model_catalog(key, include_disabled=True)}
+    assert full["chat"].account.id == 2
+    assert full["one/chat"].account.id == 1
+    assert full["one/chat"].record is not None and full["one/chat"].record.enabled is False
+
+
 def test_catalog_skips_disabled_accounts() -> None:
     key = FakeKey(
         [

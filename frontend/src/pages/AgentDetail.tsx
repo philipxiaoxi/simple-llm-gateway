@@ -2,10 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Check, CircleDot, RefreshCw, RotateCcw, Route, Server } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
-import { api } from '../lib/api'
+import { Badge, Button, Card, Dialog, Field, Input, Switch } from '../components/ui'
+import { api, type ModelCaps } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { errorMessage, formatTime, modelCapsHint } from '../lib/utils'
+import { cn, errorMessage, formatTime, modelCapsHint } from '../lib/utils'
 
 function RoutePrefixEditor({
   accountId,
@@ -114,6 +114,18 @@ export function AgentDetailPage() {
     },
     onError: (caught) => notifyBad(errorMessage(caught, '刷新模型失败')),
   })
+  const toggleModelEnabled = useMutation({
+    mutationFn: ({ accountId, model }: { accountId: number; model: ModelCaps }) =>
+      api.updateAccountModel(accountId, model.id, { enabled: model.enabled === false }),
+    onSuccess: async (_result, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['agent', agentId] })
+      await queryClient.invalidateQueries({ queryKey: ['agents'] })
+      await queryClient.invalidateQueries({ queryKey: ['key-accounts'] })
+      await queryClient.invalidateQueries({ queryKey: ['benchmark-accounts'] })
+      notifyOk(variables.model.enabled === false ? `已启用 ${variables.model.id}` : `已关闭 ${variables.model.id}`)
+    },
+    onError: (caught) => notifyBad(errorMessage(caught, '更新模型状态失败')),
+  })
   const updateRouteStatus = useMutation({
     mutationFn: ({ accountId, status }: { accountId: number; status: string }) =>
       api.updateAccount(accountId, { status }),
@@ -191,12 +203,40 @@ export function AgentDetailPage() {
                   </div>
                 </div>
                 <div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {route.models.map((model) => (
-                      <Badge key={model.id} tone="mist" title={modelCapsHint(model) || model.id}>
-                        {model.id}
-                      </Badge>
-                    ))}
+                  <div className="flex flex-col gap-1.5">
+                    {route.models.map((model) => {
+                      const enabled = model.enabled !== false
+                      const pending =
+                        toggleModelEnabled.isPending
+                        && toggleModelEnabled.variables?.accountId === route.account_id
+                        && toggleModelEnabled.variables?.model.id === model.id
+                      return (
+                        <div
+                          key={model.id}
+                          className={cn(
+                            'flex min-w-0 items-center gap-2 rounded-md border px-2.5 py-1.5',
+                            enabled ? 'border-line bg-ink/40' : 'border-dashed border-line/80 bg-ink/20',
+                          )}
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span
+                              className={cn('block truncate font-mono text-xs', enabled ? 'text-paper' : 'text-mist')}
+                              title={model.id}
+                            >
+                              {model.id}
+                            </span>
+                            <span className="mt-0.5 block text-[11px] text-mist">{modelCapsHint(model) || (enabled ? '对外可见' : '已关闭，测速仍可用')}</span>
+                          </span>
+                          {route.account_id ? (
+                            <Switch
+                              checked={enabled}
+                              disabled={pending}
+                              onCheckedChange={() => toggleModelEnabled.mutate({ accountId: route.account_id as number, model })}
+                            />
+                          ) : null}
+                        </div>
+                      )
+                    })}
                     {!route.models.length ? <span className="text-sm text-mist">尚未从上游同步模型</span> : null}
                   </div>
                   <div className="mt-2 text-xs text-mist">上次同步：{formatTime(route.models_updated_at)}</div>

@@ -441,6 +441,7 @@ def test_list_account_models(client: TestClient, auth_headers: dict[str, str]) -
     chat = stored.json()["models"][0]
     assert chat["context_window"] == 128000
     assert chat["max_output_tokens"] == 16000
+    assert chat["enabled"] is True
     assert stored.json()["models"][1]["reasoning"] is True
 
 
@@ -500,6 +501,53 @@ def test_model_override_survives_refresh(client: TestClient, auth_headers: dict[
     assert cleared.status_code == 200
     assert cleared.json()["overridden"] == []
     assert cleared.json()["context_window"] == 128000
+
+
+def test_disable_model_survives_refresh(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from unittest.mock import AsyncMock, patch
+
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    account_id = created.json()["id"]
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {"data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}]}
+
+    with patch("app.providers.base.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        client.post(f"/api/admin/accounts/{account_id}/models", headers=auth_headers)
+
+    disabled = client.patch(
+        f"/api/admin/accounts/{account_id}/models/deepseek-chat",
+        headers=auth_headers,
+        json={"enabled": False},
+    )
+    assert disabled.status_code == 200
+    assert disabled.json()["enabled"] is False
+
+    with patch("app.providers.base.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        client.post(f"/api/admin/accounts/{account_id}/models", headers=auth_headers)
+
+    stored = client.get(f"/api/admin/accounts/{account_id}", headers=auth_headers).json()
+    chat = next(item for item in stored["models"] if item["id"] == "deepseek-chat")
+    reasoner = next(item for item in stored["models"] if item["id"] == "deepseek-reasoner")
+    assert chat["enabled"] is False
+    assert reasoner["enabled"] is True
 
 
 def test_model_override_rejects_invalid_payload(client: TestClient, auth_headers: dict[str, str]) -> None:

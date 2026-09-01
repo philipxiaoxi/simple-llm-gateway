@@ -1,12 +1,12 @@
-import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, CircleStop, Download, Gauge, Info, PanelLeftClose, PanelLeftOpen, Play, RotateCcw, Save, Search, XCircle } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Ban, CheckCircle2, CircleStop, Download, Gauge, Info, PanelLeftClose, PanelLeftOpen, Play, RotateCcw, Save, Search, XCircle } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type Account, type BenchmarkResult } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage } from '../lib/utils'
 
-type Target = { account: Account; model: string }
+type Target = { account: Account; model: string; enabled: boolean }
 
 function keyOf(target: Target) {
   return `${target.account.id}:${target.model}`
@@ -41,13 +41,22 @@ function SpeedHint() {
 }
 
 function ResultStatus({ result, isTesting }: { result?: BenchmarkResult; isTesting: boolean }) {
-  if (isTesting) return <span className="text-signal">测试中</span>
-  if (!result) return <span className="text-mist">尚未测试</span>
-  if (result.timeout) return <span className="text-warn">超时</span>
-  if (result.ok) return <CheckCircle2 size={17} className="text-signal" />
+  const className = 'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap'
+  if (isTesting) return <span className={cn(className, 'text-signal')}>测试中</span>
+  if (!result) return <span className={cn(className, 'text-mist')}>尚未测试</span>
+  if (result.timeout) return <span className={cn(className, 'text-warn')}>超时</span>
+  if (result.ok) {
+    return (
+      <span className={cn(className, 'text-signal')}>
+        <CheckCircle2 size={16} className="shrink-0" />
+        成功
+      </span>
+    )
+  }
   return (
-    <span title={result.error}>
-      <XCircle size={17} className="text-danger" />
+    <span className={cn(className, 'text-danger')} title={result.error}>
+      <XCircle size={16} className="shrink-0" />
+      失败
     </span>
   )
 }
@@ -65,6 +74,7 @@ function ResultBadge({ result, isTesting }: { result?: BenchmarkResult; isTestin
 }
 
 export function BenchmarkPage() {
+  const queryClient = useQueryClient()
   const { data: accounts = [], isLoading } = useQuery({ queryKey: ['benchmark-accounts'], queryFn: api.keyAccounts })
   const [prompt, setPrompt] = useState('用一句话介绍你自己。')
   const [maxTokens, setMaxTokens] = useState('256')
@@ -90,7 +100,7 @@ export function BenchmarkPage() {
   )
   const targets = useMemo<Target[]>(
     () => filteredAccounts.filter((account) => accountFilter === 'all' || String(account.id) === accountFilter)
-      .flatMap((account) => account.models.map((model) => ({ account, model: model.id }))),
+      .flatMap((account) => account.models.map((model) => ({ account, model: model.id, enabled: model.enabled !== false }))),
     [accountFilter, filteredAccounts],
   )
   const searchedTargets = useMemo(() => {
@@ -102,6 +112,10 @@ export function BenchmarkPage() {
   const visibleTargets = targets.filter((target) => selected.includes(keyOf(target)))
   const visibleResults = visibleTargets.map((target) => results[keyOf(target)]).filter((result): result is BenchmarkResult => Boolean(result))
   const orderedResults = visibleResults.sort((left, right) => (left.first_token_ms ?? Infinity) - (right.first_token_ms ?? Infinity))
+  const failedEnabledTargets = visibleTargets.filter((target) => {
+    const result = results[keyOf(target)]
+    return Boolean(result && !result.ok && target.enabled && !testing.includes(keyOf(target)))
+  })
 
   function toggle(target: Target) {
     const key = keyOf(target)
@@ -130,6 +144,36 @@ export function BenchmarkPage() {
     setRunning(false)
   }
   function stop() { stopRef.current = true; setRunning(false) }
+  async function refreshAfterDisable() {
+    await queryClient.invalidateQueries({ queryKey: ['benchmark-accounts'] })
+    await queryClient.invalidateQueries({ queryKey: ['accounts'] })
+    await queryClient.invalidateQueries({ queryKey: ['agents'] })
+    await queryClient.invalidateQueries({ queryKey: ['agent'] })
+  }
+  async function disableTarget(target: Target) {
+    try {
+      await api.updateAccountModel(target.account.id, target.model, { enabled: false })
+      await refreshAfterDisable()
+      notifyOk(`已关闭 ${target.model}`)
+    } catch (error) {
+      notifyBad(errorMessage(error, '关闭模型失败'))
+    }
+  }
+  async function disableFailedTargets() {
+    if (!failedEnabledTargets.length) return
+    const failed = failedEnabledTargets
+    const errors: string[] = []
+    for (const target of failed) {
+      try {
+        await api.updateAccountModel(target.account.id, target.model, { enabled: false })
+      } catch (error) {
+        errors.push(`${target.model}: ${errorMessage(error, '关闭失败')}`)
+      }
+    }
+    await refreshAfterDisable()
+    if (errors.length) notifyBad(`有 ${errors.length} 个模型关闭失败`)
+    else notifyOk(`已关闭 ${failed.length} 个失败或超时模型`)
+  }
   async function saveResults() {
     if (!visibleResults.length) return
     try {
@@ -296,6 +340,7 @@ export function BenchmarkPage() {
                         <span className="block truncate text-paper" title={target.model}>{target.model}</span>
                         <span className="mt-0.5 block truncate text-[10px] text-mist" title={target.account.name}>
                           {target.account.name} · {target.account.provider}
+                          {target.enabled ? '' : ' · 已关闭'}
                         </span>
                       </span>
                       <button type="button" className="shrink-0 text-mist hover:text-danger" onClick={() => toggle(target)} aria-label={`移除 ${target.model}`}>
@@ -317,9 +362,21 @@ export function BenchmarkPage() {
         </section>
 
         <section className="flex min-w-0 flex-col xl:min-h-0 xl:flex-1">
-          <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-semibold">测速结果</h2>
-            <span className="font-mono text-xs text-mist">{orderedResults.length} / {visibleTargets.length} completed</span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs text-mist">{orderedResults.length} / {visibleTargets.length} completed</span>
+              <Button
+                type="button"
+                variant="danger"
+                className="px-3"
+                disabled={running || !failedEnabledTargets.length}
+                onClick={() => void disableFailedTargets()}
+              >
+                <Ban size={14} />
+                一键关闭
+              </Button>
+            </div>
           </div>
 
           <div className="hidden min-h-0 overflow-auto border border-line bg-panel/40 lg:block xl:flex-1">
@@ -327,7 +384,7 @@ export function BenchmarkPage() {
               <thead className="sticky top-0 z-10 border-b border-line bg-panel text-xs text-mist">
                 <tr>
                   <th className="px-4 py-3">账号 / 模型</th>
-                  <th className="px-4 py-3">状态</th>
+                  <th className="w-28 px-4 py-3">状态</th>
                   <th className="px-4 py-3">首 token</th>
                   <th className="px-4 py-3">总耗时</th>
                   <th className="px-4 py-3"><SpeedHint /></th>
@@ -343,15 +400,25 @@ export function BenchmarkPage() {
                     <tr key={targetKey} className="border-b border-line/60 last:border-0">
                       <td className="px-4 py-4">
                         <div className="font-medium">{target.model}</div>
-                        <div className="mt-1 text-xs text-mist">{target.account.name} · {target.account.provider}</div>
+                        <div className="mt-1 text-xs text-mist">
+                          {target.account.name} · {target.account.provider}
+                          {target.enabled ? '' : ' · 已关闭'}
+                        </div>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="whitespace-nowrap px-4 py-4">
                         <ResultStatus result={result} isTesting={isTesting} />
                       </td>
                       <td className="px-4 py-4 font-mono">{formatMs(result?.first_token_ms)}</td>
                       <td className="px-4 py-4 font-mono">{formatMs(result?.total_ms)}</td>
                       <td className="px-4 py-4 font-mono">{formatSpeed(result?.output_tokens_per_second)}</td>
-                      <td className="max-w-[260px] px-4 py-4 text-xs text-mist">{previewText(result)}</td>
+                      <td className="max-w-[260px] px-4 py-4 text-xs text-mist">
+                        <div>{previewText(result)}</div>
+                        {result && !result.ok && target.enabled && !isTesting ? (
+                          <button type="button" className="mt-2 text-danger hover:underline" onClick={() => void disableTarget(target)}>
+                            关闭此模型
+                          </button>
+                        ) : null}
+                      </td>
                     </tr>
                   )
                 })}
@@ -377,9 +444,12 @@ export function BenchmarkPage() {
                       <div className="truncate font-medium" title={target.model}>{target.model}</div>
                       <div className="mt-0.5 truncate text-xs text-mist" title={target.account.name}>
                         {target.account.name} · {target.account.provider}
+                        {target.enabled ? '' : ' · 已关闭'}
                       </div>
                     </div>
-                    <ResultBadge result={result} isTesting={isTesting} />
+                    <span className="shrink-0">
+                      <ResultBadge result={result} isTesting={isTesting} />
+                    </span>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
@@ -398,6 +468,11 @@ export function BenchmarkPage() {
                   <div className={cn('break-all text-xs [overflow-wrap:anywhere]', result?.error ? 'text-danger' : 'text-mist')} title={preview}>
                     {preview}
                   </div>
+                  {result && !result.ok && target.enabled && !isTesting ? (
+                    <Button type="button" variant="danger" className="w-full" onClick={() => void disableTarget(target)}>
+                      关闭此模型
+                    </Button>
+                  ) : null}
                 </Card>
               )
             })}
@@ -504,6 +579,7 @@ export function BenchmarkPage() {
                         <span className="block truncate text-paper" title={target.model}>{target.model}</span>
                         <span className="mt-0.5 block truncate text-xs text-mist" title={target.account.name}>
                           {target.account.name} · {target.account.provider}
+                          {target.enabled ? '' : ' · 已关闭'}
                         </span>
                       </span>
                     </button>

@@ -238,3 +238,32 @@ def test_share_lookup_tokens_are_per_key(client: TestClient, auth_headers: dict[
     assert mine["total_tokens"] == 30
     assert other["today_tokens"] == 99
     assert other["total_tokens"] == 99
+
+
+def test_share_lookup_hides_disabled_models(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from unittest.mock import AsyncMock, patch
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {"data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}]}
+
+    with patch("app.providers.base.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        created = _make_key(client, auth_headers)
+
+    account_id = created["account_id"]
+    client.patch(
+        f"/api/admin/accounts/{account_id}/models/deepseek-chat",
+        headers=auth_headers,
+        json={"enabled": False},
+    )
+    lookup = client.post("/api/share/lookup", json={"api_key": created["key"]})
+    assert lookup.status_code == 200
+    assert lookup.json()["models"] == ["deepseek-reasoner"]
+    assert [entry["id"] for entry in lookup.json()["model_entries"]] == ["deepseek-reasoner"]
