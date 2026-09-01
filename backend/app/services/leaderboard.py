@@ -165,14 +165,14 @@ def _local_model_sources(db: Session) -> list[dict[str, Any]]:
     sources: list[dict[str, Any]] = []
     accounts = db.scalars(select(UpstreamAccount).order_by(UpstreamAccount.id.asc())).all()
     for account in accounts:
-        models = model_caps_service.parse_models_json(account.models_json)
+        models = model_caps_service.parse_models_json(account.models_json, include_disabled=False)
         agent_id = None
         if account.source == "agent" and account.agent_route_id:
             route = routes.get(account.agent_route_id)
             if route is not None:
                 agent = agents.get(route.agent_id)
                 agent_id = agent.agent_id if agent is not None else None
-                for model in model_caps_service.parse_models_json(route.models_json):
+                for model in model_caps_service.parse_models_json(route.models_json, include_disabled=False):
                     if model not in models:
                         models.append(model)
         sources.append(

@@ -84,6 +84,7 @@ export type ModelCaps = {
   source: string
   overridden: string[]
   overrides: Record<string, unknown>
+  enabled?: boolean
 }
 
 export type Account = {

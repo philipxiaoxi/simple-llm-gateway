@@ -3,6 +3,47 @@ import { createPortal } from 'react-dom'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
 import { cn } from '../lib/utils'
 
+export function Switch({
+  checked,
+  onCheckedChange,
+  disabled,
+  onLabel = '开启',
+  offLabel = '关闭',
+}: {
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+  disabled?: boolean
+  onLabel?: string
+  offLabel?: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onCheckedChange(!checked)}
+      className={cn(
+        'inline-flex min-h-9 shrink-0 items-center gap-2 rounded-full border px-2 py-1 text-[11px] font-medium transition md:min-h-7',
+        checked
+          ? 'border-signal/35 bg-signal/10 text-signal hover:bg-signal/15'
+          : 'border-line bg-white/[0.03] text-mist hover:border-mist/40 hover:text-paper',
+        disabled && 'cursor-not-allowed opacity-40',
+      )}
+    >
+      <span
+        className={cn(
+          'relative inline-flex h-4 w-7 items-center rounded-full p-0.5 transition-colors',
+          checked ? 'justify-end bg-signal' : 'justify-start bg-white/20',
+        )}
+      >
+        <span className="h-3 w-3 rounded-full bg-white shadow-sm" />
+      </span>
+      {checked ? onLabel : offLabel}
+    </button>
+  )
+}
+
 export function Button({
   className,
   variant = 'primary',

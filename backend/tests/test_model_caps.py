@@ -128,6 +128,22 @@ def test_enrich_keeps_overrides_across_refresh() -> None:
     assert "deepseek-reasoner" not in by_id
 
 
+def test_enabled_survives_refresh_and_clear() -> None:
+    first = enrich_model_records([{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}], None)
+    first = apply_model_override(first, "deepseek-chat", {"enabled": False})
+    stored = dump_model_records(first)
+    assert '"enabled": false' in stored
+    refreshed = enrich_model_records([{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}], stored)
+    by_id = {record.id: record for record in refreshed}
+    assert by_id["deepseek-chat"].enabled is False
+    assert by_id["deepseek-reasoner"].enabled is True
+    cleared = apply_model_override(refreshed, "deepseek-chat", {"clear": True})
+    assert next(record.enabled for record in cleared if record.id == "deepseek-chat") is False
+    payload = serialize_record(cleared[0])
+    assert payload["enabled"] is False
+    assert parse_models_json(stored, include_disabled=False) == ["deepseek-reasoner"]
+
+
 def test_only_effort_values_are_kept() -> None:
     records = enrich_model_records(
         [

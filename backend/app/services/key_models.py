@@ -89,25 +89,41 @@ def account_prefix(account: UpstreamAccount) -> str:
     return default_model_prefix(account.name, int(account.id))
 
 
-def build_model_catalog(api_key: ApiKey) -> list[CatalogEntry]:
+def _append_catalog_entry(
+    entries: list[CatalogEntry],
+    occupied: set[str],
+    account: UpstreamAccount,
+    record: ModelRecord,
+) -> None:
+    raw_id = record.id
+    prefix = account_prefix(account)
+    if raw_id not in occupied:
+        public_id = raw_id
+    else:
+        public_id = f"{prefix}/{raw_id}"
+        if public_id in occupied:
+            public_id = f"{prefix}-{account.id}/{raw_id}"
+    occupied.add(public_id)
+    entries.append(CatalogEntry(public_id=public_id, raw_id=raw_id, account=account, record=record))
+
+
+def build_model_catalog(api_key: ApiKey, *, include_disabled: bool = False) -> list[CatalogEntry]:
     accounts = active_bound_accounts(api_key)
     occupied: set[str] = set()
     entries: list[CatalogEntry] = []
+    pending_disabled: list[tuple[UpstreamAccount, ModelRecord]] = []
     for account in accounts:
         records = parse_model_records(account.models_json)
         if not records:
             continue
-        prefix = account_prefix(account)
         for record in records:
-            raw_id = record.id
-            if raw_id not in occupied:
-                public_id = raw_id
-            else:
-                public_id = f"{prefix}/{raw_id}"
-                if public_id in occupied:
-                    public_id = f"{prefix}-{account.id}/{raw_id}"
-            occupied.add(public_id)
-            entries.append(CatalogEntry(public_id=public_id, raw_id=raw_id, account=account, record=record))
+            if not record.enabled:
+                pending_disabled.append((account, record))
+                continue
+            _append_catalog_entry(entries, occupied, account, record)
+    if include_disabled:
+        for account, record in pending_disabled:
+            _append_catalog_entry(entries, occupied, account, record)
     return entries
 
 

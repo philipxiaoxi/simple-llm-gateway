@@ -71,6 +71,7 @@ class ModelRecord:
     id: str
     auto: ModelCaps
     overrides: dict[str, Any] = field(default_factory=dict)
+    enabled: bool = True
 
     def effective(self) -> ModelCaps:
         caps = self.auto
@@ -133,8 +134,8 @@ def parse_model_records(raw: str | None) -> list[ModelRecord]:
     return records
 
 
-def parse_models_json(raw: str | None) -> list[str]:
-    return [record.id for record in parse_model_records(raw)]
+def parse_models_json(raw: str | None, *, include_disabled: bool = True) -> list[str]:
+    return [record.id for record in parse_model_records(raw) if include_disabled or record.enabled]
 
 
 def dump_model_records(records: list[ModelRecord]) -> str:
@@ -157,6 +158,8 @@ def record_to_stored(record: ModelRecord) -> dict[str, Any]:
     }
     if record.overrides:
         payload["overrides"] = record.overrides
+    if not record.enabled:
+        payload["enabled"] = False
     return payload
 
 
@@ -175,11 +178,12 @@ def serialize_record(record: ModelRecord) -> dict[str, Any]:
         "source": record.auto.source,
         "overridden": sorted(record.overrides),
         "overrides": dict(record.overrides),
+        "enabled": record.enabled,
     }
 
 
 def first_model_id(raw: str | None) -> str:
-    models = parse_models_json(raw)
+    models = parse_models_json(raw, include_disabled=False)
     return models[0] if models else ""
 
 
@@ -368,7 +372,14 @@ def enrich_model_records(
         upstream = caps_from_upstream_entry(entry.get("entry") if isinstance(entry.get("entry"), dict) else None)
         auto = resolve_auto_caps(model_id, provider=provider, upstream=upstream, catalog=catalog)
         previous = existing.get(model_id)
-        records.append(ModelRecord(id=model_id, auto=auto, overrides=dict(previous.overrides) if previous else {}))
+        records.append(
+            ModelRecord(
+                id=model_id,
+                auto=auto,
+                overrides=dict(previous.overrides) if previous else {},
+                enabled=previous.enabled if previous else True,
+            )
+        )
     return records
 
 
@@ -380,8 +391,9 @@ def apply_model_override(records: list[ModelRecord], model_id: str, payload: dic
             updated.append(record)
             continue
         found = True
+        enabled = record.enabled if payload.get("enabled") is None else bool(payload.get("enabled"))
         if payload.get("clear"):
-            updated.append(ModelRecord(id=record.id, auto=record.auto, overrides={}))
+            updated.append(ModelRecord(id=record.id, auto=record.auto, overrides={}, enabled=enabled))
             continue
         overrides = dict(record.overrides)
         for key in ("context_window", "max_output_tokens", "reasoning", "reasoning_efforts", "modalities"):
@@ -398,7 +410,7 @@ def apply_model_override(records: list[ModelRecord], model_id: str, payload: dic
                 overrides[key] = parsed
                 continue
             overrides[key] = value
-        updated.append(ModelRecord(id=record.id, auto=record.auto, overrides=overrides))
+        updated.append(ModelRecord(id=record.id, auto=record.auto, overrides=overrides, enabled=enabled))
     if not found:
         raise ValueError("模型不存在")
     return updated
@@ -486,7 +498,7 @@ def _record_from_stored(item: Any) -> ModelRecord | None:
         model_id = item.strip()
         if not model_id:
             return None
-        return ModelRecord(id=model_id, auto=caps_from_heuristic(model_id))
+        return ModelRecord(id=model_id, auto=caps_from_heuristic(model_id), enabled=True)
     if not isinstance(item, dict):
         return None
     model_id = str(item.get("id") or "").strip()
@@ -503,7 +515,13 @@ def _record_from_stored(item: Any) -> ModelRecord | None:
         source=str(item.get("source") or "heuristic"),
     )
     overrides = item.get("overrides") if isinstance(item.get("overrides"), dict) else {}
-    return ModelRecord(id=model_id, auto=auto, overrides=dict(overrides))
+    enabled = item.get("enabled")
+    return ModelRecord(
+        id=model_id,
+        auto=auto,
+        overrides=dict(overrides),
+        enabled=True if enabled is None else bool(enabled),
+    )
 
 
 def _effort_values(raw: Any) -> tuple[str, ...] | None:

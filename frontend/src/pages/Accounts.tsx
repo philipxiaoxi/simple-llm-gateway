@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ExternalLink, FileJson, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
+import { Badge, Button, Card, Dialog, Field, Input, Select, Switch } from '../components/ui'
 import { api, type Account, type ModelCaps, type Provider, type QuotaItem } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { MIN_PASSWORD_LENGTH, RISK_LEVELS, cn, errorMessage, formatEmbeddedTimes, formatTime, modelCapsHint } from '../lib/utils'
@@ -458,38 +458,55 @@ function ModelList({
   expanded,
   onToggle,
   onEdit,
+  onToggleEnabled,
 }: {
   models: ModelCaps[]
   expanded: boolean
   onToggle: () => void
   onEdit: (model: ModelCaps) => void
+  onToggleEnabled: (model: ModelCaps) => void
 }) {
   const visible = expanded ? models : models.slice(0, MODELS_COLLAPSED_COUNT)
   const hasMore = models.length > MODELS_COLLAPSED_COUNT
+  const enabledCount = models.filter((model) => model.enabled !== false).length
 
   return (
     <div>
       <div className="flex flex-col gap-1.5">
-        {visible.map((model) => (
-          <button
-            key={model.id}
-            type="button"
-            onClick={() => onEdit(model)}
-            className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-line bg-ink/40 px-2.5 py-1.5 text-left hover:border-mist/40 lg:py-1"
-          >
-            <span className="min-w-0">
-              <span className="block truncate font-mono text-xs text-paper lg:inline" title={model.id}>
-                {model.id}
-              </span>
-              <span className="mt-0.5 block text-[11px] leading-4 text-mist lg:ml-2 lg:mt-0 lg:inline">
-                {modelCapsHint(model) || '点击修改能力'}
-              </span>
-            </span>
-            <span className="shrink-0">
-              {model.overridden?.length ? <Badge tone="warn">已覆盖</Badge> : <Badge tone="info">识别</Badge>}
-            </span>
-          </button>
-        ))}
+        {visible.map((model) => {
+          const enabled = model.enabled !== false
+          return (
+            <div
+              key={model.id}
+              className={cn(
+                'flex min-w-0 items-center gap-2 rounded-md border px-2.5 py-1.5 lg:py-1',
+                enabled ? 'border-line bg-ink/40' : 'border-dashed border-line/80 bg-ink/20',
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => onEdit(model)}
+                className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left hover:text-paper"
+              >
+                <span className="min-w-0">
+                  <span
+                    className={cn('block truncate font-mono text-xs lg:inline', enabled ? 'text-paper' : 'text-mist')}
+                    title={model.id}
+                  >
+                    {model.id}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-4 text-mist lg:ml-2 lg:mt-0 lg:inline">
+                    {modelCapsHint(model) || '点击修改能力'}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-1">
+                  {model.overridden?.length ? <Badge tone="warn">已覆盖</Badge> : <Badge tone="info">识别</Badge>}
+                </span>
+              </button>
+              <Switch checked={enabled} onCheckedChange={() => onToggleEnabled(model)} />
+            </div>
+          )
+        })}
       </div>
       {hasMore ? (
         <button
@@ -499,6 +516,9 @@ function ModelList({
         >
           {expanded ? '收起' : `展开全部 ${models.length} 个`}
         </button>
+      ) : null}
+      {enabledCount !== models.length ? (
+        <div className="mt-1 text-[11px] text-mist">已关闭 {models.length - enabledCount} 个，对外不可见</div>
       ) : null}
     </div>
   )
@@ -701,6 +721,19 @@ export function AccountsPage() {
       notifyBad(errorMessage(error, '拉取模型失败'))
     } finally {
       setBusyId(null)
+    }
+  }
+
+  async function toggleModelEnabled(accountId: number, model: ModelCaps) {
+    const enabled = model.enabled !== false
+    try {
+      await api.updateAccountModel(accountId, model.id, { enabled: !enabled })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['benchmark-accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['key-accounts'] })
+      notifyOk(enabled ? `已关闭 ${model.id}` : `已启用 ${model.id}`)
+    } catch (error) {
+      notifyBad(errorMessage(error, '更新模型状态失败'))
     }
   }
 
@@ -941,6 +974,7 @@ export function AccountsPage() {
                       })
                     }
                     onEdit={(model) => setEditingModel({ accountId: account.id, model })}
+                    onToggleEnabled={(model) => void toggleModelEnabled(account.id, model)}
                   />
                 ) : (
                   <div className="text-sm text-mist">还没有模型，点「获取模型」从上游拉取并入库。</div>

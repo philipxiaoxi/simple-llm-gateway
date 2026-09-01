@@ -134,6 +134,7 @@ class ModelCapsOut(BaseModel):
     source: str = "heuristic"
     overridden: list[str] = Field(default_factory=list)
     overrides: dict[str, Any] = Field(default_factory=dict)
+    enabled: bool = True
 
 
 class ModelOverrideUpdate(BaseModel):
@@ -142,6 +143,7 @@ class ModelOverrideUpdate(BaseModel):
     reasoning: bool | None = None
     reasoning_efforts: list[str] | None = None
     modalities: dict[str, list[str]] | None = None
+    enabled: bool | None = None
     clear: bool = False
 
     @field_validator("reasoning_efforts")
