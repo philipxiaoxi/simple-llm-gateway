@@ -11,6 +11,7 @@ from app.providers import find_provider
 from app.schemas import (
     LeaderboardOut,
     ShareAliasDeleteRequest,
+    ShareAliasRenameRequest,
     ShareAliasSaveRequest,
     ShareCcSwitchRequest,
     ShareLookupRequest,
@@ -25,12 +26,14 @@ from app.services.ccswitch import (
 from app.services.key_models import (
     ALIAS_ERROR,
     ALIAS_PATTERN,
-    active_bound_accounts,
+    AliasConflict,
     account_prefix,
+    active_bound_accounts,
     bound_accounts,
     build_model_catalog,
     is_account_available,
     public_model_ids,
+    rename_model_alias,
 )
 from app.services.leaderboard import LeaderboardError, get_leaderboard
 from app.services.model_caps import serialize_record
@@ -211,6 +214,19 @@ def save_alias(payload: ShareAliasSaveRequest, db: Session = Depends(get_db)) ->
     else:
         row.model_public_id = payload.model
         row.updated_at = utcnow()
+    db.commit()
+    return {"aliases": _serialize_aliases(item)}
+
+
+@router.post("/aliases/rename")
+def rename_alias(payload: ShareAliasRenameRequest, db: Session = Depends(get_db)) -> dict:
+    item = _require_key(db, payload.api_key)
+    if item.status != "active":
+        raise HTTPException(status_code=403, detail="该 Key 已停用")
+    try:
+        rename_model_alias(db, item, payload.old_alias, payload.new_alias)
+    except AliasConflict as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
     db.commit()
     return {"aliases": _serialize_aliases(item)}
 

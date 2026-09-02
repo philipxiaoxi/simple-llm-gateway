@@ -1,5 +1,5 @@
-from unittest.mock import AsyncMock, patch
 import json
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -323,3 +323,72 @@ def test_admin_key_alias_endpoints(client: TestClient, auth_headers: dict[str, s
 
     gone = client.delete(f"/api/admin/keys/{key_id}/aliases/fast", headers=auth_headers)
     assert gone.status_code == 404
+
+
+def test_share_rename_alias(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+    assert _save_alias(client, key, "fast", "deepseek-chat").status_code == 200
+
+    renamed = client.post(
+        "/api/share/aliases/rename",
+        json={"api_key": key, "old_alias": "fast", "new_alias": "quick"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["aliases"] == [{"alias": "quick", "model": "deepseek-chat"}]
+
+    lookup = client.post("/api/share/lookup", json={"api_key": key}).json()
+    assert lookup["aliases"] == [{"alias": "quick", "model": "deepseek-chat"}]
+
+    # 重命名到已存在的别名应报错
+    assert _save_alias(client, key, "other", "deepseek-reasoner").status_code == 200
+    dup = client.post(
+        "/api/share/aliases/rename",
+        json={"api_key": key, "old_alias": "quick", "new_alias": "other"},
+    )
+    assert dup.status_code == 400
+
+    # 重命名到模型同名应报错
+    model_name = client.post("/api/share/aliases/rename", json={"api_key": key, "old_alias": "quick", "new_alias": "deepseek-chat"})
+    assert model_name.status_code == 400
+
+    # 旧的别名已不可用，新的别名可被转发解析
+    missing = client.post("/api/share/aliases/delete", json={"api_key": key, "alias": "fast"})
+    assert missing.status_code == 404
+
+
+def test_admin_rename_alias(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+    key_id = int(client.get("/api/admin/keys", headers=auth_headers).json()[0]["id"])
+    assert client.post(
+        f"/api/admin/keys/{key_id}/aliases",
+        headers=auth_headers,
+        json={"alias": "fast", "model": "deepseek-chat"},
+    ).status_code == 200
+
+    renamed = client.post(
+        f"/api/admin/keys/{key_id}/aliases/rename",
+        headers=auth_headers,
+        json={"old_alias": "fast", "new_alias": "quick"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["aliases"] == [{"alias": "quick", "model": "deepseek-chat"}]
+
+    # 自助页同步生效
+    lookup = client.post("/api/share/lookup", json={"api_key": key}).json()
+    assert lookup["aliases"] == [{"alias": "quick", "model": "deepseek-chat"}]
+
+    # 重命名不存在的别名应报 404
+    gone = client.post(
+        f"/api/admin/keys/{key_id}/aliases/rename",
+        headers=auth_headers,
+        json={"old_alias": "nope", "new_alias": "quick"},
+    )
+    assert gone.status_code == 404
+
+    # 非法名称应报 400
+    bad = client.post(
+        f"/api/admin/keys/{key_id}/aliases/rename",
+        headers=auth_headers,
+        json={"old_alias": "quick", "new_alias": "-bad name"},
+    )
+    assert bad.status_code == 400

@@ -24,6 +24,23 @@ function formatScore(value: number | null | undefined) {
   return value.toFixed(1)
 }
 
+function BenchmarkCell({ entry }: { entry: LeaderboardEntry }) {
+  const benchmark = entry.benchmark
+  if (!benchmark) {
+    return <span className="text-mist">—</span>
+  }
+  const speed = benchmark.output_tokens_per_second
+  const speedText = Number.isInteger(speed) ? String(speed) : speed.toFixed(1).replace(/\.0$/, '')
+  return (
+    <div className="min-w-0">
+      <div className="truncate font-mono tabular-nums text-signal">{speedText} tok/s</div>
+      <div className="mt-0.5 truncate text-xs text-mist" title={`${benchmark.model} · ${benchmark.account_name}`}>
+        {benchmark.account_name} · {formatTime(benchmark.created_at)}
+      </div>
+    </div>
+  )
+}
+
 function formatReleaseDate(value: string | null | undefined) {
   if (!value) return '—'
   const formatted = formatTime(value)
@@ -156,6 +173,7 @@ export function LeaderboardView({
                 <th className={`${COL_NARROW} font-medium`}>分数</th>
                 <th className={`${COL} font-medium`}>覆盖</th>
                 <th className={`${COL} font-medium`}>本站覆盖</th>
+                <th className={`${COL} font-medium`}>测试结果</th>
                 <th className={`${COL} font-medium`}>输入价</th>
                 <th className={`${COL} font-medium`}>输出价</th>
                 <th className={`${COL} font-medium`}>变动</th>
@@ -183,6 +201,9 @@ export function LeaderboardView({
                   <td className="min-w-36 max-w-[240px] px-3 py-2">
                     <LocalCoverage entry={item} />
                   </td>
+                  <td className={`${COL} min-w-32`}>
+                    <BenchmarkCell entry={item} />
+                  </td>
                   <td className={`${COL} font-mono tabular-nums text-mist`}>{formatPrice(item.input_price_per_million_cny)}</td>
                   <td className={`${COL} font-mono tabular-nums text-mist`}>{formatPrice(item.output_price_per_million_cny)}</td>
                   <td className={`${COL} text-mist`}>{rankChangeText(item)}</td>
@@ -190,7 +211,7 @@ export function LeaderboardView({
               ))}
               {!isLoading && !filtered.length ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-12 text-center text-sm text-mist">
+                  <td colSpan={12} className="px-4 py-12 text-center text-sm text-mist">
                     {items.length ? '没有匹配的模型' : emptyText}
                   </td>
                 </tr>
@@ -243,6 +264,21 @@ export function LeaderboardView({
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone={confidenceTone[item.confidence || ''] || 'mist'}>{coverageText(item)}</Badge>
                 <LocalCoverage entry={item} compact />
+              </div>
+              <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-mist">测试结果</div>
+                <div className="mt-1 truncate font-mono text-xs tabular-nums text-signal">
+                  {item.benchmark ? (
+                    <>
+                      {Number.isInteger(item.benchmark.output_tokens_per_second)
+                        ? String(item.benchmark.output_tokens_per_second)
+                        : item.benchmark.output_tokens_per_second.toFixed(1).replace(/\.0$/, '')}{' '}
+                      tok/s · {item.benchmark.account_name} · {formatTime(item.benchmark.created_at)}
+                    </>
+                  ) : (
+                    '—'
+                  )}
+                </div>
               </div>
             </div>
           ))}

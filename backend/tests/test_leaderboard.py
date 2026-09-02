@@ -253,3 +253,71 @@ def test_public_leaderboard_does_not_fetch(client: TestClient, auth_headers: dic
         assert public.status_code == 200
         assert public.json()["items"][0]["slug"] == "claude-fable-5"
         assert fetch.await_count == 1
+
+
+def _seed_benchmark(client: TestClient, auth_headers: dict[str, str], *, model: str, ok: bool, speed: float = 50.0) -> None:
+    saved = client.post(
+        "/api/admin/benchmark/history",
+        headers=auth_headers,
+        json={
+            "prompt": "测速",
+            "max_tokens": 32,
+            "results": [
+                {
+                    "account_id": 1,
+                    "account_name": "Bench Acct",
+                    "provider": "anthropic",
+                    "model": model,
+                    "ok": ok,
+                    "timeout": False,
+                    "first_token_ms": 120 if ok else None,
+                    "total_ms": 800 if ok else None,
+                    "output_chars": 16 if ok else None,
+                    "estimated_output_tokens": 40 if ok else None,
+                    "output_tokens_per_second": speed,
+                    "preview": "ok" if ok else None,
+                    "error": None if ok else "boom",
+                }
+            ],
+        },
+    )
+    assert saved.status_code == 200, saved.text
+
+
+def test_leaderboard_attaches_latest_successful_benchmark(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    _seed_benchmark(client, auth_headers, model="claude-fable-5", ok=True, speed=88.5)
+    _seed_benchmark(client, auth_headers, model="claude-fable-5", ok=False, speed=999)
+    _seed_leaderboard(client, auth_headers)
+    response = client.get("/api/admin/leaderboard", headers=auth_headers)
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["slug"] == "claude-fable-5"
+    assert item["benchmark"] is not None
+    assert item["benchmark"]["model"] == "claude-fable-5"
+    assert item["benchmark"]["account_name"] == "Bench Acct"
+    assert item["benchmark"]["output_tokens_per_second"] == 88.5
+    assert item["benchmark"]["first_token_ms"] == 120.0
+    assert item["benchmark"]["created_at"] is not None
+
+
+def test_leaderboard_benchmark_is_none_without_results(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    _seed_leaderboard(client, auth_headers)
+    response = client.get("/api/admin/leaderboard", headers=auth_headers)
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["benchmark"] is None
+
+
+def test_public_leaderboard_masks_benchmark_account(client: TestClient, auth_headers: dict[str, str]) -> None:
+    _seed_benchmark(client, auth_headers, model="claude-fable-5", ok=True, speed=77.0)
+    _seed_leaderboard(client, auth_headers)
+    response = client.get("/api/share/leaderboard")
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["benchmark"] is not None
+    assert item["benchmark"]["account_name"] == "Be******ct"
+    assert "Bench Acct" not in response.text

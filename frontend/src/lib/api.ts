@@ -279,6 +279,7 @@ export type DashboardBenchmarkTop = {
   first_token_ms: number | null
   total_ms: number | null
   run_id: number | null
+  created_at: string | null
 }
 
 export type Dashboard = {
@@ -349,6 +350,16 @@ export type LeaderboardLocalMatch = {
   matched_model: string
 }
 
+export type LeaderboardBenchmark = {
+  model: string
+  account_name: string
+  provider: string
+  output_tokens_per_second: number
+  first_token_ms: number | null
+  total_ms: number | null
+  created_at: string | null
+}
+
 export type LeaderboardEntry = {
   rank: number | null
   previous_rank: number | null
@@ -380,6 +391,7 @@ export type LeaderboardEntry = {
   components: Record<string, LeaderboardComponent>
   local_covered?: boolean
   local_matches?: LeaderboardLocalMatch[]
+  benchmark?: LeaderboardBenchmark | null
 }
 
 export type Leaderboard = {
@@ -581,6 +593,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  keyAliasRename: (id: number, payload: { old_alias: string; new_alias: string }) =>
+    request<{ aliases: ShareAlias[]; models: string[] }>(`/api/admin/keys/${id}/aliases/rename`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   keyAliasDelete: (id: number, alias: string) =>
     request<{ aliases: ShareAlias[]; models: string[] }>(
       `/api/admin/keys/${id}/aliases/${encodeURIComponent(alias)}`,
@@ -618,6 +635,8 @@ export const api = {
   }) => request<{ url: string }>('/api/share/cc-switch', { method: 'POST', body: JSON.stringify(payload) }),
   shareAliasSave: (payload: { api_key: string; alias: string; model: string }) =>
     request<{ aliases: ShareAlias[] }>('/api/share/aliases/save', { method: 'POST', body: JSON.stringify(payload) }),
+  shareAliasRename: (payload: { api_key: string; old_alias: string; new_alias: string }) =>
+    request<{ aliases: ShareAlias[] }>('/api/share/aliases/rename', { method: 'POST', body: JSON.stringify(payload) }),
   shareAliasDelete: (payload: { api_key: string; alias: string }) =>
     request<{ aliases: ShareAlias[] }>('/api/share/aliases/delete', { method: 'POST', body: JSON.stringify(payload) }),
   skills: (query: { q?: string; category?: string } = {}) => {

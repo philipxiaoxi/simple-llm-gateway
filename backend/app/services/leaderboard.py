@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.clock import utcnow
 from app.config import get_settings
-from app.models import GatewayAgent, GatewayAgentRoute, LeaderboardSnapshot, UpstreamAccount
+from app.models import BenchmarkResult, BenchmarkRun, GatewayAgent, GatewayAgentRoute, LeaderboardSnapshot, UpstreamAccount
 from app.services import model_caps as model_caps_service
 
 USER_AGENT = "simple-llm-gateway/0.1 (internal cache; not a public mirror)"
@@ -305,6 +305,52 @@ def mask_public_label(value: str | None) -> str:
     return f"{text[:2]}{'*' * (length - 4)}{text[-2:]}"
 
 
+def _latest_successful_benchmarks(db: Session) -> dict[str, dict[str, Any]]:
+    rows = db.execute(
+        select(BenchmarkResult, BenchmarkRun.created_at)
+        .join(BenchmarkRun, BenchmarkRun.id == BenchmarkResult.run_id)
+        .where(
+            BenchmarkResult.ok.is_(True),
+            BenchmarkResult.output_tokens_per_second.is_not(None),
+            BenchmarkResult.output_tokens_per_second > 0,
+        )
+        .order_by(BenchmarkRun.created_at.desc(), BenchmarkResult.id.desc())
+    ).all()
+    latest: dict[str, dict[str, Any]] = {}
+    for result, created_at in rows:
+        key = canonical_model_key(result.model)
+        if not key or key in latest:
+            continue
+        latest[key] = {
+            "model": result.model,
+            "account_name": result.account_name,
+            "provider": result.provider,
+            "output_tokens_per_second": float(result.output_tokens_per_second or 0),
+            "first_token_ms": result.first_token_ms,
+            "total_ms": result.total_ms,
+            "created_at": created_at,
+        }
+    return latest
+
+
+def attach_benchmark_results(db: Session, items: list[dict[str, Any]], *, public: bool = False) -> None:
+    latest = _latest_successful_benchmarks(db)
+    if not latest:
+        return
+    for item in items:
+        keys = entry_match_keys(item)
+        payload: dict[str, Any] | None = None
+        for key in keys:
+            found = latest.get(key)
+            if found is None:
+                continue
+            payload = dict(found)
+            if public:
+                payload["account_name"] = mask_public_label(payload.get("account_name"))
+            break
+        item["benchmark"] = payload
+
+
 def mask_local_matches(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
     masked: list[dict[str, Any]] = []
     for match in matches:
@@ -353,6 +399,7 @@ def snapshot_to_payload(
             items = []
     attach_local_coverage(db, items)
     attach_catalog_windows(items)
+    attach_benchmark_results(db, items, public=public)
     if public:
         for item in items:
             item["local_matches"] = mask_local_matches(item.get("local_matches") or [])
