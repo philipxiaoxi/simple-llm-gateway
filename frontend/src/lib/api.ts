@@ -169,6 +169,11 @@ export type ShareModelEntry = {
   account_index: number
 }
 
+export type ShareAlias = {
+  alias: string
+  model: string
+}
+
 export type ShareLookup = {
   name: string
   account_name: string
@@ -190,6 +195,7 @@ export type ShareLookup = {
   today_tokens: number
   total_tokens: number
   models: string[]
+  aliases?: ShareAlias[]
   model_caps?: ModelCaps[]
   model_entries?: ShareModelEntry[]
   gateway: {
@@ -568,6 +574,18 @@ export const api = {
   updateKey: (id: number, payload: Record<string, unknown>) =>
     request<ApiKeyItem>(`/api/admin/keys/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteKey: (id: number) => request<{ ok: boolean }>(`/api/admin/keys/${id}`, { method: 'DELETE' }),
+  keyAliases: (id: number) =>
+    request<{ aliases: ShareAlias[]; models: string[] }>(`/api/admin/keys/${id}/aliases`),
+  keyAliasSave: (id: number, payload: { alias: string; model: string }) =>
+    request<{ aliases: ShareAlias[]; models: string[] }>(`/api/admin/keys/${id}/aliases`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  keyAliasDelete: (id: number, alias: string) =>
+    request<{ aliases: ShareAlias[]; models: string[] }>(
+      `/api/admin/keys/${id}/aliases/${encodeURIComponent(alias)}`,
+      { method: 'DELETE' },
+    ),
   logs: (query: Record<string, string | number | undefined> = {}) => {
     const params = new URLSearchParams()
     Object.entries(query).forEach(([key, value]) => {
@@ -598,6 +616,10 @@ export const api = {
     sonnet_model?: string
     opus_model?: string
   }) => request<{ url: string }>('/api/share/cc-switch', { method: 'POST', body: JSON.stringify(payload) }),
+  shareAliasSave: (payload: { api_key: string; alias: string; model: string }) =>
+    request<{ aliases: ShareAlias[] }>('/api/share/aliases/save', { method: 'POST', body: JSON.stringify(payload) }),
+  shareAliasDelete: (payload: { api_key: string; alias: string }) =>
+    request<{ aliases: ShareAlias[] }>('/api/share/aliases/delete', { method: 'POST', body: JSON.stringify(payload) }),
   skills: (query: { q?: string; category?: string } = {}) => {
     const params = new URLSearchParams()
     if (query.q) params.set('q', query.q)

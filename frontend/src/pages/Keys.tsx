@@ -3,10 +3,10 @@ import { Children, useEffect, useMemo, useRef, useState, type ReactNode } from '
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
 import { VscodeImportDialog } from '../components/VscodeImportDialog'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
-import { api, type Account, type ApiKeyItem, type ApiKeySort, type CcSwitchTarget, type GatewayAgent } from '../lib/api'
+import { api, type Account, type ApiKeyItem, type ApiKeySort, type CcSwitchTarget, type GatewayAgent, type ShareAlias } from '../lib/api'
 import { openShareWithApiKey } from '../lib/shareTransfer'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { cn, errorMessage, formatTime, formatTokenCount, RISK_LEVELS } from '../lib/utils'
+import { ALIAS_INPUT_PATTERN, cn, errorMessage, formatTime, formatTokenCount, RISK_LEVELS } from '../lib/utils'
 
 function MoreMenu({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
@@ -250,6 +250,150 @@ function KeyEditDialog({
   )
 }
 
+function KeyAliasesDialog({ keyId, keyName, onClose }: { keyId: number; keyName: string; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [aliasDraft, setAliasDraft] = useState('')
+  const [modelDraft, setModelDraft] = useState('')
+  const [pending, setPending] = useState(false)
+  const { data } = useQuery({ queryKey: ['key-aliases', keyId], queryFn: () => api.keyAliases(keyId) })
+  const aliases: ShareAlias[] = data?.aliases ?? []
+  const models: string[] = data?.models ?? []
+
+  async function mutate(action: () => Promise<unknown>, successText: string) {
+    if (pending) return
+    setPending(true)
+    try {
+      await action()
+      await queryClient.invalidateQueries({ queryKey: ['key-aliases', keyId] })
+      notifyOk(successText)
+    } catch (error) {
+      notifyBad(errorMessage(error, '操作失败'))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  function submitAlias() {
+    const alias = aliasDraft.trim()
+    const model = modelDraft || models[0]
+    if (!ALIAS_INPUT_PATTERN.test(alias)) {
+      notifyBad('别名仅允许字母、数字和 . _ / -，以字母或数字开头，最长 64 位。')
+      return
+    }
+    if (aliases.some((item) => item.alias === alias)) {
+      notifyBad(`别名 ${alias} 已存在，可直接在列表里切换它对应的模型。`)
+      return
+    }
+    if (!model) {
+      notifyBad('请选择别名对应的模型。')
+      return
+    }
+    void mutate(() => api.keyAliasSave(keyId, { alias, model }), `已创建别名 ${alias}`)
+    setAliasDraft('')
+  }
+
+  return (
+    <Dialog title={`模型别名 · ${keyName}`} onClose={onClose}>
+      <div className="grid gap-3">
+        <p className="text-sm text-mist">
+          自定义名字映射到该 Key 的任意可用模型。客户端模型名填别名，切换背后的模型后客户端无需改配置，自助查询页同步生效。
+        </p>
+        {aliases.length > 0 ? (
+          <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-ink/40">
+            {aliases.map((item) => {
+              const targetMissing = !models.includes(item.model)
+              return (
+                <li key={item.alias} className="flex flex-wrap items-center gap-2 px-3 py-2">
+                  <span className="font-mono text-sm text-paper" title={item.alias}>
+                    {item.alias}
+                  </span>
+                  <span className="shrink-0 text-xs text-mist">→</span>
+                  <Select
+                    className={cn('min-w-0 flex-1 md:w-auto md:flex-none md:min-w-48', targetMissing && 'border-warn/60 text-warn')}
+                    value={targetMissing ? '' : item.model}
+                    disabled={pending}
+                    onChange={(event) =>
+                      void mutate(
+                        () => api.keyAliasSave(keyId, { alias: item.alias, model: event.target.value }),
+                        `别名 ${item.alias} 已切换到 ${event.target.value}`,
+                      )
+                    }
+                  >
+                    {targetMissing ? <option value="">模型已移除，请重新选择</option> : null}
+                    {models.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    className="shrink-0 px-2"
+                    disabled={pending}
+                    title={`删除别名 ${item.alias}`}
+                    onClick={() => void mutate(() => api.keyAliasDelete(keyId, item.alias), `已删除别名 ${item.alias}`)}
+                  >
+                    删除
+                  </Button>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <div className="rounded-lg border border-dashed border-line bg-ink/40 px-3 py-4 text-sm text-mist">
+            还没有别名。添加一个，比如 fast 指向常用模型。
+          </div>
+        )}
+        {models.length > 0 ? (
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-36 flex-1 sm:max-w-52">
+              <Field label="别名">
+                <Input
+                  value={aliasDraft}
+                  onChange={(event) => setAliasDraft(event.target.value)}
+                  placeholder="例如 fast"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      submitAlias()
+                    }
+                  }}
+                />
+              </Field>
+            </div>
+            <div className="min-w-36 flex-1 sm:max-w-64">
+              <Field label="指向模型">
+                <Select value={modelDraft || models[0]} onChange={(event) => setModelDraft(event.target.value)}>
+                  {models.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <Button type="button" disabled={pending} onClick={submitAlias}>
+              添加别名
+            </Button>
+          </div>
+        ) : (
+          <div className="text-sm text-warn">该 Key 还没有可用模型，请先到「上游账号」点「获取模型」。</div>
+        )}
+        <div className="flex justify-end">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            关闭
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
 function shareText(shareUrl: string, apiKey: string) {
   return [
     '管理员通过AI一体化服务平台给你下发了 新的api-key：',
@@ -289,6 +433,7 @@ export function KeysPage() {
     accounts: NonNullable<ApiKeyItem['accounts']>
   } | null>(null)
   const [editDialog, setEditDialog] = useState<{ keyId: number; name: string; accountIds: number[] } | null>(null)
+  const [aliasesDialog, setAliasesDialog] = useState<{ keyId: number; keyName: string } | null>(null)
 
   const createMutation = useMutation({
     mutationFn: () => api.createKey({ name, account_ids: accountIds }),
@@ -627,6 +772,9 @@ export function KeysPage() {
                   >
                     编辑
                   </MenuItem>
+                  <MenuItem onClick={() => setAliasesDialog({ keyId: item.id, keyName: item.name })}>
+                    模型别名
+                  </MenuItem>
                   <MenuItem
                     onClick={async () => {
                       try {
@@ -768,6 +916,13 @@ export function KeysPage() {
             setEditDialog(null)
             notifyOk('已更新')
           }}
+        />
+      ) : null}
+      {aliasesDialog ? (
+        <KeyAliasesDialog
+          keyId={aliasesDialog.keyId}
+          keyName={aliasesDialog.keyName}
+          onClose={() => setAliasesDialog(null)}
         />
       ) : null}
     </div>

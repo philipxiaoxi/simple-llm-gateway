@@ -10,8 +10,8 @@ from app.config import get_settings
 from app.crypto import decrypt_secret, encrypt_secret, generate_api_key, hash_api_key, key_prefix
 from app.db import get_db
 from app.deps import get_current_admin
-from app.models import ApiKey, ApiKeyAccount, RequestLog
-from app.schemas import CcSwitchBuildRequest, KeyCreate, KeyOut, KeyUpdate
+from app.models import ApiKey, ApiKeyAccount, ModelAlias, RequestLog
+from app.schemas import AdminAliasSaveRequest, CcSwitchBuildRequest, KeyCreate, KeyOut, KeyUpdate
 from app.serializers import key_to_out
 from app.services.ccswitch import (
     CCS_SWITCH_TARGETS,
@@ -19,7 +19,14 @@ from app.services.ccswitch import (
     build_vscode_config,
     describe_ccswitch_targets,
 )
-from app.services.key_models import public_model_ids, public_model_records, replace_key_accounts
+from app.services.key_models import (
+    ALIAS_ERROR,
+    ALIAS_PATTERN,
+    build_model_catalog,
+    public_model_ids,
+    public_model_records,
+    replace_key_accounts,
+)
 
 router = APIRouter(prefix="/api/admin/keys", tags=["admin-keys"], dependencies=[Depends(get_current_admin)])
 
@@ -125,6 +132,47 @@ def cc_switch_build(key_id: int, payload: CcSwitchBuildRequest, db: Session = De
     return {"url": url}
 
 
+@router.get("/{key_id}/aliases")
+def list_aliases(key_id: int, db: Session = Depends(get_db)) -> dict:
+    item = _get_key(db, key_id)
+    return {"aliases": _serialize_aliases(item), "models": public_model_ids(item)}
+
+
+@router.post("/{key_id}/aliases")
+def save_alias(key_id: int, payload: AdminAliasSaveRequest, db: Session = Depends(get_db)) -> dict:
+    item = _get_key(db, key_id)
+    alias = payload.alias.strip()
+    if not ALIAS_PATTERN.match(alias):
+        raise HTTPException(status_code=400, detail=ALIAS_ERROR)
+    catalog_ids = {entry.public_id for entry in build_model_catalog(item, include_disabled=True)}
+    if alias in catalog_ids:
+        raise HTTPException(status_code=400, detail="别名不能与可用模型同名")
+    if payload.model not in catalog_ids:
+        raise HTTPException(status_code=400, detail="目标模型不在该 Key 的可用模型列表中")
+    row = db.scalar(select(ModelAlias).where(ModelAlias.api_key_id == item.id, ModelAlias.alias == alias))
+    if row is None:
+        row = ModelAlias(api_key_id=item.id, alias=alias, model_public_id=payload.model)
+        db.add(row)
+    else:
+        row.model_public_id = payload.model
+        row.updated_at = utcnow()
+    db.commit()
+    return {"aliases": _serialize_aliases(item), "models": public_model_ids(item)}
+
+
+@router.delete("/{key_id}/aliases/{alias:path}")
+def delete_alias(key_id: int, alias: str, db: Session = Depends(get_db)) -> dict:
+    item = _get_key(db, key_id)
+    row = db.scalar(
+        select(ModelAlias).where(ModelAlias.api_key_id == item.id, ModelAlias.alias == alias.strip())
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="别名不存在")
+    db.delete(row)
+    db.commit()
+    return {"aliases": _serialize_aliases(item), "models": public_model_ids(item)}
+
+
 @router.patch("/{key_id}", response_model=KeyOut)
 def update_key(key_id: int, payload: KeyUpdate, db: Session = Depends(get_db)) -> KeyOut:
     item = _get_key(db, key_id)
@@ -165,6 +213,11 @@ def _get_key(db: Session, key_id: int) -> ApiKey:
     if item is None:
         raise HTTPException(status_code=404, detail="API Key 不存在")
     return item
+
+
+def _serialize_aliases(item: ApiKey) -> list[dict]:
+    rows = sorted(item.aliases or [], key=lambda row: row.id)
+    return [{"alias": row.alias, "model": row.model_public_id} for row in rows]
 
 
 def _plaintext_key(item: ApiKey) -> str:
