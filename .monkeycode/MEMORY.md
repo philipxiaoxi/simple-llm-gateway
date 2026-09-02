@@ -55,6 +55,14 @@ Entries discovered by the Agent during task execution should follow this format:
 - Instructions:
   - 取凭据统一走 unix socket：`/tmp/codingmatrix-git-credential.sock`，请求 `GET /git-credential?protocol=https&host=github.com`
   - 推送时用户名固定为 `x-access-token`，密码用 socket 返回的 token
-  - 用 extraheader 推送：`git -c credential.helper= -c http.https://github.com/.extraheader="AUTHORIZATION: basic <base64(x-access-token:TOKEN)>" push origin HEAD:<branch>`
   - 不要走 `gh auth git-credential` 或 helper 缓存，过期 token 会 401
+  - 回复与日志中不得展示 token 明文，用 `sed -E 's/(basic )[A-Za-z0-9=]+/\1<redacted>/'` 之类方式打码
+  - 完整操作步骤（2026-09-02 实测验证）：
+    1. 用 Python 的 `http.client.HTTPConnection` 子类连接 unix socket（重写 `connect()` 用 `socket.socket(AF_UNIX)`），请求 `GET /git-credential?protocol=https&host=github.com`
+    2. 解析响应：优先按 JSON 取 `token`/`password`/`access_token`，失败则遍历行找 `password=`/`token=` 前缀
+    3. 生成认证值：`base64("x-access-token:" + TOKEN)`，拼成 `basic <base64>`
+    4. 若通过环境文件传递认证值，必须用 `shlex.quote()` 包裹，否则 `basic` 与 base64 之间的空格会被 shell 当成命令分隔符，导致 token 丢失
+    5. 推送命令：`git -c credential.helper= -c "http.https://github.com/.extraheader=AUTHORIZATION: $AUTH_HEADER" push origin HEAD:<branch>`
+    6. 完成后删除临时环境文件
+  - 常见失败诊断：若提示 `could not read Username`，说明 extraheader 值没传进去（检查环境文件空格/引号问题）；若 401 说明 token 过期，重新从 socket 取
   - 回复中不得展示 token 明文
