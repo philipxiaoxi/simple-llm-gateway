@@ -279,6 +279,7 @@ export type DashboardBenchmarkTop = {
   first_token_ms: number | null
   total_ms: number | null
   run_id: number | null
+  created_at: string | null
 }
 
 export type Dashboard = {

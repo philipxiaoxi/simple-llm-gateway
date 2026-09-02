@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Card } from '../components/ui'
 import { api, type DashboardBenchmarkTop, type DashboardLeaderboardTop } from '../lib/api'
-import { cn, formatContextWindow, formatTokenCount } from '../lib/utils'
+import { cn, formatContextWindow, formatTime, formatTokenCount } from '../lib/utils'
 
 type Metric = {
   label: string
@@ -111,7 +111,7 @@ function BenchmarkSpeedTopSection({ items }: { items: DashboardBenchmarkTop[] })
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-xs uppercase tracking-[0.16em] text-mist">测速速度前三</h2>
+        <h2 className="text-xs uppercase tracking-[0.16em] text-mist">近期测试</h2>
         <Link to="/benchmark/history" className="text-xs text-signal hover:underline">
           查看历史
         </Link>
@@ -127,7 +127,7 @@ function BenchmarkSpeedTopSection({ items }: { items: DashboardBenchmarkTop[] })
                 <Card className="h-full hover:border-signal/40">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-[10px] uppercase tracking-[0.16em] text-mist">#{index + 1}</div>
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-mist">{formatTime(item.created_at)}</div>
                       <div className="mt-2 truncate font-medium" title={item.model}>
                         {item.model}
                       </div>

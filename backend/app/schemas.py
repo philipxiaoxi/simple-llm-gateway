@@ -408,6 +408,7 @@ class DashboardBenchmarkTopOut(BaseModel):
     first_token_ms: float | None = None
     total_ms: float | None = None
     run_id: int | None = None
+    created_at: datetime | None = None
 
 
 class DashboardOut(BaseModel):

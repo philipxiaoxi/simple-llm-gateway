@@ -60,12 +60,13 @@ def _leaderboard_top(db: Session, limit: int = 3) -> list[DashboardLeaderboardTo
 def _benchmark_speed_top(db: Session, limit: int = 3) -> list[DashboardBenchmarkTopOut]:
     rows = db.scalars(
         select(BenchmarkResult)
+        .join(BenchmarkRun, BenchmarkRun.id == BenchmarkResult.run_id)
         .where(
             BenchmarkResult.ok.is_(True),
             BenchmarkResult.output_tokens_per_second.is_not(None),
             BenchmarkResult.output_tokens_per_second > 0,
         )
-        .order_by(BenchmarkResult.output_tokens_per_second.desc(), BenchmarkResult.id.desc())
+        .order_by(BenchmarkRun.created_at.desc(), BenchmarkResult.id.desc())
         .limit(limit)
     ).all()
     return [
@@ -77,6 +78,7 @@ def _benchmark_speed_top(db: Session, limit: int = 3) -> list[DashboardBenchmark
             first_token_ms=row.first_token_ms,
             total_ms=row.total_ms,
             run_id=row.run_id,
+            created_at=row.run.created_at,
         )
         for row in rows
     ]
