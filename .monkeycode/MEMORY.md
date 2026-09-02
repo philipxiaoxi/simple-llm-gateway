@@ -47,3 +47,14 @@ Entries discovered by the Agent during task execution should follow this format:
   - 在内容区中部向右滑动打开侧栏，向左滑动关闭；避开 iOS 左侧返回手势
   - PC 端继续使用左侧栏，不显示底部 Tab
   - iOS 进页必须保持深色底，避免先白后黑
+
+[GitHub 凭据走 unix socket]
+- Date: 2026-09-01
+- Context: 推送并创建 PR 时，明确要求走 unix socket 取 GitHub 凭据，用 x-access-token 推送
+- Category: Workflow & Collaboration
+- Instructions:
+  - 取凭据统一走 unix socket：`/tmp/codingmatrix-git-credential.sock`，请求 `GET /git-credential?protocol=https&host=github.com`
+  - 推送时用户名固定为 `x-access-token`，密码用 socket 返回的 token
+  - 用 extraheader 推送：`git -c credential.helper= -c http.https://github.com/.extraheader="AUTHORIZATION: basic <base64(x-access-token:TOKEN)>" push origin HEAD:<branch>`
+  - 不要走 `gh auth git-credential` 或 helper 缓存，过期 token 会 401
+  - 回复中不得展示 token 明文
