@@ -11,7 +11,14 @@ from app.crypto import decrypt_secret, encrypt_secret, generate_api_key, hash_ap
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import ApiKey, ApiKeyAccount, ModelAlias, RequestLog
-from app.schemas import AdminAliasSaveRequest, CcSwitchBuildRequest, KeyCreate, KeyOut, KeyUpdate
+from app.schemas import (
+    AdminAliasRenameRequest,
+    AdminAliasSaveRequest,
+    CcSwitchBuildRequest,
+    KeyCreate,
+    KeyOut,
+    KeyUpdate,
+)
 from app.serializers import key_to_out
 from app.services.ccswitch import (
     CCS_SWITCH_TARGETS,
@@ -22,9 +29,11 @@ from app.services.ccswitch import (
 from app.services.key_models import (
     ALIAS_ERROR,
     ALIAS_PATTERN,
+    AliasConflict,
     build_model_catalog,
     public_model_ids,
     public_model_records,
+    rename_model_alias,
     replace_key_accounts,
 )
 
@@ -156,6 +165,17 @@ def save_alias(key_id: int, payload: AdminAliasSaveRequest, db: Session = Depend
     else:
         row.model_public_id = payload.model
         row.updated_at = utcnow()
+    db.commit()
+    return {"aliases": _serialize_aliases(item), "models": public_model_ids(item)}
+
+
+@router.post("/{key_id}/aliases/rename")
+def rename_alias(key_id: int, payload: AdminAliasRenameRequest, db: Session = Depends(get_db)) -> dict:
+    item = _get_key(db, key_id)
+    try:
+        rename_model_alias(db, item, payload.old_alias, payload.new_alias)
+    except AliasConflict as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
     db.commit()
     return {"aliases": _serialize_aliases(item), "models": public_model_ids(item)}
 

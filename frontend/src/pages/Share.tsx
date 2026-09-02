@@ -1,6 +1,7 @@
-import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Plus, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
+import { ModelAliasList } from '../components/ModelAliasList'
 import { ModelPickDialog } from '../components/ModelPickDialog'
 import { VscodeImportDialog } from '../components/VscodeImportDialog'
 import { Badge, Button, Card, Field, Input, Select } from '../components/ui'
@@ -141,62 +142,21 @@ function ModelAliasManager({
         </p>
       </div>
       {aliases.length > 0 ? (
-        <div className="overflow-hidden rounded-lg border border-line bg-ink/40">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-panel-2 text-mist">
-              <tr>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">别名</th>
-                <th className="px-3 py-2 font-medium">指向模型</th>
-                <th className="whitespace-nowrap px-3 py-2 text-right font-medium">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {aliases.map((item) => {
-                const targetMissing = !models.includes(item.model)
-                return (
-                  <tr key={item.alias} className="border-t border-line hover:bg-white/5">
-                    <td className="max-w-44 truncate px-3 py-2 font-mono text-sm text-paper" title={item.alias}>
-                      {item.alias}
-                    </td>
-                    <td className="px-3 py-2">
-                      <Select
-                        className={cn('w-full', targetMissing && 'border-warn/60 text-warn')}
-                        value={targetMissing ? '' : item.model}
-                        disabled={busy}
-                        onChange={(event) =>
-                          void mutate(
-                            () => api.shareAliasSave({ api_key: rawKey, alias: item.alias, model: event.target.value }),
-                            `别名 ${item.alias} 已切换到 ${event.target.value}`,
-                          )
-                        }
-                      >
-                        {targetMissing ? <option value="">模型已移除，请重新选择</option> : null}
-                        {models.map((model) => (
-                          <option key={model} value={model}>
-                            {model}
-                          </option>
-                        ))}
-                      </Select>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      <Button
-                        type="button"
-                        variant="danger"
-                        className="px-2"
-                        disabled={busy}
-                        title={`删除别名 ${item.alias}`}
-                        onClick={() => void mutate(() => api.shareAliasDelete({ api_key: rawKey, alias: item.alias }), `已删除别名 ${item.alias}`)}
-                      >
-                        <Trash2 size={15} />
-                        删除
-                      </Button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <ModelAliasList
+          aliases={aliases}
+          models={models}
+          busy={busy}
+          onSwitch={(alias, model) =>
+            void mutate(() => api.shareAliasSave({ api_key: rawKey, alias, model }), `别名 ${alias} 已切换到 ${model}`)
+          }
+          onRename={(oldAlias, newAlias) =>
+            void mutate(
+              () => api.shareAliasRename({ api_key: rawKey, old_alias: oldAlias, new_alias: newAlias }),
+              `别名 ${oldAlias} 已重命名为 ${newAlias}`,
+            )
+          }
+          onDelete={(alias) => void mutate(() => api.shareAliasDelete({ api_key: rawKey, alias }), `已删除别名 ${alias}`)}
+        />
       ) : (
         <div className="rounded-lg border border-dashed border-line bg-ink/40 px-3 py-4 text-sm text-mist">
           还没有别名。添加一个，比如 fast 指向常用模型。

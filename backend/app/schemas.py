@@ -268,9 +268,20 @@ class ShareAliasDeleteRequest(BaseModel):
     alias: str
 
 
+class ShareAliasRenameRequest(BaseModel):
+    api_key: str
+    old_alias: str
+    new_alias: str
+
+
 class AdminAliasSaveRequest(BaseModel):
     alias: str
     model: str
+
+
+class AdminAliasRenameRequest(BaseModel):
+    old_alias: str
+    new_alias: str
 
 
 class KeyBoundAccountOut(BaseModel):

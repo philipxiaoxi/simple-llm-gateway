@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Children, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
+import { ModelAliasList } from '../components/ModelAliasList'
 import { VscodeImportDialog } from '../components/VscodeImportDialog'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type Account, type ApiKeyItem, type ApiKeySort, type CcSwitchTarget, type GatewayAgent, type ShareAlias } from '../lib/api'
@@ -299,61 +300,21 @@ function KeyAliasesDialog({ keyId, keyName, onClose }: { keyId: number; keyName:
           自定义名字映射到该 Key 的任意可用模型。客户端模型名填别名，切换背后的模型后客户端无需改配置，自助查询页同步生效。
         </p>
         {aliases.length > 0 ? (
-          <div className="overflow-hidden rounded-lg border border-line bg-ink/40">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-panel-2 text-mist">
-                <tr>
-                  <th className="whitespace-nowrap px-3 py-2 font-medium">别名</th>
-                  <th className="px-3 py-2 font-medium">指向模型</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-right font-medium">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {aliases.map((item) => {
-                  const targetMissing = !models.includes(item.model)
-                  return (
-                    <tr key={item.alias} className="border-t border-line hover:bg-white/5">
-                      <td className="max-w-44 truncate px-3 py-2 font-mono text-sm text-paper" title={item.alias}>
-                        {item.alias}
-                      </td>
-                      <td className="px-3 py-2">
-                        <Select
-                          className={cn('w-full', targetMissing && 'border-warn/60 text-warn')}
-                          value={targetMissing ? '' : item.model}
-                          disabled={pending}
-                          onChange={(event) =>
-                            void mutate(
-                              () => api.keyAliasSave(keyId, { alias: item.alias, model: event.target.value }),
-                              `别名 ${item.alias} 已切换到 ${event.target.value}`,
-                            )
-                          }
-                        >
-                          {targetMissing ? <option value="">模型已移除，请重新选择</option> : null}
-                          {models.map((model) => (
-                            <option key={model} value={model}>
-                              {model}
-                            </option>
-                          ))}
-                        </Select>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right">
-                        <Button
-                          type="button"
-                          variant="danger"
-                          className="px-2"
-                          disabled={pending}
-                          title={`删除别名 ${item.alias}`}
-                          onClick={() => void mutate(() => api.keyAliasDelete(keyId, item.alias), `已删除别名 ${item.alias}`)}
-                        >
-                          删除
-                        </Button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <ModelAliasList
+            aliases={aliases}
+            models={models}
+            busy={pending}
+            onSwitch={(alias, model) =>
+              void mutate(() => api.keyAliasSave(keyId, { alias, model }), `别名 ${alias} 已切换到 ${model}`)
+            }
+            onRename={(oldAlias, newAlias) =>
+              void mutate(
+                () => api.keyAliasRename(keyId, { old_alias: oldAlias, new_alias: newAlias }),
+                `别名 ${oldAlias} 已重命名为 ${newAlias}`,
+              )
+            }
+            onDelete={(alias) => void mutate(() => api.keyAliasDelete(keyId, alias), `已删除别名 ${alias}`)}
+          />
         ) : (
           <div className="rounded-lg border border-dashed border-line bg-ink/40 px-3 py-4 text-sm text-mist">
             还没有别名。添加一个，比如 fast 指向常用模型。

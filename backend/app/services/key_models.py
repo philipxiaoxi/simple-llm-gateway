@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.clock import utcnow
 from app.models import ApiKey, ApiKeyAccount, ModelAlias, UpstreamAccount
 from app.services.model_caps import ModelRecord, parse_model_records, serialize_record
 
@@ -14,6 +15,13 @@ PREFIX_ERROR = "模型前缀仅允许字母、数字、下划线和短横线，�
 
 ALIAS_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$")
 ALIAS_ERROR = "别名仅允许字母、数字和 . _ / -，以字母或数字开头，最长 64 位"
+
+
+class AliasConflict(Exception):
+    def __init__(self, status_code: int, detail: str):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
 
 
 @dataclass(frozen=True)
@@ -152,11 +160,33 @@ def public_model_ids(api_key: ApiKey) -> list[str]:
     return [entry.public_id for entry in build_model_catalog(api_key)]
 
 
+def find_alias(db: Session, api_key_id: int, alias: str) -> ModelAlias | None:
+    return db.scalar(select(ModelAlias).where(ModelAlias.api_key_id == api_key_id, ModelAlias.alias == alias))
+
+
 def resolve_alias_public_id(db: Session, api_key_id: int, alias: str) -> str | None:
-    row = db.scalar(
-        select(ModelAlias).where(ModelAlias.api_key_id == api_key_id, ModelAlias.alias == alias)
-    )
+    row = find_alias(db, api_key_id, alias)
     return row.model_public_id if row is not None else None
+
+
+def rename_model_alias(db: Session, api_key: ApiKey, old_alias: str, new_alias: str) -> ModelAlias:
+    old_name = (old_alias or "").strip()
+    new_name = (new_alias or "").strip()
+    row = find_alias(db, api_key.id, old_name)
+    if row is None:
+        raise AliasConflict(404, "别名不存在")
+    if new_name == old_name:
+        return row
+    if not ALIAS_PATTERN.match(new_name):
+        raise AliasConflict(400, ALIAS_ERROR)
+    catalog_ids = {entry.public_id for entry in build_model_catalog(api_key, include_disabled=True)}
+    if new_name in catalog_ids:
+        raise AliasConflict(400, "别名不能与可用模型同名")
+    if find_alias(db, api_key.id, new_name) is not None:
+        raise AliasConflict(400, f"别名 {new_name} 已存在")
+    row.alias = new_name
+    row.updated_at = utcnow()
+    return row
 
 
 def public_model_records(api_key: ApiKey) -> list[dict]:

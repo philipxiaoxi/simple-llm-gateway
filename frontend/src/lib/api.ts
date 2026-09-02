@@ -581,6 +581,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  keyAliasRename: (id: number, payload: { old_alias: string; new_alias: string }) =>
+    request<{ aliases: ShareAlias[]; models: string[] }>(`/api/admin/keys/${id}/aliases/rename`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   keyAliasDelete: (id: number, alias: string) =>
     request<{ aliases: ShareAlias[]; models: string[] }>(
       `/api/admin/keys/${id}/aliases/${encodeURIComponent(alias)}`,
@@ -618,6 +623,8 @@ export const api = {
   }) => request<{ url: string }>('/api/share/cc-switch', { method: 'POST', body: JSON.stringify(payload) }),
   shareAliasSave: (payload: { api_key: string; alias: string; model: string }) =>
     request<{ aliases: ShareAlias[] }>('/api/share/aliases/save', { method: 'POST', body: JSON.stringify(payload) }),
+  shareAliasRename: (payload: { api_key: string; old_alias: string; new_alias: string }) =>
+    request<{ aliases: ShareAlias[] }>('/api/share/aliases/rename', { method: 'POST', body: JSON.stringify(payload) }),
   shareAliasDelete: (payload: { api_key: string; alias: string }) =>
     request<{ aliases: ShareAlias[] }>('/api/share/aliases/delete', { method: 'POST', body: JSON.stringify(payload) }),
   skills: (query: { q?: string; category?: string } = {}) => {
