@@ -552,6 +552,16 @@ class LeaderboardLocalMatchOut(BaseModel):
     matched_model: str
 
 
+class LeaderboardBenchmarkOut(BaseModel):
+    model: str
+    account_name: str = ""
+    provider: str = ""
+    output_tokens_per_second: float = 0
+    first_token_ms: float | None = None
+    total_ms: float | None = None
+    created_at: datetime | None = None
+
+
 class LeaderboardEntryOut(BaseModel):
     rank: int | None = None
     previous_rank: int | None = None
@@ -583,6 +593,7 @@ class LeaderboardEntryOut(BaseModel):
     components: dict[str, LeaderboardComponentOut] = Field(default_factory=dict)
     local_covered: bool = False
     local_matches: list[LeaderboardLocalMatchOut] = Field(default_factory=list)
+    benchmark: LeaderboardBenchmarkOut | None = None
 
 
 class LeaderboardOut(BaseModel):

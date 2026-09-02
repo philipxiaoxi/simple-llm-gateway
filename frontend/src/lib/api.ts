@@ -350,6 +350,16 @@ export type LeaderboardLocalMatch = {
   matched_model: string
 }
 
+export type LeaderboardBenchmark = {
+  model: string
+  account_name: string
+  provider: string
+  output_tokens_per_second: number
+  first_token_ms: number | null
+  total_ms: number | null
+  created_at: string | null
+}
+
 export type LeaderboardEntry = {
   rank: number | null
   previous_rank: number | null
@@ -381,6 +391,7 @@ export type LeaderboardEntry = {
   components: Record<string, LeaderboardComponent>
   local_covered?: boolean
   local_matches?: LeaderboardLocalMatch[]
+  benchmark?: LeaderboardBenchmark | null
 }
 
 export type Leaderboard = {
