@@ -770,6 +770,8 @@ export function AccountsPage() {
   }
 
   async function removeAccount(account: Account) {
+    if (!window.confirm(`确定删除账号“${account.name}”吗？删除后无法恢复，并会自动解绑所有 API Key。`)) return
+
     setBusyId(account.id)
     try {
       await api.deleteAccount(account.id)

@@ -16,7 +16,7 @@ from app.schemas import AccountCreate, AccountExportRequest, AccountImportReques
 from app.serializers import account_to_out
 from app.services.account_transfer import export_accounts, import_accounts
 from app.services.header_spoof import default_header_spoof, normalize_header_spoof
-from app.services.key_models import ensure_account_prefix, normalize_model_prefix
+from app.services.key_models import ensure_account_prefix, normalize_model_prefix, unbind_account_keys
 from app.services.model_caps import apply_model_override, dump_model_records, parse_model_records, serialize_record
 from app.services.probe import list_account_models, probe_account
 from app.services.quota import refresh_quota
@@ -151,8 +151,7 @@ def update_account(
 @router.delete("/accounts/{account_id}")
 def delete_account(account_id: int, db: Session = Depends(get_db)) -> dict[str, bool]:
     account = _get_account(db, account_id)
-    if account.api_keys or account.key_links:
-        raise HTTPException(status_code=400, detail="请先删除绑定在该账号上的 API Key")
+    unbind_account_keys(db, account)
     db.execute(
         update(RequestLog)
         .where(RequestLog.account_id == account_id)

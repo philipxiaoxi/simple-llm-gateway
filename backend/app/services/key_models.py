@@ -224,3 +224,22 @@ def replace_key_accounts(db: Session, item: ApiKey, account_ids: list[int]) -> l
     item.account_id = accounts[0].id
     item.account = accounts[0]
     return accounts
+
+
+def unbind_account_keys(db: Session, account: UpstreamAccount) -> None:
+    affected_keys = {link.api_key for link in account.key_links}
+    affected_keys.update(account.api_keys)
+    for api_key in affected_keys:
+        remaining = [link for link in api_key.account_links if link.account_id != account.id]
+        for link in list(api_key.account_links):
+            if link.account_id == account.id:
+                db.delete(link)
+        db.flush()
+        remaining.sort(key=lambda link: link.sort_order)
+        if remaining:
+            api_key.account_id = remaining[0].account_id
+            api_key.account = remaining[0].account
+        else:
+            api_key.account_id = None
+            api_key.account = None
+            api_key.status = "disabled"

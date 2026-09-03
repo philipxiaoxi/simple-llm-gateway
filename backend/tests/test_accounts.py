@@ -114,7 +114,7 @@ def test_delete_account(client: TestClient, auth_headers: dict[str, str]) -> Non
     assert listed.json() == []
 
 
-def test_delete_account_blocked_when_keys_exist(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_delete_account_unbinds_and_disables_keys(client: TestClient, auth_headers: dict[str, str]) -> None:
     created = client.post(
         "/api/admin/accounts",
         headers=auth_headers,
@@ -127,8 +127,39 @@ def test_delete_account_blocked_when_keys_exist(client: TestClient, auth_headers
         json={"name": "k", "account_id": account_id},
     )
     deleted = client.delete(f"/api/admin/accounts/{account_id}", headers=auth_headers)
-    assert deleted.status_code == 400
-    assert "API Key" in deleted.json()["detail"]
+    assert deleted.status_code == 200
+    key = client.get("/api/admin/keys", headers=auth_headers).json()[0]
+    assert key["account_id"] is None
+    assert key["status"] == "disabled"
+
+
+def test_delete_account_reassigns_multi_account_key(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    first = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "First", "provider": "deepseek", "api_key": "sk-first"},
+    ).json()
+    second = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "Second", "provider": "deepseek", "api_key": "sk-second"},
+    ).json()
+    created_key = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "multi", "account_ids": [first["id"], second["id"]]},
+    )
+    assert created_key.status_code == 200
+    key_id = created_key.json()["id"]
+
+    deleted = client.delete(f"/api/admin/accounts/{first['id']}", headers=auth_headers)
+    assert deleted.status_code == 200
+    key = client.get(f"/api/admin/keys/{key_id}", headers=auth_headers).json()
+    assert key["account_id"] == second["id"]
+    assert [item["id"] for item in key["accounts"]] == [second["id"]]
+    assert key["status"] == "active"
 
 
 def test_delete_account_keeps_request_logs(client: TestClient, auth_headers: dict[str, str]) -> None:

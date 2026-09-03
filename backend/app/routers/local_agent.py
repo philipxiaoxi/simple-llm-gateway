@@ -14,7 +14,7 @@ from app.db import get_session_factory
 from app.deps import get_current_admin
 from app.models import GatewayAgent, GatewayAgentRoute, UpstreamAccount
 from app.providers import get_provider
-from app.services.key_models import ensure_account_prefix
+from app.services.key_models import ensure_account_prefix, unbind_account_keys
 from app.services.model_caps import parse_model_records, serialize_record
 from app.services.local_agent_relay import (
     AgentConnection,
@@ -190,19 +190,7 @@ def _sync_agent(agent_id: str, routes: dict[str, dict[str, object]]) -> None:
         session.close()
 
 def _unbind_account_keys(session, account: UpstreamAccount) -> None:
-    for link in list(account.key_links):
-        api_key = link.api_key
-        session.delete(link)
-        session.flush()
-        remaining = [item for item in api_key.account_links if item.account_id != account.id]
-        if remaining:
-            remaining.sort(key=lambda item: item.sort_order)
-            api_key.account_id = remaining[0].account_id
-            api_key.account = remaining[0].account
-        else:
-            api_key.account_id = None
-            api_key.account = None
-            api_key.status = "disabled"
+    unbind_account_keys(session, account)
 
 
 def _mark_agent_offline(agent_id: str) -> None:
