@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
 import { WebSocket } from "ws";
-import { fillInput } from "./input.js";
+import { backspace, fillInput } from "./input.js";
 
 const LOG_PREFIX = "[voice-bridge]";
 
@@ -72,6 +72,25 @@ function connect(options) {
   log(`连接房间 ${options.room} → ${url}`);
 
   const socket = new WebSocket(url);
+  const session = { seq: 0, typedLen: 0 };
+
+  function didReallyInput(result) {
+    return result.method === "type" || (result.method === "clipboard" && !result.manual);
+  }
+
+  function sendAck(seq, result) {
+    if (socket.readyState !== WebSocket.OPEN) return;
+    socket.send(
+      JSON.stringify({
+        type: "ack",
+        room: options.room,
+        seq,
+        ok: result.method !== "none" && result.method !== "skipped",
+        method: result.method,
+        warn: result.warn || "",
+      }),
+    );
+  }
 
   socket.on("open", () => {
     log(`已连接房间 ${options.room}。现在可以用手机按住说话，文字会自动填入当前输入框。`);
@@ -89,31 +108,49 @@ function connect(options) {
       log(`服务端确认加入房间 ${frame.room}`);
       return;
     }
-    if (frame.type === "text") {
-      log(`收到语音文字 #${frame.seq}：${frame.text}`);
-      const result = fillInput(frame.text, options.method);
-      if (result.method === "clipboard") {
-        log("已通过剪贴板+粘贴填入输入框");
-      } else if (result.method === "type") {
-        log("已逐字输入到当前输入框");
+    if (frame.type === "transcript") {
+      const seq = Number(frame.seq) || 0;
+      if (seq !== session.seq) {
+        session.seq = seq;
+        session.typedLen = 0;
+      }
+      const text = String(frame.text || "");
+      const trimmed = text.replace(/\s+$/, "");
+      const result = fillInput(text, options.method);
+      if (didReallyInput(result)) {
+        session.typedLen += trimmed.length;
+        log(`识别 #${seq} 已输入：${text}`);
       } else if (result.method === "skipped") {
-        log("文本为空，跳过");
+        log(`识别 #${seq} 为空，跳过`);
       } else {
-        log("未能自动填入输入框：", result.warn || "系统缺少所需工具");
-        log("原文：", frame.text);
+        log(`识别 #${seq} 输入失败：${result.warn || "系统缺少所需工具"}`);
       }
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(
-          JSON.stringify({
-            type: "ack",
-            room: frame.room,
-            seq: frame.seq,
-            ok: result.method !== "none",
-            method: result.method,
-            warn: result.warn || "",
-          }),
-        );
+      return;
+    }
+    if (frame.type === "optimized") {
+      const seq = Number(frame.seq) || 0;
+      if (seq === session.seq && session.typedLen > 0) {
+        const rewind = backspace(session.typedLen);
+        if (rewind.ok) {
+          log(`已回退识别文本 ${session.typedLen} 字符`);
+        } else {
+          log(`回退失败：${rewind.error || "系统缺少所需工具"}`);
+        }
       }
+      session.seq = seq;
+      session.typedLen = 0;
+      const text = String(frame.text || "");
+      log(`收到优化结果 #${seq}：${text}`);
+      const result = fillInput(text, options.method);
+      if (didReallyInput(result)) {
+        log("已填入优化后的文字");
+      } else if (result.method === "skipped") {
+        log("优化文本为空，跳过");
+      } else {
+        log("优化文本填入失败：", result.warn || "系统缺少所需工具");
+      }
+      sendAck(seq, result);
+      return;
     }
   });
 

@@ -56,9 +56,8 @@ def init_db() -> None:
 def _migrate_voice_tables(engine: Engine) -> None:
     """语音功能表结构调整时重建表。
 
-    早期版本 voice_settings 使用 stt_base_url / stt_api_key_encrypted 等字段，
-    现在改为直接引用上游账号（stt_account_id / llm_account_id）。配置数据仅有单行，
-    旧配置无法映射到账号，直接重建即可；voice_messages 一并重建以带上新列。
+    voice_settings 经历了多版字段演进（stt_base_url → stt_account_id → stt_api_key_encrypted）。
+    配置数据仅单行且无法跨结构映射，直接重建即可；voice_messages / voice_logs 一并重建。
     """
     with engine.begin() as connection:
         tables = {
@@ -68,7 +67,7 @@ def _migrate_voice_tables(engine: Engine) -> None:
         if "voice_settings" not in tables:
             return
         columns = {row[1] for row in connection.execute(text("PRAGMA table_info(voice_settings)"))}
-        if "stt_base_url" not in columns:
+        if "stt_api_key_encrypted" in columns:
             return
         for table in ("voice_logs", "voice_messages", "voice_settings"):
             if table in tables:

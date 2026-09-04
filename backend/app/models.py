@@ -373,15 +373,12 @@ class VoiceSettings(Base):
     __tablename__ = "voice_settings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    stt_account_id: Mapped[int | None] = mapped_column(ForeignKey("upstream_accounts.id"), nullable=True)
-    stt_model: Mapped[str] = mapped_column(String(128), default="whisper-1", nullable=False)
-    stt_language: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    stt_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     llm_account_id: Mapped[int | None] = mapped_column(ForeignKey("upstream_accounts.id"), nullable=True)
     llm_model: Mapped[str] = mapped_column(String(128), default="gpt-4o-mini", nullable=False)
     llm_prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
-    stt_account: Mapped[UpstreamAccount | None] = relationship(foreign_keys=[stt_account_id])
     llm_account: Mapped[UpstreamAccount | None] = relationship(foreign_keys=[llm_account_id])
 
 

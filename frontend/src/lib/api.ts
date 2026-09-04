@@ -810,22 +810,9 @@ export const api = {
   saveVoiceSettings: (payload: Record<string, unknown>) =>
     request<VoiceSettings>('/api/admin/voice/settings', { method: 'PUT', body: JSON.stringify(payload) }),
   voiceJoin: (code: string) => request<VoiceRoomJoin>(`/api/voice/rooms/${encodeURIComponent(code)}`),
-  voiceTranscribe: async (code: string, audioBlob: Blob) => {
-    const body = new FormData()
-    body.append('room', code)
-    body.append('audio', audioBlob, 'recording.webm')
-    const response = await fetch('/api/voice/transcribe', { method: 'POST', body, cache: 'no-store' })
-    if (!response.ok) {
-      let message = `转写失败 (${response.status})`
-      try {
-        const payload = await response.json()
-        message = payload.detail || payload.message || message
-      } catch {
-        /* ignore */
-      }
-      throw new ApiError(response.status, typeof message === 'string' ? message : JSON.stringify(message))
-    }
-    return response.json() as Promise<VoiceTranscribe>
+  voiceAsrUrl: (code: string) => {
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    return `${proto}://${window.location.host}/api/voice/asr/${encodeURIComponent(code)}`
   },
 }
 
@@ -962,17 +949,14 @@ export type VoiceAccountOption = {
 }
 
 export type VoiceSettings = {
-  stt_account_id: number | null
-  stt_account_name: string
-  stt_model: string
-  stt_language: string | null
   stt_configured: boolean
+  stt_model: string
+  stt_ws_url: string
   llm_account_id: number | null
   llm_account_name: string
   llm_model: string
   llm_configured: boolean
   llm_prompt: string
-  stt_accounts: VoiceAccountOption[]
   llm_accounts: VoiceAccountOption[]
 }
 
@@ -981,13 +965,4 @@ export type VoiceRoomJoin = {
   code: string
   name: string
   status: string
-}
-
-export type VoiceTranscribe = {
-  seq: number
-  raw_text: string
-  text: string
-  delivered: number
-  stt_model: string
-  llm_model: string
 }

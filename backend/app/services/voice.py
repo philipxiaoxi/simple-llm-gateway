@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.clock import utcnow
 from app.config import get_settings
+from app.crypto import decrypt_secret, encrypt_secret
 from app.models import UpstreamAccount, VoiceLog, VoiceMessage, VoiceRoom, VoiceSettings
-from app.providers import get_provider
 from app.services.credentials import get_upstream_credential
 
 VOICE_ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -53,16 +53,16 @@ class VoiceAccount:
 
 @dataclass
 class VoiceConfig:
-    stt_account: VoiceAccount = field(default_factory=VoiceAccount)
-    stt_model: str = "whisper-1"
-    stt_language: str | None = None
+    stt_api_key: str = ""
+    stt_ws_url: str = ""
+    stt_model: str = "qwen-audio-3.0-asr-flash-streaming"
     llm_account: VoiceAccount = field(default_factory=VoiceAccount)
     llm_model: str = "gpt-4o-mini"
     llm_prompt: str = ""
 
     @property
     def stt_ready(self) -> bool:
-        return self.stt_account.ready and bool(self.stt_model)
+        return bool(self.stt_api_key)
 
     @property
     def llm_ready(self) -> bool:
@@ -89,39 +89,27 @@ def _account_voice_view(db: Session, account_id: int | None) -> VoiceAccount:
 def load_voice_config(db: Session) -> VoiceConfig:
     env = get_settings()
     row = db.scalar(select(VoiceSettings).order_by(VoiceSettings.id).limit(1))
-    if row is None:
-        stt_account = VoiceAccount(
-            base_url=env.voice_stt_base_url.rstrip("/"),
-            api_key=env.voice_stt_api_key,
-        )
-        llm_account = VoiceAccount(
-            base_url=env.voice_llm_base_url.rstrip("/"),
-            api_key=env.voice_llm_api_key,
-        )
-        return VoiceConfig(
-            stt_account=stt_account,
-            stt_model=env.voice_stt_model,
-            stt_language=env.voice_stt_language or None,
-            llm_account=llm_account,
-            llm_model=env.voice_llm_model,
-            llm_prompt=env.voice_llm_prompt or DEFAULT_LLM_PROMPT,
-        )
+    secret_key = env.app_secret_key
+    stt_api_key = ""
+    if row is not None and row.stt_api_key_encrypted:
+        stt_api_key = decrypt_secret(row.stt_api_key_encrypted, secret_key)
+    if not stt_api_key:
+        stt_api_key = env.aliyun_asr_api_key
+    llm_account_id = row.llm_account_id if row is not None else None
     return VoiceConfig(
-        stt_account=_account_voice_view(db, row.stt_account_id),
-        stt_model=row.stt_model or env.voice_stt_model,
-        stt_language=row.stt_language or env.voice_stt_language or None,
-        llm_account=_account_voice_view(db, row.llm_account_id),
-        llm_model=row.llm_model or env.voice_llm_model,
-        llm_prompt=row.llm_prompt or env.voice_llm_prompt or DEFAULT_LLM_PROMPT,
+        stt_api_key=stt_api_key,
+        stt_ws_url=env.aliyun_asr_ws_url,
+        stt_model=env.aliyun_asr_model,
+        llm_account=_account_voice_view(db, llm_account_id),
+        llm_model=(row.llm_model if row is not None and row.llm_model else env.voice_llm_model) or "gpt-4o-mini",
+        llm_prompt=(row.llm_prompt if row is not None and row.llm_prompt else env.voice_llm_prompt) or DEFAULT_LLM_PROMPT,
     )
 
 
 def save_voice_config(
     db: Session,
     *,
-    stt_account_id: int | None = None,
-    stt_model: str = "",
-    stt_language: str | None = None,
+    stt_api_key: str | None = None,
     llm_account_id: int | None = None,
     llm_model: str = "",
     llm_prompt: str = "",
@@ -130,18 +118,11 @@ def save_voice_config(
     if row is None:
         row = VoiceSettings()
         db.add(row)
-    if stt_account_id is not None:
-        if stt_account_id <= 0:
-            row.stt_account_id = None
-        else:
-            account = db.get(UpstreamAccount, stt_account_id)
-            if account is None:
-                raise ValueError("STT 上游账号不存在")
-            row.stt_account_id = account.id
-    if stt_model != "":
-        row.stt_model = stt_model.strip() or "whisper-1"
-    if stt_language is not None:
-        row.stt_language = stt_language.strip() or None
+    if stt_api_key is not None:
+        secret_key = get_settings().app_secret_key
+        row.stt_api_key_encrypted = (
+            encrypt_secret(stt_api_key.strip(), secret_key) if stt_api_key.strip() else None
+        )
     if llm_account_id is not None:
         if llm_account_id <= 0:
             row.llm_account_id = None
@@ -163,22 +144,23 @@ def save_voice_config(
 def settings_payload(db: Session) -> dict[str, Any]:
     env = get_settings()
     row = db.scalar(select(VoiceSettings).order_by(VoiceSettings.id).limit(1))
-    stt_account_id = row.stt_account_id if row else None
-    llm_account_id = row.llm_account_id if row else None
-    stt_view = _account_voice_view(db, stt_account_id)
+    secret_key = env.app_secret_key
+    stt_api_key = ""
+    if row is not None and row.stt_api_key_encrypted:
+        stt_api_key = decrypt_secret(row.stt_api_key_encrypted, secret_key)
+    if not stt_api_key:
+        stt_api_key = env.aliyun_asr_api_key
+    llm_account_id = row.llm_account_id if row is not None else None
     llm_view = _account_voice_view(db, llm_account_id)
     return {
-        "stt_account_id": stt_account_id,
-        "stt_account_name": stt_view.name,
-        "stt_model": (row.stt_model if row and row.stt_model else env.voice_stt_model) or "whisper-1",
-        "stt_language": (row.stt_language if row and row.stt_language else env.voice_stt_language) or None,
-        "stt_configured": stt_view.ready,
+        "stt_configured": bool(stt_api_key),
+        "stt_model": env.aliyun_asr_model,
+        "stt_ws_url": env.aliyun_asr_ws_url,
         "llm_account_id": llm_account_id,
         "llm_account_name": llm_view.name,
-        "llm_model": (row.llm_model if row and row.llm_model else env.voice_llm_model) or "gpt-4o-mini",
+        "llm_model": (row.llm_model if row is not None and row.llm_model else env.voice_llm_model) or "gpt-4o-mini",
         "llm_configured": llm_view.ready,
-        "llm_prompt": (row.llm_prompt if row and row.llm_prompt else env.voice_llm_prompt) or DEFAULT_LLM_PROMPT,
-        "stt_accounts": _list_account_options(db),
+        "llm_prompt": (row.llm_prompt if row is not None and row.llm_prompt else env.voice_llm_prompt) or DEFAULT_LLM_PROMPT,
         "llm_accounts": _list_account_options(db),
     }
 
@@ -201,38 +183,6 @@ def _list_account_options(db: Session) -> list[dict[str, Any]]:
     ]
 
 
-async def transcribe_audio(
-    db: Session,
-    room: VoiceRoom,
-    audio_bytes: bytes,
-    filename: str = "audio",
-) -> dict[str, Any]:
-    """把录音转成文字，再用大模型优化表达。
-
-    返回 dict：raw_text / text / stt_model / stt_latency_ms / llm_model / llm_latency_ms。
-    """
-    config = load_voice_config(db)
-    if not config.stt_ready:
-        raise RuntimeError("语音识别未配置，请到管理后台「语音输入」→「语音配置」选择上游账号")
-    stt_started = time.perf_counter()
-    raw_text = await _stt_to_text(config, audio_bytes, filename)
-    stt_latency_ms = int((time.perf_counter() - stt_started) * 1000)
-    text = raw_text
-    llm_latency_ms: int | None = None
-    if config.llm_ready and raw_text.strip():
-        llm_started = time.perf_counter()
-        text = await _polish_text(config, raw_text)
-        llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
-    return {
-        "raw_text": raw_text,
-        "text": text,
-        "stt_model": config.stt_model,
-        "stt_latency_ms": stt_latency_ms,
-        "llm_model": config.llm_model if config.llm_ready else "",
-        "llm_latency_ms": llm_latency_ms,
-    }
-
-
 def _headers_for(account: VoiceAccount) -> dict[str, str]:
     headers: dict[str, str] = {}
     if account.api_key:
@@ -244,32 +194,11 @@ def _headers_for(account: VoiceAccount) -> dict[str, str]:
     return headers
 
 
-async def _stt_to_text(config: VoiceConfig, audio_bytes: bytes, filename: str) -> str:
-    url = _join_url(config.stt_account.base_url, "/audio/transcriptions")
-    payload: dict[str, str] = {"model": config.stt_model, "response_format": "json"}
-    if config.stt_language:
-        payload["language"] = config.stt_language
-    headers = _headers_for(config.stt_account)
-    timeout = get_settings().voice_http_timeout_seconds
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.post(
-            url,
-            headers=headers,
-            data=payload,
-            files={"file": (filename, audio_bytes, "audio/webm")},
-        )
-    if response.status_code >= 400:
-        detail = response.text[:300]
-        raise RuntimeError(f"语音识别服务返回 {response.status_code}：{detail}")
-    body = response.json()
-    text = str(body.get("text") or "").strip()
-    if not text:
-        raise RuntimeError("语音识别未返回文本，请重试或检查音频质量")
-    return text
-
-
-async def _polish_text(config: VoiceConfig, raw_text: str) -> str:
-    url = _join_url(config.llm_account.base_url, "/chat/completions")
+async def polish_text(config: VoiceConfig, raw_text: str) -> str:
+    """用 LLM 优化转写文本表达。未配置 LLM 时原样返回。"""
+    if not config.llm_ready or not raw_text.strip():
+        return raw_text
+    url = f"{config.llm_account.base_url.rstrip('/')}/chat/completions"
     headers = {
         **_headers_for(config.llm_account),
         "Content-Type": "application/json",
@@ -283,8 +212,11 @@ async def _polish_text(config: VoiceConfig, raw_text: str) -> str:
         "temperature": 0.3,
     }
     timeout = get_settings().voice_http_timeout_seconds
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.post(url, headers=headers, json=payload)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(url, headers=headers, json=payload)
+    except httpx.HTTPError as error:
+        raise RuntimeError(f"大模型优化服务连接失败：{error}") from error
     if response.status_code >= 400:
         detail = response.text[:300]
         raise RuntimeError(f"大模型优化服务返回 {response.status_code}：{detail}")
@@ -297,13 +229,9 @@ async def _polish_text(config: VoiceConfig, raw_text: str) -> str:
     return text or raw_text
 
 
-def _join_url(base: str, path: str) -> str:
-    return f"{base.rstrip('/')}{path}"
-
-
 @dataclass
 class VoiceRoomHub:
-    """房间级 WebSocket 会话，把转写结果推送给房间内所有连接（桌面端小程序）。"""
+    """房间级 WebSocket 会话，把识别/优化结果推送给房间内所有连接（桌面端小程序）。"""
 
     _rooms: dict[str, set[WebSocket]] = field(default_factory=dict)
     _lock: threading.Lock = field(default_factory=threading.Lock)
@@ -330,16 +258,8 @@ class VoiceRoomHub:
         with self._lock:
             return {code for code, conns in self._rooms.items() if conns}
 
-    async def broadcast_text(self, room_code: str, *, seq: int, raw_text: str, text: str) -> int:
-        """推送转写结果，返回成功送达的连接数。"""
-        message = {
-            "type": "text",
-            "room": room_code.upper(),
-            "seq": seq,
-            "raw_text": raw_text,
-            "text": text,
-            "created_at": utcnow().isoformat() + "Z",
-        }
+    async def broadcast(self, room_code: str, message: dict[str, Any]) -> int:
+        """推送消息到房间内所有连接，返回成功送达数。"""
         with self._lock:
             conns = list(self._rooms.get(room_code.upper(), set()))
         delivered = 0
@@ -357,6 +277,33 @@ class VoiceRoomHub:
                     for websocket in failed:
                         room_conns.discard(websocket)
         return delivered
+
+    async def broadcast_transcript(self, room_code: str, *, seq: int, text: str) -> int:
+        """推送单句识别结果（桌面端逐句追加输入）。"""
+        return await self.broadcast(
+            room_code,
+            {
+                "type": "transcript",
+                "room": room_code.upper(),
+                "seq": seq,
+                "text": text,
+                "created_at": utcnow().isoformat() + "Z",
+            },
+        )
+
+    async def broadcast_optimized(self, room_code: str, *, seq: int, raw_text: str, text: str) -> int:
+        """推送 LLM 优化结果（桌面端回退之前输入的识别文本，替换为优化文本）。"""
+        return await self.broadcast(
+            room_code,
+            {
+                "type": "optimized",
+                "room": room_code.upper(),
+                "seq": seq,
+                "raw_text": raw_text,
+                "text": text,
+                "created_at": utcnow().isoformat() + "Z",
+            },
+        )
 
 
 voice_room_hub = VoiceRoomHub()

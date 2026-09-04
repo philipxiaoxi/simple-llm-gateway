@@ -66,3 +66,14 @@ Entries discovered by the Agent during task execution should follow this format:
     6. 完成后删除临时环境文件
   - 常见失败诊断：若提示 `could not read Username`，说明 extraheader 值没传进去（检查环境文件空格/引号问题）；若 401 说明 token 过期，重新从 socket 取
   - 回复中不得展示 token 明文
+
+[阿里云 ASR websocket 1007 报错定位]
+- Date: 2026-09-04
+- Context: 排查后端 AliyunAsrSession 连接阿里云时始终收到 `1007 (invalid frame payload data)` / 反复 recv 超时，而原始脚本却能成功
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - 阿里云 run-task 协议返回头部事件帧可能是**文本字符串（str），不是 bytes**。`websockets` 库 recv 返回 str 时，若代码只对 bytes 做 `json.loads` 解析，会把 str 当作无效数据，导致 1007 或永远匹配不到 `task-started` 而死循环超时
+  - 必须在 `_event_of`/解析函数里对 `bytes`、`bytearray`、`str` 三种类型都 `json.loads`，统一归一成 dict 后再取 `header.event`
+  - 排查时逐事件打印「RECV <event>」可快速定位：若只连上但收不到 task-started，先确认是否解析了服务端返回的全部类型
+  - 端到端验证用真实 PCM：`/tmp/tts.pcm`（16kHz/单声道/S16LE）走 `/api/voice/asr/{code}` 上传，发完音频再发 `{"type":"stop"}` 触发 finish；桌面端连 `/api/voice/ws/{code}` 看 transcript/optimized，ack 用 `{"type":"ack","seq":N,...}`
+  - 语音数据落库在 `/workspace/data/gateway.db`（SQLite WAL，dev 后端 cwd 为 /workspace），独立脚本需用绝对路径且 room_id 经 voice_rooms 表查询

@@ -96,9 +96,7 @@ def put_settings_endpoint(
     try:
         save_voice_config(
             db,
-            stt_account_id=payload.stt_account_id,
-            stt_model=payload.stt_model or "",
-            stt_language=payload.stt_language,
+            stt_api_key=payload.stt_api_key,
             llm_account_id=payload.llm_account_id,
             llm_model=payload.llm_model or "",
             llm_prompt=payload.llm_prompt or "",

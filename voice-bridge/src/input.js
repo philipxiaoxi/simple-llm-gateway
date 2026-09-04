@@ -161,3 +161,38 @@ export function fillInput(text, method = "auto") {
   }
   return result;
 }
+
+function backspaceLinux(count) {
+  if (!available("xdotool")) return { ok: false, error: "未安装 xdotool" };
+  // 分批发送，单次 --repeat 过大可能超时
+  const batch = 200;
+  for (let remaining = count; remaining > 0; remaining -= batch) {
+    const n = Math.min(remaining, batch);
+    const result = runCommand("xdotool", ["key", "--clearmodifiers", "--repeat", String(n), "BackSpace"]);
+    if (!result.ok) return result;
+  }
+  return { ok: true };
+}
+
+function backspaceMac(count) {
+  const script = `tell application "System Events" to repeat ${count} times\nkey code 51\nend repeat`;
+  return runCommand("osascript", ["-e", script]);
+}
+
+function backspaceWindows(count) {
+  const script = `Add-Type -AssemblyName System.Windows.Forms;[System.Windows.Forms.SendKeys]::SendWait('{BACKSPACE ${count}}')`;
+  return runCommand("powershell", ["-NoProfile", "-Command", script]);
+}
+
+/**
+ * 模拟按 Backspace 若干次，用于回退之前自动输入的文本（优化结果替换识别结果）。
+ * 返回 { ok }。
+ */
+export function backspace(count) {
+  if (!count || count <= 0) return { ok: true };
+  const os = platform();
+  if (os === "darwin") return backspaceMac(count);
+  if (os === "win32") return backspaceWindows(count);
+  return backspaceLinux(count);
+}
+

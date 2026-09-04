@@ -753,24 +753,19 @@ class VoiceAccountOptionOut(BaseModel):
 
 
 class VoiceSettingsOut(BaseModel):
-    stt_account_id: int | None = None
-    stt_account_name: str = ""
-    stt_model: str = "whisper-1"
-    stt_language: str | None = None
     stt_configured: bool = False
+    stt_model: str = "qwen-audio-3.0-asr-flash-streaming"
+    stt_ws_url: str = ""
     llm_account_id: int | None = None
     llm_account_name: str = ""
     llm_model: str = "gpt-4o-mini"
     llm_configured: bool = False
     llm_prompt: str = ""
-    stt_accounts: list[VoiceAccountOptionOut] = Field(default_factory=list)
     llm_accounts: list[VoiceAccountOptionOut] = Field(default_factory=list)
 
 
 class VoiceSettingsUpdate(BaseModel):
-    stt_account_id: int | None = None
-    stt_model: str | None = None
-    stt_language: str | None = None
+    stt_api_key: str | None = None
     llm_account_id: int | None = None
     llm_model: str | None = None
     llm_prompt: str | None = None

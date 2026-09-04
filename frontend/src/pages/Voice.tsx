@@ -232,16 +232,11 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
     setPending(true)
     setError('')
     try {
-      const sttId = form.stt_account_id !== undefined && form.stt_account_id !== ''
-        ? Number(form.stt_account_id)
-        : data?.stt_account_id ?? null
       const llmId = form.llm_account_id !== undefined && form.llm_account_id !== ''
         ? Number(form.llm_account_id)
         : data?.llm_account_id ?? null
       await api.saveVoiceSettings({
-        stt_account_id: sttId,
-        stt_model: form.stt_model ?? data?.stt_model,
-        stt_language: form.stt_language ?? data?.stt_language ?? null,
+        stt_api_key: form.stt_api_key || undefined,
         llm_account_id: llmId,
         llm_model: form.llm_model ?? data?.llm_model,
         llm_prompt: form.llm_prompt ?? data?.llm_prompt,
@@ -266,25 +261,23 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
         <div className="rounded-lg border border-line bg-ink/40 p-3">
           <div className="mb-3 flex flex-wrap items-center gap-2 font-medium">
             <Mic size={16} className="text-signal" />
-            语音识别（STT）
+            语音识别（阿里云实时语音识别）
             <Badge tone={data?.stt_configured ? 'ok' : 'warn'}>{data?.stt_configured ? '已配置' : '未配置'}</Badge>
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <Field label="上游账号">
-              <Select defaultValue={data?.stt_account_id ? String(data.stt_account_id) : ''} onChange={(event) => set('stt_account_id', event.target.value)}>
-                <option value="">不使用上游账号</option>
-                {(data?.stt_accounts ?? []).map((option) => (
-                  <option key={option.id} value={String(option.id)}>{accountLabel(option)}</option>
-                ))}
-              </Select>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="DashScope API Key">
+              <Input
+                type="password"
+                placeholder={data?.stt_configured ? '已配置（留空不变）' : '必填，留空也可走环境变量 ALIYUN_ASR_API_KEY'}
+                onChange={(event) => set('stt_api_key', event.target.value)}
+                autoComplete="off"
+              />
             </Field>
-            <Field label="模型">
-              <Input placeholder="whisper-1" defaultValue={data?.stt_model} onChange={(event) => set('stt_model', event.target.value)} />
-            </Field>
-            <Field label="语言（留空自动识别）">
-              <Input placeholder="zh" defaultValue={data?.stt_language ?? ''} onChange={(event) => set('stt_language', event.target.value)} />
+            <Field label="识别模型">
+              <Input value={data?.stt_model ?? ''} readOnly disabled />
             </Field>
           </div>
+          <div className="mt-2 text-xs text-mist">服务商已写死为阿里云，模型 {data?.stt_model || ''}，服务地址 {data?.stt_ws_url || ''}。</div>
         </div>
 
         <div className="rounded-lg border border-line bg-ink/40 p-3">
@@ -372,11 +365,11 @@ export function VoicePage() {
 
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-line bg-panel/90 p-4">
-          <div className="text-xs uppercase tracking-[0.16em] text-mist">语音识别 STT</div>
+          <div className="text-xs uppercase tracking-[0.16em] text-mist">语音识别（阿里云）</div>
           <div className={cn('mt-1 truncate text-lg font-semibold', sttReady ? 'text-signal' : 'text-warn')}>
             {sttReady ? '已配置' : '未配置'}
           </div>
-          <div className="mt-1 truncate text-xs text-mist">{settings?.stt_account_name || '请选择上游账号'}</div>
+          <div className="mt-1 truncate text-xs text-mist">{settings?.stt_model || '阿里云实时语音识别'}</div>
         </div>
         <div className="rounded-xl border border-line bg-panel/90 p-4">
           <div className="text-xs uppercase tracking-[0.16em] text-mist">大模型优化 LLM</div>

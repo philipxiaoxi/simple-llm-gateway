@@ -166,11 +166,6 @@ def delete_account(account_id: int, db: Session = Depends(get_db)) -> dict[str, 
     db.execute(delete(OAuthState).where(OAuthState.account_id == account_id))
     db.execute(
         update(VoiceSettings)
-        .where(VoiceSettings.stt_account_id == account_id)
-        .values(stt_account_id=None)
-    )
-    db.execute(
-        update(VoiceSettings)
         .where(VoiceSettings.llm_account_id == account_id)
         .values(llm_account_id=None)
     )
