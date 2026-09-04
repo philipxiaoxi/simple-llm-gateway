@@ -22,6 +22,8 @@ import { SkillsPage } from './pages/Skills'
 import { ContentAuditPage } from './pages/ContentAudit'
 import { JobsPage } from './pages/Jobs'
 import { ToolsPage } from './pages/Tools'
+import { VoicePage } from './pages/Voice'
+import { VoiceMobilePage } from './pages/VoiceMobile'
 import type { ReactElement } from 'react'
 
 const queryClient = new QueryClient()
@@ -41,6 +43,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/share" element={<SharePage />} />
           <Route path="/share/leaderboard" element={<PublicLeaderboardPage />} />
+          <Route path="/voice/mobile" element={<VoiceMobilePage />} />
           <Route
             element={
               <Guard>
@@ -63,6 +66,7 @@ export default function App() {
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/logs/:id" element={<LogDetailPage />} />
             <Route path="/content-audit" element={<ContentAuditPage />} />
+            <Route path="/voice" element={<VoicePage />} />
           </Route>
         </Routes>
       </BrowserRouter>

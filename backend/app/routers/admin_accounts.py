@@ -10,7 +10,7 @@ from app.config import get_settings
 from app.crypto import encrypt_secret
 from app.db import get_db
 from app.deps import get_current_admin
-from app.models import Admin, GatewayAgentRoute, OAuthState, RequestLog, UpstreamAccount
+from app.models import Admin, GatewayAgentRoute, OAuthState, RequestLog, UpstreamAccount, VoiceSettings
 from app.providers import get_provider, list_providers
 from app.schemas import AccountCreate, AccountExportRequest, AccountImportRequest, AccountOut, AccountUpdate, ModelOverrideUpdate, ProviderOut
 from app.serializers import account_to_out
@@ -164,6 +164,11 @@ def delete_account(account_id: int, db: Session = Depends(get_db)) -> dict[str, 
     if account.oauth_token is not None:
         db.delete(account.oauth_token)
     db.execute(delete(OAuthState).where(OAuthState.account_id == account_id))
+    db.execute(
+        update(VoiceSettings)
+        .where(VoiceSettings.llm_account_id == account_id)
+        .values(llm_account_id=None)
+    )
     db.delete(account)
     return {"ok": True}
 

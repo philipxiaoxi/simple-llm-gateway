@@ -696,3 +696,92 @@ class ContentAuditLexiconSyncOut(BaseModel):
     word_count: int = 0
     categories: list[str] = Field(default_factory=list)
     error_message: str | None = None
+
+
+class VoiceRoomCreate(BaseModel):
+    name: str = ""
+
+
+class VoiceRoomUpdate(BaseModel):
+    name: str | None = None
+    status: str | None = None
+
+
+class VoiceMessageOut(BaseModel):
+    id: int
+    seq: int
+    raw_text: str
+    text: str
+    stt_model: str = ""
+    llm_model: str = ""
+    delivered_count: int = 0
+    acked_count: int = 0
+    audio_size: int = 0
+    client_ip: str | None = None
+    created_at: datetime
+
+
+class VoiceLogOut(BaseModel):
+    id: int
+    seq: int | None = None
+    kind: str
+    raw_text: str = ""
+    text: str = ""
+    detail: dict[str, Any] | None = None
+    created_at: datetime
+
+
+class VoiceRoomOut(BaseModel):
+    id: int
+    code: str
+    name: str
+    status: str
+    created_by: str
+    created_at: datetime
+    online_connections: int = 0
+    mobile_url: str | None = None
+    recent_messages: list[VoiceMessageOut] = Field(default_factory=list)
+    recent_logs: list[VoiceLogOut] = Field(default_factory=list)
+
+
+class VoiceAccountOptionOut(BaseModel):
+    id: int
+    name: str
+    provider: str
+    base_url: str
+    has_credential: bool = False
+
+
+class VoiceSettingsOut(BaseModel):
+    stt_configured: bool = False
+    stt_model: str = "qwen-audio-3.0-asr-flash-streaming"
+    stt_ws_url: str = ""
+    llm_account_id: int | None = None
+    llm_account_name: str = ""
+    llm_model: str = "gpt-4o-mini"
+    llm_configured: bool = False
+    llm_prompt: str = ""
+    llm_accounts: list[VoiceAccountOptionOut] = Field(default_factory=list)
+
+
+class VoiceSettingsUpdate(BaseModel):
+    stt_api_key: str | None = None
+    llm_account_id: int | None = None
+    llm_model: str | None = None
+    llm_prompt: str | None = None
+
+
+class VoiceTranscribeOut(BaseModel):
+    seq: int
+    raw_text: str
+    text: str
+    delivered: int = 0
+    stt_model: str = ""
+    llm_model: str = ""
+
+
+class VoiceRoomJoinOut(BaseModel):
+    ok: bool = True
+    code: str
+    name: str
+    status: str

@@ -23,5 +23,6 @@ frontend/.vite/
 agent/node_modules/
 backend/.venv/
 agent/config.local.json
+voice-bridge/node_modules/
 .idea/
 .vscode/

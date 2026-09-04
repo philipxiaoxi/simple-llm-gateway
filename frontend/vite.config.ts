@@ -59,7 +59,11 @@ export default defineConfig({
     host: '0.0.0.0',
     allowedHosts: ['.monkeycode-ai.online'],
     proxy: {
-      '/api': 'http://127.0.0.1:8000',
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        ws: true,
+      },
       '/v1': 'http://127.0.0.1:8000',
       '/anthropic': 'http://127.0.0.1:8000',
       '/health': 'http://127.0.0.1:8000',

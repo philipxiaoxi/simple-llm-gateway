@@ -357,6 +357,69 @@ class LeaderboardSnapshot(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class VoiceRoom(Base):
+    __tablename__ = "voice_rooms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(12), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class VoiceSettings(Base):
+    __tablename__ = "voice_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stt_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    llm_account_id: Mapped[int | None] = mapped_column(ForeignKey("upstream_accounts.id"), nullable=True)
+    llm_model: Mapped[str] = mapped_column(String(128), default="gpt-4o-mini", nullable=False)
+    llm_prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    llm_account: Mapped[UpstreamAccount | None] = relationship(foreign_keys=[llm_account_id])
+
+
+class VoiceMessage(Base):
+    __tablename__ = "voice_messages"
+    __table_args__ = (UniqueConstraint("room_id", "seq"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    room_id: Mapped[int] = mapped_column(
+        ForeignKey("voice_rooms.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    seq: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    raw_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    audio_size: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    client_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    stt_model: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    llm_model: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    stt_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    llm_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    delivered_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    acked_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    ack_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+
+
+class VoiceLog(Base):
+    __tablename__ = "voice_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    room_id: Mapped[int] = mapped_column(
+        ForeignKey("voice_rooms.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    seq: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    raw_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    detail_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+
+
 class ContentAuditFinding(Base):
     __tablename__ = "content_audit_findings"
     __table_args__ = (

@@ -800,6 +800,20 @@ export const api = {
     request<{ resumed: boolean; message: string }>('/api/admin/content-audit/scan/resume', { method: 'POST' }),
   syncContentAuditLexicon: () =>
     request<ContentAuditLexiconSync>('/api/admin/content-audit/lexicon/sync', { method: 'POST' }),
+  voiceRooms: () => request<VoiceRoom[]>('/api/admin/voice/rooms'),
+  createVoiceRoom: (payload: { name?: string }) =>
+    request<VoiceRoom>('/api/admin/voice/rooms', { method: 'POST', body: JSON.stringify(payload) }),
+  updateVoiceRoom: (id: number, payload: { name?: string; status?: string }) =>
+    request<VoiceRoom>(`/api/admin/voice/rooms/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteVoiceRoom: (id: number) => request<{ ok: boolean }>(`/api/admin/voice/rooms/${id}`, { method: 'DELETE' }),
+  voiceSettings: () => request<VoiceSettings>('/api/admin/voice/settings'),
+  saveVoiceSettings: (payload: Record<string, unknown>) =>
+    request<VoiceSettings>('/api/admin/voice/settings', { method: 'PUT', body: JSON.stringify(payload) }),
+  voiceJoin: (code: string) => request<VoiceRoomJoin>(`/api/voice/rooms/${encodeURIComponent(code)}`),
+  voiceAsrUrl: (code: string) => {
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    return `${proto}://${window.location.host}/api/voice/asr/${encodeURIComponent(code)}`
+  },
 }
 
 export type ContentAuditFinding = {
@@ -887,4 +901,68 @@ export type BenchmarkHistory = {
   total: number
   page: number
   page_size: number
+}
+
+export type VoiceMessageItem = {
+  id: number
+  seq: number
+  raw_text: string
+  text: string
+  stt_model: string
+  llm_model: string
+  delivered_count: number
+  acked_count: number
+  audio_size: number
+  client_ip: string | null
+  created_at: string
+}
+
+export type VoiceLogItem = {
+  id: number
+  seq: number | null
+  kind: string
+  raw_text: string
+  text: string
+  detail: Record<string, unknown> | null
+  created_at: string
+}
+
+export type VoiceRoom = {
+  id: number
+  code: string
+  name: string
+  status: 'active' | 'closed'
+  created_by: string
+  created_at: string
+  online_connections: number
+  mobile_url: string | null
+  recent_messages: VoiceMessageItem[]
+  recent_logs: VoiceLogItem[]
+}
+
+export type VoiceAccountOption = {
+  id: number
+  name: string
+  provider: string
+  base_url: string
+  has_credential: boolean
+}
+
+export type VoiceSettings = {
+  stt_configured: boolean
+  stt_model: string
+  stt_ws_url: string
+  llm_account_id: number | null
+  llm_account_name: string
+  llm_model: string
+  llm_configured: boolean
+  llm_prompt: string
+  llm_accounts: VoiceAccountOption[]
+}
+
+export type VoiceRoomJoin = {
+  ok: boolean
+  code: string
+  name: string
+  status: string
 }

@@ -24,11 +24,13 @@ from app.routers import (
     admin_logs,
     admin_skills,
     admin_tools,
+    admin_voice,
     health,
     local_agent,
     oauth,
     proxy,
     share,
+    voice,
 )
 from app.seed import seed_admin, seed_desktop_tools, seed_skill_categories
 from app.services.desktop_tools import reconcile_stuck_downloads
@@ -85,10 +87,11 @@ app.include_router(admin_dashboard.router)
 app.include_router(admin_skills.router)
 app.include_router(admin_tools.router)
 app.include_router(admin_tools.download_router)
-app.include_router(admin_tools.download_router)
+app.include_router(admin_voice.router)
 app.include_router(oauth.router)
 app.include_router(proxy.router)
 app.include_router(share.router)
+app.include_router(voice.router)
 
 
 class DisableApiCacheMiddleware:

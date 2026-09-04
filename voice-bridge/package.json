@@ -1,0 +1,17 @@
+{
+  "name": "voice-bridge",
+  "version": "1.0.0",
+  "description": "AI一体化服务平台语音输入桌面端：连接服务器房间，收到文本后自动填入当前输入框",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "voice-bridge": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}
