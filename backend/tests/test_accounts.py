@@ -132,8 +132,6 @@ def test_delete_account_blocked_when_keys_exist(client: TestClient, auth_headers
 
 
 def test_delete_account_keeps_request_logs(client: TestClient, auth_headers: dict[str, str]) -> None:
-    from unittest.mock import AsyncMock, patch
-
     created = client.post(
         "/api/admin/accounts",
         headers=auth_headers,

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, RadioTower, ServerCog, ShieldAlert, Sparkles, Timer, Trophy, UserRoundPen, X } from 'lucide-react'
+import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, Mic, RadioTower, ServerCog, ShieldAlert, Sparkles, Timer, Trophy, UserRoundPen, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
@@ -21,6 +21,7 @@ const links = [
   { to: '/jobs', label: '定时任务', icon: Timer },
   { to: '/logs', label: '记录审计', icon: MessageSquareText },
   { to: '/content-audit', label: '内容审计', icon: ShieldAlert },
+  { to: '/voice', label: '语音输入', icon: Mic },
 ]
 
 const tabLinks = [

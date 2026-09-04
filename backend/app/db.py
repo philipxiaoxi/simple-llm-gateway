@@ -46,10 +46,33 @@ def get_session_factory() -> sessionmaker[Session]:
 def init_db() -> None:
     engine = get_engine()
     _migrate_legacy_logs(engine)
+    _migrate_voice_tables(engine)
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
     _ensure_api_keys_account_id_nullable(engine)
     _ensure_request_logs_have_no_parent_fks(engine)
+
+
+def _migrate_voice_tables(engine: Engine) -> None:
+    """语音功能表结构调整时重建表。
+
+    早期版本 voice_settings 使用 stt_base_url / stt_api_key_encrypted 等字段，
+    现在改为直接引用上游账号（stt_account_id / llm_account_id）。配置数据仅有单行，
+    旧配置无法映射到账号，直接重建即可；voice_messages 一并重建以带上新列。
+    """
+    with engine.begin() as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+        }
+        if "voice_settings" not in tables:
+            return
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(voice_settings)"))}
+        if "stt_base_url" not in columns:
+            return
+        for table in ("voice_logs", "voice_messages", "voice_settings"):
+            if table in tables:
+                connection.execute(text(f"DROP TABLE {table}"))
 
 
 def _migrate_legacy_logs(engine: Engine) -> None:

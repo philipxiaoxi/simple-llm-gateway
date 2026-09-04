@@ -58,6 +58,15 @@ class Settings(BaseSettings):
     xai_oauth_token_url: str = "https://auth.x.ai/oauth2/token"
     xai_oauth_redirect_uri: str = "http://127.0.0.1:56121/callback"
     xai_oauth_scope: str = "openid profile email offline_access grok-cli:access api:access"
+    voice_stt_base_url: str = ""
+    voice_stt_api_key: str = ""
+    voice_stt_model: str = "whisper-1"
+    voice_stt_language: str = ""
+    voice_llm_base_url: str = ""
+    voice_llm_api_key: str = ""
+    voice_llm_model: str = "gpt-4o-mini"
+    voice_llm_prompt: str = ""
+    voice_http_timeout_seconds: int = 120
 
     @property
     def database_url(self) -> str:
