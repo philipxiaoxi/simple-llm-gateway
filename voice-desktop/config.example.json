@@ -1,0 +1,13 @@
+{
+  "serverUrl": "wss://你的站/api/voice/desktop/connect",
+  "roomId": "",
+  "token": "",
+  "clientUid": "",
+  "name": "",
+  "insertMode": false,
+  "clipboardRestore": true,
+  "replaceEnabled": true,
+  "commitDelayMs": 600,
+  "pollIntervalMs": 300,
+  "logFile": "~/.llm-gateway-voice.log"
+}

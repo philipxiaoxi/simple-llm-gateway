@@ -1,0 +1,20 @@
+{
+  "name": "voice-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "手机语音输入桌面客户端：把服务端下发的文本注入当前输入框，并在收到修正版时原地替换",
+  "type": "module",
+  "bin": {
+    "voice-desktop": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

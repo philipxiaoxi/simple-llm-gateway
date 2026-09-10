@@ -30,6 +30,7 @@ from app.routers import (
     oauth,
     proxy,
     share,
+    voice_rooms,
 )
 from app.seed import seed_admin, seed_desktop_tools, seed_skill_categories
 from app.services.desktop_tools import reconcile_stuck_downloads
@@ -124,6 +125,9 @@ app.include_router(admin_tools.download_router)
 app.include_router(oauth.router)
 app.include_router(proxy.router)
 app.include_router(share.router)
+app.include_router(voice_rooms.admin_router)
+app.include_router(voice_rooms.public_router)
+app.include_router(voice_rooms.router)
 
 
 class DisableApiCacheMiddleware:
@@ -180,6 +184,13 @@ if FRONTEND_DIST.exists():
         }
     )
     PWA_FILES = frozenset({"manifest.webmanifest", "sw.js"})
+    # dist 根目录下的独立脚本（如语音采集的 AudioWorklet）。
+    # 不显式放行就会被 SPA 兜底成 index.html，浏览器拿它当模块加载会直接失败。
+    ROOT_SCRIPT_FILES = frozenset(
+        path.name
+        for path in FRONTEND_DIST.glob("*.js")
+        if path.is_file() and not path.name.startswith("workbox-")
+    )
 
     # 文件名带内容哈希，可以永久强缓存；预压缩产物命中时直接发送
     app.mount(
@@ -227,6 +238,14 @@ if FRONTEND_DIST.exists():
         if not filename.replace("-", "").isalnum():
             raise HTTPException(status_code=404, detail="Not Found")
         return _frontend_file(f"workbox-{filename}.js", no_cache_headers)
+
+    @app.api_route("/voice-worklet.js", methods=["GET", "HEAD"])
+    def frontend_root_script(request: Request) -> FileResponse:
+        # AudioWorklet 必须拿到 application/javascript，返回 index.html 会让 addModule 直接失败
+        name = request.url.path.lstrip("/")
+        if name not in ROOT_SCRIPT_FILES:
+            raise HTTPException(status_code=404, detail="Not Found")
+        return _frontend_file(name, no_cache_headers)
 
     @app.api_route("/{full_path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
     def spa(full_path: str, request: Request) -> FileResponse:

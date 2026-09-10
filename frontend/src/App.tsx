@@ -30,6 +30,13 @@ const SharePage = lazy(() => import('./pages/Share').then((m) => ({ default: m.S
 const SkillDetailPage = lazy(() => import('./pages/SkillDetail').then((m) => ({ default: m.SkillDetailPage })))
 const SkillsPage = lazy(() => import('./pages/Skills').then((m) => ({ default: m.SkillsPage })))
 const ToolsPage = lazy(() => import('./pages/Tools').then((m) => ({ default: m.ToolsPage })))
+const VoiceRoomsPage = lazy(() => import('./pages/VoiceRooms').then((m) => ({ default: m.VoiceRoomsPage })))
+const VoiceRoomDetailPage = lazy(() =>
+  import('./pages/VoiceRoomDetail').then((m) => ({ default: m.VoiceRoomDetailPage })),
+)
+// 手机端页面是公开的（不能要求管理员登录），单独懒加载，避免被管理端 chunk 牵连。
+const VoiceJoinPage = lazy(() => import('./pages/VoiceJoin').then((m) => ({ default: m.VoiceJoinPage })))
+const VoiceSendPage = lazy(() => import('./pages/VoiceSend').then((m) => ({ default: m.VoiceSendPage })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -68,6 +75,8 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/share" element={<SharePage />} />
             <Route path="/share/leaderboard" element={<PublicLeaderboardPage />} />
+            <Route path="/voice/join" element={<VoiceJoinPage />} />
+            <Route path="/voice/send/:roomId" element={<VoiceSendPage />} />
             <Route
               element={
                 <Guard>
@@ -90,6 +99,8 @@ export default function App() {
               <Route path="/logs" element={<LogsPage />} />
               <Route path="/logs/:id" element={<LogDetailPage />} />
               <Route path="/content-audit" element={<ContentAuditPage />} />
+              <Route path="/voice" element={<VoiceRoomsPage />} />
+              <Route path="/voice/rooms/:roomId" element={<VoiceRoomDetailPage />} />
             </Route>
           </Routes>
         </Suspense>
