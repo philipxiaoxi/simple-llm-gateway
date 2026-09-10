@@ -68,11 +68,11 @@ function EmptyState({ filtered }: { filtered: boolean }) {
 
 export function ContentAuditPage() {
   const queryClient = useQueryClient()
-  const { data: keys = [] } = useQuery({ queryKey: ['keys'], queryFn: () => api.keys() })
+  const { data: keys = [] } = useQuery({ queryKey: ['keys', 'last_used'], queryFn: () => api.keys('last_used') })
   const { data: summary } = useQuery({
     queryKey: ['content-audit-summary'],
     queryFn: api.contentAuditSummary,
-    refetchInterval: (query) => (query.state.data?.running ? 2000 : 15000),
+    refetchInterval: (query) => (query.state.data?.running ? 2000 : 60000),
   })
   const syncLexicon = useMutation({
     mutationFn: api.syncContentAuditLexicon,

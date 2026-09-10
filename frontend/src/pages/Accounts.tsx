@@ -729,7 +729,6 @@ export function AccountsPage() {
     try {
       await api.updateAccountModel(accountId, model.id, { enabled: !enabled })
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      queryClient.invalidateQueries({ queryKey: ['benchmark-accounts'] })
       queryClient.invalidateQueries({ queryKey: ['key-accounts'] })
       notifyOk(enabled ? `已关闭 ${model.id}` : `已启用 ${model.id}`)
     } catch (error) {

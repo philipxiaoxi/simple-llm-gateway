@@ -1,0 +1,406 @@
+{
+  "label": "growth-after-260910",
+  "base_url": "http://127.0.0.1:8002",
+  "runs": 9,
+  "concurrency": 1,
+  "created_at": "2026-09-10 22:36:46",
+  "static": [
+    {
+      "path": "/index.html",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 0.62,
+      "min_ms": 0.59,
+      "max_ms": 9.41,
+      "p95_ms": 1.0,
+      "bytes": 3434,
+      "gzip_bytes": 1247
+    },
+    {
+      "path": "/manifest.webmanifest",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 0.53,
+      "min_ms": 0.52,
+      "max_ms": 0.62,
+      "p95_ms": 0.6,
+      "bytes": 391,
+      "gzip_bytes": 247
+    },
+    {
+      "path": "/sw.js",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 0.55,
+      "min_ms": 0.52,
+      "max_ms": 0.61,
+      "p95_ms": 0.58,
+      "bytes": 2369,
+      "gzip_bytes": 1101
+    },
+    {
+      "path": "/favicon.svg",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 0.57,
+      "min_ms": 0.55,
+      "max_ms": 0.68,
+      "p95_ms": 0.63,
+      "bytes": 10232,
+      "gzip_bytes": 7795
+    }
+  ],
+  "api": [
+    {
+      "path": "/api/admin/me",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 0.75,
+      "min_ms": 0.7,
+      "max_ms": 3.21,
+      "p95_ms": 0.91,
+      "bytes": 21,
+      "gzip_bytes": 41
+    },
+    {
+      "path": "/api/admin/dashboard",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 32.33,
+      "min_ms": 30.09,
+      "max_ms": 79.91,
+      "p95_ms": 74.13,
+      "bytes": 1391,
+      "gzip_bytes": 522
+    },
+    {
+      "path": "/api/admin/accounts",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 0.87,
+      "min_ms": 0.8,
+      "max_ms": 1.29,
+      "p95_ms": 1.0,
+      "bytes": 2650,
+      "gzip_bytes": 418
+    },
+    {
+      "path": "/api/admin/keys",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 3.85,
+      "min_ms": 3.79,
+      "max_ms": 4.21,
+      "p95_ms": 4.06,
+      "bytes": 931,
+      "gzip_bytes": 320
+    },
+    {
+      "path": "/api/admin/logs?page=1&page_size=20",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 1.29,
+      "min_ms": 1.25,
+      "max_ms": 1.59,
+      "p95_ms": 1.52,
+      "bytes": 8866,
+      "gzip_bytes": 1148
+    },
+    {
+      "path": "/api/admin/logs?page=1&page_size=20&status=error",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 6.93,
+      "min_ms": 6.4,
+      "max_ms": 8.84,
+      "p95_ms": 7.32,
+      "bytes": 9041,
+      "gzip_bytes": 1183
+    },
+    {
+      "path": "/api/admin/logs?page=30&page_size=20",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 1.52,
+      "min_ms": 1.37,
+      "max_ms": 1.98,
+      "p95_ms": 1.54,
+      "bytes": 8835,
+      "gzip_bytes": 1162
+    },
+    {
+      "path": "/api/admin/leaderboard",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 65.16,
+      "min_ms": 24.31,
+      "max_ms": 72.15,
+      "p95_ms": 71.22,
+      "bytes": 72230,
+      "gzip_bytes": 2995
+    },
+    {
+      "path": "/api/admin/benchmark/history?page=1",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 1.65,
+      "min_ms": 1.53,
+      "max_ms": 2.26,
+      "p95_ms": 1.82,
+      "bytes": 2548,
+      "gzip_bytes": 380
+    },
+    {
+      "path": "/api/admin/content-audit/summary",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 32.75,
+      "min_ms": 32.02,
+      "max_ms": 40.52,
+      "p95_ms": 33.84,
+      "bytes": 417,
+      "gzip_bytes": 240
+    },
+    {
+      "path": "/api/admin/content-audit/findings?page=1",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 1.08,
+      "min_ms": 0.99,
+      "max_ms": 1.47,
+      "p95_ms": 1.24,
+      "bytes": 7241,
+      "gzip_bytes": 984
+    },
+    {
+      "path": "/api/admin/content-audit/findings?page=1&category=secret",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 1.84,
+      "min_ms": 1.78,
+      "max_ms": 3.23,
+      "p95_ms": 2.31,
+      "bytes": 7269,
+      "gzip_bytes": 901
+    },
+    {
+      "path": "/api/admin/content-audit/findings?page=1&severity=high",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 3.59,
+      "min_ms": 3.57,
+      "max_ms": 4.11,
+      "p95_ms": 3.85,
+      "bytes": 7374,
+      "gzip_bytes": 952
+    },
+    {
+      "path": "/api/admin/jobs",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 34.07,
+      "min_ms": 32.58,
+      "max_ms": 34.9,
+      "p95_ms": 34.61,
+      "bytes": 3213,
+      "gzip_bytes": 1101
+    },
+    {
+      "path": "/api/admin/tools",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 0.8,
+      "min_ms": 0.73,
+      "max_ms": 1.01,
+      "p95_ms": 0.89,
+      "bytes": 333,
+      "gzip_bytes": 283
+    },
+    {
+      "path": "/api/admin/skills",
+      "status": 200,
+      "errors": 0,
+      "median_ms": 0.96,
+      "min_ms": 0.93,
+      "max_ms": 1.06,
+      "p95_ms": 1.01,
+      "bytes": 239,
+      "gzip_bytes": 141
+    }
+  ],
+  "bundle": [
+    {
+      "path": "assets/vendor-BoHFzUPW.js",
+      "bytes": 352969,
+      "gzip_bytes": 109363
+    },
+    {
+      "path": "pwa-512x512.png",
+      "bytes": 261599,
+      "gzip_bytes": 261697
+    },
+    {
+      "path": "assets/index-oSPbQkii.css",
+      "bytes": 66041,
+      "gzip_bytes": 12153
+    },
+    {
+      "path": "pwa-192x192.png",
+      "bytes": 44974,
+      "gzip_bytes": 45007
+    },
+    {
+      "path": "apple-touch-icon.png",
+      "bytes": 40436,
+      "gzip_bytes": 40469
+    },
+    {
+      "path": "assets/index-C3wdKPb7.js",
+      "bytes": 39019,
+      "gzip_bytes": 11601
+    },
+    {
+      "path": "assets/Accounts-Dl61Zdx6.js",
+      "bytes": 25407,
+      "gzip_bytes": 7773
+    },
+    {
+      "path": "assets/Skills-_JIuEAN4.js",
+      "bytes": 21665,
+      "gzip_bytes": 5847
+    },
+    {
+      "path": "assets/Benchmark-C9ddPT9Z.js",
+      "bytes": 20381,
+      "gzip_bytes": 5519
+    },
+    {
+      "path": "assets/Keys-CGbN5paa.js",
+      "bytes": 19896,
+      "gzip_bytes": 6198
+    },
+    {
+      "path": "assets/Share-DOQLmkai.js",
+      "bytes": 18358,
+      "gzip_bytes": 5906
+    },
+    {
+      "path": "workbox-9c191d2f.js",
+      "bytes": 15112,
+      "gzip_bytes": 5208
+    },
+    {
+      "path": "assets/Tools-CpGgYgZ4.js",
+      "bytes": 12757,
+      "gzip_bytes": 3994
+    },
+    {
+      "path": "assets/shareTransfer-B1hmw5XE.js",
+      "bytes": 12194,
+      "gzip_bytes": 4122
+    },
+    {
+      "path": "assets/ContentAudit-BwQHem3W.js",
+      "bytes": 11107,
+      "gzip_bytes": 3341
+    },
+    {
+      "path": "favicon.svg",
+      "bytes": 10232,
+      "gzip_bytes": 7795
+    },
+    {
+      "path": "assets/LeaderboardView-BGqnE34I.js",
+      "bytes": 10047,
+      "gzip_bytes": 2657
+    },
+    {
+      "path": "assets/SkillDetail-DmXj0akx.js",
+      "bytes": 9638,
+      "gzip_bytes": 3291
+    },
+    {
+      "path": "assets/AgentDetail-DbYeRU7f.js",
+      "bytes": 9469,
+      "gzip_bytes": 3084
+    },
+    {
+      "path": "assets/Logs-Bdq-6PNF.js",
+      "bytes": 7875,
+      "gzip_bytes": 2278
+    },
+    {
+      "path": "assets/LogDetail-BVU_1vxP.js",
+      "bytes": 6784,
+      "gzip_bytes": 2668
+    },
+    {
+      "path": "assets/BenchmarkHistory-B5ianVWi.js",
+      "bytes": 5936,
+      "gzip_bytes": 2140
+    },
+    {
+      "path": "assets/Jobs-C-Y02NI9.js",
+      "bytes": 5682,
+      "gzip_bytes": 2447
+    },
+    {
+      "path": "index.html",
+      "bytes": 3434,
+      "gzip_bytes": 1247
+    },
+    {
+      "path": "assets/Agents-DozctukM.js",
+      "bytes": 2785,
+      "gzip_bytes": 1223
+    },
+    {
+      "path": "favicon.png",
+      "bytes": 2744,
+      "gzip_bytes": 2767
+    },
+    {
+      "path": "sw.js",
+      "bytes": 2369,
+      "gzip_bytes": 1101
+    },
+    {
+      "path": "assets/Leaderboard-DbDDU5wH.js",
+      "bytes": 2320,
+      "gzip_bytes": 1045
+    },
+    {
+      "path": "assets/Pagination-BihU2zcs.js",
+      "bytes": 2052,
+      "gzip_bytes": 886
+    },
+    {
+      "path": "assets/PublicLeaderboard-DLKZkHuE.js",
+      "bytes": 1366,
+      "gzip_bytes": 781
+    },
+    {
+      "path": "assets/rolldown-runtime-hePW80VL.js",
+      "bytes": 716,
+      "gzip_bytes": 430
+    },
+    {
+      "path": "manifest.webmanifest",
+      "bytes": 391,
+      "gzip_bytes": 247
+    }
+  ],
+  "headers": [
+    "/index.html: {\"cache-control\": \"no-cache\", \"content-length\": \"3434\", \"content-type\": \"text/html; charset=utf-8\", \"etag\": \"\\\"aa039e4b7f51d78137f9cb09caaf5140\\\"\"}",
+    "/manifest.webmanifest: {\"cache-control\": \"no-cache\", \"content-length\": \"391\", \"content-type\": \"application/manifest+json\", \"etag\": \"\\\"dbbbfcc79e63777dffed5ad6d201b86f\\\"\"}",
+    "/sw.js: {\"cache-control\": \"no-cache\", \"content-length\": \"2369\", \"content-type\": \"text/javascript; charset=utf-8\", \"etag\": \"\\\"d679fe26e0556ebc8ec21e0b144b19a9\\\"\"}",
+    "/favicon.svg: {\"cache-control\": \"public, max-age=86400\", \"content-length\": \"10232\", \"content-type\": \"image/svg+xml\", \"etag\": \"\\\"be728728a2bb4b5a525c4bba15652d8c\\\"\"}",
+    "/assets/: {\"error\": \"HTTP 404\"}"
+  ],
+  "head_checks": [
+    "/index.html: GET=('text/html; charset=utf-8', '3434') HEAD=('text/html; charset=utf-8', '3434') -> 一致",
+    "/manifest.webmanifest: GET=('application/manifest+json', '391') HEAD=('application/manifest+json', '391') -> 一致",
+    "/sw.js: GET=('text/javascript; charset=utf-8', '2369') HEAD=('text/javascript; charset=utf-8', '2369') -> 一致",
+    "/favicon.svg: GET=('image/svg+xml', '10232') HEAD=('image/svg+xml', '10232') -> 一致"
+  ]
+}

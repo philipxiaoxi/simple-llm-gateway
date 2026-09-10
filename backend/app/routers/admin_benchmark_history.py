@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.clock import utcnow
@@ -78,6 +78,19 @@ def run_to_dict(run: BenchmarkRun, include_results: bool = True) -> dict[str, An
     return data
 
 
+def run_summary_to_dict(run: BenchmarkRun, counts: tuple[int, int]) -> dict[str, Any]:
+    """列表用的轻量结构：条数由 SQL 聚合得到，不加载 results。"""
+    result_count, success_count = counts
+    return {
+        "id": run.id,
+        "prompt": run.prompt,
+        "max_tokens": run.max_tokens,
+        "created_at": run.created_at.isoformat(),
+        "result_count": int(result_count or 0),
+        "success_count": int(success_count or 0),
+    }
+
+
 @router.post("")
 def save_benchmark(
     payload: SaveBenchmarkRequest,
@@ -118,12 +131,26 @@ def list_benchmark_runs(
     total = db.scalar(select(func.count()).select_from(BenchmarkRun)) or 0
     rows = db.scalars(
         select(BenchmarkRun)
-        .options(selectinload(BenchmarkRun.results))
         .order_by(BenchmarkRun.created_at.desc(), BenchmarkRun.id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
-    return {"items": [run_to_dict(row, include_results=False) for row in rows], "total": total, "page": page, "page_size": page_size}
+    # 列表只需要条数，用 SQL 聚合；逐行加载 results 在历史变大后是主要开销
+    run_ids = [row.id for row in rows]
+    counts = {
+        run_id: (int(result_count or 0), int(success_count or 0))
+        for run_id, result_count, success_count in db.execute(
+            select(
+                BenchmarkResult.run_id,
+                func.count(),
+                func.sum(case((BenchmarkResult.ok.is_(True), 1), else_=0)),
+            )
+            .where(BenchmarkResult.run_id.in_(run_ids or [0]))
+            .group_by(BenchmarkResult.run_id)
+        ).all()
+    }
+    items = [run_summary_to_dict(row, counts.get(row.id, (0, 0))) for row in rows]
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/export")

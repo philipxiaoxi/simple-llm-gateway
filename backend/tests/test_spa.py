@@ -70,3 +70,55 @@ def test_spa_does_not_swallow_unknown_api_posts(client: TestClient) -> None:
     assert response.status_code == 404
     assert "Method Not Allowed" not in response.text
     assert response.headers.get("cache-control") == "no-store"
+
+
+def test_missing_static_file_returns_404_not_500(client: TestClient) -> None:
+    """dist 里没有的文件（例如已下线的图标）应报 404，不能抛 500。"""
+    from app.main import FRONTEND_DIST
+
+    if not FRONTEND_DIST.exists():
+        pytest.skip("frontend dist 不存在")
+    response = client.get("/icons.svg")
+    assert response.status_code in {200, 404}
+    assert response.status_code != 500
+
+
+@pytest.mark.parametrize("path", ["/favicon.svg", "/sw.js", "/manifest.webmanifest"])
+def test_head_matches_get_for_static_files(client: TestClient, path: str) -> None:
+    """HEAD 必须返回该路径自己的元数据，不能落到 SPA 的 index.html。"""
+    from app.main import FRONTEND_DIST
+
+    if not FRONTEND_DIST.exists():
+        pytest.skip("frontend dist 不存在")
+    get_response = client.get(path)
+    head_response = client.head(path)
+    assert head_response.status_code == get_response.status_code
+    assert head_response.headers["content-type"] == get_response.headers["content-type"]
+    assert head_response.headers["cache-control"] == get_response.headers["cache-control"]
+    # 文本响应经过 gzip 后 GET 不带 content-length，只有未压缩时才要求一致
+    if get_response.status_code == 200 and "content-length" in get_response.headers:
+        assert head_response.headers["content-length"] == get_response.headers["content-length"]
+
+
+def test_self_hosted_fonts_are_served_as_fonts(client: TestClient) -> None:
+    """字体必须由 /fonts 直接托管；落到 SPA 兜底会拿到 HTML，浏览器静默回退系统字体。"""
+    from app.main import FRONTEND_DIST
+
+    font_dir = FRONTEND_DIST / "fonts"
+    if not font_dir.is_dir() or not any(font_dir.glob("*.woff2")):
+        pytest.skip("未自托管字体")
+    name = sorted(font_dir.glob("*.woff2"))[0].name
+    response = client.get(f"/fonts/{name}")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "font/woff2"
+    assert response.headers["cache-control"].startswith("public, max-age=")
+    assert response.content[:4] == b"wOF2"
+
+
+def test_unknown_font_path_is_not_spa_fallback(client: TestClient) -> None:
+    from app.main import FRONTEND_DIST
+
+    if not (FRONTEND_DIST / "fonts").is_dir():
+        pytest.skip("未自托管字体")
+    response = client.get("/fonts/does-not-exist.woff2")
+    assert response.status_code == 404

@@ -377,7 +377,9 @@ export function ToolsPage() {
   const { data = [], isFetching } = useQuery({
     queryKey: ["desktop-tools"],
     queryFn: api.desktopTools,
-    refetchInterval: 1500,
+    // 仅在确有下载中的工具时轮询，空闲时不再固定 1.5s 请求一次
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((item) => item.status === "downloading") ? 1500 : false,
   });
   const items = data.filter((item) =>
     `${item.name} ${item.description} ${item.platform}`

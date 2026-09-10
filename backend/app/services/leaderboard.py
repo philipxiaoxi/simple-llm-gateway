@@ -15,6 +15,8 @@ from app.models import BenchmarkResult, BenchmarkRun, GatewayAgent, GatewayAgent
 from app.services import model_caps as model_caps_service
 
 USER_AGENT = "simple-llm-gateway/0.1 (internal cache; not a public mirror)"
+# 排行榜/仪表盘只回看最近这么多次测速，避免随历史增长全表重算
+BENCHMARK_LOOKBACK_RUNS = 30
 RSC_HEADERS = {
     "RSC": "1",
     "Accept": "text/x-component",
@@ -306,6 +308,18 @@ def mask_public_label(value: str | None) -> str:
 
 
 def _latest_successful_benchmarks(db: Session) -> dict[str, dict[str, Any]]:
+    """最近若干次测速里，每个模型的首条成功结果。
+
+    早期实现扫描整张 benchmark_results 表再在 Python 里去重，测速历史增长后
+    每次仪表盘/排行榜请求都要全表重算（2 万条结果时约 153 ms）。这里只回看
+    最近 BENCHMARK_LOOKBACK_RUNS 次运行，`created_at DESC, id DESC` 的排序语义不变。
+    """
+    recent_runs = (
+        select(BenchmarkRun.id)
+        .order_by(BenchmarkRun.created_at.desc(), BenchmarkRun.id.desc())
+        .limit(BENCHMARK_LOOKBACK_RUNS)
+        .scalar_subquery()
+    )
     rows = db.execute(
         select(BenchmarkResult, BenchmarkRun.created_at)
         .join(BenchmarkRun, BenchmarkRun.id == BenchmarkResult.run_id)
@@ -313,6 +327,7 @@ def _latest_successful_benchmarks(db: Session) -> dict[str, dict[str, Any]]:
             BenchmarkResult.ok.is_(True),
             BenchmarkResult.output_tokens_per_second.is_not(None),
             BenchmarkResult.output_tokens_per_second > 0,
+            BenchmarkResult.run_id.in_(recent_runs),
         )
         .order_by(BenchmarkRun.created_at.desc(), BenchmarkResult.id.desc())
     ).all()
@@ -486,6 +501,9 @@ async def get_leaderboard(
     snapshot = _latest_snapshot(db)
     if public or not force:
         has_entries = bool(snapshot and snapshot.entries_json and snapshot.entries_json != "[]")
+        # 这里刻意不丢线程池：payload 组装是 GIL 绑定的 Python 计算，实测 5 并发下
+        # 丢线程池反而更慢（35 ms vs 14 ms，线程切换 + 连接争用）。
+        # 有效的手段是收窄查询范围，见 BENCHMARK_LOOKBACK_RUNS。
         return snapshot_to_payload(
             db,
             snapshot,

@@ -13,15 +13,30 @@ export function PwaUpdater() {
   useEffect(() => {
     let cancelled = false
     let timer = 0
-    registerSW({
-      immediate: true,
-      onRegisteredSW(_scriptUrl, registration) {
-        if (cancelled || !registration) return
-        timer = window.setInterval(() => {
-          void registration.update()
-        }, CHECK_INTERVAL_MS)
-      },
-    })
+    let idleHandle: number | null = null
+    const start = () => {
+      if (cancelled) return
+      registerSW({
+        onRegisteredSW(_scriptUrl, registration) {
+          if (cancelled || !registration) return
+          timer = window.setInterval(() => {
+            void registration.update()
+          }, CHECK_INTERVAL_MS)
+        },
+      })
+    }
+    // 首屏 load 之后再注册 SW（优先空闲时机），避免安装与预缓存和首屏资源抢带宽。
+    const schedule = () => {
+      if (cancelled) return
+      if (typeof window.requestIdleCallback === 'function') {
+        idleHandle = window.requestIdleCallback(start, { timeout: 3000 })
+      } else {
+        start()
+      }
+    }
+    if (document.readyState === 'complete') schedule()
+    else window.addEventListener('load', schedule, { once: true })
+
     const onVisible = () => {
       if (document.visibilityState === 'visible') checkServiceWorkerUpdate()
     }
@@ -30,6 +45,10 @@ export function PwaUpdater() {
     return () => {
       cancelled = true
       window.clearInterval(timer)
+      if (idleHandle !== null && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleHandle)
+      }
+      window.removeEventListener('load', schedule)
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', checkServiceWorkerUpdate)
     }
