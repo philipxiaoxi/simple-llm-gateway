@@ -1,0 +1,214 @@
+{
+  "label": "baseline-260910",
+  "base_url": "http://127.0.0.1:8000",
+  "runs": 7,
+  "created_at": "2026-09-10 22:17:38",
+  "static": [
+    {
+      "path": "/index.html",
+      "status": 200,
+      "median_ms": 1.86,
+      "min_ms": 1.06,
+      "p95_ms": 2.39,
+      "bytes": 3442,
+      "gzip_bytes": 1250
+    },
+    {
+      "path": "/manifest.webmanifest",
+      "status": 200,
+      "median_ms": 1.06,
+      "min_ms": 0.93,
+      "p95_ms": 1.36,
+      "bytes": 391,
+      "gzip_bytes": 247
+    },
+    {
+      "path": "/sw.js",
+      "status": 200,
+      "median_ms": 1.0,
+      "min_ms": 0.92,
+      "p95_ms": 1.1,
+      "bytes": 1883,
+      "gzip_bytes": 952
+    },
+    {
+      "path": "/favicon.svg",
+      "status": 200,
+      "median_ms": 0.59,
+      "min_ms": 0.53,
+      "p95_ms": 0.72,
+      "bytes": 10232,
+      "gzip_bytes": 7795
+    }
+  ],
+  "api": [
+    {
+      "path": "/api/admin/me",
+      "status": 200,
+      "median_ms": 0.77,
+      "min_ms": 0.69,
+      "p95_ms": 0.84,
+      "bytes": 21,
+      "gzip_bytes": 41
+    },
+    {
+      "path": "/api/admin/dashboard",
+      "status": 200,
+      "median_ms": 5.05,
+      "min_ms": 4.92,
+      "p95_ms": 5.38,
+      "bytes": 1423,
+      "gzip_bytes": 530
+    },
+    {
+      "path": "/api/admin/accounts",
+      "status": 200,
+      "median_ms": 1.7,
+      "min_ms": 1.55,
+      "p95_ms": 1.72,
+      "bytes": 36030,
+      "gzip_bytes": 2257
+    },
+    {
+      "path": "/api/admin/keys",
+      "status": 200,
+      "median_ms": 1.39,
+      "min_ms": 1.3,
+      "p95_ms": 1.57,
+      "bytes": 1231,
+      "gzip_bytes": 462
+    },
+    {
+      "path": "/api/admin/logs?page=1&page_size=20",
+      "status": 200,
+      "median_ms": 1.31,
+      "min_ms": 1.24,
+      "p95_ms": 1.49,
+      "bytes": 10291,
+      "gzip_bytes": 1537
+    },
+    {
+      "path": "/api/admin/leaderboard",
+      "status": 200,
+      "median_ms": 4.46,
+      "min_ms": 4.32,
+      "p95_ms": 4.52,
+      "bytes": 45914,
+      "gzip_bytes": 4958
+    },
+    {
+      "path": "/api/admin/benchmark/history?page=1",
+      "status": 200,
+      "median_ms": 1.52,
+      "min_ms": 1.38,
+      "p95_ms": 1.6,
+      "bytes": 770,
+      "gzip_bytes": 284
+    },
+    {
+      "path": "/api/admin/content-audit/findings?page=1",
+      "status": 200,
+      "median_ms": 1.02,
+      "min_ms": 0.96,
+      "p95_ms": 1.13,
+      "bytes": 46,
+      "gzip_bytes": 60
+    },
+    {
+      "path": "/api/admin/jobs",
+      "status": 200,
+      "median_ms": 2.25,
+      "min_ms": 2.08,
+      "p95_ms": 2.38,
+      "bytes": 3382,
+      "gzip_bytes": 1178
+    },
+    {
+      "path": "/api/admin/tools",
+      "status": 200,
+      "median_ms": 0.84,
+      "min_ms": 0.79,
+      "p95_ms": 0.94,
+      "bytes": 333,
+      "gzip_bytes": 284
+    },
+    {
+      "path": "/api/admin/skills",
+      "status": 200,
+      "median_ms": 1.06,
+      "min_ms": 1.02,
+      "p95_ms": 1.17,
+      "bytes": 539,
+      "gzip_bytes": 268
+    }
+  ],
+  "bundle": [
+    {
+      "path": "assets/index-DcRPg1Na.js",
+      "bytes": 575026,
+      "gzip_bytes": 160291
+    },
+    {
+      "path": "pwa-512x512.png",
+      "bytes": 261599,
+      "gzip_bytes": 261697
+    },
+    {
+      "path": "assets/index-Brn8kp2W.css",
+      "bytes": 64395,
+      "gzip_bytes": 11816
+    },
+    {
+      "path": "pwa-192x192.png",
+      "bytes": 44974,
+      "gzip_bytes": 45007
+    },
+    {
+      "path": "apple-touch-icon.png",
+      "bytes": 40436,
+      "gzip_bytes": 40469
+    },
+    {
+      "path": "workbox-99865a2e.js",
+      "bytes": 21755,
+      "gzip_bytes": 7413
+    },
+    {
+      "path": "favicon.svg",
+      "bytes": 10232,
+      "gzip_bytes": 7795
+    },
+    {
+      "path": "assets/workbox-window.prod.es5-Bd17z0YL.js",
+      "bytes": 5653,
+      "gzip_bytes": 2214
+    },
+    {
+      "path": "index.html",
+      "bytes": 3442,
+      "gzip_bytes": 1250
+    },
+    {
+      "path": "favicon.png",
+      "bytes": 2744,
+      "gzip_bytes": 2767
+    },
+    {
+      "path": "sw.js",
+      "bytes": 1883,
+      "gzip_bytes": 952
+    },
+    {
+      "path": "manifest.webmanifest",
+      "bytes": 391,
+      "gzip_bytes": 247
+    }
+  ],
+  "headers": [
+    "/index.html: {\"cache-control\": \"no-cache\", \"content-length\": \"3442\", \"content-type\": \"text/html; charset=utf-8\", \"etag\": \"\\\"e56eef2c3783a24e7830a162b2df85d7\\\"\"}",
+    "/manifest.webmanifest: {\"cache-control\": \"no-cache\", \"content-length\": \"3442\", \"content-type\": \"text/html; charset=utf-8\", \"etag\": \"\\\"e56eef2c3783a24e7830a162b2df85d7\\\"\"}",
+    "/sw.js: {\"cache-control\": \"no-cache\", \"content-length\": \"3442\", \"content-type\": \"text/html; charset=utf-8\", \"etag\": \"\\\"e56eef2c3783a24e7830a162b2df85d7\\\"\"}",
+    "/favicon.svg: {\"cache-control\": \"no-cache\", \"content-length\": \"3442\", \"content-type\": \"text/html; charset=utf-8\", \"etag\": \"\\\"e56eef2c3783a24e7830a162b2df85d7\\\"\"}",
+    "/assets/: {\"error\": \"HTTP 404\"}"
+  ]
+}

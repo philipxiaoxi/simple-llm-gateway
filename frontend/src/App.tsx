@@ -1,34 +1,60 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { Suspense, lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { Layout } from './components/Layout'
 import { PwaUpdater } from './components/PwaUpdate'
 import { getToken } from './lib/api'
-import { AccountsPage } from './pages/Accounts'
-import { AgentDetailPage } from './pages/AgentDetail'
-import { AgentsPage } from './pages/Agents'
 import { DashboardPage } from './pages/Dashboard'
-import { KeysPage } from './pages/Keys'
-import { BenchmarkPage } from './pages/Benchmark'
-import { BenchmarkHistoryPage } from './pages/BenchmarkHistory'
-import { LeaderboardPage } from './pages/Leaderboard'
-import { LogDetailPage } from './pages/LogDetail'
 import { LoginPage } from './pages/Login'
-import { LogsPage } from './pages/Logs'
-import { PublicLeaderboardPage } from './pages/PublicLeaderboard'
-import { SharePage } from './pages/Share'
-import { SkillDetailPage } from './pages/SkillDetail'
-import { SkillsPage } from './pages/Skills'
-import { ContentAuditPage } from './pages/ContentAudit'
-import { JobsPage } from './pages/Jobs'
-import { ToolsPage } from './pages/Tools'
 import type { ReactElement } from 'react'
 
-const queryClient = new QueryClient()
+// 首屏只需要仪表盘和登录页，其余页面按路由懒加载，避免打进入口 chunk。
+const AccountsPage = lazy(() => import('./pages/Accounts').then((m) => ({ default: m.AccountsPage })))
+const AgentDetailPage = lazy(() => import('./pages/AgentDetail').then((m) => ({ default: m.AgentDetailPage })))
+const AgentsPage = lazy(() => import('./pages/Agents').then((m) => ({ default: m.AgentsPage })))
+const BenchmarkPage = lazy(() => import('./pages/Benchmark').then((m) => ({ default: m.BenchmarkPage })))
+const BenchmarkHistoryPage = lazy(() =>
+  import('./pages/BenchmarkHistory').then((m) => ({ default: m.BenchmarkHistoryPage })),
+)
+const ContentAuditPage = lazy(() => import('./pages/ContentAudit').then((m) => ({ default: m.ContentAuditPage })))
+const JobsPage = lazy(() => import('./pages/Jobs').then((m) => ({ default: m.JobsPage })))
+const KeysPage = lazy(() => import('./pages/Keys').then((m) => ({ default: m.KeysPage })))
+const LeaderboardPage = lazy(() => import('./pages/Leaderboard').then((m) => ({ default: m.LeaderboardPage })))
+const LogDetailPage = lazy(() => import('./pages/LogDetail').then((m) => ({ default: m.LogDetailPage })))
+const LogsPage = lazy(() => import('./pages/Logs').then((m) => ({ default: m.LogsPage })))
+const PublicLeaderboardPage = lazy(() =>
+  import('./pages/PublicLeaderboard').then((m) => ({ default: m.PublicLeaderboardPage })),
+)
+const SharePage = lazy(() => import('./pages/Share').then((m) => ({ default: m.SharePage })))
+const SkillDetailPage = lazy(() => import('./pages/SkillDetail').then((m) => ({ default: m.SkillDetailPage })))
+const SkillsPage = lazy(() => import('./pages/Skills').then((m) => ({ default: m.SkillsPage })))
+const ToolsPage = lazy(() => import('./pages/Tools').then((m) => ({ default: m.ToolsPage })))
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // 30s 内复用缓存，避免每次挂载/切页都重新请求。
+      staleTime: 30_000,
+      // 切回标签页不再全量刷新，交由各页面的 refetchInterval 控制实时性。
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+})
 
 function Guard({ children }: { children: ReactElement }) {
   if (!getToken()) return <Navigate to="/login" replace />
   return children
+}
+
+// 懒加载期间的兜底画面，沿用启动画面（#boot-splash）的深色样式，避免白屏闪烁。
+function RouteFallback() {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink" aria-hidden="true">
+      <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-signal/20 border-t-signal" />
+    </div>
+  )
 }
 
 export default function App() {
@@ -37,34 +63,36 @@ export default function App() {
       <PwaUpdater />
       <Toaster theme="dark" position="top-center" richColors closeButton />
       <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/share" element={<SharePage />} />
-          <Route path="/share/leaderboard" element={<PublicLeaderboardPage />} />
-          <Route
-            element={
-              <Guard>
-                <Layout />
-              </Guard>
-            }
-          >
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/accounts" element={<AccountsPage />} />
-            <Route path="/agents" element={<AgentsPage />} />
-            <Route path="/agents/:agentId" element={<AgentDetailPage />} />
-            <Route path="/keys" element={<KeysPage />} />
-            <Route path="/skills" element={<SkillsPage />} />
-            <Route path="/skills/:skillId" element={<SkillDetailPage />} />
-            <Route path="/tools" element={<ToolsPage />} />
-            <Route path="/benchmark" element={<BenchmarkPage />} />
-            <Route path="/benchmark/history" element={<BenchmarkHistoryPage />} />
-            <Route path="/leaderboard" element={<LeaderboardPage />} />
-            <Route path="/jobs" element={<JobsPage />} />
-            <Route path="/logs" element={<LogsPage />} />
-            <Route path="/logs/:id" element={<LogDetailPage />} />
-            <Route path="/content-audit" element={<ContentAuditPage />} />
-          </Route>
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/share" element={<SharePage />} />
+            <Route path="/share/leaderboard" element={<PublicLeaderboardPage />} />
+            <Route
+              element={
+                <Guard>
+                  <Layout />
+                </Guard>
+              }
+            >
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/accounts" element={<AccountsPage />} />
+              <Route path="/agents" element={<AgentsPage />} />
+              <Route path="/agents/:agentId" element={<AgentDetailPage />} />
+              <Route path="/keys" element={<KeysPage />} />
+              <Route path="/skills" element={<SkillsPage />} />
+              <Route path="/skills/:skillId" element={<SkillDetailPage />} />
+              <Route path="/tools" element={<ToolsPage />} />
+              <Route path="/benchmark" element={<BenchmarkPage />} />
+              <Route path="/benchmark/history" element={<BenchmarkHistoryPage />} />
+              <Route path="/leaderboard" element={<LeaderboardPage />} />
+              <Route path="/jobs" element={<JobsPage />} />
+              <Route path="/logs" element={<LogsPage />} />
+              <Route path="/logs/:id" element={<LogDetailPage />} />
+              <Route path="/content-audit" element={<ContentAuditPage />} />
+            </Route>
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </QueryClientProvider>
   )

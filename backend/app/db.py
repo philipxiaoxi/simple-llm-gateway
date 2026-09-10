@@ -138,6 +138,41 @@ def _ensure_columns(engine: Engine) -> None:
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_request_logs_updated_at ON request_logs (updated_at)")
         )
+        # 列表与统计的真实筛选/排序组合；缺少这些索引时 status 过滤会退化成全表扫描
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_request_logs_status_created_at ON request_logs (status, created_at)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_request_logs_model ON request_logs (model)")
+        )
+        # /api/admin/keys 的用量汇总按 api_key_id 过滤后要读 created_at 与 total_tokens
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_request_logs_api_key_usage "
+                "ON request_logs (api_key_id, created_at, total_tokens)"
+            )
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_skills_updated_at ON skills (updated_at, id)")
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_content_audit_findings_category "
+                "ON content_audit_findings (category)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_content_audit_findings_severity "
+                "ON content_audit_findings (severity)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_benchmark_results_speed "
+                "ON benchmark_results (ok, output_tokens_per_second)"
+            )
+        )
         connection.execute(
             text("UPDATE request_logs SET updated_at = created_at WHERE updated_at IS NULL")
         )

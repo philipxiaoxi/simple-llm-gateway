@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, load_only
 
 from app.db import get_db
 from app.deps import get_current_admin
@@ -12,6 +12,28 @@ from app.serializers import log_to_out
 from app.services.conversation import decode_stored_message
 
 router = APIRouter(prefix="/api/admin/logs", tags=["admin-logs"], dependencies=[Depends(get_current_admin)])
+
+# 列表接口实际用到的列；正文与 reasoning 只在详情接口读取
+_LIST_COLUMNS = (
+    RequestLog.id,
+    RequestLog.account_id,
+    RequestLog.account_name,
+    RequestLog.account_source,
+    RequestLog.api_key_id,
+    RequestLog.api_key_name,
+    RequestLog.protocol,
+    RequestLog.model,
+    RequestLog.stream,
+    RequestLog.status,
+    RequestLog.http_status,
+    RequestLog.error_message,
+    RequestLog.prompt_tokens,
+    RequestLog.completion_tokens,
+    RequestLog.total_tokens,
+    RequestLog.latency_ms,
+    RequestLog.created_at,
+    RequestLog.updated_at,
+)
 
 
 @router.get("", response_model=LogListOut)
@@ -45,7 +67,12 @@ def list_logs(
     total = db.scalar(select(func.count()).select_from(filters.subquery())) or 0
     offset = (page - 1) * page_size
     rows = db.scalars(
-        filters.options(joinedload(RequestLog.api_key), joinedload(RequestLog.account))
+        filters.options(
+            # 列表不返回正文，别把 request_body/response_body/reasoning_json 读出来
+            load_only(*_LIST_COLUMNS),
+            joinedload(RequestLog.api_key),
+            joinedload(RequestLog.account),
+        )
         .order_by(RequestLog.updated_at.desc(), RequestLog.id.desc())
         .offset(offset)
         .limit(page_size)

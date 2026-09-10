@@ -285,3 +285,53 @@ def test_dashboard_benchmark_speed_top_shows_recent_successful_runs(
     assert [item["model"] for item in top] == ["second", "first"]
     assert [item["output_tokens_per_second"] for item in top] == [120.0, 10.0]
     assert top[0]["created_at"] is not None
+
+
+def test_benchmark_history_list_reports_counts(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """列表接口的条数由 SQL 聚合得到，必须与实际结果一致。"""
+    saved = client.post(
+        "/api/admin/benchmark/history",
+        headers=auth_headers,
+        json={
+            "prompt": "计数",
+            "max_tokens": 32,
+            "results": [
+                {
+                    "account_id": 1,
+                    "account_name": "A",
+                    "provider": "deepseek",
+                    "model": "m-ok",
+                    "ok": True,
+                    "timeout": False,
+                    "output_tokens_per_second": 12.5,
+                },
+                {
+                    "account_id": 1,
+                    "account_name": "A",
+                    "provider": "deepseek",
+                    "model": "m-fail",
+                    "ok": False,
+                    "timeout": True,
+                    "error": "超时",
+                },
+            ],
+        },
+    )
+    assert saved.status_code == 200
+    run_id = saved.json()["id"]
+
+    listing = client.get("/api/admin/benchmark/history", headers=auth_headers)
+    assert listing.status_code == 200
+    body = listing.json()
+    assert body["total"] == 1
+    item = body["items"][0]
+    assert item["id"] == run_id
+    assert item["result_count"] == 2
+    assert item["success_count"] == 1
+    assert "results" not in item
+
+    detail = client.get(f"/api/admin/benchmark/history/{run_id}", headers=auth_headers)
+    assert detail.status_code == 200
+    assert len(detail.json()["results"]) == 2

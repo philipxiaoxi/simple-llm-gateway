@@ -75,7 +75,7 @@ function ResultBadge({ result, isTesting }: { result?: BenchmarkResult; isTestin
 
 export function BenchmarkPage() {
   const queryClient = useQueryClient()
-  const { data: accounts = [], isLoading } = useQuery({ queryKey: ['benchmark-accounts'], queryFn: api.keyAccounts })
+  const { data: accounts = [], isLoading } = useQuery({ queryKey: ['key-accounts'], queryFn: api.keyAccounts })
   const [prompt, setPrompt] = useState('用一句话介绍你自己。')
   const [maxTokens, setMaxTokens] = useState('256')
   const [sourceFilter, setSourceFilter] = useState<'all' | 'upstream' | 'agent'>('all')
@@ -145,7 +145,7 @@ export function BenchmarkPage() {
   }
   function stop() { stopRef.current = true; setRunning(false) }
   async function refreshAfterDisable() {
-    await queryClient.invalidateQueries({ queryKey: ['benchmark-accounts'] })
+    await queryClient.invalidateQueries({ queryKey: ['key-accounts'] })
     await queryClient.invalidateQueries({ queryKey: ['accounts'] })
     await queryClient.invalidateQueries({ queryKey: ['agents'] })
     await queryClient.invalidateQueries({ queryKey: ['agent'] })

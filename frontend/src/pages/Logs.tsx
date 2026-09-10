@@ -38,7 +38,7 @@ function EmptyState() {
 
 export function LogsPage() {
   const { data: accounts = [] } = useQuery({ queryKey: ['key-accounts'], queryFn: api.keyAccounts })
-  const { data: keys = [] } = useQuery({ queryKey: ['keys'], queryFn: () => api.keys() })
+  const { data: keys = [] } = useQuery({ queryKey: ['keys', 'last_used'], queryFn: () => api.keys('last_used') })
   const [accountId, setAccountId] = useState('')
   const [keyId, setKeyId] = useState('')
   const [protocol, setProtocol] = useState('')

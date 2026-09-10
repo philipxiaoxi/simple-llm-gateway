@@ -121,7 +121,6 @@ export function AgentDetailPage() {
       await queryClient.invalidateQueries({ queryKey: ['agent', agentId] })
       await queryClient.invalidateQueries({ queryKey: ['agents'] })
       await queryClient.invalidateQueries({ queryKey: ['key-accounts'] })
-      await queryClient.invalidateQueries({ queryKey: ['benchmark-accounts'] })
       notifyOk(variables.model.enabled === false ? `已启用 ${variables.model.id}` : `已关闭 ${variables.model.id}`)
     },
     onError: (caught) => notifyBad(errorMessage(caught, '更新模型状态失败')),
