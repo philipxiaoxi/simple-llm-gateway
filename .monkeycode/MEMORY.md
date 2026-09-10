@@ -66,3 +66,13 @@ Entries discovered by the Agent during task execution should follow this format:
     5. 推送命令：`git -c credential.helper= -c "http.https://github.com/.extraheader=AUTHORIZATION: $AUTH_HEADER" push origin HEAD:<branch>`
     6. 完成后删除临时环境文件
   - 常见失败诊断：若提示 `could not read Username`，说明 extraheader 值没传进去（检查环境文件空格/引号问题）；若 401 说明 token 过期，重新从 socket 取
+
+[本机创建 PR 走 GitHub API]
+- Date: 2026-09-10
+- Context: 分支推送后要开 PR，但本机没有安装 gh CLI
+- Category: Workflow & Collaboration
+- Instructions:
+  - 本机没有 `gh`，建 PR 用 GitHub REST API：`POST https://api.github.com/repos/philipxiaoxi/simple-llm-gateway/pulls`
+  - 凭据用 `git credential fill`（`protocol=https` + `host=github.com`）读取，全程不要打印 token 明文
+  - 请求体：`{"title": ..., "head": "<分支>", "base": "main", "body": ...}`；创建后用 `GET /repos/{owner}/{repo}/pulls/{number}` 核对
+  - 兜底：浏览器打开 `https://github.com/philipxiaoxi/simple-llm-gateway/pull/new/<branch>` 手动创建
