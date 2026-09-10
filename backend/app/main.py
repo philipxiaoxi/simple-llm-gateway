@@ -36,6 +36,7 @@ from app.services.desktop_tools import reconcile_stuck_downloads
 from app.services.grok_oauth import cleanup_expired_oauth_states
 from app.services.jobs import start_job_loops
 from app.static_assets import (
+    FONT_CACHE,
     HASHED_ASSET_CACHE,
     MUTABLE_ASSET_CACHE,
     CachedStaticFiles,
@@ -186,6 +187,13 @@ if FRONTEND_DIST.exists():
         CachedStaticFiles(directory=FRONTEND_DIST / "assets", cache_control=HASHED_ASSET_CACHE),
         name="assets",
     )
+    # 自托管字体：不挂载就会被 SPA 兜底成 index.html，浏览器拿不到字体
+    if (FRONTEND_DIST / "fonts").is_dir():
+        app.mount(
+            "/fonts",
+            CachedStaticFiles(directory=FRONTEND_DIST / "fonts", cache_control=FONT_CACHE),
+            name="fonts",
+        )
 
     def _frontend_file(name: str, headers: dict[str, str]) -> FileResponse:
         path = (FRONTEND_DIST / name).resolve()

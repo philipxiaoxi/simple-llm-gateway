@@ -25,6 +25,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 HASHED_ASSET_CACHE = "public, max-age=31536000, immutable"
 # 非哈希文件（图标等）保持短缓存，改动当天仍能生效
 MUTABLE_ASSET_CACHE = "public, max-age=86400"
+# 自托管字体：文件名不随构建变化，给中间档期
+FONT_CACHE = "public, max-age=2592000"
 
 # 预压缩产物优先级：brotli 体积最小，其次 gzip
 PRECOMPRESSED_SUFFIXES: tuple[tuple[str, str], ...] = ((".br", "br"), (".gz", "gzip"))

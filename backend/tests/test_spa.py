@@ -98,3 +98,27 @@ def test_head_matches_get_for_static_files(client: TestClient, path: str) -> Non
     # 文本响应经过 gzip 后 GET 不带 content-length，只有未压缩时才要求一致
     if get_response.status_code == 200 and "content-length" in get_response.headers:
         assert head_response.headers["content-length"] == get_response.headers["content-length"]
+
+
+def test_self_hosted_fonts_are_served_as_fonts(client: TestClient) -> None:
+    """字体必须由 /fonts 直接托管；落到 SPA 兜底会拿到 HTML，浏览器静默回退系统字体。"""
+    from app.main import FRONTEND_DIST
+
+    font_dir = FRONTEND_DIST / "fonts"
+    if not font_dir.is_dir() or not any(font_dir.glob("*.woff2")):
+        pytest.skip("未自托管字体")
+    name = sorted(font_dir.glob("*.woff2"))[0].name
+    response = client.get(f"/fonts/{name}")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "font/woff2"
+    assert response.headers["cache-control"].startswith("public, max-age=")
+    assert response.content[:4] == b"wOF2"
+
+
+def test_unknown_font_path_is_not_spa_fallback(client: TestClient) -> None:
+    from app.main import FRONTEND_DIST
+
+    if not (FRONTEND_DIST / "fonts").is_dir():
+        pytest.skip("未自托管字体")
+    response = client.get("/fonts/does-not-exist.woff2")
+    assert response.status_code == 404
