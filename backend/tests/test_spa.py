@@ -122,3 +122,24 @@ def test_unknown_font_path_is_not_spa_fallback(client: TestClient) -> None:
         pytest.skip("未自托管字体")
     response = client.get("/fonts/does-not-exist.woff2")
     assert response.status_code == 404
+
+
+def test_voice_worklet_is_served_as_javascript(client: TestClient) -> None:
+    """AudioWorklet 必须直接拿到 JS。
+
+    曾被 SPA 兜底成 index.html，导致 audioWorklet.addModule() 抛 AbortError，
+    前端静默降级到 ScriptProcessorNode——功能还在，但「边说边出字」的延迟明显变差，
+    而且不会有任何报错提示，很难被发现。
+    """
+    from app.main import FRONTEND_DIST
+
+    worklet = FRONTEND_DIST / "voice-worklet.js"
+    if not worklet.is_file():
+        pytest.skip("前端未构建，没有 voice-worklet.js")
+
+    response = client.get("/voice-worklet.js")
+    assert response.status_code == 200
+    assert "javascript" in response.headers["content-type"]
+    assert response.headers["cache-control"] == "no-cache"
+    assert b"registerProcessor" in response.content
+    assert not response.content.lstrip().startswith(b"<!doctype html")

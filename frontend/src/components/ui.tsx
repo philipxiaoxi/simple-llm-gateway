@@ -84,10 +84,12 @@ export function Badge({
   children,
   tone = 'mist',
   title,
+  className,
 }: {
   children: ReactNode
   tone?: 'ok' | 'bad' | 'warn' | 'mist' | 'info'
   title?: string
+  className?: string
 }) {
   const map = {
     ok: 'bg-signal/15 text-signal',
@@ -97,7 +99,10 @@ export function Badge({
     info: 'bg-info/15 text-info',
   }
   return (
-    <span title={title} className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', map[tone])}>
+    <span
+      title={title}
+      className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', map[tone], className)}
+    >
       {children}
     </span>
   )

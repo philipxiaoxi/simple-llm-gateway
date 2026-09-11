@@ -800,7 +800,79 @@ export const api = {
     request<{ resumed: boolean; message: string }>('/api/admin/content-audit/scan/resume', { method: 'POST' }),
   syncContentAuditLexicon: () =>
     request<ContentAuditLexiconSync>('/api/admin/content-audit/lexicon/sync', { method: 'POST' }),
+
+  // ---- 语音输入（手机 → 电脑）----
+  voiceRooms: () => request<{ items: VoiceRoomSummary[]; total: number }>('/api/admin/voice/rooms'),
+  voiceRoom: (roomId: string) => request<VoiceRoom>(`/api/admin/voice/rooms/${encodeURIComponent(roomId)}`),
+  createVoiceRoom: (payload: VoiceRoomInput) =>
+    request<VoiceRoom>('/api/admin/voice/rooms', { method: 'POST', body: JSON.stringify(payload) }),
+  updateVoiceRoom: (roomId: string, payload: Partial<VoiceRoomInput> & { clearPin?: boolean; status?: string }) =>
+    request<VoiceRoom>(`/api/admin/voice/rooms/${encodeURIComponent(roomId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteVoiceRoom: (roomId: string) =>
+    request<{ ok: boolean }>(`/api/admin/voice/rooms/${encodeURIComponent(roomId)}`, { method: 'DELETE' }),
+  rotateVoiceCode: (roomId: string) =>
+    request<VoiceRoom>(`/api/admin/voice/rooms/${encodeURIComponent(roomId)}/rotate-code`, { method: 'POST' }),
+  issueVoiceToken: (roomId: string, role = 'desktop', days = 30) =>
+    request<VoiceTokenResponse>(
+      `/api/admin/voice/rooms/${encodeURIComponent(roomId)}/token?role=${role}&days=${days}`,
+      { method: 'POST' },
+    ),
+  voiceLive: (roomId: string) =>
+    request<VoiceLive>(`/api/admin/voice/rooms/${encodeURIComponent(roomId)}/live`),
+  voiceSessions: (roomId: string, query: Record<string, string | number | undefined> = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<VoiceSessionList>(`/api/admin/voice/rooms/${encodeURIComponent(roomId)}/sessions${suffix}`)
+  },
+  voiceSegments: (roomId: string, query: Record<string, string | number | undefined> = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<VoiceSegmentList>(`/api/admin/voice/rooms/${encodeURIComponent(roomId)}/segments${suffix}`)
+  },
+  voiceEvents: (roomId: string, query: Record<string, string | number | undefined> = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<VoiceEventList>(`/api/admin/voice/rooms/${encodeURIComponent(roomId)}/events${suffix}`)
+  },
+  voicePolishAccounts: () => request<{ items: VoicePolishAccount[]; total: number }>('/api/admin/voice/polish-accounts'),
+  testVoicePolish: (payload: { text: string; accountId?: number | null; model?: string | null; mode?: string; roomId?: string }) =>
+    request<VoicePolishTestResult>('/api/admin/voice/test-polish', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  // ---- 手机端公开接口（不带管理员令牌）----
+  voiceLookup: (code: string) =>
+    request<{ roomId: string; name: string; requirePin: boolean }>(
+      `/api/voice/rooms/lookup?code=${encodeURIComponent(code)}`,
+    ),
+  voiceJoin: (roomId: string, payload: { code?: string; pin?: string; clientUid: string; name: string }) =>
+    request<VoiceJoinResponse>(`/api/voice/rooms/${encodeURIComponent(roomId)}/join`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 }
+
+/** 语音 WebSocket 地址：dev 走 vite 代理，prod 同源。 */
+export function voiceSocketUrl(path: string, token: string): string {
+  const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${scheme}//${window.location.host}${path}?token=${encodeURIComponent(token)}`
+}
+
+export const VOICE_DESKTOP_WS_PATH = '/api/voice/desktop/connect'
+
 
 export type ContentAuditFinding = {
   id: number
@@ -887,4 +959,188 @@ export type BenchmarkHistory = {
   total: number
   page: number
   page_size: number
+}
+
+// ---------------- 语音输入 ----------------
+
+export type VoicePolishMode = 'off' | 'error_fix' | 'rewrite'
+
+export type VoiceRoom = {
+  id: number
+  roomId: string
+  name: string
+  status: string
+  joinCode: string
+  requirePin: boolean
+  note: string | null
+  asrProvider: string
+  asrModel: string
+  disfluencyRemoval: boolean
+  maxRecordingSeconds: number
+  polishMode: VoicePolishMode
+  polishAccountId: number | null
+  polishModel: string | null
+  polishSystemPrompt: string | null
+  polishTemperature: number
+  logPartials: boolean
+  phoneTokenTtlSeconds?: number
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export type VoiceRoomInput = {
+  name?: string
+  pin?: string | null
+  note?: string | null
+  asrModel?: string
+  disfluencyRemoval?: boolean
+  maxRecordingSeconds?: number
+  polishMode?: VoicePolishMode
+  polishAccountId?: number | null
+  polishModel?: string | null
+  polishSystemPrompt?: string | null
+  polishTemperature?: number
+  logPartials?: boolean
+}
+
+export type VoiceRoomUpdateInput = VoiceRoomInput & { status?: string }
+
+export type VoiceRoomSummary = VoiceRoom & {
+  online: { busy: boolean; phones: number; desktops: number }
+  counts: { clients: number; online: number; phones: number; desktops: number }
+  todaySegments: number
+}
+
+export type VoiceSegment = {
+  id: number
+  segId: string
+  sessionId: number | null
+  seq: number
+  rev: number
+  state: string
+  rawText: string
+  polishedText: string | null
+  polishStatus: string | null
+  polishModel: string | null
+  polishAccountId: number | null
+  polishAccountName: string | null
+  polishMs: number | null
+  polishError: string | null
+  asrBeginMs: number | null
+  asrEndMs: number | null
+  deliverCount: number
+  ackCount: number
+  endToEndMs: number | null
+  createdAt: string | null
+}
+
+export type VoiceEvent = {
+  id: number
+  kind: string
+  level: string
+  message: string | null
+  payload: Record<string, unknown> | null
+  sessionId: number | null
+  segmentId: number | null
+  clientId: number | null
+  createdAt: string | null
+}
+
+export type VoiceSession = {
+  id: number
+  sessionUid: string
+  clientName: string | null
+  status: string
+  asrModel: string
+  audioMs: number
+  frameCount: number
+  sentenceCount: number
+  asrUsageSeconds: number | null
+  firstPartialMs: number | null
+  errorMessage: string | null
+  startedAt: string | null
+  endedAt: string | null
+}
+
+export type VoiceLive = {
+  room: VoiceRoom
+  state: { busy: boolean; phones: number; desktops: number }
+  onlineClients: { clientUid: string; role: string; name: string }[]
+  counts: { clients: number; online: number; phones: number; desktops: number }
+  recentSegments: {
+    segId: string
+    seq: number
+    rev: number
+    state: string
+    rawText: string
+    polishedText: string | null
+    polishStatus: string | null
+    polishModel: string | null
+    polishMs: number | null
+    deliverCount: number
+    ackCount: number
+    createdAt: string | null
+  }[]
+  asrConfigured: boolean
+  sessions: VoiceSession[]
+}
+
+export type VoicePolishAccount = {
+  id: number
+  name: string
+  provider: string
+  source: string
+  available: boolean
+  defaultModel: string
+  models: string[]
+}
+
+export type VoicePolishTestResult = {
+  status: string
+  input: string
+  output: string
+  changed: boolean
+  model: string | null
+  accountId: number | null
+  ms: number
+  error: string | null
+  reason: string | null
+}
+
+export type VoiceTokenResponse = {
+  token: string
+  roomId: string
+  wsUrl: string
+  expiresInSeconds: number
+  desktopConfig: { serverUrl: string; roomId: string; token: string }
+}
+
+export type VoiceSessionList = {
+  items: VoiceSession[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type VoiceSegmentList = {
+  items: VoiceSegment[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type VoiceEventList = {
+  items: VoiceEvent[]
+  total: number
+  page: number
+  page_size: number
+  kinds: string[]
+}
+
+export type VoiceJoinResponse = {
+  token: string
+  expiresInSeconds: number
+  wsPath: string
+  wsUrl: string
+  room: { roomId: string; name: string; asrModel: string; maxRecordingSeconds: number; polishMode: VoicePolishMode }
 }

@@ -10,6 +10,7 @@ import {
   Square,
   Terminal,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -27,7 +28,7 @@ import {
   Input,
   Select,
 } from "../components/ui";
-import { errorMessage, formatBytes } from "../lib/utils";
+import { cn, errorMessage, formatBytes } from "../lib/utils";
 import { notifyBad, notifyOk } from "../lib/toast";
 
 const statusText: Record<DesktopTool["status"], string> = {
@@ -449,7 +450,8 @@ export function ToolsPage() {
           </Button>
         </div>
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
+      {/* 宽屏时统计与搜索并作一行，避免把工具卡片挤到首屏之外 */}
+      <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,1.4fr)]">
         <Card>
           <div className="text-xs uppercase tracking-[0.16em] text-mist">
             工具总数
@@ -474,122 +476,158 @@ export function ToolsPage() {
             {counts.active}
           </div>
         </Card>
+        <Card className="flex flex-col justify-center sm:col-span-3 xl:col-span-1">
+          <Field label="搜索工具">
+            <div className="relative">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-mist"
+              />
+              <Input
+                className="pl-9"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="搜索名称、描述、平台"
+              />
+            </div>
+          </Field>
+        </Card>
       </div>
-      <Card>
-        <Field label="搜索工具">
-          <div className="relative">
-            <Search
-              size={16}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-mist"
-            />
-            <Input
-              className="pl-9"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="搜索名称、描述、平台"
-            />
-          </div>
-        </Field>
-      </Card>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {items.map((tool) => (
-          <Card key={tool.id} className="flex flex-col gap-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">{tool.name}</h2>
-                <code className="text-xs text-mist">
-                  {tool.tool_id} · {tool.platform}
-                </code>
+        {items.map((tool) => {
+          const downloading = tool.status === "downloading";
+          return (
+            <Card
+              key={tool.id}
+              className="flex flex-col gap-3 transition-colors hover:border-mist/40"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2
+                    className="truncate text-lg font-semibold leading-6"
+                    title={tool.name}
+                  >
+                    {tool.name}
+                  </h2>
+                  <code className="mt-1 block truncate font-mono text-xs text-mist">
+                    {tool.tool_id} · {tool.platform}
+                  </code>
+                </div>
+                <Badge tone={statusTone[tool.status]} className="shrink-0">
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 shrink-0 rounded-full bg-current",
+                      downloading && "animate-pulse",
+                    )}
+                  />
+                  {statusText[tool.status]}
+                </Badge>
               </div>
-              <Badge tone={statusTone[tool.status]}>
-                {statusText[tool.status]}
-              </Badge>
-            </div>
-            <p className="min-h-12 text-sm text-mist">
-              {tool.description || "暂无描述"}
-            </p>
-            {tool.error_message ? (
-              <div className="line-clamp-2 text-xs text-danger">
-                {tool.error_message}
+
+              <p className="line-clamp-2 min-h-10 text-sm leading-5 text-mist">
+                {tool.description || "暂无描述"}
+              </p>
+
+              {tool.error_message ? (
+                <div className="flex items-start gap-1.5 rounded-md border border-danger/25 bg-danger/[0.08] px-2.5 py-1.5 text-xs leading-5 text-danger">
+                  <TriangleAlert size={13} className="mt-1 shrink-0" />
+                  <span className="line-clamp-2 min-w-0 break-all">
+                    {tool.error_message}
+                  </span>
+                </div>
+              ) : null}
+
+              <div className="mt-auto flex items-center justify-between gap-3 rounded-md bg-white/[0.03] px-2.5 py-1.5 font-mono text-[11px] text-mist">
+                <span className="shrink-0">
+                  {tool.file_size ? formatBytes(tool.file_size) : "尚未生成文件"}
+                  {tool.version ? ` · v${tool.version}` : ""}
+                </span>
+                <span className="truncate" title={tool.script_name}>
+                  {tool.script_name}
+                </span>
               </div>
-            ) : null}
-            <div className="mt-auto flex items-center justify-between text-xs text-mist">
-              <span>
-                {tool.file_size ? formatBytes(tool.file_size) : "尚未生成文件"}
-                {tool.version ? ` · v${tool.version}` : ""}
-              </span>
-              <span>{tool.script_name}</span>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="line"
-                className="flex-1"
-                onClick={() => setEdit(tool)}
-              >
-                <FileCode2 size={16} />
-                编辑
-              </Button>
-              {tool.status === "downloading" ? (
-                <Button
-                  variant="danger"
-                  className="flex-1"
-                  disabled={stopDownload.isPending}
-                  onClick={() => stopDownload.mutate(tool.id)}
-                >
-                  <Square size={16} />
-                  停止
-                </Button>
-              ) : (
-                <Button
-                  variant="line"
-                  className="flex-1"
-                  onClick={() => {
-                    setLogs(tool);
-                    preDownload.mutate(tool.id);
-                  }}
-                >
-                  <HardDriveDownload size={16} />
-                  {tool.status === "downloaded" ? "更新缓存" : "下载缓存"}
-                </Button>
-              )}
-              <Button
-                disabled={tool.status !== "downloaded"}
-                onClick={() => void download(tool)}
-              >
-                <Download size={16} />
-                下载
-              </Button>
-              <Button
-                variant="danger"
-                aria-label={`删除 ${tool.name}`}
-                title="删除工具"
-                disabled={deleteTool.isPending || tool.status === "downloading"}
-                onClick={() => remove(tool)}
-              >
-                <Trash2 size={16} />
-              </Button>
-            </div>
-            <div className="flex items-center gap-3 text-xs">
-              <button
-                type="button"
-                className="flex items-center gap-1 text-info hover:text-paper"
-                onClick={() => setHistory(tool)}
-              >
-                <History size={14} />
-                执行历史
-              </button>
-              {tool.status === "downloading" ? (
+
+              {/* 一行两个按钮：窄屏也不会挤压换行 */}
+              <div className="grid gap-2">
+                <div className="flex gap-2">
+                  <Button
+                    variant="line"
+                    className="min-w-0 flex-1"
+                    onClick={() => setEdit(tool)}
+                  >
+                    <FileCode2 size={16} className="shrink-0" />
+                    <span className="truncate">编辑</span>
+                  </Button>
+                  {downloading ? (
+                    <Button
+                      variant="danger"
+                      className="min-w-0 flex-1"
+                      disabled={stopDownload.isPending}
+                      onClick={() => stopDownload.mutate(tool.id)}
+                    >
+                      <Square size={16} className="shrink-0" />
+                      <span className="truncate">停止</span>
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="line"
+                      className="min-w-0 flex-1"
+                      onClick={() => {
+                        setLogs(tool);
+                        preDownload.mutate(tool.id);
+                      }}
+                    >
+                      <HardDriveDownload size={16} className="shrink-0" />
+                      <span className="truncate">
+                        {tool.status === "downloaded" ? "更新缓存" : "下载缓存"}
+                      </span>
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    className="min-w-0 flex-1"
+                    disabled={tool.status !== "downloaded"}
+                    onClick={() => void download(tool)}
+                  >
+                    <Download size={16} className="shrink-0" />
+                    <span className="truncate">下载</span>
+                  </Button>
+                  <Button
+                    variant="danger"
+                    aria-label={`删除 ${tool.name}`}
+                    title="删除工具"
+                    className="w-11 shrink-0 px-0 md:w-9"
+                    disabled={deleteTool.isPending || downloading}
+                    onClick={() => remove(tool)}
+                  >
+                    <Trash2 size={16} />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 text-xs">
                 <button
                   type="button"
-                  className="text-info hover:text-paper"
-                  onClick={() => setLogs(tool)}
+                  className="flex items-center gap-1 text-info hover:text-paper"
+                  onClick={() => setHistory(tool)}
                 >
-                  查看实时日志
+                  <History size={14} />
+                  执行历史
                 </button>
-              ) : null}
-            </div>
-          </Card>
-        ))}
+                {downloading ? (
+                  <button
+                    type="button"
+                    className="text-info hover:text-paper"
+                    onClick={() => setLogs(tool)}
+                  >
+                    查看实时日志
+                  </button>
+                ) : null}
+              </div>
+            </Card>
+          );
+        })}
       </div>
       {createOpen ? (
         <ToolCreateDialog onClose={() => setCreateOpen(false)} />

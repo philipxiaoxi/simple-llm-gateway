@@ -58,6 +58,21 @@ class Settings(BaseSettings):
     xai_oauth_token_url: str = "https://auth.x.ai/oauth2/token"
     xai_oauth_redirect_uri: str = "http://127.0.0.1:56121/callback"
     xai_oauth_scope: str = "openid profile email offline_access grok-cli:access api:access"
+    # ---- 语音输入（手机 → 电脑）----
+    # 阿里云百炼（DashScope）API Key，格式 sk-ws-…，只存服务端，绝不下发到浏览器
+    aliyun_dashscope_api_key: str = ""
+    aliyun_asr_ws_url: str = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+    aliyun_asr_model: str = "qwen-audio-3.0-asr-flash-streaming"
+    # 桌面客户端共享令牌（房间级令牌优先，这里用于人工配置场景）
+    voice_desktop_token: str = ""
+    voice_polish_timeout_seconds: int = 12
+    # 纠错输出的 token 预算。推理模型会先消耗大量 token 思考，512 会导致 content 为空（实测），
+    # 所以默认给到 2048。
+    voice_polish_max_tokens: int = 2048
+    voice_max_recording_seconds: int = 120
+    voice_polish_concurrency: int = 4
+    voice_event_retention_days: int = 30
+    voice_public_base_url: str = ""
 
     @property
     def database_url(self) -> str:

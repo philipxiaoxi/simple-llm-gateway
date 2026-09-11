@@ -1,0 +1,7 @@
+# 依赖
+node_modules/
+.npm-cache/
+
+# 本地临时文件（自检/调试用）
+.tmp-home/
+*.log

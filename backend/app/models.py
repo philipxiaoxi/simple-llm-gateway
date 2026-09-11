@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from app.clock import utcnow
@@ -399,3 +399,121 @@ class ContentAuditScan(Base):
     finding_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="ok", nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class VoiceRoom(Base):
+    """语音输入房间：手机与电脑通过房间配对，1 个房间 = N 个手机 + M 台电脑。"""
+
+    __tablename__ = "voice_rooms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    room_id: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    join_code: Mapped[str] = mapped_column(String(8), unique=True, nullable=False)
+    pin_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # ASR（实时语音识别）配置：供应商先写死阿里云，但字段保留以便将来切换
+    asr_provider: Mapped[str] = mapped_column(String(32), default="aliyun_dashscope", nullable=False)
+    asr_model: Mapped[str] = mapped_column(String(64), default="qwen-audio-3.0-asr-flash-streaming", nullable=False)
+    disfluency_removal: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    max_recording_seconds: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
+    # AI 纠错配置：off 只用 ASR / error_fix 只纠错 / rewrite 允许书面化改写
+    polish_mode: Mapped[str] = mapped_column(String(16), default="error_fix", nullable=False)
+    polish_account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    polish_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    polish_system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    polish_temperature: Mapped[float] = mapped_column(Float, default=0.2, nullable=False)
+    phone_token_ttl_seconds: Mapped[int] = mapped_column(Integer, default=43200, nullable=False)
+    log_partials: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class VoiceClient(Base):
+    """房间成员：手机（phone）或电脑（desktop），按 client_uid 去重。"""
+
+    __tablename__ = "voice_clients"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    room_pk: Mapped[int] = mapped_column(ForeignKey("voice_rooms.id", ondelete="CASCADE"), index=True, nullable=False)
+    client_uid: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    name: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="offline", nullable=False)
+    insert_mode: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_connected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_disconnected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class VoiceSession(Base):
+    """一次录音会话：按下说话 → 松开（或超时/丢弃）。"""
+
+    __tablename__ = "voice_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_uid: Mapped[str] = mapped_column(String(36), unique=True, index=True, nullable=False)
+    room_pk: Mapped[int] = mapped_column(ForeignKey("voice_rooms.id", ondelete="CASCADE"), index=True, nullable=False)
+    client_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    client_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    asr_model: Mapped[str] = mapped_column(String(64), nullable=False)
+    audio_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    audio_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    frame_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sentence_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    asr_usage_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    first_partial_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class VoiceSegment(Base):
+    """文本段：语音输入的最小投递/替换单位，也是日志主体。"""
+
+    __tablename__ = "voice_segments"
+    __table_args__ = (UniqueConstraint("room_pk", "seq", name="uq_voice_segment_room_seq"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    seg_uid: Mapped[str] = mapped_column(String(36), unique=True, index=True, nullable=False)
+    session_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    room_pk: Mapped[int] = mapped_column(ForeignKey("voice_rooms.id", ondelete="CASCADE"), index=True, nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    rev: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    state: Mapped[str] = mapped_column(String(16), default="partial", nullable=False)
+    raw_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    polished_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    polish_account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    polish_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    polish_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    polish_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    polish_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    asr_begin_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    asr_end_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    deliver_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    ack_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    first_ack_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class VoiceEvent(Base):
+    """房间事件时间线：加入/离开、录音、识别、纠错、下发、回执、放弃。"""
+
+    __tablename__ = "voice_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    room_pk: Mapped[int] = mapped_column(ForeignKey("voice_rooms.id", ondelete="CASCADE"), index=True, nullable=False)
+    session_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    segment_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    client_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    level: Mapped[str] = mapped_column(String(8), default="info", nullable=False)
+    message: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
