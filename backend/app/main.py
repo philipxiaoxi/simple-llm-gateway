@@ -36,6 +36,7 @@ from app.seed import seed_admin, seed_desktop_tools, seed_skill_categories
 from app.services.desktop_tools import reconcile_stuck_downloads
 from app.services.grok_oauth import cleanup_expired_oauth_states
 from app.services.jobs import start_job_loops
+from app.services.voice_retention import voice_cleanup_loop
 from app.static_assets import (
     FONT_CACHE,
     HASHED_ASSET_CACHE,
@@ -87,6 +88,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         session.close()
     await asyncio.to_thread(_warm_up)
     background_tasks = start_job_loops()
+    # 语音日志（段落/事件）会持续增长，挂一个每天跑一次的清理任务
+    background_tasks.append(asyncio.create_task(voice_cleanup_loop()))
     try:
         yield
     finally:

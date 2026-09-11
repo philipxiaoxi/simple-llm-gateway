@@ -72,7 +72,6 @@ class Settings(BaseSettings):
     voice_max_recording_seconds: int = 120
     voice_polish_concurrency: int = 4
     voice_event_retention_days: int = 30
-    voice_store_audio: bool = False
     voice_public_base_url: str = ""
 
     @property

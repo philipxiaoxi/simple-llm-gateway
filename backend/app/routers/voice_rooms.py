@@ -574,6 +574,26 @@ def room_events(
     }
 
 
+@admin_router.get("/storage")
+def storage_stats() -> dict[str, Any]:
+    """当前语音日志规模与保留策略，给后台展示与手动清理用。"""
+    from app.services.voice_retention import voice_log_stats
+
+    return {
+        **voice_log_stats(),
+        "retentionDays": get_settings().voice_event_retention_days,
+    }
+
+
+@admin_router.post("/cleanup")
+async def cleanup_logs(retention_days: int | None = Query(default=None, ge=0, le=3650)) -> dict[str, Any]:
+    """手动清理超过保留期的语音日志。retention_days=0 表示不清理（安全阀）。"""
+    from app.services.voice_retention import cleanup_voice_logs
+
+    removed = await asyncio.to_thread(cleanup_voice_logs, retention_days=retention_days)
+    return {"removed": removed, "retentionDays": retention_days or get_settings().voice_event_retention_days}
+
+
 @admin_router.get("/polish-accounts")
 def polish_accounts(db: Session = Depends(get_db)) -> dict[str, Any]:
     rows = db.scalars(select(UpstreamAccount).order_by(UpstreamAccount.id)).all()
