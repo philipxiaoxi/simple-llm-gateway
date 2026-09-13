@@ -108,13 +108,22 @@ export function SkillDetailPage() {
         <ArrowLeft size={16} /> 返回 Skills
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1 overflow-hidden">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="truncate text-2xl font-semibold">{data.name}</h1>
-            <Badge tone="info">{data.category}</Badge>
+            <h1
+              title={data.name}
+              className="min-w-0 break-all text-2xl font-semibold leading-snug [overflow-wrap:anywhere]"
+            >
+              {data.name}
+            </h1>
+            <Badge tone="info" className="shrink-0">
+              {data.category}
+            </Badge>
           </div>
-          <code className="mt-1 block text-xs text-mist">{data.slug}</code>
-          <p className="mt-3 max-w-3xl text-sm text-mist">{data.description}</p>
+          <code title={data.slug} className="mt-1 block break-all text-xs text-mist [overflow-wrap:anywhere]">
+            {data.slug}
+          </code>
+          <p className="mt-3 max-w-3xl break-words text-sm text-mist [overflow-wrap:anywhere]">{data.description}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="line" onClick={() => setEditing(true)}>
