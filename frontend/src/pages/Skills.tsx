@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, FolderUp, RefreshCw, Search, Sparkles, Tags, Trash2, Upload } from 'lucide-react'
+import { Copy, Download, FolderUp, RefreshCw, Search, Sparkles, Tags, Trash2, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type Account, type SkillCategoryItem, type SkillItem } from '../lib/api'
+import { buildSkillInstallText } from '../lib/skillInstall'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { errorMessage, formatBytes, formatTime } from '../lib/utils'
+import { copyText, errorMessage, formatBytes, formatTime } from '../lib/utils'
 
 const AUTO_CATEGORY = '自动识别'
 
@@ -175,6 +176,16 @@ export function SkillsPage() {
     }
   }
 
+  async function copyInstall(item: SkillItem) {
+    try {
+      const { url } = await api.skillDownloadUrl(item.id)
+      await copyText(buildSkillInstallText(item, `${window.location.origin}${url}`))
+      notifyOk('安装指令已复制，链接 5 分钟内有效')
+    } catch (caught) {
+      notifyBad(errorMessage(caught, '复制安装指令失败'))
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -302,6 +313,9 @@ export function SkillsPage() {
               </Button>
               <Button type="button" variant="line" title="重新上传并覆盖此 Skill" onClick={() => setReplaceSkill(item)}>
                 <RefreshCw size={16} />
+              </Button>
+              <Button type="button" variant="line" title="复制安装指令（Claude Code）" onClick={() => void copyInstall(item)}>
+                <Copy size={16} />
               </Button>
               <Button type="button" variant="line" onClick={() => void download(item)}>
                 <Download size={16} />

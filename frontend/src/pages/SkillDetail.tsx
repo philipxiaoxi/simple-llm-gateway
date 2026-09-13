@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Download, FileText, Pencil, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, Download, FileText, Pencil, Sparkles, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type SkillAnalysis } from '../lib/api'
+import { buildSkillInstallText } from '../lib/skillInstall'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { errorMessage, formatBytes, formatTime } from '../lib/utils'
+import { copyText, errorMessage, formatBytes, formatTime } from '../lib/utils'
 
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -72,6 +73,17 @@ export function SkillDetailPage() {
     }
   }
 
+  async function copyInstall() {
+    if (!data) return
+    try {
+      const { url } = await api.skillDownloadUrl(data.id)
+      await copyText(buildSkillInstallText(data, `${window.location.origin}${url}`))
+      notifyOk('安装指令已复制，链接 5 分钟内有效')
+    } catch (caught) {
+      notifyBad(errorMessage(caught, '复制安装指令失败'))
+    }
+  }
+
   async function analyze() {
     setAnalysisPending(true)
     setAnalysisError('')
@@ -108,6 +120,10 @@ export function SkillDetailPage() {
           <Button variant="line" onClick={() => setEditing(true)}>
             <Pencil size={16} />
             编辑
+          </Button>
+          <Button variant="line" onClick={() => void copyInstall()}>
+            <Copy size={16} />
+            复制安装指令
           </Button>
           <Button onClick={() => void downloadAll()}>
             <Download size={16} />

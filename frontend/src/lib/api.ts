@@ -765,6 +765,8 @@ export const api = {
     if (!response.ok) throw new ApiError(response.status, '下载 Skill 失败')
     return response.blob()
   },
+  skillDownloadUrl: (id: number) =>
+    request<{ url: string; expiresInSeconds: number }>(`/api/admin/skills/${id}/download-url`, { method: 'POST' }),
   downloadSkillFile: async (id: number, path: string) => {
     const headers = new Headers()
     const token = getToken()

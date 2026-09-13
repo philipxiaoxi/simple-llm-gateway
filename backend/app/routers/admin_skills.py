@@ -1,18 +1,21 @@
 from __future__ import annotations
 
 from collections import Counter
+from datetime import datetime, timedelta, timezone
 import json
 from urllib.parse import quote
 
+import jwt
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.clock import utcnow
+from app.config import get_settings
 from app.db import get_db
 from app.deps import get_current_admin
-from app.models import Skill, SkillClassificationSettings, UpstreamAccount
+from app.models import Admin, Skill, SkillClassificationSettings, UpstreamAccount
 from app.schemas import (
     SkillCategoryCreate,
     SkillCategoryListOut,
@@ -56,6 +59,9 @@ from app.services.skills import (
 )
 
 router = APIRouter(prefix="/api/admin/skills", tags=["admin-skills"], dependencies=[Depends(get_current_admin)])
+download_router = APIRouter(prefix="/api/skills", tags=["skill-downloads"])
+# 复制给 AI 的安装链接有效期固定 5 分钟，过期需重新生成。
+_DOWNLOAD_TOKEN_TTL = timedelta(minutes=5)
 
 
 async def _read_uploads(files: list[UploadFile]) -> list[UploadedFile]:
@@ -346,6 +352,33 @@ def delete_skill(skill_id: int, db: Session = Depends(get_db)) -> dict[str, bool
     return {"ok": True}
 
 
+@router.post("/{skill_id}/download-url")
+def create_download_url(
+    skill_id: int,
+    admin: Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """签发一条公开的短期下载链接，供用户复制安装指令后交给 AI 下载。"""
+    item = _get_skill(db, skill_id)
+    now = datetime.now(timezone.utc)
+    token = jwt.encode(
+        {
+            "scope": "skill",
+            "skill_id": item.id,
+            "sub": admin.username,
+            "ver": int(admin.token_version or 0),
+            "iat": now,
+            "exp": now + _DOWNLOAD_TOKEN_TTL,
+        },
+        get_settings().app_secret_key,
+        algorithm="HS256",
+    )
+    return {
+        "url": f"/api/skills/{item.id}/download?token={token}",
+        "expiresInSeconds": int(_DOWNLOAD_TOKEN_TTL.total_seconds()),
+    }
+
+
 @router.get("/{skill_id}/download")
 def download_skill(skill_id: int, db: Session = Depends(get_db)) -> Response:
     item = _get_skill(db, skill_id)
@@ -371,6 +404,32 @@ def download_skill_file(skill_id: int, file_path: str, db: Session = Depends(get
     return Response(
         content=payload,
         media_type="application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@download_router.get("/{skill_id}/download")
+def download_skill_with_token(skill_id: int, token: str, db: Session = Depends(get_db)) -> Response:
+    """公开下载入口：只认短期 token，不需要登录，供 AI 直接抓取。"""
+    try:
+        claims = jwt.decode(token, get_settings().app_secret_key, algorithms=["HS256"])
+    except jwt.PyJWTError as error:
+        raise HTTPException(status_code=401, detail="下载链接已失效，请重新生成") from error
+    if claims.get("scope") != "skill" or claims.get("skill_id") != skill_id:
+        raise HTTPException(status_code=403, detail="下载链接无效")
+    admin = db.scalar(select(Admin).where(Admin.username == claims.get("sub")))
+    token_version = claims.get("ver")
+    if admin is None or not isinstance(token_version, int) or int(admin.token_version or 0) != token_version:
+        raise HTTPException(status_code=401, detail="下载链接已失效，请重新生成")
+    item = _get_skill(db, skill_id)
+    try:
+        archive = build_skill_zip(item)
+    except SkillError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    filename = f"{item.slug}.zip"
+    return Response(
+        content=archive,
+        media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
 

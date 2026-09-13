@@ -3,12 +3,16 @@ from __future__ import annotations
 import io
 import json
 import zipfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import jwt
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.models import Skill, SkillClassificationSettings, UpstreamAccount
+from app.config import get_settings
+from app.db import get_session_factory
+from app.models import Admin, Skill, SkillClassificationSettings, UpstreamAccount
 from app.services import skills as skills_service
 
 
@@ -362,3 +366,68 @@ def test_manage_skill_categories(client: TestClient, auth_headers: dict[str, str
     assert deleted.status_code == 200
     moved = client.get(f"/api/admin/skills/{skill_id}", headers=auth_headers)
     assert moved.json()["category"] == "其他"
+
+
+def _upload_single_skill(client: TestClient, auth_headers: dict[str, str]) -> dict:
+    uploaded = client.post(
+        "/api/admin/skills/upload",
+        headers=auth_headers,
+        files=[("files", ("demo/SKILL.md", SKILL_MD.encode("utf-8"), "text/markdown"))],
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    return uploaded.json()["items"][0]
+
+
+def test_skill_download_url_streams_zip_without_bearer(client: TestClient, auth_headers: dict[str, str]) -> None:
+    item = _upload_single_skill(client, auth_headers)
+    response = client.post(f"/api/admin/skills/{item['id']}/download-url", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["expiresInSeconds"] == 300
+    assert body["url"].startswith(f"/api/skills/{item['id']}/download?token=")
+
+    download = client.get(body["url"])
+    assert download.status_code == 200, download.text
+    assert download.headers["content-type"].startswith("application/zip")
+    with zipfile.ZipFile(io.BytesIO(download.content)) as archive:
+        assert "planning-with-files/SKILL.md" in archive.namelist()
+
+
+def test_skill_download_url_requires_admin(client: TestClient, auth_headers: dict[str, str]) -> None:
+    item = _upload_single_skill(client, auth_headers)
+    unauth = client.post(f"/api/admin/skills/{item['id']}/download-url")
+    assert unauth.status_code == 401
+
+
+def test_skill_download_token_rejects_expired_tampered_and_revoked(client: TestClient, auth_headers: dict[str, str]) -> None:
+    item = _upload_single_skill(client, auth_headers)
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+
+    def make_token(*, skill_id: int, expires_at, version: int, scope: str = "skill") -> str:
+        return jwt.encode(
+            {"scope": scope, "skill_id": skill_id, "sub": "admin", "ver": version, "iat": now, "exp": expires_at},
+            settings.app_secret_key,
+            algorithm="HS256",
+        )
+
+    expired = make_token(skill_id=item["id"], expires_at=now - timedelta(minutes=1), version=0)
+    assert client.get(f"/api/skills/{item['id']}/download?token={expired}").status_code == 401
+
+    tampered = make_token(skill_id=item["id"] + 100, expires_at=now + timedelta(minutes=5), version=0)
+    assert client.get(f"/api/skills/{item['id']}/download?token={tampered}").status_code == 403
+
+    wrong_scope = make_token(skill_id=item["id"], expires_at=now + timedelta(minutes=5), version=0, scope="tool")
+    assert client.get(f"/api/skills/{item['id']}/download?token={wrong_scope}").status_code == 403
+
+    assert client.get(f"/api/skills/{item['id']}/download?token=not-a-jwt").status_code == 401
+
+    valid = make_token(skill_id=item["id"], expires_at=now + timedelta(minutes=5), version=0)
+    assert client.get(f"/api/skills/{item['id']}/download?token={valid}").status_code == 200
+
+    with get_session_factory()() as db:
+        admin = db.scalar(select(Admin).where(Admin.username == "admin"))
+        assert admin is not None
+        admin.token_version = int(admin.token_version or 0) + 1
+        db.commit()
+    assert client.get(f"/api/skills/{item['id']}/download?token={valid}").status_code == 401
