@@ -37,6 +37,7 @@ from app.services.skills import (
     MAX_UPLOAD_BYTES,
     SkillError,
     UploadedFile,
+    apply_ai_upload_stamp,
     build_skill_zip,
     analyze_skill_with_gateway,
     category_to_dict,
@@ -60,8 +61,10 @@ from app.services.skills import (
 
 router = APIRouter(prefix="/api/admin/skills", tags=["admin-skills"], dependencies=[Depends(get_current_admin)])
 download_router = APIRouter(prefix="/api/skills", tags=["skill-downloads"])
-# 复制给 AI 的安装链接有效期固定 5 分钟，过期需重新生成。
+# 复制给 AI 的安装/上传链接有效期固定 5 分钟，过期需重新生成。
 _DOWNLOAD_TOKEN_TTL = timedelta(minutes=5)
+_UPLOAD_TOKEN_TTL = timedelta(minutes=5)
+_UPLOAD_TOKEN_SCOPE = "skill_upload"
 
 
 async def _read_uploads(files: list[UploadFile]) -> list[UploadedFile]:
@@ -352,6 +355,29 @@ def delete_skill(skill_id: int, db: Session = Depends(get_db)) -> dict[str, bool
     return {"ok": True}
 
 
+@router.post("/upload-url")
+def create_upload_url(
+    admin: Admin = Depends(get_current_admin),
+) -> dict:
+    """签发一条公开的短期上传链接，供用户复制上传指令后交给 AI 打包上传。"""
+    now = datetime.now(timezone.utc)
+    token = jwt.encode(
+        {
+            "scope": _UPLOAD_TOKEN_SCOPE,
+            "sub": admin.username,
+            "ver": int(admin.token_version or 0),
+            "iat": now,
+            "exp": now + _UPLOAD_TOKEN_TTL,
+        },
+        get_settings().app_secret_key,
+        algorithm="HS256",
+    )
+    return {
+        "url": f"/api/skills/upload?token={token}",
+        "expiresInSeconds": int(_UPLOAD_TOKEN_TTL.total_seconds()),
+    }
+
+
 @router.post("/{skill_id}/download-url")
 def create_download_url(
     skill_id: int,
@@ -431,6 +457,49 @@ def download_skill_with_token(skill_id: int, token: str, db: Session = Depends(g
         content=archive,
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@download_router.post("/upload", response_model=SkillUploadOut)
+async def upload_skills_with_token(
+    token: str,
+    files: list[UploadFile] = File(default_factory=list),
+    category: str = Form(default="自动识别"),
+    db: Session = Depends(get_db),
+) -> SkillUploadOut:
+    """公开上传入口：只认短期 token，不需要登录，供 AI 打包后直接上传。"""
+    try:
+        claims = jwt.decode(token, get_settings().app_secret_key, algorithms=["HS256"])
+    except jwt.PyJWTError as error:
+        raise HTTPException(status_code=401, detail="上传链接已失效，请重新生成") from error
+    if claims.get("scope") != _UPLOAD_TOKEN_SCOPE:
+        raise HTTPException(status_code=403, detail="上传链接无效")
+    admin = db.scalar(select(Admin).where(Admin.username == claims.get("sub")))
+    token_version = claims.get("ver")
+    if admin is None or not isinstance(token_version, int) or int(admin.token_version or 0) != token_version:
+        raise HTTPException(status_code=401, detail="上传链接已失效，请重新生成")
+    if not files:
+        raise HTTPException(status_code=400, detail="请选择要上传的文件或目录")
+    existing = set(db.scalars(select(Skill.slug)).all())
+    try:
+        uploaded = await _read_uploads(files)
+        parsed, skipped = import_uploaded_files(
+            uploaded,
+            category=category,
+            source_name=files[0].filename if len(files) == 1 else "directory",
+            existing_slugs=existing,
+            category_names=list_category_names(db),
+            category_rules=list_category_rules(db),
+        )
+        apply_ai_upload_stamp(parsed, existing_slugs=existing)
+        await classify_with_gateway(db, parsed, list_category_names(db), list_category_rules(db))
+        created = persist_parsed_skills(db, parsed)
+    except SkillError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return SkillUploadOut(
+        items=[SkillOut(**skill_to_dict(item)) for item in created],
+        created=len(created),
+        skipped=[SkillSkippedOut(name=name, reason=reason) for name, reason in skipped],
     )
 
 

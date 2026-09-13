@@ -767,6 +767,8 @@ export const api = {
   },
   skillDownloadUrl: (id: number) =>
     request<{ url: string; expiresInSeconds: number }>(`/api/admin/skills/${id}/download-url`, { method: 'POST' }),
+  skillUploadUrl: () =>
+    request<{ url: string; expiresInSeconds: number }>('/api/admin/skills/upload-url', { method: 'POST' }),
   downloadSkillFile: async (id: number, path: string) => {
     const headers = new Headers()
     const token = getToken()

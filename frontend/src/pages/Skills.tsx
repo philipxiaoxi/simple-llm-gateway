@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type Account, type SkillCategoryItem, type SkillItem } from '../lib/api'
-import { buildSkillInstallText } from '../lib/skillInstall'
+import { buildSkillInstallText, buildSkillUploadText } from '../lib/skillInstall'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { copyText, errorMessage, formatBytes, formatTime } from '../lib/utils'
 
@@ -186,6 +186,16 @@ export function SkillsPage() {
     }
   }
 
+  async function copyUpload() {
+    try {
+      const { url } = await api.skillUploadUrl()
+      await copyText(buildSkillUploadText(`${window.location.origin}${url}`))
+      notifyOk('上传指令已复制，链接 5 分钟内有效')
+    } catch (caught) {
+      notifyBad(errorMessage(caught, '复制上传指令失败'))
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -207,6 +217,10 @@ export function SkillsPage() {
           <Button variant="line" onClick={() => setBulkUpdateOpen(true)}>
             <RefreshCw size={16} />
             批量更新
+          </Button>
+          <Button variant="line" onClick={() => void copyUpload()}>
+            <Copy size={16} />
+            复制上传指令
           </Button>
           <Button onClick={() => setUploadOpen(true)}>
             <Upload size={16} />
