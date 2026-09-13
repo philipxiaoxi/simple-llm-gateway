@@ -425,6 +425,26 @@ export type SkillItem = {
   updated_at: string
 }
 
+export type SkillBundleItem = {
+  id: number
+  name: string
+  description: string
+  member_count: number
+  created_at: string
+  updated_at: string
+}
+
+export type SkillBundleMember = {
+  skill_id: number
+  added_at: string
+  missing: boolean
+  skill: SkillItem | null
+}
+
+export type SkillBundleDetail = SkillBundleItem & {
+  members: SkillBundleMember[]
+}
+
 export type SkillFile = {
   path: string
   size: number
@@ -769,6 +789,48 @@ export const api = {
     request<{ url: string; expiresInSeconds: number }>(`/api/admin/skills/${id}/download-url`, { method: 'POST' }),
   skillUploadUrl: () =>
     request<{ url: string; expiresInSeconds: number }>('/api/admin/skills/upload-url', { method: 'POST' }),
+  listSkillBundles: (q = '') => {
+    const query = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''
+    return request<{ items: SkillBundleItem[]; total: number }>(`/api/admin/skill-bundles${query}`)
+  },
+  createSkillBundle: (payload: { name: string; description?: string }) =>
+    request<SkillBundleItem>('/api/admin/skill-bundles', { method: 'POST', body: JSON.stringify(payload) }),
+  getSkillBundle: (id: number) => request<SkillBundleDetail>(`/api/admin/skill-bundles/${id}`),
+  updateSkillBundle: (id: number, payload: { name?: string; description?: string }) =>
+    request<SkillBundleItem>(`/api/admin/skill-bundles/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteSkillBundle: (id: number) => request<{ ok: boolean }>(`/api/admin/skill-bundles/${id}`, { method: 'DELETE' }),
+  addSkillBundleMembers: (id: number, skillIds: number[]) =>
+    request<{
+      added: number
+      skipped: { skill_id: number; reason: string }[]
+      members: SkillBundleMember[]
+    }>(`/api/admin/skill-bundles/${id}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ skill_ids: skillIds }),
+    }),
+  removeSkillBundleMember: (id: number, skillId: number) =>
+    request<{ ok: boolean }>(`/api/admin/skill-bundles/${id}/members/${skillId}`, { method: 'DELETE' }),
+  downloadSkillBundle: async (id: number) => {
+    const headers = new Headers()
+    const token = getToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`/api/admin/skill-bundles/${id}/download`, { headers })
+    if (!response.ok) {
+      let message = '下载组合包失败'
+      try {
+        const payload = await response.json()
+        message = payload.detail || payload.message || message
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError(response.status, typeof message === 'string' ? message : JSON.stringify(message))
+    }
+    return response.blob()
+  },
+  skillBundleDownloadUrl: (id: number) =>
+    request<{ url: string; expiresInSeconds: number }>(`/api/admin/skill-bundles/${id}/download-url`, {
+      method: 'POST',
+    }),
   downloadSkillFile: async (id: number, path: string) => {
     const headers = new Headers()
     const token = getToken()

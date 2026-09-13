@@ -492,6 +492,56 @@ class SkillUploadOut(BaseModel):
     skipped: list[SkillSkippedOut] = Field(default_factory=list)
 
 
+class SkillBundleCreate(BaseModel):
+    name: str
+    description: str = ""
+
+
+class SkillBundleUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
+class SkillBundleOut(BaseModel):
+    id: int
+    name: str
+    description: str
+    member_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class SkillBundleListOut(BaseModel):
+    items: list[SkillBundleOut] = Field(default_factory=list)
+    total: int = 0
+
+
+class BundleMemberOut(BaseModel):
+    skill_id: int
+    added_at: datetime
+    missing: bool = False
+    skill: SkillOut | None = None
+
+
+class SkillBundleDetailOut(SkillBundleOut):
+    members: list[BundleMemberOut] = Field(default_factory=list)
+
+
+class BundleMembersAdd(BaseModel):
+    skill_ids: list[int] = Field(default_factory=list)
+
+
+class BundleMemberSkippedOut(BaseModel):
+    skill_id: int
+    reason: str
+
+
+class BundleMembersAddOut(BaseModel):
+    added: int = 0
+    skipped: list[BundleMemberSkippedOut] = Field(default_factory=list)
+    members: list[BundleMemberOut] = Field(default_factory=list)
+
+
 class SkillCategoryOut(BaseModel):
     name: str
     count: int

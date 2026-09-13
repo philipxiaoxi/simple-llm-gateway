@@ -118,6 +118,7 @@ base_url = https://你的站/v1
 - 下载整个 Skill 为 zip，或单独下载某个文件
 - 复制 Claude Code 安装指令：生成 5 分钟有效的下载链接，连同安装步骤一起复制给 AI 一键安装
 - 复制上传指令：生成 5 分钟有效的上传链接，交给 AI 打包本机各 Agent skills 目录并上传；入库名称自动加 `【ai】-时间戳` 前缀
+- Skills 组合：将已入库 Skill 编成组合包，支持成员增删、整包 zip 下载（每个 Skill 一个顶层目录）与复制安装指令
 
 文件默认写在与数据库同级的 `skills/`（Docker 下即 `/data/skills`，已被 `./data` 卷覆盖）。可用 `SKILLS_PATH` 改路径。单次上传上限 20MB，解压后 40MB / 400 个文件。
 

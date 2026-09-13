@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Copy, Download, FolderUp, RefreshCw, Search, Sparkles, Tags, Trash2, Upload } from 'lucide-react'
+import { Copy, Download, FolderUp, Layers, RefreshCw, Search, Sparkles, Tags, Trash2, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
@@ -221,6 +221,10 @@ export function SkillsPage() {
           <Button variant="line" onClick={() => void copyUpload()}>
             <Copy size={16} />
             复制上传指令
+          </Button>
+          <Button variant="line" onClick={() => navigate('/skills/bundles')}>
+            <Layers size={16} />
+            Skills 组合
           </Button>
           <Button onClick={() => setUploadOpen(true)}>
             <Upload size={16} />

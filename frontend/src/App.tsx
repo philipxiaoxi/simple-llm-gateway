@@ -27,6 +27,10 @@ const PublicLeaderboardPage = lazy(() =>
   import('./pages/PublicLeaderboard').then((m) => ({ default: m.PublicLeaderboardPage })),
 )
 const SharePage = lazy(() => import('./pages/Share').then((m) => ({ default: m.SharePage })))
+const SkillBundleDetailPage = lazy(() =>
+  import('./pages/SkillBundleDetail').then((m) => ({ default: m.SkillBundleDetailPage })),
+)
+const SkillBundlesPage = lazy(() => import('./pages/SkillBundles').then((m) => ({ default: m.SkillBundlesPage })))
 const SkillDetailPage = lazy(() => import('./pages/SkillDetail').then((m) => ({ default: m.SkillDetailPage })))
 const SkillsPage = lazy(() => import('./pages/Skills').then((m) => ({ default: m.SkillsPage })))
 const ToolsPage = lazy(() => import('./pages/Tools').then((m) => ({ default: m.ToolsPage })))
@@ -90,6 +94,8 @@ export default function App() {
               <Route path="/agents/:agentId" element={<AgentDetailPage />} />
               <Route path="/keys" element={<KeysPage />} />
               <Route path="/skills" element={<SkillsPage />} />
+              <Route path="/skills/bundles" element={<SkillBundlesPage />} />
+              <Route path="/skills/bundles/:bundleId" element={<SkillBundleDetailPage />} />
               <Route path="/skills/:skillId" element={<SkillDetailPage />} />
               <Route path="/tools" element={<ToolsPage />} />
               <Route path="/benchmark" element={<BenchmarkPage />} />

@@ -45,3 +45,25 @@ export function buildSkillUploadText(uploadUrl: string) {
     '- 体积上限 20MB',
   ].join('\n')
 }
+
+export function buildBundleInstallText(
+  bundle: { name: string; description?: string | null; member_count?: number },
+  downloadUrl: string,
+) {
+  const lines = ['请把下面这个 Skills 组合包安装到本机各 Agent 的 skills 目录。', '', `组合名称：${bundle.name}`]
+  const description = bundle.description?.trim()
+  if (description) lines.push(`说明：${description}`)
+  if (typeof bundle.member_count === 'number') lines.push(`成员数量：${bundle.member_count}`)
+  lines.push(
+    `下载地址（5 分钟内有效，过期请重新生成）：${downloadUrl}`,
+    '',
+    '安装步骤：',
+    '1. 下载：curl -L -o /tmp/skill-bundle.zip "' + downloadUrl + '"',
+    '2. 解压：unzip -o /tmp/skill-bundle.zip -d /tmp/skill-bundle-install',
+    '3. zip 根目录下每个子目录是一个 Skill（含 SKILL.md），例如 {slug}/SKILL.md',
+    '4. 自行判断本机 Agent 的 skills 根目录（示例：~/.claude/skills/），',
+    '   将每个 {slug}/ 目录安装到对应根目录下的 {slug}/（已存在先备份再覆盖）',
+    '5. 完成后列出安装路径',
+  )
+  return lines.join('\n')
+}
