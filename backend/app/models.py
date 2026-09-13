@@ -305,6 +305,26 @@ class Skill(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
+class SkillBundle(Base):
+    __tablename__ = "skill_bundles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class SkillBundleMember(Base):
+    __tablename__ = "skill_bundle_members"
+    __table_args__ = (UniqueConstraint("bundle_id", "skill_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bundle_id: Mapped[int] = mapped_column(ForeignKey("skill_bundles.id", ondelete="CASCADE"), nullable=False, index=True)
+    skill_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
 class DesktopTool(Base):
     __tablename__ = "desktop_tools"
     __table_args__ = (UniqueConstraint("tool_id", "platform"),)

@@ -23,6 +23,7 @@ from app.routers import (
     admin_keys,
     admin_leaderboard,
     admin_logs,
+    admin_skill_bundles,
     admin_skills,
     admin_tools,
     health,
@@ -122,6 +123,9 @@ app.include_router(admin_content_audit.router)
 app.include_router(admin_logs.router)
 app.include_router(admin_dashboard.router)
 app.include_router(admin_skills.router)
+app.include_router(admin_skills.download_router)
+app.include_router(admin_skill_bundles.router)
+app.include_router(admin_skill_bundles.download_router)
 app.include_router(admin_tools.router)
 app.include_router(admin_tools.download_router)
 app.include_router(admin_tools.download_router)

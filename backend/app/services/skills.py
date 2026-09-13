@@ -7,6 +7,7 @@ import shutil
 import tarfile
 import zipfile
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 from uuid import uuid4
@@ -596,6 +597,37 @@ def import_uploaded_files(
         category_names=category_names,
         category_rules=category_rules,
     )
+
+
+def apply_ai_upload_stamp(
+    parsed_skills: list[ParsedSkill],
+    *,
+    existing_slugs: set[str] | None = None,
+    stamped_at: datetime | None = None,
+) -> None:
+    """给 AI 临时 token 上传的 Skill 打【ai】+ 时间戳前缀，整批共用同一时间。"""
+    moment = stamped_at or utcnow()
+    if moment.tzinfo is None:
+        moment_utc = moment.replace(tzinfo=timezone.utc)
+    else:
+        moment_utc = moment.astimezone(timezone.utc)
+    local = moment_utc.astimezone(timezone(timedelta(hours=8)))
+    name_ts = (
+        f"{local.year}年{local.month}月{local.day}日 "
+        f"{local.hour:02d}时{local.minute:02d}分{local.second:02d}秒"
+    )
+    slug_ts = f"{local.year:04d}{local.month:02d}{local.day:02d}-{local.hour:02d}{local.minute:02d}{local.second:02d}"
+    source = f"ai-upload-{slug_ts}"
+    used = set(existing_slugs or ())
+    for item in parsed_skills:
+        original_name = (item.name or "").strip() or "untitled-skill"
+        prefix = f"【ai】-{name_ts}-"
+        remain = max(1, 128 - len(prefix))
+        item.name = f"{prefix}{original_name[:remain]}"[:128]
+        base = _slugify(f"ai-{slug_ts}-{item.slug}")
+        item.slug = _unique_slug(base, used)
+        used.add(item.slug)
+        item.source_name = source[:256]
 
 
 def persist_parsed_skills(db: Session, parsed_skills: list[ParsedSkill]) -> list[Skill]:

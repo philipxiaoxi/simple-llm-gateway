@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, FolderUp, RefreshCw, Search, Sparkles, Tags, Trash2, Upload } from 'lucide-react'
+import { Copy, Download, FolderUp, Layers, RefreshCw, Search, Sparkles, Tags, Trash2, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type Account, type SkillCategoryItem, type SkillItem } from '../lib/api'
+import { buildSkillInstallText, buildSkillUploadText } from '../lib/skillInstall'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { errorMessage, formatBytes, formatTime } from '../lib/utils'
+import { copyText, errorMessage, formatBytes, formatTime } from '../lib/utils'
 
 const AUTO_CATEGORY = '自动识别'
 
@@ -175,6 +176,26 @@ export function SkillsPage() {
     }
   }
 
+  async function copyInstall(item: SkillItem) {
+    try {
+      const { url } = await api.skillDownloadUrl(item.id)
+      await copyText(buildSkillInstallText(item, `${window.location.origin}${url}`))
+      notifyOk('安装指令已复制，链接 5 分钟内有效')
+    } catch (caught) {
+      notifyBad(errorMessage(caught, '复制安装指令失败'))
+    }
+  }
+
+  async function copyUpload() {
+    try {
+      const { url } = await api.skillUploadUrl()
+      await copyText(buildSkillUploadText(`${window.location.origin}${url}`))
+      notifyOk('上传指令已复制，链接 5 分钟内有效')
+    } catch (caught) {
+      notifyBad(errorMessage(caught, '复制上传指令失败'))
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -196,6 +217,14 @@ export function SkillsPage() {
           <Button variant="line" onClick={() => setBulkUpdateOpen(true)}>
             <RefreshCw size={16} />
             批量更新
+          </Button>
+          <Button variant="line" onClick={() => void copyUpload()}>
+            <Copy size={16} />
+            复制上传指令
+          </Button>
+          <Button variant="line" onClick={() => navigate('/skills/bundles')}>
+            <Layers size={16} />
+            Skills 组合
           </Button>
           <Button onClick={() => setUploadOpen(true)}>
             <Upload size={16} />
@@ -271,17 +300,27 @@ export function SkillsPage() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {items.map((item) => (
-          <Card key={item.id} className="flex flex-col gap-3">
+          <Card key={item.id} className="flex min-w-0 flex-col gap-3 overflow-hidden">
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <Link to={`/skills/${item.id}`} className="block truncate text-lg font-semibold hover:text-signal">
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <Link
+                  to={`/skills/${item.id}`}
+                  title={item.name}
+                  className="block break-all text-lg font-semibold leading-snug hover:text-signal [overflow-wrap:anywhere] line-clamp-2"
+                >
                   {item.name}
                 </Link>
-                <code className="mt-1 block truncate text-xs text-mist">{item.slug}</code>
+                <code title={item.slug} className="mt-1 block truncate text-xs text-mist">
+                  {item.slug}
+                </code>
               </div>
-              <Badge tone="info">{item.category}</Badge>
+              <Badge tone="info" className="max-w-[40%] shrink-0 truncate">
+                {item.category}
+              </Badge>
             </div>
-            <p className="line-clamp-3 text-sm text-mist">{item.description || '暂无描述'}</p>
+            <p className="line-clamp-3 break-words text-sm text-mist [overflow-wrap:anywhere]">
+              {item.description || '暂无描述'}
+            </p>
             <div className="flex flex-wrap gap-1.5">
               {item.platforms.slice(0, 4).map((platform) => (
                 <Badge key={platform} tone="mist">
@@ -290,18 +329,21 @@ export function SkillsPage() {
               ))}
               {item.license ? <Badge tone="ok">{item.license}</Badge> : null}
             </div>
-            <div className="mt-auto flex items-center justify-between gap-2 text-xs text-mist">
-              <span>
+            <div className="mt-auto flex min-w-0 items-center justify-between gap-2 text-xs text-mist">
+              <span className="min-w-0 truncate">
                 {item.file_count} 个文件 · {formatBytes(item.size_bytes)}
               </span>
-              <span>{formatTime(item.updated_at)}</span>
+              <span className="shrink-0">{formatTime(item.updated_at)}</span>
             </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="line" className="flex-1" onClick={() => navigate(`/skills/${item.id}`)}>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="line" className="min-w-0 flex-1" onClick={() => navigate(`/skills/${item.id}`)}>
                 详情
               </Button>
               <Button type="button" variant="line" title="重新上传并覆盖此 Skill" onClick={() => setReplaceSkill(item)}>
                 <RefreshCw size={16} />
+              </Button>
+              <Button type="button" variant="line" title="复制安装指令（Claude Code）" onClick={() => void copyInstall(item)}>
+                <Copy size={16} />
               </Button>
               <Button type="button" variant="line" onClick={() => void download(item)}>
                 <Download size={16} />
