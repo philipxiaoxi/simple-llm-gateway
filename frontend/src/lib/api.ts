@@ -919,6 +919,59 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  // ---- 应用中心 ----
+  apps: () => request<AppItem[]>('/api/admin/apps'),
+  app: (appId: string) => request<AppItem>(`/api/admin/apps/${encodeURIComponent(appId)}`),
+  appIntegration: () => request<AppIntegrationInfo>('/api/admin/apps/integration'),
+  updateApp: (
+    appId: string,
+    payload: {
+      enabled?: boolean
+      config?: Record<string, unknown>
+      bound_account_id?: number | null
+      bound_model?: string | null
+      clear_binding?: boolean
+    },
+  ) =>
+    request<AppItem>(`/api/admin/apps/${encodeURIComponent(appId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  appBindingAccounts: () => request<AppBindingAccount[]>('/api/admin/apps/binding-accounts'),
+  ocrRecognize: async (file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return request<AppOcrResult>('/api/admin/apps/ocr/recognize', { method: 'POST', body })
+  },
+  staticSites: () => request<StaticSite[]>('/api/admin/apps/static-deploy/sites'),
+  createStaticSite: (payload: { name: string; slug: string; description?: string }) =>
+    request<StaticSite>('/api/admin/apps/static-deploy/sites', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteStaticSite: (siteId: number) =>
+    request<void>(`/api/admin/apps/static-deploy/sites/${siteId}`, { method: 'DELETE' }),
+  uploadStaticSiteZip: async (siteId: number, file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return request<StaticSite>(`/api/admin/apps/static-deploy/sites/${siteId}/upload`, {
+      method: 'POST',
+      body,
+    })
+  },
+  uploadStaticSiteFiles: async (siteId: number, files: File[]) => {
+    const body = new FormData()
+    for (const file of files) {
+      body.append('files', file)
+      const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name
+      body.append('paths', rel)
+    }
+    return request<StaticSite>(`/api/admin/apps/static-deploy/sites/${siteId}/upload`, {
+      method: 'POST',
+      body,
+    })
+  },
+
   // ---- 手机端公开接口（不带管理员令牌）----
   voiceLookup: (code: string) =>
     request<{ roomId: string; name: string; requirePin: boolean }>(
@@ -1209,4 +1262,69 @@ export type VoiceJoinResponse = {
   wsPath: string
   wsUrl: string
   room: { roomId: string; name: string; asrModel: string; maxRecordingSeconds: number; polishMode: VoicePolishMode }
+}
+
+export type AppItem = {
+  id: string
+  name: string
+  description: string
+  icon: string
+  category: string
+  entry_path: string
+  version: string
+  capabilities: string[]
+  config_schema: Record<string, unknown>
+  enabled: boolean
+  config: Record<string, unknown>
+  bound_account_id: number | null
+  bound_model: string | null
+  updated_at: string | null
+}
+
+export type AppIntegrationInfo = {
+  server: { name: string; version: string; description: string }
+  mcp_url: string
+  mcp_url_alt: string
+  rest_tools_url: string
+  rest_call_url: string
+  auth_header: string
+  cursor_config: Record<string, unknown>
+  tools: { name: string; description: string; inputSchema: Record<string, unknown> }[]
+  openai_tools: unknown[]
+  skill_slugs: string[]
+  notes: string[]
+}
+
+export type AppBindingAccount = {
+  id: number
+  name: string
+  provider: string
+  source: string
+  available: boolean
+  default_model: string
+  models: string[]
+}
+
+export type AppOcrResult = {
+  ok: boolean
+  text: string
+  model: string | null
+  account_id: number | null
+  ms: number
+  error: string | null
+}
+
+export type StaticSite = {
+  id: number
+  name: string
+  slug: string
+  description: string | null
+  entry_file: string
+  file_count: number
+  total_bytes: number
+  status: string
+  error_message: string | null
+  public_url: string
+  created_at: string
+  updated_at: string
 }

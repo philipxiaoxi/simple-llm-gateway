@@ -49,7 +49,12 @@ class Settings(BaseSettings):
     frontend_dist: str = ""
     skills_path: str = ""
     tools_path: str = ""
+    apps_path: str = ""
     tools_download_timeout_seconds: int = 3600
+    apps_ocr_timeout_seconds: int = 90
+    apps_ocr_max_image_bytes: int = 8 * 1024 * 1024
+    apps_static_max_sites: int = 20
+    apps_static_max_site_bytes: int = 50 * 1024 * 1024
     aihot_leaderboard_url: str = "https://aihot.virxact.com/leaderboard"
     aihot_leaderboard_ttl_seconds: int = 43200
     aihot_leaderboard_min_refresh_seconds: int = 60
@@ -98,6 +103,17 @@ class Settings(BaseSettings):
         path = Path(self.tools_path) if self.tools_path else Path(self.database_path).expanduser().resolve().parent / "tools"
         (path / "scripts").mkdir(parents=True, exist_ok=True)
         (path / "downloads").mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def resolved_apps_path(self) -> Path:
+        if self.apps_path:
+            path = Path(self.apps_path)
+        elif self.database_path == ":memory:":
+            path = Path("data") / "apps"
+        else:
+            path = Path(self.database_path).expanduser().resolve().parent / "apps"
+        (path / "static-deploy").mkdir(parents=True, exist_ok=True)
         return path
 
 

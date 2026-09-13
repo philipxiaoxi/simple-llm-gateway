@@ -80,6 +80,8 @@ export default defineConfig({
       '/chat': 'http://127.0.0.1:8000',
       '/responses': 'http://127.0.0.1:8000',
       '/models': 'http://127.0.0.1:8000',
+      '/a': 'http://127.0.0.1:8000',
+      '/mcp': 'http://127.0.0.1:8000',
     },
   },
 })

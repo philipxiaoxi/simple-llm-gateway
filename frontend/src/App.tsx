@@ -34,6 +34,11 @@ const SkillBundlesPage = lazy(() => import('./pages/SkillBundles').then((m) => (
 const SkillDetailPage = lazy(() => import('./pages/SkillDetail').then((m) => ({ default: m.SkillDetailPage })))
 const SkillsPage = lazy(() => import('./pages/Skills').then((m) => ({ default: m.SkillsPage })))
 const ToolsPage = lazy(() => import('./pages/Tools').then((m) => ({ default: m.ToolsPage })))
+const AppsPage = lazy(() => import('./pages/Apps').then((m) => ({ default: m.AppsPage })))
+const AppOcrPage = lazy(() => import('./pages/AppOcr').then((m) => ({ default: m.AppOcrPage })))
+const AppStaticDeployPage = lazy(() =>
+  import('./pages/AppStaticDeploy').then((m) => ({ default: m.AppStaticDeployPage })),
+)
 const VoiceRoomsPage = lazy(() => import('./pages/VoiceRooms').then((m) => ({ default: m.VoiceRoomsPage })))
 const VoiceRoomDetailPage = lazy(() =>
   import('./pages/VoiceRoomDetail').then((m) => ({ default: m.VoiceRoomDetailPage })),
@@ -98,6 +103,9 @@ export default function App() {
               <Route path="/skills/bundles/:bundleId" element={<SkillBundleDetailPage />} />
               <Route path="/skills/:skillId" element={<SkillDetailPage />} />
               <Route path="/tools" element={<ToolsPage />} />
+              <Route path="/apps" element={<AppsPage />} />
+              <Route path="/apps/ocr" element={<AppOcrPage />} />
+              <Route path="/apps/static-deploy" element={<AppStaticDeployPage />} />
               <Route path="/benchmark" element={<BenchmarkPage />} />
               <Route path="/benchmark/history" element={<BenchmarkHistoryPage />} />
               <Route path="/leaderboard" element={<LeaderboardPage />} />

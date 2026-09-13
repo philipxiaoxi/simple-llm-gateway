@@ -14,6 +14,7 @@ from app.config import get_settings, validate_app_secret_key
 from app.db import get_engine, get_session_factory, init_db
 from app.routers import (
     admin_accounts,
+    admin_apps,
     admin_auth,
     admin_benchmark,
     admin_benchmark_history,
@@ -26,6 +27,7 @@ from app.routers import (
     admin_skill_bundles,
     admin_skills,
     admin_tools,
+    apps_mcp,
     health,
     local_agent,
     oauth,
@@ -33,7 +35,13 @@ from app.routers import (
     share,
     voice_rooms,
 )
-from app.seed import seed_admin, seed_desktop_tools, seed_skill_categories
+from app.seed import (
+    seed_admin,
+    seed_app_center_skill_packages,
+    seed_app_installations,
+    seed_desktop_tools,
+    seed_skill_categories,
+)
 from app.services.desktop_tools import reconcile_stuck_downloads
 from app.services.grok_oauth import cleanup_expired_oauth_states
 from app.services.jobs import start_job_loops
@@ -80,6 +88,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     seed_admin()
     seed_skill_categories()
     seed_desktop_tools()
+    seed_app_installations()
+    seed_app_center_skill_packages()
     session = get_session_factory()()
     try:
         reconcile_stuck_downloads(session)
@@ -129,6 +139,9 @@ app.include_router(admin_skill_bundles.download_router)
 app.include_router(admin_tools.router)
 app.include_router(admin_tools.download_router)
 app.include_router(admin_tools.download_router)
+app.include_router(admin_apps.router)
+app.include_router(admin_apps.public_router)
+app.include_router(apps_mcp.router)
 app.include_router(oauth.router)
 app.include_router(proxy.router)
 app.include_router(share.router)
@@ -258,8 +271,8 @@ if FRONTEND_DIST.exists():
     def spa(full_path: str, request: Request) -> FileResponse:
         # API 路径不能回落到 SPA，否则未注册的 POST 会变成 405 而不是 404。
         is_api = full_path == "health" or full_path.startswith(
-            ("api/", "v1/", "anthropic/", "chat", "responses", "models")
-        )
+            ("api/", "v1/", "anthropic/", "chat", "responses", "models", "a/", "mcp")
+        ) or full_path in {"a", "mcp"}
         if is_api or request.method not in {"GET", "HEAD"}:
             raise HTTPException(status_code=404, detail="Not Found")
         # 前端路由一律回 index.html，不把用户路径拼到磁盘上。

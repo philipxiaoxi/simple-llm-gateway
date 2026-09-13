@@ -746,3 +746,68 @@ class ContentAuditLexiconSyncOut(BaseModel):
     word_count: int = 0
     categories: list[str] = Field(default_factory=list)
     error_message: str | None = None
+
+
+class AppOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    icon: str
+    category: str
+    entry_path: str
+    version: str
+    capabilities: list[str] = Field(default_factory=list)
+    config_schema: dict[str, Any] = Field(default_factory=dict)
+    enabled: bool = True
+    config: dict[str, Any] = Field(default_factory=dict)
+    bound_account_id: int | None = None
+    bound_model: str | None = None
+    updated_at: datetime | None = None
+
+
+class AppUpdate(BaseModel):
+    enabled: bool | None = None
+    config: dict[str, Any] | None = None
+    bound_account_id: int | None = None
+    bound_model: str | None = None
+    clear_binding: bool = False
+
+
+class AppOcrResultOut(BaseModel):
+    ok: bool
+    text: str = ""
+    model: str | None = None
+    account_id: int | None = None
+    ms: int = 0
+    error: str | None = None
+
+
+class AppBindingAccountOut(BaseModel):
+    id: int
+    name: str
+    provider: str
+    source: str
+    available: bool
+    default_model: str
+    models: list[str] = Field(default_factory=list)
+
+
+class StaticSiteOut(BaseModel):
+    id: int
+    name: str
+    slug: str
+    description: str | None = None
+    entry_file: str
+    file_count: int
+    total_bytes: int
+    status: str
+    error_message: str | None = None
+    public_url: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class StaticSiteCreate(BaseModel):
+    name: str
+    slug: str
+    description: str | None = None

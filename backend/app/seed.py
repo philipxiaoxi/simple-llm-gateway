@@ -8,6 +8,8 @@ from app.config import get_settings, validate_bootstrap_admin_password
 from app.crypto import hash_password
 from app.db import get_session_factory
 from app.models import Admin, DesktopTool
+from app.services.apps.service import ensure_app_installations
+from app.services.apps.skill_seed import seed_app_center_skills
 from app.services.skills import ensure_skill_categories
 
 
@@ -34,6 +36,25 @@ def seed_skill_categories() -> None:
     session = get_session_factory()()
     try:
         ensure_skill_categories(session)
+        session.commit()
+    finally:
+        session.close()
+
+
+def seed_app_installations() -> None:
+    session = get_session_factory()()
+    try:
+        ensure_app_installations(session)
+        session.commit()
+    finally:
+        session.close()
+
+
+def seed_app_center_skill_packages() -> None:
+    session = get_session_factory()()
+    try:
+        ensure_skill_categories(session)
+        seed_app_center_skills(session)
         session.commit()
     finally:
         session.close()
