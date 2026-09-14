@@ -375,6 +375,7 @@ export type LeaderboardEntry = {
   pricing_official_model_id: string | null
   input_price_per_million_usd: number | null
   output_price_per_million_usd: number | null
+  cache_input_price_per_million_cny: number | null
   input_price_per_million_cny: number | null
   output_price_per_million_cny: number | null
   price_quote: string | null

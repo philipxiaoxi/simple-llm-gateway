@@ -76,3 +76,16 @@ Entries discovered by the Agent during task execution should follow this format:
   - 凭据用 `git credential fill`（`protocol=https` + `host=github.com`）读取，全程不要打印 token 明文
   - 请求体：`{"title": ..., "head": "<分支>", "base": "main", "body": ...}`；创建后用 `GET /repos/{owner}/{repo}/pulls/{number}` 核对
   - 兜底：浏览器打开 `https://github.com/philipxiaoxi/simple-llm-gateway/pull/new/<branch>` 手动创建
+
+[AIHOT 模型榜改成 RSC 飞行载荷]
+- Date: 2026-09-14
+- Context: 任务面板一直报“榜单载荷中没有 entries（已缓存 30 条榜单）”，模型榜缓存自 09-10 起没再刷新成功
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - AIHOT 已从 aihot.virxact.com 301 到 aihot.news；页面改版后不再内联 `{"entries":[...]}`，而是把榜单表格直接渲染进 React Server Component 载荷（`Content-Type: text/x-component`）
+  - 表格行形如 `["$","tr","<slug>",{"children":[["$","td",null,{"className":"lb-rank-number",...}]]}]`；前两行内联在页面块里，第 3 名起以 `$L<数据块 id>` 流式分块下发，必须回填引用才能取到
+  - 字段按 className 取：lb-rank-number（名次）/ lb-name-cell（strong=模型名，small=厂商）/ lb-release-cell（time dateTime）/ lb-evidence-cell（span=评测项数，small[data-confidence]）/ lb-price-cell×3（缓存输入、输入、输出，人民币）/ lb-score-cell（meter value）
+  - 新版不再提供上下文窗口、输出上限、覆盖率、名次变动和美元价；上下文/输出上限由 models.dev 目录在 `attach_catalog_windows` 里补
+  - 真实抓取样例固定在 `backend/tests/fixtures/aihot_leaderboard_flight.rsc`（30 条），解析回归测试直接用它，不依赖网络
+  - 解析要求“全行可解析”才返回，className 对不上时整体报错：宁可保留旧缓存 + 任务显示失败，也不要把只有 slug 的空壳写进快照
+  - 手动排查上游结构：`curl -sL -H 'RSC: 1' -H 'Accept: text/x-component' https://aihot.news/leaderboard`

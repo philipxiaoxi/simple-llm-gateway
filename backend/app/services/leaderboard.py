@@ -68,8 +68,41 @@ def _extract_json_array(text: str, marker: str) -> list[Any]:
     return data
 
 
-def parse_leaderboard_payload(text: str) -> list[dict[str, Any]]:
-    raw_entries = _extract_json_array(text, '"entries":[')
+def _empty_entry() -> dict[str, Any]:
+    return {
+        "rank": None,
+        "previous_rank": None,
+        "rank_change": None,
+        "slug": "",
+        "name": "",
+        "provider": "",
+        "provider_slug": None,
+        "released_at": None,
+        "context_window_tokens": None,
+        "pricing_kind": None,
+        "pricing_official_model_id": None,
+        "input_price_per_million_usd": None,
+        "output_price_per_million_usd": None,
+        "cache_input_price_per_million_cny": None,
+        "input_price_per_million_cny": None,
+        "output_price_per_million_cny": None,
+        "price_quote": None,
+        "pricing_source_name": None,
+        "pricing_source_url": None,
+        "score": None,
+        "uncertainty": None,
+        "coverage": None,
+        "confidence": None,
+        "possible_rank_from": None,
+        "possible_rank_to": None,
+        "metric_count": None,
+        "summary": None,
+        "components": {},
+    }
+
+
+def _normalize_entries(raw_entries: list[Any]) -> list[dict[str, Any]]:
+    """旧版载荷：AIHOT 直接内联 {"entries":[...]} 的 JSON。"""
     entries: list[dict[str, Any]] = []
     for item in raw_entries:
         if not isinstance(item, dict):
@@ -89,7 +122,8 @@ def parse_leaderboard_payload(text: str) -> list[dict[str, Any]]:
                     "coverage": value.get("coverage"),
                     "metric_count": value.get("metricCount"),
                 }
-        entries.append(
+        entry = _empty_entry()
+        entry.update(
             {
                 "rank": item.get("rank"),
                 "previous_rank": item.get("previousRank"),
@@ -120,8 +154,240 @@ def parse_leaderboard_payload(text: str) -> list[dict[str, Any]]:
                 "components": components,
             }
         )
+        entries.append(entry)
     if not entries:
         raise LeaderboardError("榜单没有可用条目")
+    return entries
+
+
+# ---- 新版载荷：React Server Component 飞行数据 ----
+# AIHOT 改版后不再内联 {"entries":[...]}，而是把榜单表格直接渲染进 RSC 载荷
+# （Content-Type: text/x-component）。表格行形如
+#   ["$","tr","claude-fable-5",{"children":[["$","td",null,{"className":"lb-rank-number",...
+# 前两行内联在页面数据块里，其余行以 $L<数据块 id> 的形式流式分块下发。
+# 解析步骤：先按行收集单行 JSON 数据块 → 回填 $L 引用 → 按 className 抽取字段。
+_FLIGHT_JSON_ROW = re.compile(r"^([0-9a-f]+):(\[.*\])\s*$")
+_FLIGHT_REFERENCE = re.compile(r"^\$(?:L)?([0-9a-f]+)$")
+_FLIGHT_NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
+_FLIGHT_TABLE_CLASS = "lb-ranking-table"
+
+
+def _flight_chunks(text: str) -> dict[str, Any]:
+    """收集飞行载荷里单行 JSON 数据块（表格行与单元格都在其中）。"""
+    chunks: dict[str, Any] = {}
+    for line in text.splitlines():
+        match = _FLIGHT_JSON_ROW.match(line)
+        if match is None:
+            continue
+        try:
+            chunks[match.group(1)] = json.loads(match.group(2))
+        except json.JSONDecodeError:
+            continue
+    return chunks
+
+
+def _flight_resolve(value: Any, chunks: dict[str, Any], seen: frozenset[str] = frozenset()) -> Any:
+    """把 $L<id> / $<id> 引用替换成对应数据块的内容。"""
+    if isinstance(value, str):
+        match = _FLIGHT_REFERENCE.match(value)
+        if match is None:
+            return value
+        chunk_id = match.group(1)
+        if chunk_id in seen or chunk_id not in chunks:
+            return None
+        return _flight_resolve(chunks[chunk_id], chunks, seen | {chunk_id})
+    if isinstance(value, list):
+        return [_flight_resolve(item, chunks, seen) for item in value]
+    if isinstance(value, dict):
+        return {key: _flight_resolve(item, chunks, seen) for key, item in value.items()}
+    return value
+
+
+def _flight_element(value: Any) -> list[Any] | None:
+    """飞行元素形如 ["$", 标签, key, props]，其余（文本、数字、null）返回 None。"""
+    if isinstance(value, list) and len(value) >= 4 and value[0] == "$" and isinstance(value[3], dict):
+        return value
+    return None
+
+
+def _flight_children(value: Any) -> list[Any]:
+    """children 可能是单个元素、元素数组或纯文本数组，统一拍平一层。"""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        if value and value[0] == "$":
+            return [value]
+        nodes: list[Any] = []
+        for item in value:
+            nodes.extend(_flight_children(item))
+        return nodes
+    return [value]
+
+
+def _flight_text(value: Any) -> str:
+    if value is None or isinstance(value, bool):
+        return ""
+    if isinstance(value, str):
+        return "" if value == "$undefined" else value
+    if isinstance(value, int | float):
+        return str(value)
+    if isinstance(value, list):
+        element = _flight_element(value)
+        if element is not None:
+            return _flight_text(element[3].get("children"))
+        return "".join(_flight_text(item) for item in value)
+    return ""
+
+
+def _flight_descendants(value: Any) -> list[list[Any]]:
+    found: list[list[Any]] = []
+    for node in _flight_children(value):
+        element = _flight_element(node)
+        if element is None:
+            continue
+        found.append(element)
+        found.extend(_flight_descendants(element[3].get("children")))
+    return found
+
+
+def _flight_find_class(value: Any, needle: str) -> list[Any] | None:
+    element = _flight_element(value)
+    if element is not None:
+        class_name = element[3].get("className")
+        if isinstance(class_name, str) and needle in class_name:
+            return element
+        return _flight_find_class(element[3].get("children"), needle)
+    if isinstance(value, list):
+        for item in value:
+            found = _flight_find_class(item, needle)
+            if found is not None:
+                return found
+    return None
+
+
+def _flight_first_tag(value: Any, tag: str) -> list[Any] | None:
+    for element in _flight_descendants(value):
+        if element[1] == tag:
+            return element
+    return None
+
+
+def _flight_number(value: Any) -> float | None:
+    match = _FLIGHT_NUMBER.search(re.sub(r"[,\s]", "", _flight_text(value)))
+    return float(match.group(0)) if match else None
+
+
+def _flight_score(props: dict[str, Any]) -> float | None:
+    meter = _flight_first_tag(props.get("children"), "meter")
+    if meter is not None:
+        raw = meter[3].get("value")
+        if isinstance(raw, int | float) and not isinstance(raw, bool):
+            return float(raw)
+        parsed = _flight_number(raw)
+        if parsed is not None:
+            return parsed
+    strong = _flight_first_tag(props.get("children"), "strong")
+    return _flight_number(strong if strong is not None else props.get("children"))
+
+
+def _flight_entry(row: list[Any], chunks: dict[str, Any]) -> dict[str, Any] | None:
+    entry = _empty_entry()
+    slug = str(row[2] or "").strip()
+    named = False
+    prices: list[float | None] = []
+    for node in _flight_children(row[3].get("children")):
+        cell = _flight_element(_flight_resolve(node, chunks))
+        if cell is None:
+            continue
+        props = cell[3]
+        class_name = str(props.get("className") or "")
+        if "lb-rank-number" in class_name:
+            rank = _flight_number(props.get("children"))
+            entry["rank"] = int(rank) if rank is not None else None
+        elif "lb-name-cell" in class_name:
+            if not slug:
+                for element in _flight_descendants(props.get("children")):
+                    href = element[3].get("href")
+                    if isinstance(href, str) and href.startswith("/leaderboard/"):
+                        slug = href.rsplit("/", 1)[-1].strip()
+                        break
+            entry["name"] = _flight_text(_flight_first_tag(props.get("children"), "strong")).strip()
+            entry["provider"] = _flight_text(_flight_first_tag(props.get("children"), "small")).strip()
+            named = bool(entry["name"])
+        elif "lb-release-cell" in class_name:
+            time_element = _flight_first_tag(props.get("children"), "time")
+            released = str(time_element[3].get("dateTime") or "").strip() if time_element is not None else ""
+            entry["released_at"] = released or _flight_text(props.get("children")).strip() or None
+        elif "lb-evidence-cell" in class_name:
+            metric = _flight_number(_flight_first_tag(props.get("children"), "span"))
+            entry["metric_count"] = int(metric) if metric is not None else None
+            confidence_element = _flight_first_tag(props.get("children"), "small")
+            if confidence_element is not None:
+                confidence = str(confidence_element[3].get("data-confidence") or "").strip()
+                entry["confidence"] = confidence or None
+        elif "lb-price-cell" in class_name:
+            prices.append(_flight_number(props.get("children")))
+        elif "lb-score-cell" in class_name:
+            entry["score"] = _flight_score(props)
+    # 缺 slug / 名字 / 分数的行说明页面结构与解析假设已经对不上，宁可整体报错也不要
+    # 把空壳条目写进缓存（写进去之后页面看着“有数据”，实际全是 slug）
+    if not slug or not named or entry["score"] is None:
+        return None
+    entry["slug"] = slug
+    # 价格列固定为 缓存输入 / 输入 / 输出（人民币 / 百万 Token），新版没有再给美元价
+    if len(prices) == 3:
+        entry["cache_input_price_per_million_cny"] = prices[0]
+        entry["input_price_per_million_cny"] = prices[1]
+        entry["output_price_per_million_cny"] = prices[2]
+    elif len(prices) == 2:
+        entry["input_price_per_million_cny"] = prices[0]
+        entry["output_price_per_million_cny"] = prices[1]
+    return entry
+
+
+def _flight_table_rows(table: list[Any], chunks: dict[str, Any]) -> list[list[Any]]:
+    body: list[Any] | None = None
+    for node in _flight_children(table[3].get("children")):
+        element = _flight_element(node)
+        if element is not None and element[1] == "tbody":
+            body = element
+            break
+    source = _flight_children(body[3].get("children")) if body is not None else _flight_children(table[3].get("children"))
+    rows: list[list[Any]] = []
+    for node in source:
+        row = _flight_element(_flight_resolve(node, chunks))
+        if row is not None and row[1] == "tr":
+            rows.append(row)
+    return rows
+
+
+def _parse_flight_entries(text: str) -> list[dict[str, Any]]:
+    chunks = _flight_chunks(text)
+    if not chunks:
+        return []
+    for chunk in chunks.values():
+        table = _flight_find_class(chunk, _FLIGHT_TABLE_CLASS)
+        if table is None:
+            continue
+        rows = _flight_table_rows(table, chunks)
+        entries = [entry for entry in (_flight_entry(row, chunks) for row in rows) if entry]
+        # 行数与解析结果对不上就认为结构变了，返回空让上层报错并保留旧缓存
+        if rows and len(entries) == len(rows):
+            return entries
+        return []
+    return []
+
+
+def parse_leaderboard_payload(text: str) -> list[dict[str, Any]]:
+    if '"entries":[' in text:
+        try:
+            return _normalize_entries(_extract_json_array(text, '"entries":['))
+        except LeaderboardError:
+            # 新版页面里也可能恰好出现同名字符串，继续按飞行载荷解析
+            pass
+    entries = _parse_flight_entries(text)
+    if not entries:
+        raise LeaderboardError("榜单载荷中没有 entries（AIHOT 页面结构可能已改版）")
     return entries
 
 
@@ -418,6 +684,10 @@ def snapshot_to_payload(
     if public:
         for item in items:
             item["local_matches"] = mask_local_matches(item.get("local_matches") or [])
+    message = error_message or (snapshot.error_message if snapshot else None)
+    if public and message:
+        # 公开页只说明同步异常，不下发内部解析细节
+        message = "榜单同步失败，当前展示最近一次缓存"
     return {
         "source_url": settings.aihot_leaderboard_url,
         "source_page": settings.aihot_leaderboard_url,
@@ -426,7 +696,7 @@ def snapshot_to_payload(
         "ttl_seconds": max(60, get_job_int("leaderboard", "interval_seconds", settings.aihot_leaderboard_ttl_seconds)),
         "min_refresh_seconds": max(0, settings.aihot_leaderboard_min_refresh_seconds),
         "source_updated_label": snapshot.source_updated_label if snapshot else None,
-        "error_message": error_message or (snapshot.error_message if snapshot else None),
+        "error_message": message,
         "unofficial": True,
         "items": items,
         "total": len(items),
@@ -490,6 +760,19 @@ def save_snapshot(
     return snapshot
 
 
+def record_snapshot_error(db: Session, message: str) -> None:
+    """把最近一次刷新失败写回快照。
+
+    管理端/公开页只读缓存，不写回来的话页面只能看到缓存时间变旧，看不出是拉取失败。
+    下次拉取成功时 save_snapshot 会把 error_message 清空。
+    """
+    snapshot = _latest_snapshot(db)
+    if snapshot is None:
+        return
+    snapshot.error_message = message
+    db.commit()
+
+
 async def get_leaderboard(
     db: Session,
     *,
@@ -521,5 +804,6 @@ async def get_leaderboard(
         return snapshot_to_payload(db, snapshot)
     except LeaderboardError as error:
         if snapshot and snapshot.entries_json and snapshot.entries_json != "[]":
+            record_snapshot_error(db, str(error))
             return snapshot_to_payload(db, snapshot, stale=True, error_message=str(error))
         raise

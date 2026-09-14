@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
+import pytest
+from aihot_payloads import FLIGHT_PAYLOAD
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -10,10 +12,17 @@ from app.clock import utcnow
 from app.db import get_session_factory
 from app.models import LeaderboardSnapshot, UpstreamAccount
 from app.routers.local_agent import _sync_agent
-from app.services.leaderboard import canonical_model_key, mask_public_label, parse_leaderboard_payload
+from app.services.leaderboard import (
+    LeaderboardError,
+    canonical_model_key,
+    mask_public_label,
+    parse_leaderboard_payload,
+)
 
-
-RSC_PAYLOAD = (
+# 当前上游形态：RSC 飞行载荷里渲染出的榜单表格（真实抓取样例见 aihot_payloads.py）
+RSC_PAYLOAD = FLIGHT_PAYLOAD
+# 旧版形态：内联 {"entries":[...]} 的 JSON，解析仍要兼容
+LEGACY_RSC_PAYLOAD = (
     '1:{"entries":['
     '{"rank":1,"previousRank":2,"rankChange":1,"slug":"claude-fable-5","name":"Claude Fable 5",'
     '"provider":"Anthropic","providerSlug":"anthropic","releasedAt":"2026-06-09T00:00:00.000Z",'
@@ -27,8 +36,15 @@ RSC_PAYLOAD = (
 )
 
 
-def test_parse_leaderboard_payload() -> None:
-    items = parse_leaderboard_payload(RSC_PAYLOAD)
+def _find_item(response, slug: str) -> dict:
+    payload = response.json()
+    item = next((entry for entry in payload["items"] if entry["slug"] == slug), None)
+    assert item is not None, f"{slug} 不在榜单里：{[entry['slug'] for entry in payload['items']]}"
+    return item
+
+
+def test_parse_legacy_entries_payload() -> None:
+    items = parse_leaderboard_payload(LEGACY_RSC_PAYLOAD)
     assert len(items) == 1
     assert items[0]["slug"] == "claude-fable-5"
     assert items[0]["score"] == 89.2
@@ -36,6 +52,54 @@ def test_parse_leaderboard_payload() -> None:
     assert items[0]["summary"] == "by 6 families"
     assert items[0]["context_window_tokens"] == 1000000
     assert items[0]["components"]["artificial-analysis"]["coverage"] == 0.3
+    # 旧版载荷没有缓存价，保持 None
+    assert items[0]["cache_input_price_per_million_cny"] is None
+
+
+def test_parse_flight_leaderboard_payload() -> None:
+    items = parse_leaderboard_payload(RSC_PAYLOAD)
+    assert len(items) == 30
+    assert [item["rank"] for item in items] == list(range(1, 31))
+    assert all(item["slug"] and item["name"] for item in items)
+
+    top = items[0]
+    assert top["slug"] == "gpt-6-astra"
+    assert top["name"] == "GPT-6 Astra"
+    assert top["provider"] == "OpenAI"
+    assert top["released_at"] == "2026-09-03"
+    assert top["metric_count"] == 20
+    assert top["confidence"] == "HIGH"
+    assert top["score"] == 93.7
+    assert top["cache_input_price_per_million_cny"] == 6.71
+    assert top["input_price_per_million_cny"] == 67.08
+    assert top["output_price_per_million_cny"] == 335.41
+    # 上游对没有缓存价的模型给的是 “—”，解析成 None 由前端显示占位
+    miss = next(item for item in items if item["slug"] == "muse-spark-1-3")
+    assert miss["input_price_per_million_cny"] == 8.39
+    assert miss["cache_input_price_per_million_cny"] is None
+    # 新版载荷不再带上下文/输出上限，交给 models.dev 目录补齐
+    assert top["context_window_tokens"] is None
+    assert top["components"] == {}
+
+    # 第 2 名开始的单元格在载荷里是 $L 分块下发的，引用必须回填成功
+    second = items[1]
+    assert second["slug"] == "claude-fable-5-1"
+    assert second["name"] == "Claude Fable 5.1"
+    assert second["rank"] == 2
+    assert second["score"] == 93.7
+    assert all(item["score"] is not None for item in items)
+
+
+def test_parse_leaderboard_payload_rejects_unknown_shape() -> None:
+    with pytest.raises(LeaderboardError, match="entries"):
+        parse_leaderboard_payload("<!DOCTYPE html><html><body>维护中</body></html>")
+
+
+def test_flight_payload_detects_structure_drift() -> None:
+    # 上游改版换了 className 时，必须整体报错，不能把只有 slug 的空壳写进缓存
+    broken = RSC_PAYLOAD.replace("lb-name-cell", "lb-renamed-name").replace("lb-score-cell", "lb-renamed-score")
+    with pytest.raises(LeaderboardError, match="entries"):
+        parse_leaderboard_payload(broken)
 
 
 def test_canonical_model_key_strips_dates_and_qualifiers() -> None:
@@ -75,8 +139,9 @@ def test_leaderboard_fills_output_window_from_catalog(
     _seed_leaderboard(client, auth_headers)
     response = client.get("/api/admin/leaderboard", headers=auth_headers)
     assert response.status_code == 200
-    item = response.json()["items"][0]
-    assert item["context_window_tokens"] == 1000000
+    # 新版载荷不带上下文/输出上限，榜单补齐要靠 models.dev 目录
+    item = _find_item(response, "claude-fable-5")
+    assert item["context_window_tokens"] == 200000
     assert item["max_output_tokens"] == 128000
 
 
@@ -85,13 +150,13 @@ def test_dashboard_includes_leaderboard_top(client: TestClient, auth_headers: di
     dashboard = client.get("/api/admin/dashboard", headers=auth_headers)
     assert dashboard.status_code == 200
     top = dashboard.json()["leaderboard_top"]
-    assert len(top) == 1
+    assert len(top) == 3
     assert top[0]["rank"] == 1
-    assert top[0]["name"] == "Claude Fable 5"
-    assert top[0]["provider"] == "Anthropic"
-    assert top[0]["score"] == 89.2
-    assert top[0]["slug"] == "claude-fable-5"
-    assert top[0]["context_window_tokens"] == 1000000
+    assert top[0]["name"] == "GPT-6 Astra"
+    assert top[0]["provider"] == "OpenAI"
+    assert top[0]["score"] == 93.7
+    assert top[0]["slug"] == "gpt-6-astra"
+    assert top[0]["context_window_tokens"] is None
     assert top[0]["max_output_tokens"] is None
 
 
@@ -108,17 +173,22 @@ def test_admin_leaderboard_reads_cache_without_fetching(client: TestClient, auth
         assert cached.status_code == 200
         body = cached.json()
         assert body["unofficial"] is True
-        assert body["source_page"] == "https://aihot.virxact.com/leaderboard"
-        assert body["total"] == 1
-        assert body["items"][0]["name"] == "Claude Fable 5"
-        assert body["items"][0]["released_at"] == "2026-06-09T00:00:00.000Z"
-        assert body["items"][0]["summary"] == "by 6 families"
-        assert body["items"][0]["context_window_tokens"] == 1000000
-        assert body["items"][0]["max_output_tokens"] is None
-        assert body["items"][0]["local_covered"] is False
-        assert body["items"][0]["local_matches"] == []
+        assert body["source_page"] == "https://aihot.news/leaderboard"
+        assert body["total"] == 30
         assert body["stale"] is False
-        assert body["items"][0]["slug"] == "claude-fable-5"
+        item = _find_item(cached, "claude-fable-5")
+        assert item["name"] == "Claude Fable 5"
+        assert item["released_at"] == "2026-06-09"
+        assert item["score"] == 93.3
+        assert item["cache_input_price_per_million_cny"] == 6.71
+        assert item["input_price_per_million_cny"] == 67.08
+        assert item["output_price_per_million_cny"] == 335.41
+        assert item["metric_count"] == 20
+        assert item["confidence"] == "MEDIUM"
+        assert item["context_window_tokens"] is None
+        assert item["max_output_tokens"] is None
+        assert item["local_covered"] is False
+        assert item["local_matches"] == []
         assert fetch.await_count == 1
 
 
@@ -135,7 +205,7 @@ def test_admin_leaderboard_returns_stale_cache(client: TestClient, auth_headers:
     try:
         session.add(
             LeaderboardSnapshot(
-                source_url="https://aihot.virxact.com/leaderboard",
+                source_url="https://aihot.news/leaderboard",
                 fetched_at=utcnow() - timedelta(days=2),
                 entries_json='[{"rank":1,"slug":"old-model","name":"Old Model","provider":"X","components":{}}]',
             )
@@ -165,6 +235,20 @@ def _seed_leaderboard(client: TestClient, auth_headers: dict[str, str]) -> None:
     with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)):
         seeded = client.post("/api/admin/jobs/leaderboard/run", headers=auth_headers)
         assert seeded.status_code == 200, seeded.text
+
+
+def _age_snapshot(days: int) -> None:
+    """把缓存时间往前挪，模拟“任务在跑但一直拉取失败”的过期缓存。"""
+    session = get_session_factory()()
+    try:
+        snapshot = session.scalar(
+            select(LeaderboardSnapshot).order_by(LeaderboardSnapshot.id.desc()).limit(1)
+        )
+        assert snapshot is not None
+        snapshot.fetched_at = utcnow() - timedelta(days=days)
+        session.commit()
+    finally:
+        session.close()
 
 
 def _seed_local_coverage(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -206,7 +290,7 @@ def test_leaderboard_local_coverage_lists_accounts_and_agents(
     _seed_leaderboard(client, auth_headers)
     response = client.get("/api/admin/leaderboard", headers=auth_headers)
     assert response.status_code == 200
-    item = response.json()["items"][0]
+    item = _find_item(response, "claude-fable-5")
     assert item["local_covered"] is True
     names = {match["account_name"] for match in item["local_matches"]}
     kinds = {match["kind"] for match in item["local_matches"]}
@@ -226,7 +310,7 @@ def test_public_leaderboard_masks_account_info(client: TestClient, auth_headers:
     _seed_leaderboard(client, auth_headers)
     response = client.get("/api/share/leaderboard")
     assert response.status_code == 200
-    item = response.json()["items"][0]
+    item = _find_item(response, "claude-fable-5")
     assert item["local_covered"] is True
     names = {match["account_name"] for match in item["local_matches"]}
     assert names == {"Cl*********ct", "Cl********nt"}
@@ -251,7 +335,7 @@ def test_public_leaderboard_does_not_fetch(client: TestClient, auth_headers: dic
         assert created.status_code == 200
         public = client.get("/api/share/leaderboard?refresh=true")
         assert public.status_code == 200
-        assert public.json()["items"][0]["slug"] == "claude-fable-5"
+        assert _find_item(public, "claude-fable-5")["score"] == 93.3
         assert fetch.await_count == 1
 
 
@@ -292,8 +376,7 @@ def test_leaderboard_attaches_latest_successful_benchmark(
     _seed_leaderboard(client, auth_headers)
     response = client.get("/api/admin/leaderboard", headers=auth_headers)
     assert response.status_code == 200
-    item = response.json()["items"][0]
-    assert item["slug"] == "claude-fable-5"
+    item = _find_item(response, "claude-fable-5")
     assert item["benchmark"] is not None
     assert item["benchmark"]["model"] == "claude-fable-5"
     assert item["benchmark"]["account_name"] == "Bench Acct"
@@ -308,7 +391,7 @@ def test_leaderboard_benchmark_is_none_without_results(
     _seed_leaderboard(client, auth_headers)
     response = client.get("/api/admin/leaderboard", headers=auth_headers)
     assert response.status_code == 200
-    item = response.json()["items"][0]
+    item = _find_item(response, "claude-fable-5")
     assert item["benchmark"] is None
 
 
@@ -317,7 +400,70 @@ def test_public_leaderboard_masks_benchmark_account(client: TestClient, auth_hea
     _seed_leaderboard(client, auth_headers)
     response = client.get("/api/share/leaderboard")
     assert response.status_code == 200
-    item = response.json()["items"][0]
+    item = _find_item(response, "claude-fable-5")
     assert item["benchmark"] is not None
     assert item["benchmark"]["account_name"] == "Be******ct"
     assert "Bench Acct" not in response.text
+
+
+def test_leaderboard_refresh_failure_keeps_cache_and_reports_error(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    _seed_leaderboard(client, auth_headers)
+    _age_snapshot(days=2)
+    reason = "榜单载荷中没有 entries（AIHOT 页面结构可能已改版）"
+
+    with patch(
+        "app.services.leaderboard.fetch_leaderboard_text",
+        new=AsyncMock(side_effect=LeaderboardError(reason)),
+    ):
+        failed = client.post("/api/admin/jobs/leaderboard/run", headers=auth_headers)
+    assert failed.status_code == 502
+    assert reason in failed.json()["detail"]
+
+    # 刷新失败不能只在 message 里写一句，任务面板要显示失败
+    jobs = client.get("/api/admin/jobs", headers=auth_headers).json()["items"]
+    job = next(item for item in jobs if item["id"] == "leaderboard")
+    assert job["last_ok"] is False
+    assert job["error_message"] is not None
+    assert "沿用缓存 30 条榜单" in job["error_message"]
+
+    # 榜单页面继续用旧缓存，但要标出 stale 与失败原因
+    cached = client.get("/api/admin/leaderboard", headers=auth_headers)
+    assert cached.status_code == 200
+    body = cached.json()
+    assert body["total"] == 30
+    assert body["stale"] is True
+    assert reason in body["error_message"]
+
+    # 公开页只给通用提示，不下发内部细节
+    public = client.get("/api/share/leaderboard")
+    assert public.status_code == 200
+    assert public.json()["total"] == 30
+    assert public.json()["stale"] is True
+    assert public.json()["error_message"] == "榜单同步失败，当前展示最近一次缓存"
+
+    # 恢复成功后错误信息要清空
+    with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)):
+        recovered = client.post("/api/admin/jobs/leaderboard/run", headers=auth_headers)
+    assert recovered.status_code == 200, recovered.text
+    recovered_job = next(item for item in recovered.json()["items"] if item["id"] == "leaderboard")
+    assert recovered_job["last_ok"] is True
+    assert recovered_job["error_message"] is None
+    recovered_cache = client.get("/api/admin/leaderboard", headers=auth_headers).json()
+    assert recovered_cache["error_message"] is None
+    assert recovered_cache["stale"] is False
+
+
+def test_leaderboard_refresh_failure_without_cache(client: TestClient, auth_headers: dict[str, str]) -> None:
+    with patch(
+        "app.services.leaderboard.fetch_leaderboard_text",
+        new=AsyncMock(side_effect=LeaderboardError("拉取榜单失败：连接超时")),
+    ):
+        response = client.post("/api/admin/jobs/leaderboard/run", headers=auth_headers)
+    assert response.status_code == 502
+    assert "拉取榜单失败" in response.json()["detail"]
+    jobs = client.get("/api/admin/jobs", headers=auth_headers).json()["items"]
+    job = next(item for item in jobs if item["id"] == "leaderboard")
+    assert job["last_ok"] is False
+    assert job["error_message"] == "拉取榜单失败：连接超时"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -86,24 +87,60 @@ def test_run_catalog_job_fetches_models_dev(client: TestClient, auth_headers: di
 
 
 def test_run_leaderboard_job_fetches_aihot(client: TestClient, auth_headers: dict[str, str]) -> None:
-    payload = (
-        '1:{"entries":['
-        '{"rank":1,"slug":"claude-fable-5","name":"Claude Fable 5","provider":"Anthropic",'
-        '"score":89.2,"components":{}}'
-        ']}'
-    )
-    with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=payload)):
+    from aihot_payloads import FLIGHT_PAYLOAD
+
+    with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=FLIGHT_PAYLOAD)):
         response = client.post("/api/admin/jobs/leaderboard/run", headers=auth_headers)
     assert response.status_code == 200, response.text
     leaderboard = next(item for item in response.json()["items"] if item["id"] == "leaderboard")
     assert leaderboard["last_ok"] is True
-    assert leaderboard["details"]["total"] == 1
+    assert leaderboard["last_message"] == "已缓存 30 条榜单"
+    assert leaderboard["details"]["total"] == 30
+    assert leaderboard["details"]["stale"] is False
     assert leaderboard["cache_fetched_at"] is not None
+    assert leaderboard["error_message"] is None
 
 
 def test_run_unknown_job(client: TestClient, auth_headers: dict[str, str]) -> None:
     response = client.post("/api/admin/jobs/missing/run", headers=auth_headers)
     assert response.status_code == 404
+
+
+async def test_loop_catches_up_stale_leaderboard_cache(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from aihot_payloads import FLIGHT_PAYLOAD
+    from sqlalchemy import select
+
+    from app.db import get_session_factory
+    from app.models import LeaderboardSnapshot
+    from app.services import jobs as jobs_service
+
+    # 没有缓存时，进循环前先补一次，页面不用等满一个间隔
+    with patch(
+        "app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=FLIGHT_PAYLOAD)
+    ) as fetch:
+        await jobs_service._catch_up_stale_cache("leaderboard")
+    assert fetch.await_count == 1
+    session = get_session_factory()()
+    try:
+        snapshot = session.scalar(select(LeaderboardSnapshot).order_by(LeaderboardSnapshot.id.desc()).limit(1))
+        assert snapshot is not None
+        assert len(json.loads(snapshot.entries_json)) == 30
+    finally:
+        session.close()
+
+    # 缓存还新鲜就不该重复拉取
+    with patch(
+        "app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=FLIGHT_PAYLOAD)
+    ) as fetch:
+        await jobs_service._catch_up_stale_cache("leaderboard")
+    assert fetch.await_count == 0
+
+    # 其他循环任务不受影响
+    with patch(
+        "app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=FLIGHT_PAYLOAD)
+    ) as fetch:
+        await jobs_service._catch_up_stale_cache("catalog")
+    assert fetch.await_count == 0
 
 
 def test_run_quota_job_refreshes_due_accounts(client: TestClient, auth_headers: dict[str, str]) -> None:

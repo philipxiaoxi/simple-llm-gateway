@@ -53,7 +53,7 @@ export function LeaderboardPage() {
           >
             打开公开页
           </Button>
-          <a className="w-full lg:w-auto" href="https://aihot.virxact.com/leaderboard" target="_blank" rel="noreferrer">
+          <a className="w-full lg:w-auto" href="https://aihot.news/leaderboard" target="_blank" rel="noreferrer">
             <Button type="button" variant="line" className="w-full lg:w-auto">
               <ExternalLink size={16} />
               原站

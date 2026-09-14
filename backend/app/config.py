@@ -50,7 +50,8 @@ class Settings(BaseSettings):
     skills_path: str = ""
     tools_path: str = ""
     tools_download_timeout_seconds: int = 3600
-    aihot_leaderboard_url: str = "https://aihot.virxact.com/leaderboard"
+    # AIHOT 模型榜（原 aihot.virxact.com 已 301 到新域名，直接用新域名少一跳）
+    aihot_leaderboard_url: str = "https://aihot.news/leaderboard"
     aihot_leaderboard_ttl_seconds: int = 43200
     aihot_leaderboard_min_refresh_seconds: int = 60
     xai_oauth_client_id: str = "b1a00492-073a-47ea-816f-4c329264a828"

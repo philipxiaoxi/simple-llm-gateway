@@ -627,6 +627,7 @@ class LeaderboardEntryOut(BaseModel):
     pricing_official_model_id: str | None = None
     input_price_per_million_usd: float | None = None
     output_price_per_million_usd: float | None = None
+    cache_input_price_per_million_cny: float | None = None
     input_price_per_million_cny: float | None = None
     output_price_per_million_cny: float | None = None
     price_quote: str | None = None

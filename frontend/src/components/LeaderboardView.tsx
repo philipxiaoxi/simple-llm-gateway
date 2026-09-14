@@ -47,15 +47,11 @@ function formatReleaseDate(value: string | null | undefined) {
   return formatted === '—' ? '—' : formatted.slice(0, 10)
 }
 
-function rankChangeText(entry: LeaderboardEntry) {
-  if (entry.rank_change == null || entry.rank_change === 0) return '—'
-  return entry.rank_change > 0 ? `↑${entry.rank_change}` : `↓${Math.abs(entry.rank_change)}`
-}
-
 function coverageText(entry: LeaderboardEntry) {
   const confidence = entry.confidence || '—'
-  const coverage = entry.coverage == null ? '—' : `${Math.round(entry.coverage * 100)}%`
-  return `${confidence} · ${coverage}`
+  // 新版 AIHOT 载荷不再给评测覆盖率，只有置信度时不要显示成 “HIGH · —”
+  if (entry.coverage == null) return confidence
+  return `${confidence} · ${Math.round(entry.coverage * 100)}%`
 }
 
 function matchTitle(match: LeaderboardLocalMatch) {
@@ -174,9 +170,9 @@ export function LeaderboardView({
                 <th className={`${COL} font-medium`}>覆盖</th>
                 <th className={`${COL} font-medium`}>本站覆盖</th>
                 <th className={`${COL} font-medium`}>测试结果</th>
+                <th className={`${COL} font-medium`}>缓存价</th>
                 <th className={`${COL} font-medium`}>输入价</th>
                 <th className={`${COL} font-medium`}>输出价</th>
-                <th className={`${COL} font-medium`}>变动</th>
               </tr>
             </thead>
             <tbody>
@@ -204,9 +200,11 @@ export function LeaderboardView({
                   <td className={`${COL} min-w-32`}>
                     <BenchmarkCell entry={item} />
                   </td>
+                  <td className={`${COL} font-mono tabular-nums text-mist`}>
+                    {formatPrice(item.cache_input_price_per_million_cny)}
+                  </td>
                   <td className={`${COL} font-mono tabular-nums text-mist`}>{formatPrice(item.input_price_per_million_cny)}</td>
                   <td className={`${COL} font-mono tabular-nums text-mist`}>{formatPrice(item.output_price_per_million_cny)}</td>
-                  <td className={`${COL} text-mist`}>{rankChangeText(item)}</td>
                 </tr>
               ))}
               {!isLoading && !filtered.length ? (
@@ -234,7 +232,6 @@ export function LeaderboardView({
                 </div>
                 <div className="shrink-0 text-right">
                   <div className="font-mono text-lg tabular-nums text-signal">{formatScore(item.score)}</div>
-                  <div className="text-xs text-mist">{rankChangeText(item)}</div>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -251,7 +248,13 @@ export function LeaderboardView({
                   <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatContextWindow(item.max_output_tokens)}</div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-mist">缓存价</div>
+                  <div className="mt-1 truncate font-mono text-xs tabular-nums">
+                    {formatPrice(item.cache_input_price_per_million_cny)}
+                  </div>
+                </div>
                 <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
                   <div className="text-[10px] uppercase tracking-[0.16em] text-mist">输入价</div>
                   <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatPrice(item.input_price_per_million_cny)}</div>

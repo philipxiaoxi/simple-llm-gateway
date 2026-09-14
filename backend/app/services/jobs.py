@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
@@ -224,12 +225,13 @@ async def _execute(job_id: str) -> dict[str, Any]:
             session.close()
         total = int(payload.get("total") or 0)
         error_message = payload.get("error_message")
-        if error_message and not payload.get("items"):
-            raise RuntimeError(str(error_message))
-        message = f"已缓存 {total} 条榜单"
         if error_message:
-            message = f"{error_message}（{message}）"
-        return {"message": message, "total": total, "error_message": error_message}
+            # 即使有旧缓存可以继续给页面兜底，这一轮刷新也算失败：否则任务面板会一直显示
+            # “正常”，把上游改版/网络故障藏起来（缓存时间停在几天前也没人发现）。
+            if total:
+                raise RuntimeError(f"{error_message}（沿用缓存 {total} 条榜单）")
+            raise RuntimeError(str(error_message))
+        return {"message": f"已缓存 {total} 条榜单", "total": total}
     if job_id == JOB_CONTENT_AUDIT:
         return content_audit.start_scan()
     raise ValueError("任务不存在")
@@ -263,17 +265,35 @@ async def run_job(job_id: str) -> dict[str, Any]:
             state.last_finished_at = utcnow()
 
 
+async def _catch_up_stale_cache(job_id: str) -> None:
+    """循环任务启动时的一次性补偿。
+
+    模型榜只读缓存，缓存过期/为空时页面就一直停在旧数据上；如果只靠间隔唤醒，
+    重启后还得再等满一个间隔（默认 12 小时）才恢复。这里在进循环前先补一次。
+    """
+    if job_id != JOB_LEADERBOARD:
+        return
+    session = get_session_factory()()
+    try:
+        fresh = leaderboard_service.cache_is_fresh(leaderboard_service.latest_snapshot(session))
+    finally:
+        session.close()
+    if fresh:
+        return
+    with suppress(Exception):
+        await run_job(JOB_LEADERBOARD)
+
+
 async def run_job_loop(job_id: str) -> None:
     # 启动后先等间隔，避免发版立刻四任务同时跑；手动唤醒（reason=run）仍立即执行。
+    await _catch_up_stale_cache(job_id)
     while True:
         while True:
             reason = await _wait_next(job_id)
             if reason != "reload":
                 break
-        try:
+        with suppress(Exception):
             await run_job(job_id)
-        except Exception:
-            pass
 
 
 def start_job_loops() -> list[asyncio.Task]:

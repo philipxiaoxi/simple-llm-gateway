@@ -19,7 +19,7 @@ export function PublicLeaderboardPage() {
             <h1 className="mt-2 text-2xl font-semibold">模型榜</h1>
             <p className="mt-1 text-sm text-mist">AIHOT 总榜前 30 名以及本站覆盖情况。</p>
           </div>
-          <a className="shrink-0" href="https://aihot.virxact.com/leaderboard" target="_blank" rel="noreferrer">
+          <a className="shrink-0" href="https://aihot.news/leaderboard" target="_blank" rel="noreferrer">
             <Button type="button" variant="line">
               <ExternalLink size={16} />
               原站
