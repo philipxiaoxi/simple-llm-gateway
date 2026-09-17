@@ -252,6 +252,15 @@ docker compose up --build
 
 镜像会先构建前端 `dist`，再由 FastAPI 同源托管页面和接口。
 
+MCP 广场与知识库相关的容器注意事项：
+
+- 数据都落在 `./data` 卷：`gateway.db`、向量库 `/data/chroma`、采集任务原文 `/data/knowledge_jobs`。`MCP_CHROMA_PATH` 留空即用 `/data/chroma`；配置成相对路径时按数据库所在目录解析，不会落到容器 WORKDIR。
+- Chroma 的匿名遥测已在代码里关闭（`PersistentClient(settings=Settings(anonymized_telemetry=False))`），容器不会外呼 posthog。
+- 向量检索需要真实 embeddings，在 `.env` 配置 `MCP_EMBEDDING_BASE_URL` / `MCP_EMBEDDING_API_KEY` / `MCP_EMBEDDING_MODEL`；未配置会退回本地 Fake embedding，只适合开发。
+- 采集任务的 worker 与 Chroma 都是进程内组件，保持单进程运行（默认 `CMD` 不带 `--workers`）；加 `--workers` 会导致多套 worker 抢任务并并发访问同一份 Chroma。
+- MCP 客户端地址用 `/mcp/`（带结尾斜杠）。前置反向代理时需把 `/mcp` 与 `/mcp/` 一并转发到后端。
+- 升级时 `init_db()` 会自动给已有的 `gateway.db` 建表和加列，先备份 `./data` 即可。
+
 > 语音输入用了 WebSocket。反向代理除了 `/agent/connect`，还要放行 `/api/voice/**` 与
 > `/voice/**` 的 `Upgrade` / `Connection` 头，否则手机和电脑都连不上房间。
 

@@ -123,26 +123,31 @@ class Settings(BaseSettings):
         return path
 
     @property
-    def resolved_knowledge_jobs_path(self) -> Path:
-        if self.mcp_knowledge_jobs_path:
-            path = Path(self.mcp_knowledge_jobs_path)
-        elif self.database_path == ":memory:":
-            path = Path("data") / "knowledge_jobs"
-        else:
-            path = Path(self.database_path).expanduser().resolve().parent / "knowledge_jobs"
+    def data_dir(self) -> Path:
+        """数据目录：与数据库同级。Docker 下 DATABASE_PATH=/data/...，即 /data。"""
+        if self.database_path == ":memory:":
+            return Path("data").resolve()
+        return Path(self.database_path).expanduser().resolve().parent
+
+    def _resolve_data_path(self, value: str, default_name: str) -> Path:
+        """解析知识库数据路径。
+
+        相对路径按数据目录解析而非进程工作目录，避免容器里落到 WORKDIR 导致数据不在卷内。
+        """
+        candidate = Path(value).expanduser() if value else self.data_dir / default_name
+        if not candidate.is_absolute():
+            candidate = self.data_dir / candidate
+        path = candidate.resolve()
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     @property
+    def resolved_knowledge_jobs_path(self) -> Path:
+        return self._resolve_data_path(self.mcp_knowledge_jobs_path, "knowledge_jobs")
+
+    @property
     def resolved_chroma_path(self) -> Path:
-        if self.mcp_chroma_path:
-            path = Path(self.mcp_chroma_path)
-        elif self.database_path == ":memory:":
-            path = Path("data") / "chroma"
-        else:
-            path = Path(self.database_path).expanduser().resolve().parent / "chroma"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return self._resolve_data_path(self.mcp_chroma_path, "chroma")
 
 
 @lru_cache

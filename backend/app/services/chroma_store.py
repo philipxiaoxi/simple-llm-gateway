@@ -19,8 +19,10 @@ class ChromaSignatureMismatch(Exception):
 @lru_cache
 def _client(path: str):
     import chromadb
+    from chromadb.config import Settings as ChromaSettings
 
-    return chromadb.PersistentClient(path=path)
+    # 关闭匿名单向遥测，避免容器内向 posthog 发起外呼与刷日志
+    return chromadb.PersistentClient(path=path, settings=ChromaSettings(anonymized_telemetry=False))
 
 
 def get_chroma_client():
