@@ -77,6 +77,26 @@ Entries discovered by the Agent during task execution should follow this format:
   - 请求体：`{"title": ..., "head": "<分支>", "base": "main", "body": ...}`；创建后用 `GET /repos/{owner}/{repo}/pulls/{number}` 核对
   - 兜底：浏览器打开 `https://github.com/philipxiaoxi/simple-llm-gateway/pull/new/<branch>` 手动创建
 
+[后端测试运行方式]
+- Date: 2026-09-16
+- Context: Agent 执行 MCP/知识库相关改动后跑回归测试
+- Category: Testing Methods
+- Instructions:
+  - 必须在 `backend/` 目录下运行：`cd backend && PYTHONPATH=. python3 -m pytest ...`，否则 `app.*` 导入失败
+  - 环境是全局 Python 3.11，没有可用 venv；装包用 `pip3 install --break-system-packages`
+  - conftest 会注入 FakeEmbeddingClient 与临时 `MCP_CHROMA_PATH`，测试不依赖真实 embedding 上游
+  - 前端类型检查：`cd frontend && npx tsc -b`（成功时无输出）
+
+[知识库中文全文检索受 FTS5 分词限制]
+- Date: 2026-09-16
+- Context: 跨库全文检索测试用连续中文查询词匹配不到任何分块
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - `knowledge_chunks_fts` 用 SQLite FTS5 默认 unicode61 分词，连续中文串会被当成单个 token
+  - 编写检索测试用例时，测试文本与查询词用空格分隔的 ASCII 单词，才能稳定命中全文检索
+  - 中文场景的召回依赖向量检索；`mode=hybrid` 用 RRF 融合两路结果
+  - embedding 配置变更后旧向量不可复用：若集合签名与新配置不一致，写入前会自动清空集合并按新签名重建
+
 [AIHOT 模型榜改成 RSC 飞行载荷]
 - Date: 2026-09-14
 - Context: 任务面板一直报“榜单载荷中没有 entries（已缓存 30 条榜单）”，模型榜缓存自 09-10 起没再刷新成功

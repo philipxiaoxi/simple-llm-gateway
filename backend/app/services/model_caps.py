@@ -363,12 +363,20 @@ def enrich_model_records(
     provider: str | None = None,
     catalog: CatalogIndex | None = None,
 ) -> list[ModelRecord]:
-    existing = {record.id: record for record in parse_model_records(existing_raw)}
+    """用上游 /models 刷新列表，并保留本地已有、上游未返回的模型。
+
+    智谱等供应商的 /models 往往只有对话模型，不包含 embedding-3；
+    若整表覆盖会丢掉知识库绑定的向量模型。
+    """
+    existing_list = parse_model_records(existing_raw)
+    existing = {record.id: record for record in existing_list}
     records: list[ModelRecord] = []
+    seen: set[str] = set()
     for entry in entries:
         model_id = str(entry.get("id") or "").strip()
-        if not model_id:
+        if not model_id or model_id in seen:
             continue
+        seen.add(model_id)
         upstream = caps_from_upstream_entry(entry.get("entry") if isinstance(entry.get("entry"), dict) else None)
         auto = resolve_auto_caps(model_id, provider=provider, upstream=upstream, catalog=catalog)
         previous = existing.get(model_id)
@@ -380,7 +388,39 @@ def enrich_model_records(
                 enabled=previous.enabled if previous else True,
             )
         )
+    # 保留上游未列出的本地模型（手动添加的 embedding / 自定义模型）
+    for record in existing_list:
+        if record.id in seen:
+            continue
+        records.append(record)
+        seen.add(record.id)
     return records
+
+
+CUSTOM_MODEL_SOURCE = "custom"
+LOCAL_MODEL_SOURCES = ("custom", "manual")
+
+
+def find_model_record(records: list[ModelRecord], model_id: str) -> ModelRecord | None:
+    cleaned = (model_id or "").strip()
+    return next((record for record in records if record.id == cleaned), None)
+
+
+def ensure_model_record(records: list[ModelRecord], model_id: str) -> tuple[list[ModelRecord], ModelRecord, bool]:
+    """确保模型存在于列表中；不存在则按启发式能力新建，来源标记为 custom。
+
+    返回 (records, record, created)。上游 /models 常漏掉向量等模型，需要手工补充。
+    """
+    cleaned = (model_id or "").strip()
+    if not cleaned:
+        raise ValueError("模型 ID 不能为空")
+    for record in records:
+        if record.id == cleaned:
+            return records, record, False
+    caps = replace(caps_from_heuristic(cleaned), source=CUSTOM_MODEL_SOURCE)
+    record = ModelRecord(id=cleaned, auto=caps)
+    records.append(record)
+    return records, record, True
 
 
 def apply_model_override(records: list[ModelRecord], model_id: str, payload: dict[str, Any]) -> list[ModelRecord]:

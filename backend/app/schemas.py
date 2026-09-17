@@ -137,6 +137,10 @@ class ModelCapsOut(BaseModel):
     enabled: bool = True
 
 
+class CustomModelCreate(BaseModel):
+    id: str = Field(min_length=1, max_length=200)
+
+
 class ModelOverrideUpdate(BaseModel):
     context_window: int | None = Field(default=None, gt=0)
     max_output_tokens: int | None = Field(default=None, gt=0)
@@ -747,3 +751,196 @@ class ContentAuditLexiconSyncOut(BaseModel):
     word_count: int = 0
     categories: list[str] = Field(default_factory=list)
     error_message: str | None = None
+
+
+class McpKeyCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    capability_ids: list[str] = Field(min_length=1)
+
+
+class McpKeyUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    status: str | None = None
+
+
+class McpKeyCapabilitiesUpdate(BaseModel):
+    capability_ids: list[str] = Field(min_length=1)
+
+
+class McpKeyOut(BaseModel):
+    id: int
+    name: str
+    key_prefix: str
+    status: str
+    capability_ids: list[str]
+    created_at: datetime
+    last_used_at: datetime | None = None
+    key: str | None = None
+
+
+class McpCapabilityOut(BaseModel):
+    capability_id: str
+    name: str
+    description: str
+    version: str
+    category: str = ""
+    status: str = "enabled"
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+    admin_path: str = ""
+    icon: str = ""
+
+
+class McpCallLogOut(BaseModel):
+    id: int
+    created_at: datetime
+    mcp_key_id: int | None
+    mcp_key_name: str | None
+    mcp_key_prefix: str | None
+    capability_id: str
+    operation: str
+    success: bool
+    latency_ms: int
+    error_message: str | None = None
+
+
+class McpCallLogListOut(BaseModel):
+    items: list[McpCallLogOut] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+
+
+class KnowledgeBaseCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    description: str = Field(default="", max_length=2000)
+    scope: str = "public"
+    embedding_account_id: int | None = None
+    embedding_model: str | None = None
+    embedding_dimensions: int | None = None
+    allowed_mcp_key_ids: list[int] | None = None
+
+
+class KnowledgeBaseUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=2000)
+    scope: str | None = None
+    embedding_account_id: int | None = None
+    embedding_model: str | None = None
+    embedding_dimensions: int | None = None
+    allowed_mcp_key_ids: list[int] | None = None
+
+
+class KnowledgeBaseOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    scope: str = "public"
+    document_count: int = 0
+    chunk_count: int = 0
+    stale_document_count: int = 0
+    signature_mismatch: bool = False
+    embedding_account_id: int | None = None
+    embedding_account_name: str | None = None
+    embedding_model: str | None = None
+    embedding_dimensions: int | None = None
+    allowed_mcp_key_ids: list[int] = Field(default_factory=list)
+    active_job_count: int = 0
+    last_job_status: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class KnowledgeReindexRequest(BaseModel):
+    only_stale: bool = False
+
+
+class KnowledgeEmbeddingAccountOut(BaseModel):
+    id: int
+    name: str
+    provider: str
+    source: str
+    available: bool
+    default_model: str | None = None
+    models: list[str] = Field(default_factory=list)
+
+
+class KnowledgeDocumentCreate(BaseModel):
+    text: str = Field(min_length=1)
+    source_name: str = "paste.txt"
+
+
+class KnowledgeDocumentOut(BaseModel):
+    id: str
+    kb_id: str
+    source_name: str
+    content_size: int
+    chunk_count: int
+    vector_status: str
+    vector_error: str | None = None
+    created_at: datetime
+
+
+class KnowledgeJobCreate(BaseModel):
+    kb_id: str
+    text: str = Field(min_length=1)
+    source_name: str = "paste.txt"
+
+
+class KnowledgeReembedJobCreate(BaseModel):
+    kb_id: str
+    document_id: str
+
+
+class KnowledgeJobOut(BaseModel):
+    id: int
+    kb_id: str
+    kb_name: str | None = None
+    kind: str
+    source_name: str
+    content_size: int
+    chunk_count: int
+    status: str
+    stage: str
+    percent: int
+    message: str
+    processed_chunks: int
+    total_chunks: int
+    attempts: int
+    max_attempts: int
+    document_id: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class KnowledgeJobListOut(BaseModel):
+    items: list[KnowledgeJobOut]
+    total: int
+    counts: dict[str, int]
+
+
+class KnowledgeSearchRequest(BaseModel):
+    kb_id: str | None = None
+    kb_ids: list[str] | None = None
+    query: str
+    mode: str = "hybrid"
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
+class KnowledgeHitOut(BaseModel):
+    chunk_id: str
+    document_id: str
+    kb_id: str = ""
+    text: str
+    score: float
+    source_name: str
+
+
+class KnowledgeSearchResponse(BaseModel):
+    kb_id: str | None = None
+    kb_ids: list[str] = Field(default_factory=list)
+    mode: str
+    degraded: bool = False
+    degraded_reason: str | None = None
+    hits: list[KnowledgeHitOut] = Field(default_factory=list)

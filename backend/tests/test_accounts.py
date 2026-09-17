@@ -748,6 +748,134 @@ def test_export_password_too_short(client: TestClient, auth_headers: dict[str, s
     assert response.status_code == 400
 
 
+def test_add_custom_model(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "ZP", "provider": "openai_generic", "api_key": "sk-up", "base_url": "https://example.com/v1"},
+    )
+    account_id = created.json()["id"]
+
+    added = client.post(
+        f"/api/admin/accounts/{account_id}/models/custom",
+        headers=auth_headers,
+        json={"id": "embedding-3"},
+    )
+    assert added.status_code == 200, added.text
+    assert added.json()["created"] is True
+    assert added.json()["model"]["id"] == "embedding-3"
+    assert added.json()["model"]["source"] == "custom"
+    assert added.json()["model"]["enabled"] is True
+
+    stored = client.get(f"/api/admin/accounts/{account_id}", headers=auth_headers).json()
+    custom = next(item for item in stored["models"] if item["id"] == "embedding-3")
+    assert custom["source"] == "custom"
+
+    again = client.post(
+        f"/api/admin/accounts/{account_id}/models/custom",
+        headers=auth_headers,
+        json={"id": "embedding-3"},
+    )
+    assert again.status_code == 200
+    assert again.json()["created"] is False
+
+    blank = client.post(
+        f"/api/admin/accounts/{account_id}/models/custom",
+        headers=auth_headers,
+        json={"id": "   "},
+    )
+    assert blank.status_code == 422 or blank.status_code == 400
+
+
+def test_custom_model_survives_refresh(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from unittest.mock import AsyncMock, patch
+
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "ZP", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    account_id = created.json()["id"]
+    client.post(
+        f"/api/admin/accounts/{account_id}/models/custom",
+        headers=auth_headers,
+        json={"id": "embedding-3"},
+    )
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {"data": [{"id": "deepseek-chat"}]}
+
+    with patch("app.providers.base.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        refreshed = client.post(f"/api/admin/accounts/{account_id}/models", headers=auth_headers)
+
+    ids = [item["id"] for item in refreshed.json()["models"]]
+    assert "deepseek-chat" in ids
+    assert "embedding-3" in ids
+    stored = client.get(f"/api/admin/accounts/{account_id}", headers=auth_headers).json()
+    custom = next(item for item in stored["models"] if item["id"] == "embedding-3")
+    assert custom["source"] == "custom"
+
+
+def test_remove_custom_model(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from unittest.mock import AsyncMock, patch
+
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    account_id = created.json()["id"]
+    client.post(
+        f"/api/admin/accounts/{account_id}/models/custom",
+        headers=auth_headers,
+        json={"id": "embedding-3"},
+    )
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {"data": [{"id": "deepseek-chat"}]}
+
+    with patch("app.providers.base.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        client.post(f"/api/admin/accounts/{account_id}/models", headers=auth_headers)
+
+    upstream = client.delete(
+        f"/api/admin/accounts/{account_id}/models/custom/deepseek-chat",
+        headers=auth_headers,
+    )
+    assert upstream.status_code == 400
+
+    removed = client.delete(
+        f"/api/admin/accounts/{account_id}/models/custom/embedding-3",
+        headers=auth_headers,
+    )
+    assert removed.status_code == 200, removed.text
+    assert removed.json()["removed"] is True
+
+    stored = client.get(f"/api/admin/accounts/{account_id}", headers=auth_headers).json()
+    assert "embedding-3" not in [item["id"] for item in stored["models"]]
+
+    missing = client.delete(
+        f"/api/admin/accounts/{account_id}/models/custom/embedding-3",
+        headers=auth_headers,
+    )
+    assert missing.status_code == 404
+
+
 def test_import_wrong_password(client: TestClient, auth_headers: dict[str, str]) -> None:
     client.post(
         "/api/admin/accounts",

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, joinedload
@@ -12,12 +11,29 @@ from app.db import get_db
 from app.deps import get_current_admin
 from app.models import Admin, GatewayAgentRoute, OAuthState, RequestLog, UpstreamAccount
 from app.providers import get_provider, list_providers
-from app.schemas import AccountCreate, AccountExportRequest, AccountImportRequest, AccountOut, AccountUpdate, ModelOverrideUpdate, ProviderOut
+from app.schemas import (
+    AccountCreate,
+    AccountExportRequest,
+    AccountImportRequest,
+    AccountOut,
+    AccountUpdate,
+    CustomModelCreate,
+    ModelOverrideUpdate,
+    ProviderOut,
+)
 from app.serializers import account_to_out
 from app.services.account_transfer import export_accounts, import_accounts
 from app.services.header_spoof import default_header_spoof, normalize_header_spoof
 from app.services.key_models import ensure_account_prefix, normalize_model_prefix, unbind_account_keys
-from app.services.model_caps import apply_model_override, dump_model_records, parse_model_records, serialize_record
+from app.services.model_caps import (
+    LOCAL_MODEL_SOURCES,
+    apply_model_override,
+    dump_model_records,
+    ensure_model_record,
+    find_model_record,
+    parse_model_records,
+    serialize_record,
+)
 from app.services.probe import list_account_models, probe_account
 from app.services.quota import refresh_quota
 
@@ -183,12 +199,39 @@ async def quota(account_id: int, db: Session = Depends(get_db)) -> dict:
 async def models(account_id: int, db: Session = Depends(get_db)) -> dict:
     account = _get_account(db, account_id)
     result = await list_account_models(account)
-    if result["ok"] and account.source == "agent" and account.agent_route_id:
-        route = db.scalar(select(GatewayAgentRoute).where(GatewayAgentRoute.route_id == account.agent_route_id))
-        if route is not None:
-            route.models_json = account.models_json
-            route.models_updated_at = account.models_updated_at
+    if result["ok"]:
+        _sync_agent_route(db, account)
     return result
+
+
+@router.post("/accounts/{account_id}/models/custom")
+def add_account_model(account_id: int, payload: CustomModelCreate, db: Session = Depends(get_db)) -> dict:
+    """手工补录上游 /models 未返回的模型（如向量模型）。"""
+    account = _get_account(db, account_id)
+    records = parse_model_records(account.models_json)
+    try:
+        records, record, created = ensure_model_record(records, payload.id)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    if created:
+        account.models_json = dump_model_records(records)
+        _sync_agent_route(db, account)
+    return {"created": created, "model": serialize_record(record)}
+
+
+@router.delete("/accounts/{account_id}/models/custom/{model_id:path}")
+def remove_account_model(account_id: int, model_id: str, db: Session = Depends(get_db)) -> dict:
+    """删除手工添加的模型；上游模型请用启用开关隐藏，刷新时会重新出现。"""
+    account = _get_account(db, account_id)
+    records = parse_model_records(account.models_json)
+    record = find_model_record(records, model_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="模型不存在")
+    if record.auto.source not in LOCAL_MODEL_SOURCES:
+        raise HTTPException(status_code=400, detail="上游模型请用启用开关隐藏")
+    account.models_json = dump_model_records([item for item in records if item.id != record.id])
+    _sync_agent_route(db, account)
+    return {"removed": True, "id": record.id}
 
 
 @router.patch("/accounts/{account_id}/models/{model_id:path}")
@@ -205,13 +248,18 @@ def update_account_model(
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     account.models_json = dump_model_records(records)
-    if account.source == "agent" and account.agent_route_id:
-        route = db.scalar(select(GatewayAgentRoute).where(GatewayAgentRoute.route_id == account.agent_route_id))
-        if route is not None:
-            route.models_json = account.models_json
-            route.models_updated_at = account.models_updated_at
+    _sync_agent_route(db, account)
     updated = next(record for record in records if record.id == model_id)
     return serialize_record(updated)
+
+
+def _sync_agent_route(db: Session, account: UpstreamAccount) -> None:
+    if account.source != "agent" or not account.agent_route_id:
+        return
+    route = db.scalar(select(GatewayAgentRoute).where(GatewayAgentRoute.route_id == account.agent_route_id))
+    if route is not None:
+        route.models_json = account.models_json
+        route.models_updated_at = account.models_updated_at
 
 
 def _get_account(db: Session, account_id: int) -> UpstreamAccount:

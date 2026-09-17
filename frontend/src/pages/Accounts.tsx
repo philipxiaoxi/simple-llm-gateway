@@ -500,7 +500,15 @@ function ModelList({
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-1">
-                  {model.overridden?.length ? <Badge tone="warn">已覆盖</Badge> : <Badge tone="info">识别</Badge>}
+                  {model.overridden?.length ? (
+                    <Badge tone="warn">已覆盖</Badge>
+                  ) : model.source === 'custom' ? (
+                    <Badge tone="info" title="上游 /models 未返回，手工添加">
+                      自定义
+                    </Badge>
+                  ) : (
+                    <Badge tone="info">识别</Badge>
+                  )}
                 </span>
               </button>
               <Switch checked={enabled} onCheckedChange={() => onToggleEnabled(model)} />
@@ -542,6 +550,7 @@ function ModelOverrideDialog({
   const [vision, setVision] = useState((model.modalities?.input ?? []).includes('image'))
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
+  const removable = model.source === 'custom' || model.source === 'manual'
 
   async function save() {
     setPending(true)
@@ -591,6 +600,21 @@ function ModelOverrideDialog({
     }
   }
 
+  async function remove() {
+    if (!window.confirm(`删除模型 ${model.id}？上游刷新时不会自动恢复该模型。`)) return
+    setPending(true)
+    setError('')
+    try {
+      await api.removeAccountModel(accountId, model.id)
+      notifyOk('模型已删除')
+      onSaved()
+    } catch (caught) {
+      setError(errorMessage(caught, '删除失败'))
+    } finally {
+      setPending(false)
+    }
+  }
+
   return (
     <Dialog title="修改模型能力" onClose={onClose}>
       <div className="grid gap-3">
@@ -619,6 +643,11 @@ function ModelOverrideDialog({
         </label>
         {error ? <div className="text-sm text-danger">{error}</div> : null}
         <div className="flex flex-wrap justify-end gap-2 pt-1">
+          {removable ? (
+            <Button type="button" variant="danger" className="mr-auto" disabled={pending} onClick={() => void remove()}>
+              删除模型
+            </Button>
+          ) : null}
           <Button type="button" variant="ghost" disabled={pending} onClick={() => void reset()}>
             恢复识别
           </Button>
@@ -627,6 +656,68 @@ function ModelOverrideDialog({
           </Button>
           <Button type="button" disabled={pending} onClick={() => void save()}>
             {pending ? '保存中…' : '保存'}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
+function CustomModelDialog({
+  accountId,
+  onClose,
+  onSaved,
+}: {
+  accountId: number
+  onClose: () => void
+  onSaved: (created: boolean) => void
+}) {
+  const [modelId, setModelId] = useState('')
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState('')
+
+  async function save() {
+    const cleaned = modelId.trim()
+    if (!cleaned) {
+      setError('请输入模型 ID')
+      return
+    }
+    setPending(true)
+    setError('')
+    try {
+      const result = await api.addAccountModel(accountId, cleaned)
+      onSaved(result.created)
+    } catch (caught) {
+      setError(errorMessage(caught, '添加失败'))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <Dialog title="添加自定义模型" onClose={onClose}>
+      <div className="grid gap-3">
+        <p className="text-xs leading-5 text-mist">
+          上游 <span className="font-mono text-paper">/models</span> 常漏掉向量等模型，可在这里手工补录。添加后在列表中点击即可修改能力。
+        </p>
+        <Field label="模型 ID">
+          <Input
+            value={modelId}
+            onChange={(event) => setModelId(event.target.value)}
+            placeholder="embedding-3"
+            autoFocus
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void save()
+            }}
+          />
+        </Field>
+        {error ? <div className="text-sm text-danger">{error}</div> : null}
+        <div className="flex flex-wrap justify-end gap-2 pt-1">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" disabled={pending} onClick={() => void save()}>
+            {pending ? '添加中…' : '添加'}
           </Button>
         </div>
       </div>
@@ -646,6 +737,7 @@ export function AccountsPage() {
   const [oauthAccountId, setOauthAccountId] = useState<number | null>(null)
   const [expandedModels, setExpandedModels] = useState<Set<number>>(new Set())
   const [editingModel, setEditingModel] = useState<{ accountId: number; model: ModelCaps } | null>(null)
+  const [customModelAccountId, setCustomModelAccountId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [providerFilter, setProviderFilter] = useState('')
@@ -959,8 +1051,17 @@ export function AccountsPage() {
                 )}
               </div>
               <div>
-                <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
-                  模型{account.models_updated_at ? ` · ${formatTime(account.models_updated_at)}` : ''}
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">
+                    模型{account.models_updated_at ? ` · ${formatTime(account.models_updated_at)}` : ''}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCustomModelAccountId(account.id)}
+                    className="text-xs text-mist underline-offset-2 hover:text-paper hover:underline"
+                  >
+                    添加模型
+                  </button>
                 </div>
                 {account.models?.length ? (
                   <ModelList
@@ -1005,6 +1106,17 @@ export function AccountsPage() {
           onSaved={() => {
             queryClient.invalidateQueries({ queryKey: ['accounts'] })
             setEditingModel(null)
+          }}
+        />
+      ) : null}
+      {customModelAccountId !== null ? (
+        <CustomModelDialog
+          accountId={customModelAccountId}
+          onClose={() => setCustomModelAccountId(null)}
+          onSaved={(created) => {
+            queryClient.invalidateQueries({ queryKey: ['accounts'] })
+            setCustomModelAccountId(null)
+            notifyOk(created ? '模型已添加' : '该模型已在列表中')
           }}
         />
       ) : null}

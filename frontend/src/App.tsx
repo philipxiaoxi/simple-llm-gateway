@@ -41,6 +41,18 @@ const VoiceRoomDetailPage = lazy(() =>
 // 手机端页面是公开的（不能要求管理员登录），单独懒加载，避免被管理端 chunk 牵连。
 const VoiceJoinPage = lazy(() => import('./pages/VoiceJoin').then((m) => ({ default: m.VoiceJoinPage })))
 const VoiceSendPage = lazy(() => import('./pages/VoiceSend').then((m) => ({ default: m.VoiceSendPage })))
+const McpPlazaLayout = lazy(() => import('./pages/McpPlaza').then((m) => ({ default: m.McpPlazaLayout })))
+const McpPlazaCatalogPage = lazy(() => import('./pages/McpPlaza').then((m) => ({ default: m.McpPlazaCatalogPage })))
+const McpKnowledgePage = lazy(() => import('./pages/McpKnowledge').then((m) => ({ default: m.McpKnowledgePage })))
+const McpKnowledgeDetailPage = lazy(() =>
+  import('./pages/McpKnowledge').then((m) => ({ default: m.McpKnowledgeDetailPage })),
+)
+const McpKnowledgeJobsPage = lazy(() =>
+  import('./pages/McpKnowledgeJobs').then((m) => ({ default: m.McpKnowledgeJobsPage })),
+)
+const McpKeysPage = lazy(() => import('./pages/McpKeys').then((m) => ({ default: m.McpKeysPage })))
+const McpCallsPage = lazy(() => import('./pages/McpCalls').then((m) => ({ default: m.McpCallsPage })))
+const McpDocsPage = lazy(() => import('./pages/McpDocs').then((m) => ({ default: m.McpDocsPage })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -97,6 +109,15 @@ export default function App() {
               <Route path="/skills/bundles" element={<SkillBundlesPage />} />
               <Route path="/skills/bundles/:bundleId" element={<SkillBundleDetailPage />} />
               <Route path="/skills/:skillId" element={<SkillDetailPage />} />
+              <Route path="/mcp-plaza" element={<McpPlazaLayout />}>
+                <Route index element={<McpPlazaCatalogPage />} />
+                <Route path="knowledge" element={<McpKnowledgePage />} />
+                <Route path="knowledge/jobs" element={<McpKnowledgeJobsPage />} />
+                <Route path="knowledge/:kbId" element={<McpKnowledgeDetailPage />} />
+                <Route path="keys" element={<McpKeysPage />} />
+                <Route path="calls" element={<McpCallsPage />} />
+                <Route path="docs" element={<McpDocsPage />} />
+              </Route>
               <Route path="/tools" element={<ToolsPage />} />
               <Route path="/benchmark" element={<BenchmarkPage />} />
               <Route path="/benchmark/history" element={<BenchmarkHistoryPage />} />

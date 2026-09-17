@@ -125,7 +125,8 @@ def test_enrich_keeps_overrides_across_refresh() -> None:
     assert by_id["deepseek-chat"].overrides["context_window"] == 32000
     assert by_id["deepseek-chat"].effective().context_window == 32000
     assert "new-model" in by_id
-    assert "deepseek-reasoner" not in by_id
+    # 上游未返回的本地模型（如 embedding-3）保留，避免刷新后丢失绑定
+    assert "deepseek-reasoner" in by_id
 
 
 def test_enabled_survives_refresh_and_clear() -> None:

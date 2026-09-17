@@ -26,6 +26,7 @@
 - **一键导入**: 分享页按 Key 查询归属，支持 CC Switch 导入
 - **网关代理**: 可将受限网络中的固定上游地址安全地反向接入 Gateway
 - **Skills 仓库**: 上传符合 `SKILL.md` 规范的目录 / zip / tar，按分类浏览、编辑元数据并下载
+- **MCP 广场**: 独立 MCP Key、能力白名单、知识库（文本分块 + 向量/全文检索），REST `/v1/capabilities` 与 MCP `/mcp` 双协议
 - **手机语音输入**: 手机按住说话 → 阿里云实时识别边说边出字 → AI 纠错原地替换 → 自动填进电脑输入框，全链路日志可查
 
 ## 环境要求
@@ -104,6 +105,42 @@ base_url = https://你的站/v1
 ```
 
 创建 Key 时必须选一个上游账号，这把 Key 只会打到那个账号。
+
+## 上游模型列表
+
+账号卡片里点「获取模型」从上游 `/models` 拉取并入库。
+
+- 上游 `/models` 经常漏掉向量等模型，可用「添加模型」手工补录，列表里标记为「自定义」。
+- 手工补录的模型和手改过的能力（窗口、思考、模态）在下次刷新时都会保留。
+- 手工添加的模型可在能力弹窗里删除；上游模型用启用开关隐藏，刷新时会按上游状态更新。
+
+## MCP 广场与知识库
+
+管理后台「MCP 广场」提供能力目录、知识库、**独立 MCP Key**（与聊天 `sk-` 分离）和调用记录。
+
+1. 在「MCP Key」创建密钥，勾选 `knowledge` 等能力；完整密钥只展示一次（前缀 `mcp-`）。
+2. 在「知识库」建库并粘贴/上传纯文本；系统分块后写入 SQLite FTS5 + Chroma。文件、长文本会进入后台采集队列，可在「采集任务」查看进度、重试、取消。
+3. 向量化默认走 OpenAI 兼容 embeddings（见 `.env` 的 `MCP_EMBEDDING_*`）；未配置时使用本地 Fake embedding（仅适合开发）。
+4. 访问范围：`public` 对所有 Key 可见，`restricted` 只对白名单内的 MCP Key 可见，`private` 仅管理端可见。
+5. 更换 embedding 模型或维度会把已有文档标记为失效（`stale`），用「重建向量」按需或全量重建，避免新旧向量混用。
+6. 每日自动清理已结束的采集任务、调用日志和残留原文，天数见 `MCP_*_RETENTION_DAYS`。
+7. 「调用记录」按能力、Key、成功/失败和关键词筛选，支持分页，错误信息完整展示。
+8. 下游调用：
+
+```bash
+# REST
+curl -s https://你的站/v1/capabilities/knowledge/search \
+  -H "Authorization: Bearer mcp-xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"kb_id":"<id>","query":"关键词","mode":"hybrid","top_k":5}'
+
+# MCP Streamable HTTP
+# URL: https://你的站/mcp
+# Header: Authorization: Bearer mcp-xxx
+# tools: knowledge_list, knowledge_search
+```
+
+`mode=hybrid` 用 RRF 融合全文与向量结果（无需归一化两路分数），在 embedding 不可用时自动降级全文并返回 `degraded=true`；`mode=vector` 失败则明确报错。搜索支持 `kb_id` 单库或 `kb_ids` 跨库。
 
 ## Skills 管理
 

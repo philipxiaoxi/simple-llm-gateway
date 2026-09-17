@@ -537,3 +537,148 @@ class VoiceEvent(Base):
     message: Mapped[str | None] = mapped_column(String(255), nullable=True)
     payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+
+
+class McpKey(Base):
+    __tablename__ = "mcp_keys"
+    __table_args__ = (UniqueConstraint("key_hash"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    key_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    capabilities: Mapped[list[McpKeyCapability]] = relationship(
+        back_populates="mcp_key",
+        cascade="all, delete-orphan",
+    )
+
+
+class McpKeyCapability(Base):
+    __tablename__ = "mcp_key_capabilities"
+    __table_args__ = (UniqueConstraint("mcp_key_id", "capability_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mcp_key_id: Mapped[int] = mapped_column(ForeignKey("mcp_keys.id", ondelete="CASCADE"), index=True, nullable=False)
+    capability_id: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    mcp_key: Mapped[McpKey] = relationship(back_populates="capabilities")
+
+
+class McpCallLog(Base):
+    __tablename__ = "mcp_call_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    mcp_key_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    mcp_key_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    mcp_key_prefix: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    capability_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    operation: Mapped[str] = mapped_column(String(64), nullable=False)
+    success: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    request_meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class KnowledgeBase(Base):
+    __tablename__ = "knowledge_bases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    scope: Mapped[str] = mapped_column(String(16), default="public", nullable=False)
+    embedding_account_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    embedding_model: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    embedding_dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    documents: Mapped[list[KnowledgeDocument]] = relationship(
+        back_populates="base",
+        cascade="all, delete-orphan",
+    )
+
+
+class KnowledgeBaseKey(Base):
+    """restricted 知识库的 MCP Key 白名单。"""
+
+    __tablename__ = "knowledge_base_keys"
+    __table_args__ = (UniqueConstraint("kb_id", "mcp_key_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kb_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_bases.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    mcp_key_id: Mapped[int] = mapped_column(
+        ForeignKey("mcp_keys.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+
+
+class KnowledgeDocument(Base):
+    __tablename__ = "knowledge_documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(ForeignKey("knowledge_bases.id", ondelete="CASCADE"), index=True, nullable=False)
+    source_name: Mapped[str] = mapped_column(String(256), default="paste.txt", nullable=False)
+    content_size: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    content_hash: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    vector_status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    vector_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    base: Mapped[KnowledgeBase] = relationship(back_populates="documents")
+    chunks: Mapped[list[KnowledgeChunk]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+
+
+class KnowledgeChunk(Base):
+    __tablename__ = "knowledge_chunks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_documents.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    kb_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    source_name: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+
+    document: Mapped[KnowledgeDocument] = relationship(back_populates="chunks")
+
+
+class KnowledgeIngestJob(Base):
+    """知识库采集任务：入库（ingest）或重新向量化（reembed）。
+
+    原文落盘保存，支持失败重试；进度写入本表，前端轮询展示。
+    """
+
+    __tablename__ = "knowledge_ingest_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), default="ingest", nullable=False)
+    source_name: Mapped[str] = mapped_column(String(256), default="paste.txt", nullable=False)
+    content_size: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True, nullable=False)
+    stage: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    percent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    message: Mapped[str] = mapped_column(String(256), default="排队中", nullable=False)
+    processed_chunks: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_chunks: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    document_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
