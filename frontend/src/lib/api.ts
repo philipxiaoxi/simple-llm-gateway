@@ -565,6 +565,15 @@ export const api = {
     request<{ ok: boolean; models: ModelCaps[]; message?: string; source?: string }>(`/api/admin/accounts/${id}/models`, {
       method: 'POST',
     }),
+  addAccountModel: (id: number, modelId: string) =>
+    request<{ created: boolean; model: ModelCaps }>(`/api/admin/accounts/${id}/models/custom`, {
+      method: 'POST',
+      body: JSON.stringify({ id: modelId }),
+    }),
+  removeAccountModel: (id: number, modelId: string) =>
+    request<{ removed: boolean; id: string }>(`/api/admin/accounts/${id}/models/custom/${encodeURIComponent(modelId)}`, {
+      method: 'DELETE',
+    }),
   updateAccountModel: (id: number, modelId: string, payload: Record<string, unknown>) =>
     request<ModelCaps>(`/api/admin/accounts/${id}/models/${encodeURIComponent(modelId)}`, {
       method: 'PATCH',
@@ -930,6 +939,265 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  // ---- MCP 广场 ----
+  mcpCatalog: () => request<{ items: McpCatalogItem[] }>('/api/admin/mcp/catalog'),
+  mcpKeys: () => request<McpKeyItem[]>('/api/admin/mcp/keys'),
+  createMcpKey: (payload: { name: string; capability_ids: string[] }) =>
+    request<McpKeyItem>('/api/admin/mcp/keys', { method: 'POST', body: JSON.stringify(payload) }),
+  updateMcpKey: (id: number, payload: { name?: string; status?: string }) =>
+    request<McpKeyItem>(`/api/admin/mcp/keys/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  updateMcpKeyCapabilities: (id: number, capability_ids: string[]) =>
+    request<McpKeyItem>(`/api/admin/mcp/keys/${id}/capabilities`, {
+      method: 'PUT',
+      body: JSON.stringify({ capability_ids }),
+    }),
+  deleteMcpKey: (id: number) => request<void>(`/api/admin/mcp/keys/${id}`, { method: 'DELETE' }),
+  mcpKnowledgeBases: () => request<McpKnowledgeBase[]>('/api/admin/mcp/knowledge/bases'),
+  mcpKnowledgeEmbeddingAccounts: () =>
+    request<McpKnowledgeEmbeddingAccount[]>('/api/admin/mcp/knowledge/embedding-accounts'),
+  createMcpKnowledgeBase: (payload: {
+    name: string
+    description?: string
+    scope?: string
+    embedding_account_id?: number | null
+    embedding_model?: string | null
+    embedding_dimensions?: number | null
+    allowed_mcp_key_ids?: number[]
+  }) => request<McpKnowledgeBase>('/api/admin/mcp/knowledge/bases', { method: 'POST', body: JSON.stringify(payload) }),
+  updateMcpKnowledgeBase: (
+    kbId: string,
+    payload: {
+      name?: string
+      description?: string
+      scope?: string
+      embedding_account_id?: number | null
+      embedding_model?: string | null
+      embedding_dimensions?: number | null
+      allowed_mcp_key_ids?: number[]
+    },
+  ) =>
+    request<McpKnowledgeBase>(`/api/admin/mcp/knowledge/bases/${encodeURIComponent(kbId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  reindexMcpKnowledgeBase: (kbId: string, onlyStale: boolean) =>
+    request<{ created: number }>(`/api/admin/mcp/knowledge/bases/${encodeURIComponent(kbId)}/reindex`, {
+      method: 'POST',
+      body: JSON.stringify({ only_stale: onlyStale }),
+    }),
+  deleteMcpKnowledgeBase: (kbId: string) =>
+    request<void>(`/api/admin/mcp/knowledge/bases/${encodeURIComponent(kbId)}`, { method: 'DELETE' }),
+  mcpKnowledgeDocuments: (kbId: string) =>
+    request<McpKnowledgeDocument[]>(`/api/admin/mcp/knowledge/bases/${encodeURIComponent(kbId)}/documents`),
+  createMcpKnowledgeDocument: (kbId: string, payload: { text: string; source_name?: string }) =>
+    request<McpKnowledgeDocument>(`/api/admin/mcp/knowledge/bases/${encodeURIComponent(kbId)}/documents`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteMcpKnowledgeDocument: (kbId: string, docId: string) =>
+    request<void>(
+      `/api/admin/mcp/knowledge/bases/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(docId)}`,
+      { method: 'DELETE' },
+    ),
+  reembedMcpKnowledgeDocument: (kbId: string, docId: string) =>
+    request<McpKnowledgeDocument>(
+      `/api/admin/mcp/knowledge/bases/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(docId)}/reembed`,
+      { method: 'POST' },
+    ),
+
+  // ---- 知识库采集任务 ----
+  mcpKnowledgeJobs: (query: {
+    status?: string
+    kb_id?: string
+    kind?: string
+    q?: string
+    limit?: number
+    offset?: number
+  } = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<McpKnowledgeJobList>(`/api/admin/mcp/knowledge/jobs${suffix}`)
+  },
+  mcpKnowledgeJob: (id: number) => request<McpKnowledgeJob>(`/api/admin/mcp/knowledge/jobs/${id}`),
+  createMcpKnowledgeJobText: (payload: { kb_id: string; text: string; source_name?: string }) =>
+    request<McpKnowledgeJob>('/api/admin/mcp/knowledge/jobs', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  createMcpKnowledgeJobFile: (kbId: string, file: File) => {
+    const form = new FormData()
+    form.set('kb_id', kbId)
+    form.set('file', file)
+    return request<McpKnowledgeJob>('/api/admin/mcp/knowledge/jobs/upload', { method: 'POST', body: form })
+  },
+  createMcpKnowledgeReembedJob: (payload: { kb_id: string; document_id: string }) =>
+    request<McpKnowledgeJob>('/api/admin/mcp/knowledge/jobs/reembed', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  retryMcpKnowledgeJob: (id: number) =>
+    request<McpKnowledgeJob>(`/api/admin/mcp/knowledge/jobs/${id}/retry`, { method: 'POST' }),
+  cancelMcpKnowledgeJob: (id: number) =>
+    request<McpKnowledgeJob>(`/api/admin/mcp/knowledge/jobs/${id}/cancel`, { method: 'POST' }),
+  deleteMcpKnowledgeJob: (id: number) =>
+    request<void>(`/api/admin/mcp/knowledge/jobs/${id}`, { method: 'DELETE' }),
+  searchMcpKnowledge: (kbId: string, payload: { query: string; mode?: string; top_k?: number }) =>
+    request<McpKnowledgeSearchResult>(`/api/admin/mcp/knowledge/bases/${encodeURIComponent(kbId)}/search`, {
+      method: 'POST',
+      body: JSON.stringify({ kb_id: kbId, ...payload }),
+    }),
+  mcpKeysForScope: () => request<McpKeyItem[]>('/api/admin/mcp/keys'),
+  mcpCalls: (
+    query: {
+      limit?: number
+      offset?: number
+      capability_id?: string
+      mcp_key_id?: number
+      success?: boolean
+      q?: string
+    } = {},
+  ) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<McpCallLogList>(`/api/admin/mcp/calls${suffix}`)
+  },
+}
+
+export type McpCatalogItem = {
+  capability_id: string
+  name: string
+  description: string
+  version: string
+  category: string
+  status: string
+  admin_path: string
+  icon: string
+  input_schema: Record<string, unknown>
+  tools: { name: string; description: string; operation: string; input_schema: Record<string, unknown> }[]
+}
+
+export type McpKeyItem = {
+  id: number
+  name: string
+  key_prefix: string
+  status: string
+  capability_ids: string[]
+  created_at: string
+  last_used_at: string | null
+  key?: string | null
+}
+
+export type McpKnowledgeBase = {
+  id: string
+  name: string
+  description: string
+  scope: string
+  document_count: number
+  chunk_count: number
+  stale_document_count: number
+  signature_mismatch: boolean
+  embedding_account_id: number | null
+  embedding_account_name: string | null
+  embedding_model: string | null
+  embedding_dimensions: number | null
+  allowed_mcp_key_ids: number[]
+  active_job_count: number
+  last_job_status: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type McpKnowledgeJob = {
+  id: number
+  kb_id: string
+  kb_name: string | null
+  kind: string
+  source_name: string
+  content_size: number
+  chunk_count: number
+  status: string
+  stage: string
+  percent: number
+  message: string
+  processed_chunks: number
+  total_chunks: number
+  attempts: number
+  max_attempts: number
+  document_id: string | null
+  error_message: string | null
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+}
+
+export type McpKnowledgeJobList = {
+  items: McpKnowledgeJob[]
+  total: number
+  counts: Record<string, number>
+}
+
+export type McpKnowledgeEmbeddingAccount = {
+  id: number
+  name: string
+  provider: string
+  source: string
+  available: boolean
+  default_model: string | null
+  models: string[]
+}
+
+export type McpKnowledgeDocument = {
+  id: string
+  kb_id: string
+  source_name: string
+  content_size: number
+  chunk_count: number
+  vector_status: string
+  vector_error: string | null
+  created_at: string
+}
+
+export type McpKnowledgeSearchResult = {
+  kb_id: string | null
+  kb_ids: string[]
+  mode: string
+  degraded: boolean
+  degraded_reason: string | null
+  hits: {
+    chunk_id: string
+    document_id: string
+    kb_id: string
+    text: string
+    score: number
+    source_name: string
+  }[]
+}
+
+export type McpCallLogItem = {
+  id: number
+  created_at: string
+  mcp_key_id: number | null
+  mcp_key_name: string | null
+  mcp_key_prefix: string | null
+  capability_id: string
+  operation: string
+  success: boolean
+  latency_ms: number
+  error_message: string | null
+}
+
+export type McpCallLogList = {
+  items: McpCallLogItem[]
+  total: number
+  limit: number
+  offset: number
 }
 
 /** 语音 WebSocket 地址：dev 走 vite 代理，prod 同源。 */

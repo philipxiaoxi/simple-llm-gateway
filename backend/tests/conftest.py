@@ -28,6 +28,7 @@ def client(tmp_path, monkeypatch) -> TestClient:
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "gateway.db"))
     monkeypatch.setenv("APP_BASE_URL", "http://testserver")
     monkeypatch.setenv("LOCAL_AGENT_TOKEN", "unit-test-local-agent-token")
+    monkeypatch.setenv("MCP_CHROMA_PATH", str(tmp_path / "chroma"))
 
     from app.config import reset_settings
     from app.db import reset_db_runtime
@@ -40,10 +41,14 @@ def client(tmp_path, monkeypatch) -> TestClient:
     from app.services.job_settings import reset_job_settings
     from app.services.jobs import reset_jobs
     from app.services.model_caps import reset_catalog_cache
+    from app.services.embedding import FakeEmbeddingClient, set_embedding_client
+    from app.services.chroma_store import reset_chroma_client_cache
 
     reset_job_settings()
     reset_jobs()
     reset_catalog_cache()
+    reset_chroma_client_cache()
+    set_embedding_client(FakeEmbeddingClient(dimensions=32))
 
     monkeypatch.setattr("app.services.jobs.start_job_loops", lambda: [])
     from app.main import app
@@ -58,6 +63,8 @@ def client(tmp_path, monkeypatch) -> TestClient:
     with TestClient(app) as test_client:
         yield test_client
 
+    set_embedding_client(None)
+    reset_chroma_client_cache()
     reset_db_runtime()
     reset_settings()
 

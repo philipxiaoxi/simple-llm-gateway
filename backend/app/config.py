@@ -74,6 +74,27 @@ class Settings(BaseSettings):
     voice_polish_concurrency: int = 4
     voice_event_retention_days: int = 30
     voice_public_base_url: str = ""
+    # ---- MCP 能力平面 / 知识库 ----
+    mcp_embedding_base_url: str = ""
+    mcp_embedding_api_key: str = ""
+    mcp_embedding_model: str = "text-embedding-3-small"
+    mcp_chroma_path: str = ""
+    mcp_knowledge_max_bytes: int = 2 * 1024 * 1024
+    mcp_chunk_size: int = 700
+    mcp_chunk_overlap: int = 100
+    mcp_capability_timeout_seconds: int = 60
+    # 智谱 embedding 单次数组最多 64；默认 16 便于进度更细、超时更稳
+    mcp_embedding_batch_size: int = 16
+    mcp_embedding_dimensions: int = 32
+    # 知识库采集任务：原文落盘目录与并发
+    mcp_knowledge_jobs_path: str = ""
+    mcp_knowledge_job_concurrency: int = 1
+    mcp_knowledge_job_max_attempts: int = 3
+    # 检索命中文本回传上限（字符），避免大块吃满上下文
+    mcp_knowledge_max_hit_chars: int = 2000
+    # 已结束任务与调用日志的保留天数
+    mcp_knowledge_job_retention_days: int = 30
+    mcp_call_log_retention_days: int = 30
 
     @property
     def database_url(self) -> str:
@@ -100,6 +121,33 @@ class Settings(BaseSettings):
         (path / "scripts").mkdir(parents=True, exist_ok=True)
         (path / "downloads").mkdir(parents=True, exist_ok=True)
         return path
+
+    @property
+    def data_dir(self) -> Path:
+        """数据目录：与数据库同级。Docker 下 DATABASE_PATH=/data/...，即 /data。"""
+        if self.database_path == ":memory:":
+            return Path("data").resolve()
+        return Path(self.database_path).expanduser().resolve().parent
+
+    def _resolve_data_path(self, value: str, default_name: str) -> Path:
+        """解析知识库数据路径。
+
+        相对路径按数据目录解析而非进程工作目录，避免容器里落到 WORKDIR 导致数据不在卷内。
+        """
+        candidate = Path(value).expanduser() if value else self.data_dir / default_name
+        if not candidate.is_absolute():
+            candidate = self.data_dir / candidate
+        path = candidate.resolve()
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def resolved_knowledge_jobs_path(self) -> Path:
+        return self._resolve_data_path(self.mcp_knowledge_jobs_path, "knowledge_jobs")
+
+    @property
+    def resolved_chroma_path(self) -> Path:
+        return self._resolve_data_path(self.mcp_chroma_path, "chroma")
 
 
 @lru_cache

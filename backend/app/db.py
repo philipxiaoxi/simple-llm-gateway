@@ -50,6 +50,40 @@ def init_db() -> None:
     _ensure_columns(engine)
     _ensure_api_keys_account_id_nullable(engine)
     _ensure_request_logs_have_no_parent_fks(engine)
+    _ensure_knowledge_fts(engine)
+
+
+def _ensure_knowledge_fts(engine: Engine) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(
+                    text,
+                    chunk_id UNINDEXED,
+                    kb_id UNINDEXED,
+                    document_id UNINDEXED,
+                    source_name UNINDEXED
+                )
+                """
+            )
+        )
+        kb_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(knowledge_bases)"))}
+        if kb_columns:
+            if "embedding_account_id" not in kb_columns:
+                connection.execute(text("ALTER TABLE knowledge_bases ADD COLUMN embedding_account_id INTEGER"))
+            if "embedding_model" not in kb_columns:
+                connection.execute(text("ALTER TABLE knowledge_bases ADD COLUMN embedding_model VARCHAR(256)"))
+            if "embedding_dimensions" not in kb_columns:
+                connection.execute(text("ALTER TABLE knowledge_bases ADD COLUMN embedding_dimensions INTEGER"))
+            if "scope" not in kb_columns:
+                connection.execute(
+                    text("ALTER TABLE knowledge_bases ADD COLUMN scope VARCHAR(16) DEFAULT 'public' NOT NULL")
+                )
+        doc_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(knowledge_documents)"))}
+        if doc_columns:
+            if "content_hash" not in doc_columns:
+                connection.execute(text("ALTER TABLE knowledge_documents ADD COLUMN content_hash VARCHAR(64)"))
 
 
 def _migrate_legacy_logs(engine: Engine) -> None:

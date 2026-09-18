@@ -80,6 +80,8 @@ export default defineConfig({
       '/chat': 'http://127.0.0.1:8000',
       '/responses': 'http://127.0.0.1:8000',
       '/models': 'http://127.0.0.1:8000',
+      // MCP 端点挂在 /mcp；用正则避免把前端路由 /mcp-plaza 也代理到后端
+      '^/mcp(/|$)': 'http://127.0.0.1:8000',
     },
   },
 })

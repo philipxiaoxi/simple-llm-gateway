@@ -10,8 +10,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy import text
 
+from app.capabilities import ensure_defaults
 from app.config import get_settings, validate_app_secret_key
 from app.db import get_engine, get_session_factory, init_db
+from app.mcp_server import build_mcp_app
 from app.routers import (
     admin_accounts,
     admin_auth,
@@ -23,9 +25,15 @@ from app.routers import (
     admin_keys,
     admin_leaderboard,
     admin_logs,
+    admin_mcp_calls,
+    admin_mcp_catalog,
+    admin_mcp_keys,
+    admin_mcp_knowledge,
+    admin_mcp_knowledge_jobs,
     admin_skill_bundles,
     admin_skills,
     admin_tools,
+    capabilities_public,
     health,
     local_agent,
     oauth,
@@ -37,6 +45,9 @@ from app.seed import seed_admin, seed_desktop_tools, seed_skill_categories
 from app.services.desktop_tools import reconcile_stuck_downloads
 from app.services.grok_oauth import cleanup_expired_oauth_states
 from app.services.jobs import start_job_loops
+from app.services.knowledge_jobs import reconcile_stuck_jobs as reconcile_stuck_knowledge_jobs
+from app.services.knowledge_jobs import start_knowledge_job_workers
+from app.services.knowledge_retention import retention_loop as knowledge_retention_loop
 from app.services.voice_retention import voice_cleanup_loop
 from app.static_assets import (
     FONT_CACHE,
@@ -77,6 +88,7 @@ def _warm_up() -> None:
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     validate_app_secret_key(get_settings().app_secret_key)
     init_db()
+    ensure_defaults()
     seed_admin()
     seed_skill_categories()
     seed_desktop_tools()
@@ -84,13 +96,18 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         reconcile_stuck_downloads(session)
         cleanup_expired_oauth_states(session)
+        reconcile_stuck_knowledge_jobs(session)
         session.commit()
     finally:
         session.close()
     await asyncio.to_thread(_warm_up)
     background_tasks = start_job_loops()
+    # 知识库采集任务队列（入库 / 重新向量化）
+    background_tasks.extend(start_knowledge_job_workers())
     # 语音日志（段落/事件）会持续增长，挂一个每天跑一次的清理任务
     background_tasks.append(asyncio.create_task(voice_cleanup_loop()))
+    # 知识库采集任务、调用日志与残留原文的保留期清理
+    background_tasks.append(asyncio.create_task(knowledge_retention_loop()))
     try:
         yield
     finally:
@@ -129,12 +146,19 @@ app.include_router(admin_skill_bundles.download_router)
 app.include_router(admin_tools.router)
 app.include_router(admin_tools.download_router)
 app.include_router(admin_tools.download_router)
+app.include_router(admin_mcp_keys.router)
+app.include_router(admin_mcp_catalog.router)
+app.include_router(admin_mcp_knowledge.router)
+app.include_router(admin_mcp_knowledge_jobs.router)
+app.include_router(admin_mcp_calls.router)
+app.include_router(capabilities_public.router)
 app.include_router(oauth.router)
 app.include_router(proxy.router)
 app.include_router(share.router)
 app.include_router(voice_rooms.admin_router)
 app.include_router(voice_rooms.public_router)
 app.include_router(voice_rooms.router)
+app.mount("/mcp", build_mcp_app())
 
 
 class DisableApiCacheMiddleware:
