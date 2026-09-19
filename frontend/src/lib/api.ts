@@ -1034,6 +1034,21 @@ export const api = {
     form.set('file', file)
     return request<McpKnowledgeJob>('/api/admin/mcp/knowledge/jobs/upload', { method: 'POST', body: form })
   },
+  createMcpKnowledgeJobFiles: (kbId: string, files: File[]) => {
+    const form = new FormData()
+    form.set('kb_id', kbId)
+    form.set(
+      'relative_paths',
+      JSON.stringify(
+        files.map((file) => (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name),
+      ),
+    )
+    files.forEach((file) => form.append('files', file, file.name))
+    return request<McpKnowledgeBatchUpload>('/api/admin/mcp/knowledge/jobs/upload-batch', {
+      method: 'POST',
+      body: form,
+    })
+  },
   createMcpKnowledgeReembedJob: (payload: { kb_id: string; document_id: string }) =>
     request<McpKnowledgeJob>('/api/admin/mcp/knowledge/jobs/reembed', {
       method: 'POST',
@@ -1135,6 +1150,12 @@ export type McpKnowledgeJob = {
   created_at: string
   started_at: string | null
   finished_at: string | null
+}
+
+export type McpKnowledgeBatchUpload = {
+  created: number
+  job_ids: number[]
+  skipped: { name: string; reason: string }[]
 }
 
 export type McpKnowledgeJobList = {

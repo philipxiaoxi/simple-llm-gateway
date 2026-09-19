@@ -920,6 +920,17 @@ class KnowledgeJobListOut(BaseModel):
     counts: dict[str, int]
 
 
+class KnowledgeSkippedFile(BaseModel):
+    name: str
+    reason: str
+
+
+class KnowledgeBatchUploadResult(BaseModel):
+    created: int
+    job_ids: list[int] = Field(default_factory=list)
+    skipped: list[KnowledgeSkippedFile] = Field(default_factory=list)
+
+
 class KnowledgeSearchRequest(BaseModel):
     kb_id: str | None = None
     kb_ids: list[str] | None = None

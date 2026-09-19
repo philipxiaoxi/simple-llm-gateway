@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -10,13 +12,16 @@ from app.db import get_db
 from app.deps import get_current_admin
 from app.models import KnowledgeBase, KnowledgeDocument, KnowledgeIngestJob
 from app.schemas import (
+    KnowledgeBatchUploadResult,
     KnowledgeJobCreate,
     KnowledgeJobListOut,
     KnowledgeJobOut,
     KnowledgeReembedJobCreate,
+    KnowledgeSkippedFile,
 )
 from app.services import knowledge_jobs
 from app.services.knowledge import KnowledgeError
+from app.services.knowledge.text_files import clean_source_name, decode_text, is_text_file
 
 router = APIRouter(
     prefix="/api/admin/mcp/knowledge/jobs",
@@ -172,6 +177,96 @@ async def create_file_job(
     except KnowledgeError as error:
         raise _http_error(error) from error
     return _out(db, job)
+
+
+def _parse_relative_paths(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed]
+
+
+@router.post("/upload-batch", response_model=KnowledgeBatchUploadResult, status_code=201)
+async def create_file_batch_jobs(
+    db: Session = Depends(get_db),
+    kb_id: str = Form(...),
+    files: list[UploadFile] = File(...),
+    relative_paths: str | None = Form(default=None),
+):
+    """目录批量入库：逐个读取文本文件，每个文件建一个采集任务。"""
+    _require_base(db, kb_id)
+    settings = get_settings()
+    if not files:
+        raise HTTPException(400, detail={"error": {"type": "invalid_request", "message": "没有选择文件"}})
+    if len(files) > settings.mcp_knowledge_batch_max_files:
+        raise HTTPException(
+            413,
+            detail={
+                "error": {
+                    "type": "invalid_request",
+                    "message": f"单次最多 {settings.mcp_knowledge_batch_max_files} 个文件，当前 {len(files)} 个",
+                }
+            },
+        )
+
+    paths = _parse_relative_paths(relative_paths)
+    created: list[int] = []
+    skipped: list[KnowledgeSkippedFile] = []
+    total_bytes = 0
+    over_total = False
+
+    for index, upload in enumerate(files):
+        raw_name = paths[index] if index < len(paths) else upload.filename
+        display = clean_source_name(raw_name or upload.filename or "upload.txt")
+        if over_total:
+            await upload.close()
+            skipped.append(KnowledgeSkippedFile(name=display, reason="超出单次总大小上限，未处理"))
+            continue
+
+        raw = await upload.read()
+        await upload.close()
+        total_bytes += len(raw)
+        if total_bytes > settings.mcp_knowledge_batch_max_total_bytes:
+            over_total = True
+            skipped.append(KnowledgeSkippedFile(name=display, reason="超出单次总大小上限，未处理"))
+            continue
+        if not raw:
+            skipped.append(KnowledgeSkippedFile(name=display, reason="空文件"))
+            continue
+        if len(raw) > settings.mcp_knowledge_max_bytes:
+            skipped.append(
+                KnowledgeSkippedFile(
+                    name=display,
+                    reason=f"超过单文件上限 {settings.mcp_knowledge_max_bytes} 字节",
+                )
+            )
+            continue
+        if not is_text_file(display, raw):
+            skipped.append(KnowledgeSkippedFile(name=display, reason="非文本文件"))
+            continue
+        text = decode_text(raw)
+        if text is None or not text.strip():
+            skipped.append(KnowledgeSkippedFile(name=display, reason="没有可用文本"))
+            continue
+        try:
+            job = knowledge_jobs.create_job(
+                db,
+                kb_id=kb_id,
+                kind="ingest",
+                source_name=display,
+                text=text,
+            )
+        except KnowledgeError as error:
+            skipped.append(KnowledgeSkippedFile(name=display, reason=error.message))
+            continue
+        created.append(job.id)
+
+    return KnowledgeBatchUploadResult(created=len(created), job_ids=created, skipped=skipped)
 
 
 @router.post("/reembed", response_model=KnowledgeJobOut, status_code=201)
