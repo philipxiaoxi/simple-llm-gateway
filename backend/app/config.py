@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     mcp_embedding_model: str = "text-embedding-3-small"
     mcp_chroma_path: str = ""
     mcp_knowledge_max_bytes: int = 2 * 1024 * 1024
+    # 目录批量上传：单次最多文件数与总字节
+    mcp_knowledge_batch_max_files: int = 200
+    mcp_knowledge_batch_max_total_bytes: int = 64 * 1024 * 1024
     mcp_chunk_size: int = 700
     mcp_chunk_overlap: int = 100
     mcp_capability_timeout_seconds: int = 60

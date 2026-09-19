@@ -1,11 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, ListChecks, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api, type McpKnowledgeEmbeddingAccount } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
+
+const TEXT_EXTENSIONS = new Set([
+  'txt', 'text', 'md', 'markdown', 'mdx', 'rst', 'org', 'adoc', 'log',
+  'csv', 'tsv', 'json', 'jsonl', 'ndjson', 'yaml', 'yml', 'toml', 'ini',
+  'cfg', 'conf', 'properties', 'env', 'xml', 'html', 'htm', 'xhtml',
+  'css', 'scss', 'less', 'svg', 'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx',
+  'vue', 'svelte', 'py', 'java', 'kt', 'kts', 'go', 'rs', 'c', 'h',
+  'cc', 'cpp', 'hpp', 'cs', 'rb', 'php', 'swift', 'm', 'mm', 'scala',
+  'sh', 'bash', 'zsh', 'fish', 'bat', 'cmd', 'ps1', 'sql', 'graphql',
+  'gql', 'proto', 'tex', 'bib', 'srt', 'vtt',
+])
+
+function isTextCandidate(file: File): boolean {
+  const name = file.name.toLowerCase()
+  const dot = name.lastIndexOf('.')
+  if (dot <= 0) return true
+  return TEXT_EXTENSIONS.has(name.slice(dot + 1))
+}
 
 const SCOPE_OPTIONS = [
   { value: 'public', label: '公开：所有 MCP Key 可读' },
@@ -345,6 +363,12 @@ export function McpKnowledgeDetailPage() {
   const [scope, setScope] = useState('public')
   const [allowedKeyIds, setAllowedKeyIds] = useState<number[]>([])
   const [settingsReady, setSettingsReady] = useState(false)
+  const directoryInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    directoryInputRef.current?.setAttribute('webkitdirectory', '')
+    directoryInputRef.current?.setAttribute('directory', '')
+  }, [])
 
   const bases = useQuery({ queryKey: ['mcp-knowledge-bases'], queryFn: () => api.mcpKnowledgeBases() })
   const base = bases.data?.find((item) => item.id === kbId)
@@ -436,15 +460,41 @@ export function McpKnowledgeDetailPage() {
     onError: (caught) => notifyBad(errorMessage(caught, '提交失败')),
   })
 
-  const submitFile = useMutation({
-    mutationFn: (file: File) => api.createMcpKnowledgeJobFile(kbId, file),
-    onSuccess: async () => {
-      notifyOk('文件任务已提交，可在「采集任务」查看进度')
+  const submitBatch = useMutation({
+    mutationFn: (files: File[]) => api.createMcpKnowledgeJobFiles(kbId, files),
+    onSuccess: async (result) => {
+      if (result.created) notifyOk(`已提交 ${result.created} 个采集任务`)
+      if (result.skipped.length) {
+        const head = result.skipped
+          .slice(0, 3)
+          .map((item) => `${item.name}（${item.reason}）`)
+          .join('；')
+        notifyBad(`跳过 ${result.skipped.length} 个：${head}${result.skipped.length > 3 ? ' 等' : ''}`)
+      }
+      if (!result.created && !result.skipped.length) notifyBad('没有可入库的文本文件')
       await invalidateJobs()
-      navigate('/mcp-plaza/knowledge/jobs')
+      if (result.created) navigate('/mcp-plaza/knowledge/jobs')
     },
     onError: (caught) => notifyBad(errorMessage(caught, '提交失败')),
   })
+
+  function submitFiles(files: File[]) {
+    if (!files.length) return
+    submitBatch.mutate(files)
+  }
+
+  function onPickDirectory(list: FileList | null) {
+    const all = Array.from(list || [])
+    if (!all.length) return
+    const textFiles = all.filter(isTextCandidate)
+    const ignored = all.length - textFiles.length
+    if (!textFiles.length) {
+      notifyBad(`所选目录没有可识别的文本文件（忽略 ${ignored} 个）`)
+      return
+    }
+    if (ignored) notifyOk(`识别到 ${textFiles.length} 个文本文件，忽略 ${ignored} 个非文本文件`)
+    submitBatch.mutate(textFiles)
+  }
 
   const remove = useMutation({
     mutationFn: (docId: string) => api.deleteMcpKnowledgeDocument(kbId, docId),
@@ -559,29 +609,41 @@ export function McpKnowledgeDetailPage() {
         </Field>
         <Button
           type="button"
-          disabled={!text.trim() || submitText.isPending || submitFile.isPending}
+          disabled={!text.trim() || submitText.isPending || submitBatch.isPending}
           onClick={() => submitText.mutate()}
         >
           提交入库任务
         </Button>
 
-        <div className="border-t border-line pt-3">
-          <Field label="或上传文本文件（.txt / .md）">
+        <div className="grid gap-3 border-t border-line pt-3">
+          <Field label="上传文本文件（可多选，.md / .txt 等）">
             <input
               type="file"
-              accept=".txt,.md,text/plain,text/markdown"
-              disabled={submitFile.isPending}
+              multiple
+              disabled={submitBatch.isPending}
               className="block w-full min-w-0 text-sm text-mist file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-1.5 file:text-sm file:text-paper"
               onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) submitFile.mutate(file)
+                submitFiles(Array.from(e.target.files || []))
+                e.target.value = ''
+              }}
+            />
+          </Field>
+          <Field label="选择目录（读取目录内所有文本文件并批量入库）">
+            <input
+              ref={directoryInputRef}
+              type="file"
+              multiple
+              disabled={submitBatch.isPending}
+              className="block w-full min-w-0 text-sm text-mist file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-1.5 file:text-sm file:text-paper"
+              onChange={(e) => {
+                onPickDirectory(e.target.files)
                 e.target.value = ''
               }}
             />
           </Field>
         </div>
         <p className="text-xs text-mist">
-          任务提交后在后台队列执行，可离开页面；在「采集任务」查看进度、失败重试。大文本处理较慢，单文档上限 2 MiB。
+          目录会递归读取其中的文本文件（.md、.txt、代码、配置等），每个文件建一个采集任务；图片、PDF、压缩包等二进制文件自动跳过。任务提交后在后台队列执行，可离开页面；在「采集任务」查看进度、失败重试。单文档上限 2 MiB。
         </p>
       </Card>
 
