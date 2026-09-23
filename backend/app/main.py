@@ -281,8 +281,10 @@ if FRONTEND_DIST.exists():
     @app.api_route("/{full_path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
     def spa(full_path: str, request: Request) -> FileResponse:
         # API 路径不能回落到 SPA，否则未注册的 POST 会变成 405 而不是 404。
-        is_api = full_path == "health" or full_path.startswith(
-            ("api/", "v1/", "anthropic/", "chat", "responses", "models")
+        is_api = (
+            full_path == "health"
+            or full_path == "mcp"
+            or full_path.startswith(("api/", "v1/", "anthropic/", "chat", "responses", "models", "mcp/"))
         )
         if is_api or request.method not in {"GET", "HEAD"}:
             raise HTTPException(status_code=404, detail="Not Found")

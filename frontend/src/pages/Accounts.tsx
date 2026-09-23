@@ -3,7 +3,7 @@ import { ExternalLink, FileJson, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select, Switch } from '../components/ui'
-import { api, type Account, type ModelCaps, type Provider, type QuotaItem } from '../lib/api'
+import { api, type Account, type AccountUsage, type ModelCaps, type Provider, type QuotaItem } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { MIN_PASSWORD_LENGTH, RISK_LEVELS, cn, errorMessage, formatEmbeddedTimes, formatTime, modelCapsHint } from '../lib/utils'
 
@@ -663,6 +663,144 @@ function ModelOverrideDialog({
   )
 }
 
+const USAGE_KIND_LABEL: Record<string, string> = {
+  api_key: 'API Key',
+  skill_classification: 'Skill 自动分类',
+  skill_report: 'Skill 分析报告',
+  knowledge_base: '知识库',
+  voice_room: '语音房',
+  request_log: '请求日志',
+  oauth: 'OAuth 授权',
+}
+
+function DeleteAccountDialog({
+  account,
+  onClose,
+  onDeleted,
+}: {
+  account: Account
+  onClose: () => void
+  onDeleted: () => void
+}) {
+  const { data: usage, isLoading, error } = useQuery({
+    queryKey: ['account-usage', account.id],
+    queryFn: () => api.accountUsage(account.id),
+  })
+  const [step, setStep] = useState<'review' | 'confirm'>('review')
+  const [pending, setPending] = useState(false)
+
+  async function confirmDelete() {
+    setPending(true)
+    try {
+      await api.deleteAccount(account.id)
+      notifyOk(`已删除 ${account.name}`)
+      onDeleted()
+    } catch (caught) {
+      notifyBad(errorMessage(caught, '删除失败'))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <Dialog title={step === 'review' ? `删除账号「${account.name}」` : '再次确认删除'} onClose={onClose} className="max-w-xl">
+      {step === 'review' ? (
+        <DeleteAccountReview
+          usage={usage}
+          loading={isLoading}
+          error={error ? errorMessage(error, '无法加载关联信息') : ''}
+          onCancel={onClose}
+          onContinue={() => setStep('confirm')}
+        />
+      ) : (
+        <div className="grid gap-4">
+          <p className="text-sm leading-6 text-paper">
+            确定删除上游账号「{account.name}」？删除后无法恢复，关联功能会按上一步说明解绑或关闭。
+          </p>
+          {usage?.has_relations ? (
+            <p className="text-sm leading-6 text-warn">当前仍有功能绑定这个账号，删除后这些功能会立即失效。</p>
+          ) : (
+            <p className="text-sm leading-6 text-mist">当前没有其它功能绑定这个账号，删除后凭证也会一并清除。</p>
+          )}
+          <div className="flex flex-wrap justify-end gap-2 pt-1">
+            <Button type="button" variant="ghost" disabled={pending} onClick={() => setStep('review')}>
+              返回查看
+            </Button>
+            <Button type="button" variant="danger" disabled={pending} onClick={() => void confirmDelete()}>
+              {pending ? '删除中…' : '确认删除'}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Dialog>
+  )
+}
+
+function DeleteAccountReview({
+  usage,
+  loading,
+  error,
+  onCancel,
+  onContinue,
+}: {
+  usage?: AccountUsage
+  loading: boolean
+  error: string
+  onCancel: () => void
+  onContinue: () => void
+}) {
+  return (
+    <div className="grid gap-4">
+      {loading ? <p className="text-sm text-mist">正在检查这个账号被哪些功能使用…</p> : null}
+      {error ? <p className="text-sm text-danger">{error}</p> : null}
+      {usage ? (
+        <>
+          {usage.items.length ? (
+            <div className="space-y-2">
+              <p className="text-sm text-paper">删除后会处理这些关联：</p>
+              <ul className="max-h-56 space-y-2 overflow-y-auto">
+                {usage.items.map((item) => (
+                  <li
+                    key={`${item.kind}-${item.id ?? item.name}`}
+                    className="rounded-lg border border-line bg-ink/40 px-3 py-2"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={item.severity === 'warning' ? 'warn' : 'mist'}>
+                        {USAGE_KIND_LABEL[item.kind] || item.kind}
+                      </Badge>
+                      <span className="text-sm font-medium text-paper">{item.name}</span>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-mist">{item.detail}</p>
+                    <p className="mt-1 text-xs leading-5 text-paper">{item.action}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-sm leading-6 text-mist">没有 API Key、Skill、知识库或语音房绑定这个账号。</p>
+          )}
+          <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
+            <p className="text-xs uppercase tracking-[0.16em] text-danger">删除风险</p>
+            <ul className="mt-2 space-y-1.5 text-sm leading-6 text-paper">
+              {usage.risks.map((risk) => (
+                <li key={risk}>{risk}</li>
+              ))}
+            </ul>
+          </div>
+        </>
+      ) : null}
+      <div className="flex flex-wrap justify-end gap-2 pt-1">
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          取消
+        </Button>
+        <Button type="button" variant="danger" disabled={loading || Boolean(error) || !usage} onClick={onContinue}>
+          继续删除
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function CustomModelDialog({
   accountId,
   onClose,
@@ -738,6 +876,7 @@ export function AccountsPage() {
   const [expandedModels, setExpandedModels] = useState<Set<number>>(new Set())
   const [editingModel, setEditingModel] = useState<{ accountId: number; model: ModelCaps } | null>(null)
   const [customModelAccountId, setCustomModelAccountId] = useState<number | null>(null)
+  const [deletingAccount, setDeletingAccount] = useState<Account | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [providerFilter, setProviderFilter] = useState('')
@@ -861,19 +1000,8 @@ export function AccountsPage() {
     }
   }
 
-  async function removeAccount(account: Account) {
-    if (!window.confirm(`确定删除账号“${account.name}”吗？删除后无法恢复，并会自动解绑所有 API Key。`)) return
-
-    setBusyId(account.id)
-    try {
-      await api.deleteAccount(account.id)
-      queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      notifyOk(`已删除 ${account.name}`)
-    } catch (error) {
-      notifyBad(errorMessage(error, '删除失败'))
-    } finally {
-      setBusyId(null)
-    }
+  function removeAccount(account: Account) {
+    setDeletingAccount(account)
   }
 
   return (
@@ -1129,6 +1257,18 @@ export function AccountsPage() {
             queryClient.invalidateQueries({ queryKey: ['accounts'] })
             setEditor(null)
             notifyOk(text)
+          }}
+        />
+      ) : null}
+      {deletingAccount ? (
+        <DeleteAccountDialog
+          account={deletingAccount}
+          onClose={() => setDeletingAccount(null)}
+          onDeleted={() => {
+            queryClient.invalidateQueries({ queryKey: ['accounts'] })
+            queryClient.invalidateQueries({ queryKey: ['key-accounts'] })
+            queryClient.invalidateQueries({ queryKey: ['skill-classification-settings'] })
+            setDeletingAccount(null)
           }}
         />
       ) : null}

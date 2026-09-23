@@ -114,6 +114,23 @@ export type Account = {
   created_at: string
 }
 
+export type AccountUsageItem = {
+  kind: string
+  id: string | null
+  name: string
+  detail: string
+  action: string
+  severity: 'info' | 'warning'
+}
+
+export type AccountUsage = {
+  account_id: number
+  account_name: string
+  has_relations: boolean
+  items: AccountUsageItem[]
+  risks: string[]
+}
+
 export type SkillClassificationSettings = {
   account_id: number | null
   account_name: string | null
@@ -549,6 +566,7 @@ export const api = {
   updateAccount: (id: number, payload: Record<string, unknown>) =>
     request<Account>(`/api/admin/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteAccount: (id: number) => request<{ ok: boolean }>(`/api/admin/accounts/${id}`, { method: 'DELETE' }),
+  accountUsage: (id: number) => request<AccountUsage>(`/api/admin/accounts/${id}/usage`),
   exportAccounts: (password: string) =>
     request<Record<string, unknown>>('/api/admin/accounts/export', {
       method: 'POST',
