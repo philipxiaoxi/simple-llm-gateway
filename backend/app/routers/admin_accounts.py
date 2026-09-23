@@ -17,11 +17,13 @@ from app.schemas import (
     AccountImportRequest,
     AccountOut,
     AccountUpdate,
+    AccountUsageOut,
     CustomModelCreate,
     ModelOverrideUpdate,
     ProviderOut,
 )
 from app.serializers import account_to_out
+from app.services.account_refs import collect_account_usage, detach_account_refs
 from app.services.account_transfer import export_accounts, import_accounts
 from app.services.header_spoof import default_header_spoof, normalize_header_spoof
 from app.services.key_models import ensure_account_prefix, normalize_model_prefix, unbind_account_keys
@@ -164,10 +166,17 @@ def update_account(
     return account_to_out(account)
 
 
+@router.get("/accounts/{account_id}/usage", response_model=AccountUsageOut)
+def get_account_usage(account_id: int, db: Session = Depends(get_db)) -> AccountUsageOut:
+    account = _get_account(db, account_id)
+    return collect_account_usage(db, account)
+
+
 @router.delete("/accounts/{account_id}")
 def delete_account(account_id: int, db: Session = Depends(get_db)) -> dict[str, bool]:
     account = _get_account(db, account_id)
     unbind_account_keys(db, account)
+    detach_account_refs(db, account_id)
     db.execute(
         update(RequestLog)
         .where(RequestLog.account_id == account_id)

@@ -162,6 +162,101 @@ def test_delete_account_reassigns_multi_account_key(
     assert key["status"] == "active"
 
 
+def test_delete_account_clears_skill_classification_refs(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "rightapi", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    account_id = created.json()["id"]
+    updated = client.put(
+        "/api/admin/skills/classification-settings",
+        headers=auth_headers,
+        json={
+            "account_id": account_id,
+            "model": "deepseek-chat",
+            "enabled": True,
+            "report_account_id": account_id,
+            "report_model": "deepseek-chat",
+            "report_enabled": True,
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    usage = client.get(f"/api/admin/accounts/{account_id}/usage", headers=auth_headers)
+    assert usage.status_code == 200, usage.text
+    kinds = {item["kind"] for item in usage.json()["items"]}
+    assert "skill_classification" in kinds
+    assert "skill_report" in kinds
+    assert usage.json()["has_relations"] is True
+
+    deleted = client.delete(f"/api/admin/accounts/{account_id}", headers=auth_headers)
+    assert deleted.status_code == 200, deleted.text
+    settings = client.get("/api/admin/skills/classification-settings", headers=auth_headers).json()
+    assert settings["account_id"] is None
+    assert settings["enabled"] is False
+    assert settings["report_account_id"] is None
+    assert settings["report_enabled"] is False
+
+
+def test_delete_account_usage_covers_keys_knowledge_and_voice(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    account_id = created.json()["id"]
+    client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "only-this", "account_id": account_id},
+    )
+    knowledge = client.post(
+        "/api/admin/mcp/knowledge/bases",
+        headers=auth_headers,
+        json={"name": "手册", "embedding_account_id": account_id, "embedding_model": "embedding-3"},
+    )
+    assert knowledge.status_code == 201, knowledge.text
+    kb_id = knowledge.json()["id"]
+    room = client.post(
+        "/api/admin/voice/rooms",
+        headers=auth_headers,
+        json={"name": "书房", "polishMode": "error_fix", "polishAccountId": account_id, "polishModel": "deepseek-chat"},
+    )
+    assert room.status_code == 200, room.text
+
+    usage = client.get(f"/api/admin/accounts/{account_id}/usage", headers=auth_headers).json()
+    kinds = {item["kind"] for item in usage["items"]}
+    assert {"api_key", "knowledge_base", "voice_room"} <= kinds
+    assert any("无法恢复" in risk for risk in usage["risks"])
+
+    deleted = client.delete(f"/api/admin/accounts/{account_id}", headers=auth_headers)
+    assert deleted.status_code == 200, deleted.text
+    leftover_kb = client.get("/api/admin/mcp/knowledge/bases", headers=auth_headers).json()
+    match = next(item for item in leftover_kb if item["id"] == kb_id)
+    assert match["embedding_account_id"] is None
+    leftover_room = client.get(f"/api/admin/voice/rooms/{room.json()['roomId']}", headers=auth_headers).json()
+    assert leftover_room["polishAccountId"] is None
+
+
+def test_delete_account_usage_without_relations(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "lonely", "provider": "deepseek", "api_key": "sk-up"},
+    )
+    account_id = created.json()["id"]
+    usage = client.get(f"/api/admin/accounts/{account_id}/usage", headers=auth_headers).json()
+    assert usage["has_relations"] is False
+    assert usage["items"] == []
+    assert any("无法恢复" in risk for risk in usage["risks"])
+    deleted = client.delete(f"/api/admin/accounts/{account_id}", headers=auth_headers)
+    assert deleted.status_code == 200
+
+
 def test_delete_account_keeps_request_logs(client: TestClient, auth_headers: dict[str, str]) -> None:
     from unittest.mock import AsyncMock, patch
 

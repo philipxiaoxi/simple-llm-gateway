@@ -225,6 +225,23 @@ class AccountOut(BaseModel):
     created_at: datetime
 
 
+class AccountUsageItemOut(BaseModel):
+    kind: str
+    id: str | None = None
+    name: str
+    detail: str
+    action: str
+    severity: str = "info"
+
+
+class AccountUsageOut(BaseModel):
+    account_id: int
+    account_name: str
+    has_relations: bool = False
+    items: list[AccountUsageItemOut] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+
+
 class SkillClassificationSettingsOut(BaseModel):
     account_id: int | None = None
     account_name: str | None = None

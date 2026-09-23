@@ -14,6 +14,7 @@ from app.db import get_session_factory
 from app.deps import get_current_admin
 from app.models import GatewayAgent, GatewayAgentRoute, UpstreamAccount
 from app.providers import get_provider
+from app.services.account_refs import detach_account_refs
 from app.services.key_models import ensure_account_prefix, unbind_account_keys
 from app.services.model_caps import parse_model_records, serialize_record
 from app.services.local_agent_relay import (
@@ -142,6 +143,7 @@ def _sync_agent(agent_id: str, routes: dict[str, dict[str, object]]) -> None:
             account = session.scalar(select(UpstreamAccount).where(UpstreamAccount.agent_route_id == stored_route.route_id))
             if account is not None and account.source == "agent":
                 _unbind_account_keys(session, account)
+                detach_account_refs(session, account.id)
                 session.delete(account)
             session.delete(stored_route)
         for route_id, route in routes.items():
