@@ -4,9 +4,8 @@ from typing import Any
 
 import httpx
 
-from app.config import get_settings
 from app.models import UpstreamAccount
-from app.providers.base import OpenAICompatibleProvider, QuotaItem, QuotaView
+from app.providers.base import OpenAICompatibleProvider, QuotaItem, QuotaView, quota_error_view, quota_http_timeout
 
 
 OPENCODE_GO_WINDOWS: tuple[tuple[str, str, float], ...] = (
@@ -68,13 +67,17 @@ class OpenCodeGoProvider(OpenAICompatibleProvider):
     default_models = ["glm-5.3", "glm-5.2", "kimi-k2.6", "kimi-k2.7-code", "minimax-m2.7"]
 
     async def load_quota(self, account: UpstreamAccount, token: str) -> QuotaView:
-        settings = get_settings()
         url = self.openai_api_base(account.base_url).rstrip("/") + "/usage"
-        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+        headers = {
+            **self.auth_headers(token),
+            **self.relay_headers(account),
+            "Accept": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=quota_http_timeout()) as client:
             try:
-                response = await client.get(url, headers=self.outbound_headers(account, token))
+                response = await client.get(url, headers=headers)
             except httpx.HTTPError as error:
-                return QuotaView(ok=False, message=str(error))
+                return quota_error_view(error)
         if response.status_code >= 400:
             return QuotaView(ok=False, message=f"{response.status_code} {response.text[:300]}")
         try:

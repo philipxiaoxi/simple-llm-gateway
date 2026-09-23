@@ -349,6 +349,13 @@ def test_quota_grok_weekly(client: TestClient, auth_headers: dict[str, str]) -> 
         def json(self) -> dict:
             return {"access_token": "access-xyz", "refresh_token": "refresh-xyz", "expires_in": 3600}
 
+    class UserResponse:
+        status_code = 200
+        text = "{}"
+
+        def json(self) -> dict:
+            return {"userId": "user-123"}
+
     class BillingResponse:
         status_code = 200
         text = "{}"
@@ -379,7 +386,11 @@ def test_quota_grok_weekly(client: TestClient, auth_headers: dict[str, str]) -> 
 
     with patch("app.providers.grok.httpx.AsyncClient") as billing_client:
         billing_instance = AsyncMock()
-        billing_instance.get = AsyncMock(return_value=BillingResponse())
+        billing_instance.get = AsyncMock(
+            side_effect=lambda url, **kwargs: UserResponse()
+            if url.endswith("/v1/user")
+            else BillingResponse()
+        )
         billing_instance.__aenter__.return_value = billing_instance
         billing_instance.__aexit__.return_value = None
         billing_client.return_value = billing_instance
@@ -390,7 +401,54 @@ def test_quota_grok_weekly(client: TestClient, auth_headers: dict[str, str]) -> 
     assert body["ok"] is True
     assert body["items"][0] == {"label": "周限制", "type": "progress", "value": 25.0}
     assert body["items"][1]["value"] == "重置时间：2026-08-16T09:32:10.577883+00:00"
-    assert billing_instance.get.await_args.args[0].endswith("/billing?format=credits")
+    calls = billing_instance.get.await_args_list
+    assert calls[0].args[0].endswith("/v1/user")
+    billing_call = calls[-1]
+    assert billing_call.args[0].endswith("/billing?format=credits")
+    assert billing_call.kwargs["headers"]["x-userid"] == "user-123"
+
+
+def test_parse_grok_user_id() -> None:
+    from app.providers.grok import parse_grok_user_id
+
+    assert parse_grok_user_id({"userId": "user-1"}) == "user-1"
+    assert parse_grok_user_id({"userId": "  user-2  "}) == "user-2"
+    assert parse_grok_user_id({"userId": ""}) is None
+    assert parse_grok_user_id({}) is None
+    assert parse_grok_user_id(None) is None
+
+
+def test_quota_http_timeout_bounds_connect() -> None:
+    from app.config import get_settings
+    from app.providers.base import quota_http_timeout
+
+    timeout = quota_http_timeout()
+    assert timeout.connect == 5.0
+    assert timeout.read == get_settings().quota_timeout_seconds
+
+
+def test_quota_opencode_go_connect_timeout_returns_reason(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    import httpx
+
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "OC-timeout", "provider": "opencode_go", "api_key": "sk-oc"},
+    ).json()
+
+    with patch("app.providers.opencode_go.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(side_effect=httpx.ConnectTimeout(""))
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        response = client.post(f"/api/admin/accounts/{created['id']}/quota", headers=auth_headers)
+
+    body = response.json()
+    assert body["ok"] is False
+    assert "额度查询失败" in body["message"]
 
 
 def test_quota_generic_providers_skip_network(client: TestClient, auth_headers: dict[str, str]) -> None:

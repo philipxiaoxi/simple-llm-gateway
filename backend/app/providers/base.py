@@ -17,6 +17,18 @@ from app.services.model_caps import dump_model_records, enrich_model_records, ex
 GENERIC_QUOTA_UNSUPPORTED = "通用供应商不支持查询余额"
 
 
+def quota_http_timeout() -> httpx.Timeout:
+    """额度查询用的短超时：连接阶段尽快失败，避免管理页长时间 pending。"""
+    seconds = get_settings().quota_timeout_seconds
+    return httpx.Timeout(seconds, connect=min(5.0, seconds))
+
+
+def quota_error_view(error: httpx.HTTPError) -> QuotaView:
+    """把网络异常转成带可读原因的失败视图（httpx 超时异常常常没有文本）。"""
+    detail = str(error).strip() or type(error).__name__
+    return QuotaView(ok=False, message=f"额度查询失败：{detail}")
+
+
 @dataclass
 class QuotaItem:
     label: str
@@ -253,8 +265,7 @@ class Provider:
         base = self.openai_api_base(account.base_url)
         headers = self.outbound_headers(account, token)
         candidates = [f"{base}/usage", f"{base}/billing"]
-        settings = get_settings()
-        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+        async with httpx.AsyncClient(timeout=quota_http_timeout()) as client:
             for url in candidates:
                 try:
                     response = await client.get(url, headers=headers)

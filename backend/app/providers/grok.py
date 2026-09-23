@@ -8,11 +8,24 @@ from sqlalchemy.orm import object_session
 from app.config import get_settings
 from app.crypto import decrypt_secret
 from app.models import UpstreamAccount
-from app.providers.base import OpenAICompatibleProvider, QuotaItem, QuotaView
+from app.providers.base import OpenAICompatibleProvider, QuotaItem, QuotaView, quota_error_view, quota_http_timeout
 from app.services.grok_oauth import refresh_if_needed
 
 
+XAI_CLI_USER_URL = "https://cli-chat-proxy.grok.com/v1/user"
 GROK_WEEKLY_BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
+
+
+def parse_grok_user_id(raw: Any) -> str | None:
+    """从 /v1/user 响应中取出 billing 请求所需的 x-userid 身份标识。"""
+    if not isinstance(raw, dict):
+        return None
+    user_id = raw.get("userId")
+    if isinstance(user_id, str):
+        user_id = user_id.strip()
+        if user_id:
+            return user_id
+    return None
 
 
 def parse_grok_weekly(raw: dict[str, Any]) -> tuple[float, str | None] | None:
@@ -79,16 +92,31 @@ class GrokProvider(OpenAICompatibleProvider):
             return token
 
     async def load_quota(self, account: UpstreamAccount, token: str) -> QuotaView:
-        settings = get_settings()
         access_token = await self._access_token(account, token)
-        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+        headers = {**self.outbound_headers(account, access_token), "Accept": "application/json"}
+        async with httpx.AsyncClient(timeout=quota_http_timeout()) as client:
+            try:
+                user_response = await client.get(XAI_CLI_USER_URL, headers=headers)
+            except httpx.HTTPError as error:
+                return quota_error_view(error)
+            if user_response.status_code == 401:
+                return QuotaView(ok=False, message="Grok 授权失效，请重新授权")
+            if user_response.status_code >= 400:
+                return QuotaView(ok=False, message=f"{user_response.status_code} {user_response.text[:300]}")
+            try:
+                user_raw = user_response.json()
+            except ValueError:
+                return QuotaView(ok=False, message="上游返回的不是 JSON")
+            user_id = parse_grok_user_id(user_raw)
+            if user_id is None:
+                return QuotaView(ok=False, message="无法获取 Grok 用户标识")
             try:
                 response = await client.get(
                     GROK_WEEKLY_BILLING_URL,
-                    headers={**self.outbound_headers(account, access_token), "Accept": "application/json"},
+                    headers={**headers, "x-userid": user_id},
                 )
             except httpx.HTTPError as error:
-                return QuotaView(ok=False, message=str(error))
+                return quota_error_view(error)
         if response.status_code == 401:
             return QuotaView(ok=False, message="Grok 授权失效，请重新授权")
         if response.status_code >= 400:
