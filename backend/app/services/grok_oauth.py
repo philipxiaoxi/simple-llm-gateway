@@ -181,7 +181,9 @@ async def refresh_oauth_token(db: Session, account: UpstreamAccount) -> str:
     if token is None or not token.refresh_token_encrypted:
         raise ValueError("Grok 授权已过期，请重新授权")
     refresh_token = decrypt_secret(token.refresh_token_encrypted, settings.app_secret_key)
-    async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(settings.quota_timeout_seconds, connect=min(5.0, settings.quota_timeout_seconds))
+    ) as client:
         response = await client.post(
             settings.xai_oauth_token_url,
             data={

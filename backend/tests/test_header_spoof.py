@@ -218,14 +218,24 @@ def test_grok_quota_uses_account_spoof(client: TestClient, auth_headers: dict[st
         assert row is not None
         captured: dict = {}
 
+        class FakeUserResponse:
+            status_code = 200
+
+            def json(self) -> dict:
+                return {"userId": "user-1"}
+
         class FakeHttpResponse:
             status_code = 200
 
             def json(self) -> dict:
                 return {"config": {"creditUsagePercent": 12, "currentPeriod": {"end": "2099-01-01T00:00:00Z"}}}
 
+        def fake_get(url: str, headers: dict) -> object:
+            captured["headers"] = headers
+            return FakeUserResponse() if url.endswith("/v1/user") else FakeHttpResponse()
+
         instance = AsyncMock()
-        instance.get = AsyncMock(side_effect=lambda url, headers: captured.update({"headers": headers}) or FakeHttpResponse())
+        instance.get = AsyncMock(side_effect=fake_get)
         instance.__aenter__.return_value = instance
         with patch("app.providers.grok.httpx.AsyncClient", return_value=instance):
             result = asyncio.run(GrokProvider().load_quota(row, "oauth-token"))

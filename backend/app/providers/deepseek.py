@@ -4,9 +4,8 @@ from typing import Any
 
 import httpx
 
-from app.config import get_settings
 from app.models import UpstreamAccount
-from app.providers.base import Provider, QuotaItem, QuotaView
+from app.providers.base import Provider, QuotaItem, QuotaView, quota_error_view, quota_http_timeout
 
 
 def format_money(currency: str, amount: float) -> str:
@@ -78,13 +77,12 @@ class DeepSeekProvider(Provider):
     default_models = ["deepseek-chat", "deepseek-reasoner"]
 
     async def load_quota(self, account: UpstreamAccount, token: str) -> QuotaView:
-        settings = get_settings()
         url = account.base_url.rstrip("/") + "/user/balance"
-        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+        async with httpx.AsyncClient(timeout=quota_http_timeout()) as client:
             try:
                 response = await client.get(url, headers=self.outbound_headers(account, token))
             except httpx.HTTPError as error:
-                return QuotaView(ok=False, message=str(error))
+                return quota_error_view(error)
         if response.status_code >= 400:
             return QuotaView(ok=False, message=f"{response.status_code} {response.text[:300]}")
         try:

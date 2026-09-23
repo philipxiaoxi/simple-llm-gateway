@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     database_path: str = "data/gateway.db"
     app_base_url: str = "http://127.0.0.1:8000"
     request_timeout_seconds: int = 120
+    # 额度/余额查询走独立短超时：上游不可达时管理页要快速失败，而不是挂到 request_timeout
+    quota_timeout_seconds: int = 20
     local_agent_token: str = ""
     quota_refresh_interval_seconds: int = 3600
     jwt_expire_days: int = 7

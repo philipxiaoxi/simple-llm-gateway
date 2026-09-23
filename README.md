@@ -52,6 +52,7 @@ cp .env.example .env
 | `APP_BASE_URL` | 管理端根地址；自定义 OAuth 应用回调成功后会回到这里 |
 | `REQUEST_TIMEOUT_SECONDS` | 默认 120 |
 | `QUOTA_REFRESH_INTERVAL_SECONDS` | 上游额度自动刷新间隔，默认 3600（1 小时） |
+| `QUOTA_TIMEOUT_SECONDS` | 额度查询超时，默认 20；连接阶段最多 5 秒，上游不可达时快速失败 |
 | `XAI_OAUTH_CLIENT_ID` | Grok OAuth 客户端，可覆盖默认值 |
 | `SKILLS_PATH` | Skills 文件目录。默认与数据库同级的 `skills/`（例如 `data/skills`） |
 
