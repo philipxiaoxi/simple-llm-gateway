@@ -18,7 +18,14 @@ from app.services.mcp_auth import allowed_capability_ids, resolve_mcp_key
 
 _current_mcp_key_id: ContextVar[int | None] = ContextVar("current_mcp_key_id", default=None)
 
-mcp = FastMCP("llm-gateway-capabilities", json_response=True, stateless_http=True)
+# streamable_http_path="/"：外层 app.mount("/mcp") 会把 /mcp 剥成 / 或空路径。
+# FastMCP 默认挂 /mcp，叠在一起后只有 /mcp/ 能进 MCP，文档写的 /mcp 会被 SPA 吃掉。
+mcp = FastMCP(
+    "llm-gateway-capabilities",
+    json_response=True,
+    stateless_http=True,
+    streamable_http_path="/",
+)
 _mcp_asgi_app = None
 _tools_registered = False
 
