@@ -6,9 +6,12 @@ from contextvars import ContextVar
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.routing import Route
+from starlette.types import Receive, Scope, Send
 
 from app.capabilities import ensure_defaults, invoke_tool, list_tool_defs, resolve_tool
 from app.capabilities.base import CapabilityError
@@ -197,12 +200,68 @@ def register_all_tools() -> None:
     _tools_registered = True
 
 
+class McpStreamableEndpoint:
+    """请求期动态解析 session manager，避免子应用绑定到已销毁的实例。
+
+    用类而不是函数：Starlette 会把函数端点包装成只接受 GET 的 request-response，
+    这里需要的是接收任意方法的裸 ASGI。
+    """
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            manager = mcp.session_manager
+        except RuntimeError:
+            response = JSONResponse(
+                {"error": {"type": "server_error", "message": "MCP 服务未就绪"}},
+                status_code=503,
+            )
+            await response(scope, receive, send)
+            return
+        await manager.handle_request(scope, receive, send)
+
+
+class McpRootEntrypoint:
+    """/mcp（无尾斜杠）入口。
+
+    Starlette 的 Mount("/mcp") 只匹配 /mcp/...，无尾斜杠会被 SPA 兜底成 404。
+    这里把路径改写成内部 "/" 后转交同一个 MCP 子应用，不依赖客户端跟随 307。
+    """
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        scope = dict(scope)
+        scope["path"] = "/"
+        scope["raw_path"] = b"/"
+        scope["root_path"] = scope.get("root_path", "") + "/mcp"
+        await self.app(scope, receive, send)
+
+
 def build_mcp_app():
     global _mcp_asgi_app
     ensure_defaults()
     register_all_tools()
     if _mcp_asgi_app is None:
-        app = mcp.streamable_http_app()
+        app = Starlette(routes=[Route("/", endpoint=McpStreamableEndpoint())])
         app.add_middleware(McpAuthMiddleware)
         _mcp_asgi_app = app
     return _mcp_asgi_app
+
+
+def start_mcp_session():
+    """在父应用 lifespan 中启动 session manager。
+
+    Starlette 只运行顶层 lifespan，mounted 子应用的 lifespan 不会执行；而 SDK 把
+    ``session_manager.run()`` 放在子应用 lifespan 里。不接管就会出现
+    "Task group is not initialized" 的 500（鉴权已过、handler 才炸）。这里返回一个
+    已创建的 manager，由调用方 ``async with manager.run()`` 覆盖整个应用生命周期。
+
+    ``run()`` 每个实例只能调用一次，所以每次启动都重建 manager，保证测试或进程内
+    重启拿到干净实例；子应用通过 ``McpStreamableEndpoint`` 动态取当前 manager，无需重挂。
+    """
+    ensure_defaults()
+    register_all_tools()
+    mcp._session_manager = None
+    mcp.streamable_http_app()
+    return mcp.session_manager
