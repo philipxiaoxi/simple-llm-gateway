@@ -501,6 +501,7 @@ _LEADERBOARD_CATALOG_PROVIDERS = {
     "qianwen": "alibaba",
     "z.ai": "zai",
     "zai": "zai",
+    "zhipu": "zhipuai",
     "meta": "meta",
 }
 

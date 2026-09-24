@@ -140,9 +140,28 @@ def update_account(
     db: Session = Depends(get_db),
 ) -> AccountOut:
     account = _get_account(db, account_id)
+    provider_changed = False
+    if payload.provider is not None and payload.provider != account.provider:
+        try:
+            target = get_provider(payload.provider)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        provider_changed = True
+        account.provider = target.id
+        account.auth_type = target.auth_type
+        account.base_url = (payload.base_url or "").strip() or target.default_base_url
+        if payload.header_spoof is None:
+            account.header_spoof = default_header_spoof(target.id)
+        # 模型列表与探测结果都是供应商相关的，切换后清空等重新拉取
+        account.models_json = None
+        account.models_updated_at = None
+        account.last_probe_ok = None
+        account.last_probe_latency_ms = None
+        account.last_probe_message = None
+        account.last_probe_at = None
     if payload.name is not None:
         account.name = payload.name
-    if payload.base_url is not None:
+    if payload.base_url is not None and not provider_changed:
         stripped = payload.base_url.strip()
         if stripped:
             account.base_url = stripped

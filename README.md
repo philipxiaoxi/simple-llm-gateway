@@ -1,6 +1,6 @@
 <div align="center">
   <h1>AI一体化服务平台</h1>
-  <p>自建AI一体化服务平台：对外提供 OpenAI / Anthropic 协议，把请求转到 OpenCode Go、Grok（xAI OAuth）或 DeepSeek；后台可管理本地 Agent Skills</p>
+  <p>自建AI一体化服务平台：对外提供 OpenAI / Anthropic 协议，把请求转到 OpenCode Go、Grok（xAI OAuth）、DeepSeek 或智谱（GLM）；后台可管理本地 Agent Skills</p>
   <p>
     <a href="#-功能特性">功能特性</a> •
     <a href="#快速开始">快速开始</a> •
@@ -21,7 +21,7 @@
 ## ✨ 功能特性
 
 - **双协议网关**: 同时提供 OpenAI 与 Anthropic 接口，一份 Key 两种填法
-- **多上游账号**: OpenCode Go、Grok（xAI OAuth）、DeepSeek，以及通用 OpenAI / 官方 Anthropic
+- **多上游账号**: OpenCode Go、Grok（xAI OAuth）、DeepSeek、智谱（GLM 按量计费，支持额度查询），以及通用 OpenAI / 官方 Anthropic
 - **管理后台**: 探测上游是否可用、查询额度、拉取模型列表
 - **一键导入**: 分享页按 Key 查询归属，支持 CC Switch 导入
 - **网关代理**: 可将受限网络中的固定上游地址安全地反向接入 Gateway
