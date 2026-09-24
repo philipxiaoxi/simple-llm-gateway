@@ -24,6 +24,13 @@ function defaultHeaderSpoof(providerId: string): HeaderSpoof {
   return 'none'
 }
 
+const PROVIDER_SWITCH_RISKS = [
+  '保存后会用新供应商的默认 Base URL 和请求头伪装覆盖当前值，并清空已拉取的模型列表，需要重新拉取；期间依赖这些模型的路由会暂时不可用。',
+  '现有 API Key 会保留，它属于原供应商，对新供应商通常无效，请在切换后更新，否则请求会失败。',
+  '风险等级不会自动调整，若新供应商来源不同，请按实际情况修改。',
+  '切到需要 OAuth 的供应商后，需要重新点「去授权」完成授权。',
+]
+
 function AccountEditor({
   account,
   providers,
@@ -38,6 +45,7 @@ function AccountEditor({
   const editing = account !== null
   const [name, setName] = useState(account?.name ?? '')
   const [provider, setProvider] = useState(account?.provider ?? 'deepseek')
+  const [providerTouched, setProviderTouched] = useState(false)
   const [baseUrl, setBaseUrl] = useState(account?.base_url ?? '')
   const [websiteUrl, setWebsiteUrl] = useState(account?.website_url ?? '')
   const [apiKey, setApiKey] = useState('')
@@ -48,34 +56,49 @@ function AccountEditor({
   )
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
+  const [confirmSwitch, setConfirmSwitch] = useState(false)
 
   const preset = useMemo(() => providers.find((item) => item.id === provider), [providers, provider])
-  const authType = editing ? account.auth_type : preset?.auth_type
+  const authType = preset?.auth_type ?? (editing ? account.auth_type : undefined)
+  // 编辑时只有用户主动切换供应商才覆盖 Base URL / 请求头伪装，避免打开弹窗即被重置
+  const autoFillPreset = !editing || providerTouched
+  const providerChanged = editing && provider !== account.provider
+  const oldProviderLabel = editing ? providers.find((item) => item.id === account.provider)?.label ?? account.provider : ''
 
   useEffect(() => {
-    if (editing) return
+    if (!autoFillPreset) return
     if (preset?.base_url) setBaseUrl(preset.base_url)
-  }, [editing, preset?.base_url])
+  }, [autoFillPreset, preset?.base_url])
 
   useEffect(() => {
-    if (editing) return
+    if (!autoFillPreset) return
     setHeaderSpoof(defaultHeaderSpoof(provider))
-  }, [editing, provider])
+  }, [autoFillPreset, provider])
 
   async function save() {
     const trimmedName = name.trim()
-    const trimmedUrl = baseUrl.trim()
-    const trimmedWebsiteUrl = websiteUrl.trim()
     if (!trimmedName) {
       setError('请填写显示名')
       return
     }
+    if (providerChanged) {
+      setConfirmSwitch(true)
+      return
+    }
+    await applySave()
+  }
+
+  async function applySave() {
+    const trimmedName = name.trim()
+    const trimmedUrl = baseUrl.trim()
+    const trimmedWebsiteUrl = websiteUrl.trim()
     setPending(true)
     setError('')
     try {
       if (editing) {
         await api.updateAccount(account.id, {
           name: trimmedName,
+          provider,
           base_url: trimmedUrl || undefined,
           website_url: trimmedWebsiteUrl || null,
           api_key: authType === 'api_key' && apiKey.trim() ? apiKey.trim() : undefined,
@@ -104,6 +127,39 @@ function AccountEditor({
     }
   }
 
+  if (confirmSwitch) {
+    return (
+      <Dialog title="确认切换供应商" onClose={onClose} className="max-w-xl">
+        <div className="grid gap-4">
+          <p className="text-sm leading-6 text-paper">
+            确定把「{account?.name ?? ''}」的供应商从 {oldProviderLabel} 切换为 {preset?.label ?? provider}？切换会影响以下配置，请确认已知晓风险。
+          </p>
+          <ul className="grid list-disc gap-2 pl-5 text-sm leading-6 text-warn">
+            {PROVIDER_SWITCH_RISKS.map((risk) => (
+              <li key={risk}>{risk}</li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap justify-end gap-2 pt-1">
+            <Button type="button" variant="ghost" disabled={pending} onClick={() => setConfirmSwitch(false)}>
+              返回修改
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              disabled={pending}
+              onClick={() => {
+                setConfirmSwitch(false)
+                void applySave()
+              }}
+            >
+              {pending ? '保存中…' : '确认切换'}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    )
+  }
+
   return (
     <Dialog title={editing ? '编辑账号' : '新建账号'} onClose={onClose}>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -113,8 +169,10 @@ function AccountEditor({
         <Field label="供应商">
           <Select
             value={provider}
-            disabled={editing}
-            onChange={(event) => setProvider(event.target.value)}
+            onChange={(event) => {
+              setProviderTouched(true)
+              setProvider(event.target.value)
+            }}
           >
             {providers.map((item) => (
               <option key={item.id} value={item.id}>
@@ -122,6 +180,15 @@ function AccountEditor({
               </option>
             ))}
           </Select>
+          {providerChanged ? (
+            <div className="mt-1.5 rounded-md border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-xs leading-5 text-warn">
+              已从 {oldProviderLabel} 切换到 {preset?.label ?? provider}。保存前会再次确认，切换会更新默认 Base URL 与请求头伪装、清空已拉取的模型列表，且原 API Key 对新供应商通常无效。
+            </div>
+          ) : editing ? (
+            <div className="mt-1.5 text-xs text-mist">
+              切换供应商会更新默认 Base URL 与请求头伪装，并清空已拉取的模型列表，需重新拉取。
+            </div>
+          ) : null}
         </Field>
         <div className="sm:col-span-2">
           <Field label="Base URL">

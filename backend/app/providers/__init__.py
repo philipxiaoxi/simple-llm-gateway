@@ -6,6 +6,7 @@ from app.providers.deepseek import DeepSeekProvider
 from app.providers.grok import GrokProvider
 from app.providers.openai_generic import OpenAIGenericProvider
 from app.providers.opencode_go import OpenCodeGoProvider
+from app.providers.zhipu import ZhipuProvider
 
 _REGISTRY: dict[str, Provider] = {}
 
@@ -32,5 +33,6 @@ def list_providers() -> list[Provider]:
 register_provider(OpenCodeGoProvider())
 register_provider(GrokProvider())
 register_provider(DeepSeekProvider())
+register_provider(ZhipuProvider())
 register_provider(OpenAIGenericProvider())
 register_provider(AnthropicGenericProvider())

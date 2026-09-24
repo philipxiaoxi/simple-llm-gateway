@@ -76,6 +76,16 @@ def test_catalog_match_normalizes_and_votes() -> None:
                     }
                 }
             },
+            "zhipuai": {
+                "models": {
+                    "glm-4.6": {
+                        "id": "glm-4.6",
+                        "reasoning": True,
+                        "limit": {"context": 200000, "output": 128000},
+                        "modalities": {"input": ["text"], "output": ["text"]},
+                    }
+                }
+            },
         }
     )
     matched = match_catalog("openai/gpt.4o", "openai_generic", index)
@@ -86,6 +96,9 @@ def test_catalog_match_normalizes_and_votes() -> None:
     assert opus is not None
     assert opus.reasoning is True
     assert opus.reasoning_efforts == ("low", "high")
+    glm = match_catalog("glm-4.6", "zhipu", index)
+    assert glm is not None
+    assert glm.context_window == 200000
 
 
 def test_catalog_overrides_upstream_and_heuristic() -> None:

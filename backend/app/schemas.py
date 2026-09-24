@@ -112,6 +112,7 @@ class AccountImportRequest(BaseModel):
 
 class AccountUpdate(BaseModel):
     name: str | None = None
+    provider: str | None = None
     base_url: str | None = None
     website_url: str | None = None
     api_key: str | None = None

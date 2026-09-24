@@ -7,12 +7,14 @@ def test_list_providers(client: TestClient, auth_headers: dict[str, str]) -> Non
     response = client.get("/api/admin/providers", headers=auth_headers)
     assert response.status_code == 200
     ids = {item["id"] for item in response.json()}
-    assert ids == {"opencode_go", "grok", "deepseek", "openai_generic", "anthropic_generic"}
+    assert ids == {"opencode_go", "grok", "deepseek", "zhipu", "openai_generic", "anthropic_generic"}
     by_id = {item["id"]: item for item in response.json()}
     assert by_id["openai_generic"]["label"] == "通用 OpenAI"
     assert by_id["openai_generic"]["base_url"] == "https://api.openai.com/v1"
     assert by_id["anthropic_generic"]["label"] == "通用 Anthropic"
     assert by_id["anthropic_generic"]["base_url"] == "https://api.anthropic.com/v1"
+    assert by_id["zhipu"]["label"] == "智谱"
+    assert by_id["zhipu"]["base_url"] == "https://open.bigmodel.cn/api/paas/v4"
 
 
 def test_create_account_encrypts_key(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -58,6 +60,68 @@ def test_update_account_base_url(client: TestClient, auth_headers: dict[str, str
     )
     assert updated.status_code == 200
     assert updated.json()["base_url"] == "https://proxy.example/v1"
+
+
+def test_update_account_switches_provider(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    ).json()
+    account_id = created["id"]
+    assert created["base_url"] == "https://api.deepseek.com"
+    client.post(
+        f"/api/admin/accounts/{account_id}/models/custom",
+        headers=auth_headers,
+        json={"id": "deepseek-chat"},
+    )
+
+    switched = client.patch(
+        f"/api/admin/accounts/{account_id}",
+        headers=auth_headers,
+        json={"provider": "zhipu"},
+    )
+    assert switched.status_code == 200
+    body = switched.json()
+    assert body["provider"] == "zhipu"
+    assert body["auth_type"] == "api_key"
+    assert body["base_url"] == "https://open.bigmodel.cn/api/paas/v4"
+    assert body["models"] == []
+    assert body["last_probe_at"] is None
+
+
+def test_update_account_switch_provider_keeps_custom_base_url(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    ).json()
+
+    switched = client.patch(
+        f"/api/admin/accounts/{created['id']}",
+        headers=auth_headers,
+        json={"provider": "zhipu", "base_url": "https://proxy.example/zhipu/v4"},
+    )
+    assert switched.status_code == 200
+    assert switched.json()["provider"] == "zhipu"
+    assert switched.json()["base_url"] == "https://proxy.example/zhipu/v4"
+
+
+def test_update_account_rejects_unknown_provider(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"},
+    ).json()
+    response = client.patch(
+        f"/api/admin/accounts/{created['id']}",
+        headers=auth_headers,
+        json={"provider": "nope"},
+    )
+    assert response.status_code == 400
+    assert "不支持的供应商" in response.json()["detail"]
 
 
 def test_create_and_update_account_website_url(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -402,6 +466,207 @@ def test_quota_opencode_go_windows(client: TestClient, auth_headers: dict[str, s
     assert "$1.20 / $30.00" in texts["周限制"]
     stored = client.get(f"/api/admin/accounts/{account_id}", headers=auth_headers)
     assert stored.json()["quota"]["items"][0]["label"] == "5 小时限额"
+
+
+def test_zhipu_origin_strips_api_path() -> None:
+    from app.providers.zhipu import zhipu_origin
+
+    assert zhipu_origin("https://open.bigmodel.cn/api/paas/v4") == "https://open.bigmodel.cn"
+    assert zhipu_origin("https://api.z.ai/api/coding/paas/v4") == "https://api.z.ai"
+    assert zhipu_origin("") == "https://open.bigmodel.cn"
+
+
+def test_parse_zhipu_limits() -> None:
+    from app.providers.zhipu import zhipu_quota_items
+
+    items = zhipu_quota_items(
+        {
+            "code": 200,
+            "data": {
+                "level": "pro",
+                "limits": [
+                    {
+                        "type": "TOKENS_LIMIT",
+                        "unit": 3,
+                        "number": 5,
+                        "percentage": 28,
+                        "nextResetTime": 1780000000000,
+                    },
+                    {"type": "TOKENS_LIMIT", "unit": 6, "number": 1, "percentage": 35},
+                    {"type": "TIME_LIMIT", "unit": 5, "number": 1, "percentage": 15},
+                ],
+            },
+        }
+    )
+    progress = {item.label: item.value for item in items if item.type == "progress"}
+    texts = {item.label: item.value for item in items if item.type == "text"}
+    assert progress["5 小时限额"] == 28
+    assert progress["周限制"] == 35
+    assert progress["工具额度"] == 15
+    assert "重置时间：" in texts["5 小时限额"]
+    assert texts["套餐"] == "pro"
+
+
+def test_parse_zhipu_pay_as_you_go_quota() -> None:
+    """按量计费 / 资源包账号：limits 只给剩余与总数，展示为剩余/总并推算进度。"""
+    from app.providers.zhipu import zhipu_quota_items
+
+    items = zhipu_quota_items(
+        {
+            "code": 200,
+            "data": {
+                "limits": [
+                    {"type": "CREDIT_LIMIT", "remaining": 3000, "number": 10000},
+                ]
+            },
+        }
+    )
+    progress = {item.label: item.value for item in items if item.type == "progress"}
+    texts = {item.label: item.value for item in items if item.type == "text"}
+    assert progress["积分额度"] == 70.0
+    assert texts["积分额度"] == "剩余 3000 / 10000"
+
+
+def test_quota_zhipu_windows(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "ZP", "provider": "zhipu", "api_key": "sk-zp"},
+    ).json()
+
+    class FakeResponse:
+        status_code = 200
+        text = "{}"
+
+        def json(self) -> dict:
+            return {
+                "success": True,
+                "data": {
+                    "level": "lite",
+                    "limits": [
+                        {
+                            "type": "TOKENS_LIMIT",
+                            "unit": 3,
+                            "number": 5,
+                            "percentage": 42,
+                            "nextResetTime": 1780000000000,
+                        },
+                        {"type": "TOKENS_LIMIT", "unit": 6, "number": 1, "percentage": 8},
+                    ],
+                },
+            }
+
+    with patch("app.providers.zhipu.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        response = client.post(f"/api/admin/accounts/{created['id']}/quota", headers=auth_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    progress = {item["label"]: item["value"] for item in body["items"] if item["type"] == "progress"}
+    assert progress["5 小时限额"] == 42
+    assert progress["周限制"] == 8
+    assert instance.get.await_args.args[0] == "https://open.bigmodel.cn/api/monitor/usage/quota/limit"
+    assert instance.get.await_args.kwargs["headers"]["Authorization"] == "Bearer sk-zp"
+    stored = client.get(f"/api/admin/accounts/{created['id']}", headers=auth_headers)
+    assert stored.json()["quota"]["items"][0]["label"] == "5 小时限额"
+
+
+def test_quota_zhipu_pay_as_you_go(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "ZP-payg", "provider": "zhipu", "api_key": "sk-zp"},
+    ).json()
+
+    class FakeResponse:
+        status_code = 200
+        text = "{}"
+
+        def json(self) -> dict:
+            return {
+                "code": 200,
+                "msg": "success",
+                "data": {
+                    "limits": [
+                        {"type": "CREDIT_LIMIT", "remaining": 4200, "number": 6000},
+                    ]
+                },
+            }
+
+    with patch("app.providers.zhipu.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        response = client.post(f"/api/admin/accounts/{created['id']}/quota", headers=auth_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    progress = {item["label"]: item["value"] for item in body["items"] if item["type"] == "progress"}
+    texts = {item["label"]: item["value"] for item in body["items"] if item["type"] == "text"}
+    assert progress["积分额度"] == 30.0
+    assert texts["积分额度"] == "剩余 4200 / 6000"
+
+
+def test_quota_zhipu_reports_plan_error(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "ZP-plan", "provider": "zhipu", "api_key": "sk-zp"},
+    ).json()
+
+    class FakeResponse:
+        status_code = 200
+        text = "{}"
+
+        def json(self) -> dict:
+            return {"success": False, "msg": "当前用户不存在coding plan"}
+
+    with patch("app.providers.zhipu.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        response = client.post(f"/api/admin/accounts/{created['id']}/quota", headers=auth_headers)
+
+    body = response.json()
+    assert body["ok"] is False
+    assert "coding plan" in body["message"]
+
+
+def test_quota_zhipu_reports_invalid_key(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "ZP-bad", "provider": "zhipu", "api_key": "sk-zp"},
+    ).json()
+
+    class FakeResponse:
+        status_code = 401
+        text = "unauthorized"
+
+        def json(self) -> dict:
+            return {}
+
+    with patch("app.providers.zhipu.httpx.AsyncClient") as client_cls:
+        instance = AsyncMock()
+        instance.get = AsyncMock(return_value=FakeResponse())
+        instance.__aenter__.return_value = instance
+        instance.__aexit__.return_value = None
+        client_cls.return_value = instance
+        response = client.post(f"/api/admin/accounts/{created['id']}/quota", headers=auth_headers)
+
+    body = response.json()
+    assert body["ok"] is False
+    assert "凭证无效" in body["message"]
 
 
 def test_parse_grok_weekly_window() -> None:
