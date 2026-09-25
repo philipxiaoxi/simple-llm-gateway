@@ -41,6 +41,12 @@ Header: Authorization: Bearer mcp-你的密钥
 # 知识库示例（需授权 knowledge）
 #   knowledge_list
 #   knowledge_search  (kb_id, query, mode?, top_k?)
+
+# 文档转 Markdown（需授权 docparse）
+#   docparse_convert  (filename, content_base64) → job_id
+#   docparse_job      (job_id)
+#   docparse_result   (job_id)
+# MCP 入参解码后不超过 20MB，更大文件用 REST multipart。
 `}</CodeBlock>
         <p className="break-words text-sm text-mist [overflow-wrap:anywhere]">
           新应用：后端实现 Provider 并 register → 自动进服务目录、Key 勾选、REST 通用入口与 MCP tools。聊天 sk-

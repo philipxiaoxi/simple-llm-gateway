@@ -7,6 +7,8 @@ import { api, type McpKnowledgeEmbeddingAccount } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
 
+const OFFICE_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'html', 'htm'])
+
 const TEXT_EXTENSIONS = new Set([
   'txt', 'text', 'md', 'markdown', 'mdx', 'rst', 'org', 'adoc', 'log',
   'csv', 'tsv', 'json', 'jsonl', 'ndjson', 'yaml', 'yml', 'toml', 'ini',
@@ -18,11 +20,20 @@ const TEXT_EXTENSIONS = new Set([
   'gql', 'proto', 'tex', 'bib', 'srt', 'vtt',
 ])
 
-function isTextCandidate(file: File): boolean {
+const FILE_ACCEPT = [
+  '.md', '.txt', '.markdown', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.html', '.htm',
+].join(',')
+
+function fileExt(file: File): string {
   const name = file.name.toLowerCase()
   const dot = name.lastIndexOf('.')
-  if (dot <= 0) return true
-  return TEXT_EXTENSIONS.has(name.slice(dot + 1))
+  return dot > 0 ? name.slice(dot + 1) : ''
+}
+
+function isTextCandidate(file: File): boolean {
+  const ext = fileExt(file)
+  if (!ext) return true
+  return TEXT_EXTENSIONS.has(ext) || OFFICE_EXTENSIONS.has(ext)
 }
 
 const SCOPE_OPTIONS = [
@@ -489,10 +500,10 @@ export function McpKnowledgeDetailPage() {
     const textFiles = all.filter(isTextCandidate)
     const ignored = all.length - textFiles.length
     if (!textFiles.length) {
-      notifyBad(`所选目录没有可识别的文本文件（忽略 ${ignored} 个）`)
+      notifyBad(`所选目录没有可入库文件（忽略 ${ignored} 个）`)
       return
     }
-    if (ignored) notifyOk(`识别到 ${textFiles.length} 个文本文件，忽略 ${ignored} 个非文本文件`)
+    if (ignored) notifyOk(`识别到 ${textFiles.length} 个可入库文件，忽略 ${ignored} 个`)
     submitBatch.mutate(textFiles)
   }
 
@@ -616,9 +627,10 @@ export function McpKnowledgeDetailPage() {
         </Button>
 
         <div className="grid gap-3 border-t border-line pt-3">
-          <Field label="上传文本文件（可多选，.md / .txt 等）">
+          <Field label="上传文件（可多选，.md / .txt / Word / PDF / Excel / PPT）">
             <input
               type="file"
+              accept={FILE_ACCEPT}
               multiple
               disabled={submitBatch.isPending}
               className="block w-full min-w-0 text-sm text-mist file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-1.5 file:text-sm file:text-paper"
@@ -628,7 +640,7 @@ export function McpKnowledgeDetailPage() {
               }}
             />
           </Field>
-          <Field label="选择目录（读取目录内所有文本文件并批量入库）">
+          <Field label="选择目录（文本与 Word / PDF / Excel / PPT 批量入库）">
             <input
               ref={directoryInputRef}
               type="file"
@@ -643,7 +655,7 @@ export function McpKnowledgeDetailPage() {
           </Field>
         </div>
         <p className="text-xs text-mist">
-          目录会递归读取其中的文本文件（.md、.txt、代码、配置等），每个文件建一个采集任务；图片、PDF、压缩包等二进制文件自动跳过。任务提交后在后台队列执行，可离开页面；在「采集任务」查看进度、失败重试。单文档上限 2 MiB。
+          多选上传和目录入库都走同一条处理：文本直接入库，Word、PDF、Excel、PPT、HTML 先转成 Markdown 再入库。转换失败的文件记入跳过清单。文本单文件上限 2 MiB，办公文档上限 30 MiB。
         </p>
       </Card>
 

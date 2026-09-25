@@ -27,6 +27,7 @@ from app.routers import (
     admin_logs,
     admin_mcp_calls,
     admin_mcp_catalog,
+    admin_mcp_docparse,
     admin_mcp_keys,
     admin_mcp_knowledge,
     admin_mcp_knowledge_jobs,
@@ -47,6 +48,7 @@ from app.services.grok_oauth import cleanup_expired_oauth_states
 from app.services.jobs import start_job_loops
 from app.services.knowledge_jobs import reconcile_stuck_jobs as reconcile_stuck_knowledge_jobs
 from app.services.knowledge_jobs import start_knowledge_job_workers
+from app.services.docparse_retention import retention_loop as docparse_retention_loop
 from app.services.knowledge_retention import retention_loop as knowledge_retention_loop
 from app.services.voice_retention import voice_cleanup_loop
 from app.static_assets import (
@@ -108,6 +110,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     background_tasks.append(asyncio.create_task(voice_cleanup_loop()))
     # 知识库采集任务、调用日志与残留原文的保留期清理
     background_tasks.append(asyncio.create_task(knowledge_retention_loop()))
+    background_tasks.append(asyncio.create_task(docparse_retention_loop()))
     try:
         yield
     finally:
@@ -148,6 +151,7 @@ app.include_router(admin_tools.download_router)
 app.include_router(admin_tools.download_router)
 app.include_router(admin_mcp_keys.router)
 app.include_router(admin_mcp_catalog.router)
+app.include_router(admin_mcp_docparse.router)
 app.include_router(admin_mcp_knowledge.router)
 app.include_router(admin_mcp_knowledge_jobs.router)
 app.include_router(admin_mcp_calls.router)

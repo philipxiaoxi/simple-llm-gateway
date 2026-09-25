@@ -79,6 +79,10 @@ def ensure_defaults() -> None:
         from app.capabilities.knowledge.provider import KnowledgeProvider
 
         register(KnowledgeProvider())
+    if "docparse" not in _providers:
+        from app.capabilities.docparse.provider import DocParseProvider
+
+        register(DocParseProvider())
 
 
 def reset_registry_for_tests() -> None:

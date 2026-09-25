@@ -120,7 +120,7 @@ base_url = https://你的站/v1
 管理后台「MCP 广场」提供能力目录、知识库、**独立 MCP Key**（与聊天 `sk-` 分离）和调用记录。
 
 1. 在「MCP Key」创建密钥，勾选 `knowledge` 等能力；完整密钥只展示一次（前缀 `mcp-`）。
-2. 在「知识库」建库并粘贴/上传纯文本，或选择整个目录批量入库（递归读取 `.md`、`.txt`、代码与配置文件等文本文件，图片、PDF、压缩包等二进制自动跳过，每个文件一个采集任务）；系统分块后写入 SQLite FTS5 + Chroma。文件、长文本会进入后台采集队列，可在「采集任务」查看进度、重试、取消。
+2. 在「知识库」建库并粘贴/上传纯文本，或选择整个目录批量入库。文本文件直接入库；Word、PDF、Excel、PPT、HTML 先转成 Markdown 再入库。图片和压缩包仍跳过。每个文件一个采集任务，系统分块后写入 SQLite FTS5 + Chroma。
 3. 向量化默认走 OpenAI 兼容 embeddings（见 `.env` 的 `MCP_EMBEDDING_*`）；未配置时使用本地 Fake embedding（仅适合开发）。
 4. 访问范围：`public` 对所有 Key 可见，`restricted` 只对白名单内的 MCP Key 可见，`private` 仅管理端可见。
 5. 更换 embedding 模型或维度会把已有文档标记为失效（`stale`），用「重建向量」按需或全量重建，避免新旧向量混用。
@@ -139,7 +139,10 @@ curl -s https://你的站/v1/capabilities/knowledge/search \
 # URL: https://你的站/mcp
 # Header: Authorization: Bearer mcp-xxx
 # tools: knowledge_list, knowledge_search
+#        docparse_convert, docparse_job, docparse_result
 ```
+
+文档转换在 MCP 广场「文档转 Markdown」页上传预览。MCP Key 勾选 `docparse` 后，可走 REST `POST /v1/capabilities/docparse/jobs`（multipart 字段 `file`）或 MCP 工具 `docparse_convert`。Docker 部署随镜像安装 `markitdown`，文件落在数据卷 `/data/docparse`。旧版 `.doc/.xls/.ppt` 需要镜像外另行提供 LibreOffice。
 
 `mode=hybrid` 用 RRF 融合全文与向量结果（无需归一化两路分数），在 embedding 不可用时自动降级全文并返回 `degraded=true`；`mode=vector` 失败则明确报错。搜索支持 `kb_id` 单库或 `kb_ids` 跨库。
 

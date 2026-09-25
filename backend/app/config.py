@@ -100,6 +100,14 @@ class Settings(BaseSettings):
     # 已结束任务与调用日志的保留天数
     mcp_knowledge_job_retention_days: int = 30
     mcp_call_log_retention_days: int = 30
+    # 文档转 Markdown
+    doc_parse_path: str = ""
+    doc_parse_max_bytes: int = 30 * 1024 * 1024
+    doc_parse_max_pdf_pages: int = 200
+    doc_parse_timeout_seconds: int = 180
+    doc_parse_retention_days: int = 7
+    doc_parse_ocr: int = 0
+    doc_parse_mcp_max_bytes: int = 20 * 1024 * 1024
 
     @property
     def database_url(self) -> str:
@@ -153,6 +161,10 @@ class Settings(BaseSettings):
     @property
     def resolved_chroma_path(self) -> Path:
         return self._resolve_data_path(self.mcp_chroma_path, "chroma")
+
+    @property
+    def resolved_docparse_path(self) -> Path:
+        return self._resolve_data_path(self.doc_parse_path, "docparse")
 
 
 @lru_cache

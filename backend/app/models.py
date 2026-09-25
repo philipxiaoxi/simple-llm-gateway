@@ -682,3 +682,32 @@ class KnowledgeIngestJob(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class DocParseJob(Base):
+    """办公文档转 Markdown 任务。源文件与结果落在 DOC_PARSE_PATH。"""
+
+    __tablename__ = "docparse_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mcp_key_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(16), default="admin", nullable=False)
+    source_name: Mapped[str] = mapped_column(String(256), default="upload.bin", nullable=False)
+    source_ext: Mapped[str] = mapped_column(String(16), default="", nullable=False)
+    source_size: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True, nullable=False)
+    stage: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    percent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    message: Mapped[str] = mapped_column(String(256), default="排队中", nullable=False)
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    markdown_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    page_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    ingest_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    purged: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
