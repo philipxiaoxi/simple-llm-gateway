@@ -166,6 +166,10 @@ class Settings(BaseSettings):
     def resolved_docparse_path(self) -> Path:
         return self._resolve_data_path(self.doc_parse_path, "docparse")
 
+    @property
+    def resolved_opencode_path(self) -> Path:
+        return self._resolve_data_path("", "opencode")
+
 
 @lru_cache
 def get_settings() -> Settings:

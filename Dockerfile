@@ -9,6 +9,10 @@ RUN npm run build
 
 FROM python:3.11-slim
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git nodejs npm \
+    && npm install -g opencode-ai \
+    && rm -rf /var/lib/apt/lists/*
 ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
