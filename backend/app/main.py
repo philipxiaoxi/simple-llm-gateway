@@ -28,6 +28,7 @@ from app.routers import (
     admin_mcp_calls,
     admin_mcp_catalog,
     admin_mcp_docparse,
+    admin_online_agent,
     admin_mcp_keys,
     admin_mcp_knowledge,
     admin_mcp_knowledge_jobs,
@@ -156,6 +157,7 @@ app.include_router(admin_tools.download_router)
 app.include_router(admin_mcp_keys.router)
 app.include_router(admin_mcp_catalog.router)
 app.include_router(admin_mcp_docparse.router)
+app.include_router(admin_online_agent.router)
 app.include_router(admin_mcp_knowledge.router)
 app.include_router(admin_mcp_knowledge_jobs.router)
 app.include_router(admin_mcp_calls.router)

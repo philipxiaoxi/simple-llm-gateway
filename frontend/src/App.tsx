@@ -54,6 +54,7 @@ const McpKeysPage = lazy(() => import('./pages/McpKeys').then((m) => ({ default:
 const McpCallsPage = lazy(() => import('./pages/McpCalls').then((m) => ({ default: m.McpCallsPage })))
 const McpDocsPage = lazy(() => import('./pages/McpDocs').then((m) => ({ default: m.McpDocsPage })))
 const McpDocParsePage = lazy(() => import('./pages/McpDocParse').then((m) => ({ default: m.McpDocParsePage })))
+const OnlineAgentPage = lazy(() => import('./pages/OnlineAgent').then((m) => ({ default: m.OnlineAgentPage })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -105,6 +106,7 @@ export default function App() {
               <Route path="/accounts" element={<AccountsPage />} />
               <Route path="/agents" element={<AgentsPage />} />
               <Route path="/agents/:agentId" element={<AgentDetailPage />} />
+              <Route path="/online-agent" element={<OnlineAgentPage />} />
               <Route path="/keys" element={<KeysPage />} />
               <Route path="/skills" element={<SkillsPage />} />
               <Route path="/skills/bundles" element={<SkillBundlesPage />} />

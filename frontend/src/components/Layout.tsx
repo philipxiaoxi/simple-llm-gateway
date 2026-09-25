@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, Mic, RadioTower, ServerCog, ShieldAlert, Sparkles, Store, Timer, Trophy, UserRoundPen, X } from 'lucide-react'
+import { Activity, Bot, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, Mic, RadioTower, ServerCog, ShieldAlert, Sparkles, Store, Timer, Trophy, UserRoundPen, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
@@ -12,6 +12,7 @@ const links = [
   { to: '/', label: '概览', icon: Activity },
   { to: '/accounts', label: '上游账号', icon: RadioTower },
   { to: '/agents', label: '网关代理', icon: ServerCog },
+  { to: '/online-agent', label: '在线 Agent', icon: Bot },
   { to: '/keys', label: 'API Key', icon: KeyRound },
   { to: '/skills', label: 'Skills', icon: Sparkles },
   { to: '/mcp-plaza', label: 'MCP 广场', icon: Store },
@@ -25,11 +26,11 @@ const links = [
   { to: '/voice', label: '语音房', icon: Mic },
 ]
 
-const tabLinks = [
+export const tabLinks = [
   { to: '/', label: '概览', icon: Activity },
   { to: '/accounts', label: '账号', icon: RadioTower },
+  { to: '/online-agent', label: 'Agent', icon: Bot },
   { to: '/keys', label: 'Key', icon: KeyRound },
-  { to: '/skills', label: 'Skills', icon: Sparkles },
   { to: '/logs', label: '记录', icon: MessageSquareText },
 ]
 
@@ -317,7 +318,14 @@ export function Layout() {
         </div>
       </aside>
       {profile ? <ProfileDialog onClose={() => setProfile(false)} /> : null}
-      <main ref={mainRef} className="bg-ink px-4 pb-[calc(var(--app-tab)+env(safe-area-inset-bottom)+0.75rem)] pt-[calc(var(--app-header)+env(safe-area-inset-top)+0.75rem)] lg:h-svh lg:overflow-y-auto lg:px-8 lg:pb-6 lg:pt-6">
+      <main
+        ref={mainRef}
+        className={cn(
+          'bg-ink px-4 pb-[calc(var(--app-tab)+env(safe-area-inset-bottom)+0.75rem)] pt-[calc(var(--app-header)+env(safe-area-inset-top)+0.75rem)] lg:h-svh lg:overflow-y-auto lg:px-8 lg:pb-6 lg:pt-6',
+          location.pathname.startsWith('/online-agent') &&
+            'h-[100svh] overflow-hidden pb-[calc(var(--app-tab)+env(safe-area-inset-bottom))] lg:h-svh lg:overflow-hidden lg:pb-6',
+        )}
+      >
         <Outlet />
       </main>
 
