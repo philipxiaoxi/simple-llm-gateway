@@ -21,7 +21,9 @@ from app.schemas import (
 )
 from app.services import knowledge_jobs
 from app.services.knowledge import KnowledgeError
-from app.services.knowledge.text_files import clean_source_name, decode_text, is_text_file
+from app.capabilities.docparse.convert import convert_bytes, markdown_source_name
+from app.capabilities.docparse.errors import DocParseError
+from app.services.knowledge.text_files import clean_source_name, decode_text, is_office_file, is_text_file
 
 router = APIRouter(
     prefix="/api/admin/mcp/knowledge/jobs",
@@ -32,7 +34,7 @@ router = APIRouter(
 VALID_STATUSES = {"queued", "running", "succeeded", "failed", "canceled"}
 
 
-def _http_error(error: KnowledgeError) -> HTTPException:
+def _http_error(error: KnowledgeError | DocParseError) -> HTTPException:
     return HTTPException(
         status_code=error.status_code,
         detail={"error": {"type": error.error_type, "message": error.message}},
@@ -162,21 +164,34 @@ async def create_file_job(
                 }
             },
         )
+    filename = file.filename or "upload.txt"
     try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        text = raw.decode("utf-8", errors="replace")
+        text, source_name = _prepare_ingest_text(filename, raw)
+    except DocParseError as error:
+        raise _http_error(error) from error
     try:
         job = knowledge_jobs.create_job(
             db,
             kb_id=kb_id,
             kind="ingest",
-            source_name=file.filename or "upload.txt",
+            source_name=source_name,
             text=text,
         )
     except KnowledgeError as error:
         raise _http_error(error) from error
     return _out(db, job)
+
+
+def _prepare_ingest_text(name: str, raw: bytes) -> tuple[str, str]:
+    if is_office_file(name):
+        result = convert_bytes(name, raw)
+        return result.markdown, markdown_source_name(name)
+    if not is_text_file(name, raw):
+        raise DocParseError("非文本文件")
+    text = decode_text(raw)
+    if text is None or not text.strip():
+        raise DocParseError("没有可用文本")
+    return text, clean_source_name(name)
 
 
 def _parse_relative_paths(raw: str | None) -> list[str]:
@@ -238,19 +253,21 @@ async def create_file_batch_jobs(
         if not raw:
             skipped.append(KnowledgeSkippedFile(name=display, reason="空文件"))
             continue
-        if len(raw) > settings.mcp_knowledge_max_bytes:
+        limit = settings.doc_parse_max_bytes if is_office_file(display) else settings.mcp_knowledge_max_bytes
+        if len(raw) > limit:
             skipped.append(
                 KnowledgeSkippedFile(
                     name=display,
-                    reason=f"超过单文件上限 {settings.mcp_knowledge_max_bytes} 字节",
+                    reason=f"超过单文件上限 {limit} 字节",
                 )
             )
             continue
-        if not is_text_file(display, raw):
-            skipped.append(KnowledgeSkippedFile(name=display, reason="非文本文件"))
+        try:
+            text, source_name = _prepare_ingest_text(display, raw)
+        except DocParseError as error:
+            skipped.append(KnowledgeSkippedFile(name=display, reason=error.message))
             continue
-        text = decode_text(raw)
-        if text is None or not text.strip():
+        if not text.strip():
             skipped.append(KnowledgeSkippedFile(name=display, reason="没有可用文本"))
             continue
         try:
@@ -258,7 +275,7 @@ async def create_file_batch_jobs(
                 db,
                 kb_id=kb_id,
                 kind="ingest",
-                source_name=display,
+                source_name=source_name,
                 text=text,
             )
         except KnowledgeError as error:

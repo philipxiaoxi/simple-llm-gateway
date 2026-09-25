@@ -40,7 +40,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     let message = `请求失败 (${response.status})`
     try {
       const body = await response.json()
-      message = body.detail || body.message || message
+      const detail = body.detail
+      const nested =
+        detail && typeof detail === 'object' && detail.error && typeof detail.error.message === 'string'
+          ? detail.error.message
+          : ''
+      message = nested || (typeof detail === 'string' ? detail : '') || body.message || message
     } catch {
       /* ignore */
     }
@@ -960,6 +965,30 @@ export const api = {
 
   // ---- MCP 广场 ----
   mcpCatalog: () => request<{ items: McpCatalogItem[] }>('/api/admin/mcp/catalog'),
+  docparseJobs: (query: { status?: string; q?: string } = {}) => {
+    const params = new URLSearchParams()
+    if (query.status) params.set('status', query.status)
+    if (query.q) params.set('q', query.q)
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<DocParseJobList>(`/api/admin/mcp/docparse/jobs${suffix}`)
+  },
+  createDocParseJob: (file: File, onProgress?: (percent: number) => void) =>
+    uploadDocParse(file, onProgress),
+  docparseJob: (id: string) => request<DocParseJob>(`/api/admin/mcp/docparse/jobs/${encodeURIComponent(id)}`),
+  retryDocParseJob: (id: string) =>
+    request<DocParseJob>(`/api/admin/mcp/docparse/jobs/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
+  cancelDocParseJob: (id: string) =>
+    request<DocParseJob>(`/api/admin/mcp/docparse/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+  deleteDocParseJob: (id: string) =>
+    request<void>(`/api/admin/mcp/docparse/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  ingestDocParseJob: (id: string, kbId: string) => {
+    const form = new FormData()
+    form.set('kb_id', kbId)
+    return request<DocParseJob>(`/api/admin/mcp/docparse/jobs/${encodeURIComponent(id)}/ingest`, {
+      method: 'POST',
+      body: form,
+    })
+  },
   mcpKeys: () => request<McpKeyItem[]>('/api/admin/mcp/keys'),
   createMcpKey: (payload: { name: string; capability_ids: string[] }) =>
     request<McpKeyItem>('/api/admin/mcp/keys', { method: 'POST', body: JSON.stringify(payload) }),
@@ -1101,6 +1130,74 @@ export const api = {
     const suffix = params.toString() ? `?${params}` : ''
     return request<McpCallLogList>(`/api/admin/mcp/calls${suffix}`)
   },
+}
+
+export type DocParseJob = {
+  job_id: string
+  source_name: string
+  source_ext: string
+  source_size: number
+  status: string
+  stage: string
+  percent: number
+  message: string
+  warnings: string[]
+  error_message: string | null
+  markdown_bytes: number
+  page_count: number
+  ingest_job_id: number | null
+  download_ready: boolean
+  markdown?: string
+  truncated?: boolean
+  created_at: string | null
+  finished_at: string | null
+}
+
+export type DocParseJobList = {
+  items: DocParseJob[]
+  total: number
+  counts?: Record<string, number>
+}
+
+function uploadDocParse(file: File, onProgress?: (percent: number) => void): Promise<DocParseJob> {
+  const form = new FormData()
+  form.set('file', file)
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/admin/mcp/docparse/jobs')
+    const token = getToken()
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.upload.onprogress = (event) => {
+      if (!onProgress || !event.lengthComputable) return
+      onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)))
+    }
+    xhr.onload = () => {
+      if (xhr.status === 401) {
+        clearToken()
+        if (!window.location.pathname.startsWith('/login')) window.location.href = '/login'
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        let message = `请求失败 (${xhr.status})`
+        try {
+          const body = JSON.parse(xhr.responseText)
+          const detail = body.detail
+          message =
+            (detail && detail.error && detail.error.message) ||
+            (typeof detail === 'string' ? detail : '') ||
+            body.message ||
+            message
+        } catch {
+          /* ignore */
+        }
+        reject(new ApiError(xhr.status, message))
+        return
+      }
+      onProgress?.(100)
+      resolve(JSON.parse(xhr.responseText) as DocParseJob)
+    }
+    xhr.onerror = () => reject(new ApiError(0, '上传失败'))
+    xhr.send(form)
+  })
 }
 
 export type McpCatalogItem = {
