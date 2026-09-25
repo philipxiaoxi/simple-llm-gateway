@@ -32,6 +32,7 @@ DEFAULT_OUTPUT_MODALITIES = ("text",)
 PROVIDER_CATALOG_IDS = {
     "deepseek": "deepseek",
     "grok": "xai",
+    "zhipu": "zhipuai",
     "openai_generic": "openai",
     "anthropic_generic": "anthropic",
 }

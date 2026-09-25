@@ -13,7 +13,7 @@ from sqlalchemy import text
 from app.capabilities import ensure_defaults
 from app.config import get_settings, validate_app_secret_key
 from app.db import get_engine, get_session_factory, init_db
-from app.mcp_server import build_mcp_app
+from app.mcp_server import McpRootEntrypoint, build_mcp_app, start_mcp_session
 from app.routers import (
     admin_accounts,
     admin_auth,
@@ -103,22 +103,26 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     finally:
         session.close()
     await asyncio.to_thread(_warm_up)
-    background_tasks = start_job_loops()
-    # 知识库采集任务队列（入库 / 重新向量化）
-    background_tasks.extend(start_knowledge_job_workers())
-    # 语音日志（段落/事件）会持续增长，挂一个每天跑一次的清理任务
-    background_tasks.append(asyncio.create_task(voice_cleanup_loop()))
-    # 知识库采集任务、调用日志与残留原文的保留期清理
-    background_tasks.append(asyncio.create_task(knowledge_retention_loop()))
-    background_tasks.append(asyncio.create_task(docparse_retention_loop()))
-    try:
-        yield
-    finally:
-        for task in background_tasks:
-            task.cancel()
-        for task in background_tasks:
-            with suppress(asyncio.CancelledError):
-                await task
+    # MCP 的 session manager 必须由顶层 lifespan 启动：Starlette 不会运行 mounted
+    # 子应用的 lifespan，否则鉴权通过后 handler 会因 task group 未初始化而 500。
+    mcp_session = start_mcp_session()
+    async with mcp_session.run():
+        background_tasks = start_job_loops()
+        # 知识库采集任务队列（入库 / 重新向量化）
+        background_tasks.extend(start_knowledge_job_workers())
+        # 语音日志（段落/事件）会持续增长，挂一个每天跑一次的清理任务
+        background_tasks.append(asyncio.create_task(voice_cleanup_loop()))
+        # 知识库采集任务、调用日志与残留原文的保留期清理
+        background_tasks.append(asyncio.create_task(knowledge_retention_loop()))
+        background_tasks.append(asyncio.create_task(docparse_retention_loop()))
+        try:
+            yield
+        finally:
+            for task in background_tasks:
+                task.cancel()
+            for task in background_tasks:
+                with suppress(asyncio.CancelledError):
+                    await task
 
 
 app = FastAPI(
@@ -162,7 +166,49 @@ app.include_router(share.router)
 app.include_router(voice_rooms.admin_router)
 app.include_router(voice_rooms.public_router)
 app.include_router(voice_rooms.router)
-app.mount("/mcp", build_mcp_app())
+_mcp_asgi_app = build_mcp_app()
+app.mount("/mcp", _mcp_asgi_app)
+# 无尾斜杠的 /mcp 走显式路由，避免落到 SPA 兜底变 404
+app.add_route("/mcp", McpRootEntrypoint(_mcp_asgi_app))
+
+
+_SECRET_QUERY_NAMES = frozenset({"key", "api_key", "apikey", "token", "access_token", "password"})
+
+
+def redact_secret_query(query: bytes) -> bytes:
+    """把 query 里明显是密钥的参数值替换成 ***，用于进入 access log 前打码。"""
+    if not query:
+        return query
+    changed = False
+    parts: list[bytes] = []
+    for part in query.split(b"&"):
+        name, separator, value = part.partition(b"=")
+        if separator and value and name.decode("ascii", "ignore").lower() in _SECRET_QUERY_NAMES:
+            parts.append(name + b"=***")
+            changed = True
+        else:
+            parts.append(part)
+    return b"&".join(parts) if changed else query
+
+
+class RedactMcpQueryMiddleware:
+    """MCP 只认 Header 鉴权；query 里的密钥不该进 access log。
+
+    原地改写 ``scope["query_string"]``：uvicorn access log 在响应时读取同一个 scope。
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            if path == "/mcp" or path.startswith("/mcp/"):
+                query = scope.get("query_string", b"")
+                redacted = redact_secret_query(query)
+                if redacted is not query:
+                    scope["query_string"] = redacted
+        await self.app(scope, receive, send)
 
 
 class DisableApiCacheMiddleware:
@@ -188,6 +234,7 @@ class DisableApiCacheMiddleware:
         await self.app(scope, receive, send_wrapper)
 
 
+app.add_middleware(RedactMcpQueryMiddleware)
 app.add_middleware(DisableApiCacheMiddleware)
 # 最后添加，保证压缩在最外层：API JSON 与静态文本都会用到
 app.add_middleware(CompressTextMiddleware, minimum_size=1024, compresslevel=5)
