@@ -81,6 +81,10 @@
 8. WHEN 请求路径指向入口文件或 HTML 文件, THE 系统 SHALL 返回 `Cache-Control: no-cache`；其他文件 SHALL 返回长缓存。
 9. IF 站点状态为停用, THE 系统 SHALL 返回 404。
 10. IF 站点当前版本文件已被清理, THE 系统 SHALL 返回 503 并提示重新部署。
+11. WHEN 托管 HTML 使用以单个 `/` 开头的 `src`、`href` 等根绝对资源路径, THE 系统 SHALL 将其改写为站点前缀，使资源来自该站点目录。
+12. WHEN 托管 HTML 未声明 `<base>`, THE 系统 SHALL 注入指向所在目录的 `<base href>`，使相对资源正确解析。
+13. THE 系统 SHALL 对托管 CSS 中以 `/` 开头的 `url(...)` 与 `@import` 执行同样的前缀改写。
+14. THE 平台 Service Worker SHALL NOT 把 `/sites/` 下的文档导航兜底为管理端外壳。
 
 ### Requirement 5: 上传校验与限制
 

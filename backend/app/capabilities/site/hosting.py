@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import mimetypes
 import posixpath
+import re
 from pathlib import Path
 
 from fastapi import HTTPException, Request
@@ -61,20 +62,74 @@ def _resolve_file(version_root: Path, path: str, site: Site) -> Path | None:
     return None
 
 
-def _file_response(site: Site, version: SiteVersion, file_path: Path) -> FileResponse:
+# 根绝对 URL（以单个 / 开头）：Vite/CRA 默认产物形如 /assets/index-xxxx.js。
+# <base href> 只影响相对 URL，改不了根绝对路径，必须显式改写到站点前缀。
+_HTML_ROOT_URL_ATTR = re.compile(
+    r'(?P<prefix>\b(?:src|href|poster|action)\s*=\s*)(?P<quote>["\'])(?P<url>/(?!/)[^"\']*)(?P=quote)',
+    re.IGNORECASE,
+)
+_HTML_HEAD_TAG = re.compile(r"<head\b[^>]*>", re.IGNORECASE)
+_HTML_BASE_TAG = re.compile(r"<base\b", re.IGNORECASE)
+_CSS_URL = re.compile(r"url\(\s*(?P<quote>[\"']?)(?P<url>/(?!/)[^)\"']*)(?P=quote)\s*\)", re.IGNORECASE)
+_CSS_IMPORT = re.compile(
+    r'@import\s+(?P<quote>["\'])(?P<url>/(?!/)[^"\']*)(?P=quote)', re.IGNORECASE
+)
+
+
+def _prefix_root_url(url: str, site_prefix: str) -> str:
+    if url.startswith(site_prefix):
+        return url
+    return site_prefix + url.lstrip("/")
+
+
+def _rewrite_html(text: str, site_prefix: str, base_href: str) -> str:
+    if not _HTML_BASE_TAG.search(text):
+        head = _HTML_HEAD_TAG.search(text)
+        base_tag = f'<base href="{base_href}">'
+        text = text[: head.end()] + base_tag + text[head.end():] if head else base_tag + text
+    return _HTML_ROOT_URL_ATTR.sub(
+        lambda match: f"{match.group('prefix')}{match.group('quote')}"
+        f"{_prefix_root_url(match.group('url'), site_prefix)}{match.group('quote')}",
+        text,
+    )
+
+
+def _rewrite_css(text: str, site_prefix: str) -> str:
+    text = _CSS_URL.sub(
+        lambda match: f"url({match.group('quote')}"
+        f"{_prefix_root_url(match.group('url'), site_prefix)}{match.group('quote')})",
+        text,
+    )
+    return _CSS_IMPORT.sub(
+        lambda match: f"@import {match.group('quote')}"
+        f"{_prefix_root_url(match.group('url'), site_prefix)}{match.group('quote')}",
+        text,
+    )
+
+
+def _file_response(site: Site, version: SiteVersion, file_path: Path, slug: str) -> Response:
     version_root = storage.version_dir(site.id, version.version_no)
     relative = file_path.relative_to(version_root).as_posix()
     media_type = mimetypes.guess_type(relative)[0] or "application/octet-stream"
     entry = version.entry_file or site.entry_file or "index.html"
     is_html = relative.lower().endswith((".html", ".htm")) or relative == entry
-    return FileResponse(
-        file_path,
-        media_type=media_type,
-        headers={
-            "X-Content-Type-Options": "nosniff",
-            "Cache-Control": "no-cache" if is_html else "public, max-age=31536000, immutable",
-        },
-    )
+    is_css = relative.lower().endswith(".css")
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-cache" if is_html else "public, max-age=31536000, immutable",
+    }
+    if is_html or is_css:
+        site_prefix = f"/sites/{slug}/"
+        text = file_path.read_bytes().decode("utf-8", "replace")
+        if is_html:
+            parent = relative.rsplit("/", 1)[0] if "/" in relative else ""
+            base_href = site_prefix + (f"{parent}/" if parent else "")
+            text = _rewrite_html(text, site_prefix, base_href)
+        else:
+            text = _rewrite_css(text, site_prefix)
+        content_type = "text/html; charset=utf-8" if is_html else "text/css; charset=utf-8"
+        return Response(content=text.encode("utf-8"), media_type=content_type, headers=headers)
+    return FileResponse(file_path, media_type=media_type, headers=headers)
 
 
 def _token_state(site: Site, request: Request) -> tuple[bool, bool]:
@@ -111,7 +166,7 @@ def serve(db: Session, request: Request, slug: str, path: str) -> Response:
     if file_path is None:
         raise HTTPException(status_code=404)
 
-    response = _file_response(site, version, file_path)
+    response = _file_response(site, version, file_path, slug)
     if via_query:
         response.set_cookie(
             sites.gate_cookie_name(site),

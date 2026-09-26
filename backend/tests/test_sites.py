@@ -93,6 +93,55 @@ def test_admin_deploy_and_preview(client: TestClient, auth_headers: dict[str, st
     assert redirect.headers["location"].endswith("/sites/demo/")
 
 
+def test_absolute_asset_paths_are_rewritten(client: TestClient, auth_headers: dict[str, str]) -> None:
+    html = (
+        b"<!doctype html><html><head><title>t</title></head><body><div id=\"root\"></div>"
+        b'<script type="module" src="/assets/index-abc.js"></script>'
+        b'<link rel="stylesheet" href="/assets/index-abc.css">'
+        b"</body></html>"
+    )
+    data = make_zip(
+        {
+            "index.html": html,
+            "assets/index-abc.js": b"window.__site__=1;",
+            "assets/index-abc.css": b"body{background:url(/assets/bg.png)}",
+            "assets/bg.png": b"PNG",
+        }
+    )
+    response = deploy_admin(client, auth_headers, data, slug="rewrite")
+    assert response.status_code == 202, response.text
+
+    page = client.get("/sites/rewrite/")
+    assert page.status_code == 200, page.text
+    assert 'src="/sites/rewrite/assets/index-abc.js"' in page.text
+    assert 'href="/sites/rewrite/assets/index-abc.css"' in page.text
+    assert '<base href="/sites/rewrite/">' in page.text
+    assert 'src="/assets/index-abc.js"' not in page.text
+    assert "boot-splash" not in page.text
+
+    script = client.get("/sites/rewrite/assets/index-abc.js")
+    assert script.status_code == 200
+    assert b"__site__" in script.content
+
+    css = client.get("/sites/rewrite/assets/index-abc.css")
+    assert css.status_code == 200
+    assert "url(/sites/rewrite/assets/bg.png)" in css.text
+
+
+def test_html_in_subdirectory_uses_directory_as_base(client: TestClient, auth_headers: dict[str, str]) -> None:
+    data = make_zip(
+        {
+            "index.html": b"<html><head></head><body>root</body></html>",
+            "docs/guide.html": b'<html><head></head><body><img src="./pic.png"></body></html>',
+            "docs/pic.png": b"PNG",
+        }
+    )
+    deploy_admin(client, auth_headers, data, slug="subdir")
+    page = client.get("/sites/subdir/docs/guide.html")
+    assert page.status_code == 200, page.text
+    assert '<base href="/sites/subdir/docs/">' in page.text
+
+
 def test_top_level_directory_is_normalized(client: TestClient, auth_headers: dict[str, str]) -> None:
     data = make_zip({"dist/index.html": b"<p>dist</p>", "dist/main.js": b"run()"})
     response = deploy_admin(client, auth_headers, data, slug="dist-site")

@@ -147,6 +147,8 @@ curl -s https://你的站/v1/capabilities/knowledge/search \
 
 站点部署在 MCP 广场「站点部署」页使用：上传前端构建产物 `.zip`，系统安全解包为不可变版本并生成 `/sites/{slug}/` 预览地址，支持一键回滚与访问令牌保护。重复内容按归一去重摘要识别并复用版本。管理端与 REST（`POST /v1/sites`）为异步部署，返回 `unpacking` 状态后轮询版本接口；MCP Key 勾选 `site` 后可用 `site_deploy`、`site_list`、`site_status`、`site_rollback`、`site_delete`、`site_access`。文件落在数据卷 `/data/sites`，配置项见 `.env` 的 `SITE_*`。
 
+托管会改写 HTML/CSS 里以 `/` 开头的根绝对资源路径（如 Vite 默认产物的 `/assets/index-*.js`），并在 `<head>` 注入 `<base>`，因此 `base: '/'` 的构建产物无需改动即可预览；`base: './'` 同样兼容。平台 Service Worker 的导航兜底已排除 `/sites/`，已安装 PWA 的浏览器不会把预览地址劫持成管理端外壳。
+
 「接入说明」页是按 MCP Key 生成的**接入中心**：选择 Key 后只展示其已授权能力，可一键复制适配 MCP 或「Skill + REST」的 AI 提示词、通用 MCP 客户端 JSON 与密钥。MCP Key 列表每行有「接入」按钮直达对应 Key。
 
 `mode=hybrid` 用 RRF 融合全文与向量结果（无需归一化两路分数），在 embedding 不可用时自动降级全文并返回 `degraded=true`；`mode=vector` 失败则明确报错。搜索支持 `kb_id` 单库或 `kb_ids` 跨库。

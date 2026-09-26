@@ -183,7 +183,20 @@ GET|HEAD /sites/{slug}/{path}   -> hosting.serve(slug, path, request)
 5. 未命中且路径无扩展名且 `spa_fallback` 为真 → 返回入口文件。
 6. 仍未命中 → 404。
 
-文件响应用 `FileResponse`，按 `mimetypes` 推断类型；HTML 用 `no-cache`，其余用 `public, max-age=31536000, immutable`（版本目录不可变），统一加 `X-Content-Type-Options: nosniff`。全局 `CompressTextMiddleware` 已按内容类型压缩文本响应（`backend/app/static_assets.py:141`），无需站点侧重复处理。
+文件响应按 `mimetypes` 推断类型；HTML 用 `no-cache`，其余用 `public, max-age=31536000, immutable`（版本目录不可变），统一加 `X-Content-Type-Options: nosniff`。全局 `CompressTextMiddleware` 已按内容类型压缩文本响应（`backend/app/static_assets.py:141`），无需站点侧重复处理。
+
+#### 根绝对资源路径改写（`hosting._rewrite_html` / `_rewrite_css`）
+
+Vite / CRA 默认 `base: '/'`，产物引用形如 `<script src="/assets/index-xxxx.js">`。根相对 URL 由浏览器按源站根解析，会命中平台自有的 `/assets` 挂载（`backend/app/main.py` 的 `app.mount("/assets", ...)`），导致 404 或加载到管理端 JS，页面黑屏。`<base href>` 只影响相对 URL，无法修正以 `/` 开头的路径，因此必须在托管时改写：
+
+- HTML：对 `src` / `href` / `poster` / `action` 中以单个 `/` 开头的值，改写到 `/sites/{slug}/` 前缀；未声明 `<base>` 时在 `<head>` 后注入指向文件所在目录的 `<base href="/sites/{slug}/[子目录/]">`。
+- CSS：对 `url(/...)` 与 `@import "/..."` 做同样的前缀改写。
+- 已是站点前缀的 URL 不重复改写；`//` 协议相对 URL 与带 scheme 的绝对 URL 不改写。
+- 改写后的 HTML/CSS 仍按版本目录返回，站点 zip 无需改动；`base: './'` 的产物同样兼容。
+
+#### Platform Service Worker 导航兜底
+
+平台前端是 PWA，Workbox `NavigationRoute` 会接管整个源站的文档导航。若 `navigateFallback` 未排除 `/sites/`，已安装 SW 的浏览器打开预览地址会被预缓存的管理端 `index.html` 劫持成黑屏（后端 `hosting.serve` 根本收不到请求）。修复：`frontend/vite.config.ts` 的 `workbox.navigateFallbackDenylist` 增加 `/^\/sites\//`（同时排除 `/api/`、`/v1/`、`/mcp`、`/anthropic/`、`/health`）。改动后需重新构建前端以更新 `sw.js`。
 
 ### 2. 归档校验与解包（archive.py）
 
