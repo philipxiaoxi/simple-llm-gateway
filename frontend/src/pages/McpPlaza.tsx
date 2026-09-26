@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { BookOpen, FileText, KeyRound, Layers3, ScrollText, Store } from 'lucide-react'
+import { BookOpen, FileText, Globe, KeyRound, Layers3, ScrollText, Store } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
 import { cn, errorMessage } from '../lib/utils'
@@ -15,6 +15,7 @@ const iconMap: Record<string, typeof BookOpen> = {
   book: BookOpen,
   store: Store,
   'file-text': FileText,
+  globe: Globe,
 }
 
 export function McpPlazaLayout() {

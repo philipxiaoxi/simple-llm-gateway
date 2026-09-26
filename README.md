@@ -119,7 +119,7 @@ base_url = https://你的站/v1
 
 管理后台「MCP 广场」提供能力目录、知识库、**独立 MCP Key**（与聊天 `sk-` 分离）和调用记录。
 
-1. 在「MCP Key」创建密钥，勾选 `knowledge` 等能力；完整密钥只展示一次（前缀 `mcp-`）。
+1. 在「MCP Key」创建密钥，勾选 `knowledge` 等能力；密钥前缀 `mcp-`，创建后可在列表点「查看」再次获取并复制完整密钥。
 2. 在「知识库」建库并粘贴/上传纯文本，或选择整个目录批量入库。文本文件直接入库；Word、PDF、Excel、PPT、HTML 先转成 Markdown 再入库。图片和压缩包仍跳过。每个文件一个采集任务，系统分块后写入 SQLite FTS5 + Chroma。
 3. 向量化默认走 OpenAI 兼容 embeddings（见 `.env` 的 `MCP_EMBEDDING_*`）；未配置时使用本地 Fake embedding（仅适合开发）。
 4. 访问范围：`public` 对所有 Key 可见，`restricted` 只对白名单内的 MCP Key 可见，`private` 仅管理端可见。
@@ -140,9 +140,14 @@ curl -s https://你的站/v1/capabilities/knowledge/search \
 # Header: Authorization: Bearer mcp-xxx
 # tools: knowledge_list, knowledge_search
 #        docparse_convert, docparse_job, docparse_result
+#        site_deploy, site_list, site_status, site_rollback, site_delete, site_access
 ```
 
 文档转换在 MCP 广场「文档转 Markdown」页上传预览。MCP Key 勾选 `docparse` 后，可走 REST `POST /v1/capabilities/docparse/jobs`（multipart 字段 `file`）或 MCP 工具 `docparse_convert`。Docker 部署随镜像安装 `markitdown`，文件落在数据卷 `/data/docparse`。旧版 `.doc/.xls/.ppt` 需要镜像外另行提供 LibreOffice。
+
+站点部署在 MCP 广场「站点部署」页使用：上传前端构建产物 `.zip`，系统安全解包为不可变版本并生成 `/sites/{slug}/` 预览地址，支持一键回滚与访问令牌保护。重复内容按归一去重摘要识别并复用版本。管理端与 REST（`POST /v1/sites`）为异步部署，返回 `unpacking` 状态后轮询版本接口；MCP Key 勾选 `site` 后可用 `site_deploy`、`site_list`、`site_status`、`site_rollback`、`site_delete`、`site_access`。文件落在数据卷 `/data/sites`，配置项见 `.env` 的 `SITE_*`。
+
+「接入说明」页是按 MCP Key 生成的**接入中心**：选择 Key 后只展示其已授权能力，可一键复制适配 MCP 或「Skill + REST」的 AI 提示词、通用 MCP 客户端 JSON 与密钥。MCP Key 列表每行有「接入」按钮直达对应 Key。
 
 `mode=hybrid` 用 RRF 融合全文与向量结果（无需归一化两路分数），在 embedding 不可用时自动降级全文并返回 `degraded=true`；`mode=vector` 失败则明确报错。搜索支持 `kb_id` 单库或 `kb_ids` 跨库。
 

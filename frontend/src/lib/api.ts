@@ -989,7 +989,60 @@ export const api = {
       body: form,
     })
   },
+  mcpSites: (query: { q?: string; status?: string } = {}) => {
+    const params = new URLSearchParams()
+    if (query.q) params.set('q', query.q)
+    if (query.status) params.set('status', query.status)
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<McpSiteList>(`/api/admin/mcp/sites${suffix}`)
+  },
+  mcpSite: (siteId: string) => request<McpSite>(`/api/admin/mcp/sites/${encodeURIComponent(siteId)}`),
+  mcpSiteVersion: (siteId: string, versionId: string) =>
+    request<McpSiteVersion>(
+      `/api/admin/mcp/sites/${encodeURIComponent(siteId)}/versions/${encodeURIComponent(versionId)}`,
+    ),
+  createMcpSite: (
+    file: File,
+    fields: { slug?: string; name?: string; entry?: string; activate?: boolean } = {},
+    onProgress?: (percent: number) => void,
+  ) => uploadSite('/api/admin/mcp/sites', file, fields, onProgress),
+  createMcpSiteVersion: (
+    siteId: string,
+    file: File,
+    fields: { entry?: string; activate?: boolean } = {},
+    onProgress?: (percent: number) => void,
+  ) =>
+    uploadSite(`/api/admin/mcp/sites/${encodeURIComponent(siteId)}/versions`, file, fields, onProgress),
+  updateMcpSite: (
+    siteId: string,
+    payload: { name?: string; description?: string; access_mode?: string; entry_file?: string; spa_fallback?: boolean; status?: string },
+  ) => request<McpSite>(`/api/admin/mcp/sites/${encodeURIComponent(siteId)}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteMcpSite: (siteId: string) =>
+    request<void>(`/api/admin/mcp/sites/${encodeURIComponent(siteId)}`, { method: 'DELETE' }),
+  activateMcpSiteVersion: (siteId: string, versionId: string) =>
+    request<McpSite>(
+      `/api/admin/mcp/sites/${encodeURIComponent(siteId)}/versions/${encodeURIComponent(versionId)}/activate`,
+      { method: 'POST' },
+    ),
+  retryMcpSiteVersion: (siteId: string, versionId: string) =>
+    request<McpSiteVersion>(
+      `/api/admin/mcp/sites/${encodeURIComponent(siteId)}/versions/${encodeURIComponent(versionId)}/retry`,
+      { method: 'POST' },
+    ),
+  deleteMcpSiteVersion: (siteId: string, versionId: string) =>
+    request<void>(
+      `/api/admin/mcp/sites/${encodeURIComponent(siteId)}/versions/${encodeURIComponent(versionId)}`,
+      { method: 'DELETE' },
+    ),
+  generateMcpSiteToken: (siteId: string) =>
+    request<{ token: string; site: McpSite }>(`/api/admin/mcp/sites/${encodeURIComponent(siteId)}/token`, {
+      method: 'POST',
+    }),
   mcpKeys: () => request<McpKeyItem[]>('/api/admin/mcp/keys'),
+  revealMcpKey: (id: number) =>
+    request<{ id: number; name: string; key: string }>(`/api/admin/mcp/keys/${id}/reveal`),
+  mcpKeyIntegration: (id: number) =>
+    request<McpKeyIntegration>(`/api/admin/mcp/keys/${id}/integration`),
   createMcpKey: (payload: { name: string; capability_ids: string[] }) =>
     request<McpKeyItem>('/api/admin/mcp/keys', { method: 'POST', body: JSON.stringify(payload) }),
   updateMcpKey: (id: number, payload: { name?: string; status?: string }) =>
@@ -1200,6 +1253,104 @@ function uploadDocParse(file: File, onProgress?: (percent: number) => void): Pro
   })
 }
 
+export type McpSiteVersion = {
+  id: string
+  site_id: string
+  version_no: number
+  status: string
+  stage: string
+  percent: number
+  message: string
+  content_hash: string | null
+  reused_version_id: string | null
+  entry_file: string
+  file_count: number
+  total_bytes: number
+  source_name: string
+  error_message: string | null
+  created_by: string
+  is_current: boolean
+  purged: boolean
+  created_at: string | null
+  started_at: string | null
+  finished_at: string | null
+}
+
+export type McpSite = {
+  id: string
+  slug: string
+  name: string
+  description: string
+  access_mode: string
+  has_token: boolean
+  status: string
+  entry_file: string
+  spa_fallback: boolean
+  current_version_id: string | null
+  current_version_no: number | null
+  preview_url: string
+  total_bytes: number
+  created_by: string
+  mcp_key_id: number | null
+  created_at: string | null
+  updated_at: string | null
+  versions?: McpSiteVersion[]
+}
+
+export type McpSiteList = { items: McpSite[]; total: number }
+
+export type McpSiteDeployResult = { site: McpSite; version: McpSiteVersion; preview_url: string }
+
+function uploadSite(
+  path: string,
+  file: File,
+  fields: { slug?: string; name?: string; entry?: string; activate?: boolean },
+  onProgress?: (percent: number) => void,
+): Promise<McpSiteDeployResult> {
+  const form = new FormData()
+  form.set('file', file)
+  if (fields.slug) form.set('slug', fields.slug)
+  if (fields.name) form.set('name', fields.name)
+  if (fields.entry) form.set('entry', fields.entry)
+  if (fields.activate === false) form.set('activate', 'false')
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', path)
+    const token = getToken()
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.upload.onprogress = (event) => {
+      if (!onProgress || !event.lengthComputable) return
+      onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)))
+    }
+    xhr.onload = () => {
+      if (xhr.status === 401) {
+        clearToken()
+        if (!window.location.pathname.startsWith('/login')) window.location.href = '/login'
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        let message = `请求失败 (${xhr.status})`
+        try {
+          const body = JSON.parse(xhr.responseText)
+          const detail = body.detail
+          message =
+            (detail && detail.error && detail.error.message) ||
+            (typeof detail === 'string' ? detail : '') ||
+            body.message ||
+            message
+        } catch {
+          /* ignore */
+        }
+        reject(new ApiError(xhr.status, message))
+        return
+      }
+      onProgress?.(100)
+      resolve(JSON.parse(xhr.responseText) as McpSiteDeployResult)
+    }
+    xhr.onerror = () => reject(new ApiError(0, '上传失败'))
+    xhr.send(form)
+  })
+}
+
 export type McpCatalogItem = {
   capability_id: string
   name: string
@@ -1222,6 +1373,40 @@ export type McpKeyItem = {
   created_at: string
   last_used_at: string | null
   key?: string | null
+}
+
+export type McpCapabilityIntegration = {
+  rest_endpoints?: { method: string; path: string; summary?: string; content_type?: string }[]
+  notes?: string[]
+}
+
+export type McpIntegrationCapability = {
+  capability_id: string
+  name: string
+  description: string
+  version: string
+  category: string
+  status: string
+  admin_path: string
+  icon: string
+  input_schema: Record<string, unknown>
+  integration: McpCapabilityIntegration
+  authorized: boolean
+  tools: { name: string; description: string; operation: string; input_schema: Record<string, unknown> }[]
+}
+
+export type McpKeyIntegration = {
+  origin: string
+  mcp_url: string
+  rest_base_url: string
+  key: {
+    id: number
+    name: string
+    key_prefix: string
+    status: string
+    capability_ids: string[]
+  }
+  capabilities: McpIntegrationCapability[]
 }
 
 export type McpKnowledgeBase = {

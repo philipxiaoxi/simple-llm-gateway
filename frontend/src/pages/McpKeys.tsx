@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { KeyRound, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
@@ -12,6 +13,7 @@ export function McpKeysPage() {
   const [name, setName] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   const [createdKey, setCreatedKey] = useState<string | null>(null)
+  const [revealed, setRevealed] = useState<{ id: number; name: string; key: string } | null>(null)
 
   const catalog = useQuery({
     queryKey: ['mcp-catalog'],
@@ -60,10 +62,25 @@ export function McpKeysPage() {
     onError: (caught) => notifyBad(errorMessage(caught, '删除失败')),
   })
 
+  const reveal = useMutation({
+    mutationFn: (id: number) => api.revealMcpKey(id),
+    onSuccess: (item) => setRevealed(item),
+    onError: (caught) => notifyBad(errorMessage(caught, '查看失败')),
+  })
+
+  async function copyKey(key: string) {
+    try {
+      await navigator.clipboard.writeText(key)
+      notifyOk('已复制')
+    } catch {
+      notifyBad('复制失败，请手动选择复制')
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-mist">独立于聊天 sk- Key。创建后完整密钥只展示一次。</p>
+        <p className="text-sm text-mist">独立于聊天 sk- Key。完整密钥可随时查看并复制。</p>
         <Button
           type="button"
           onClick={() => {
@@ -88,6 +105,20 @@ export function McpKeysPage() {
               </div>
             </div>
             <div className="flex gap-2">
+              <Link
+                to={`/mcp-plaza/docs?key=${item.id}`}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-line bg-panel-2 px-3 py-2 text-sm font-medium text-paper transition hover:border-mist/40 md:min-h-9"
+              >
+                接入
+              </Link>
+              <Button
+                type="button"
+                variant="line"
+                disabled={reveal.isPending}
+                onClick={() => reveal.mutate(item.id)}
+              >
+                查看
+              </Button>
               <Button
                 type="button"
                 variant="line"
@@ -128,15 +159,9 @@ export function McpKeysPage() {
           <div className="grid gap-3">
             {createdKey ? (
               <div className="space-y-2">
-                <div className="text-sm text-ok">请立即复制，之后无法再查看完整密钥：</div>
+                <div className="text-sm text-ok">完整密钥如下，之后可在列表点击「查看」再次获取：</div>
                 <code className="block break-all rounded-md border border-line bg-ink p-3 text-xs">{createdKey}</code>
-                <Button
-                  type="button"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(createdKey)
-                    notifyOk('已复制')
-                  }}
-                >
+                <Button type="button" onClick={() => void copyKey(createdKey)}>
                   复制
                 </Button>
               </div>
@@ -180,6 +205,21 @@ export function McpKeysPage() {
                 </div>
               </>
             )}
+          </div>
+        </Dialog>
+      ) : null}
+      {revealed ? (
+        <Dialog title={`查看 MCP Key · ${revealed.name}`} onClose={() => setRevealed(null)}>
+          <div className="space-y-3">
+            <code className="block break-all rounded-md border border-line bg-ink p-3 text-xs">{revealed.key}</code>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setRevealed(null)}>
+                关闭
+              </Button>
+              <Button type="button" onClick={() => void copyKey(revealed.key)}>
+                复制
+              </Button>
+            </div>
           </div>
         </Dialog>
       ) : null}

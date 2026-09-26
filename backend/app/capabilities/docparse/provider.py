@@ -33,6 +33,30 @@ class DocParseProvider:
             "job": {"type": "object", "properties": {"job_id": {"type": "string"}}, "required": ["job_id"]},
             "result": {"type": "object", "properties": {"job_id": {"type": "string"}}, "required": ["job_id"]},
         },
+        integration={
+            "rest_endpoints": [
+                {
+                    "method": "POST",
+                    "path": "/v1/capabilities/docparse/jobs",
+                    "summary": "上传办公文档创建转换任务",
+                    "content_type": "multipart/form-data",
+                },
+                {
+                    "method": "GET",
+                    "path": "/v1/capabilities/docparse/jobs/{job_id}",
+                    "summary": "查询转换任务状态",
+                },
+                {
+                    "method": "GET",
+                    "path": "/v1/capabilities/docparse/jobs/{job_id}/result",
+                    "summary": "读取 Markdown 结果",
+                },
+            ],
+            "notes": [
+                "支持 .pdf/.docx/.xlsx/.pptx/.html，单文件 30MB、PDF 最多 200 页",
+                "MCP docparse_convert 的 content_base64 解码后不超过 20MB，更大文件走 REST multipart",
+            ],
+        },
     )
 
     def list_mcp_tools(self) -> list[McpToolDef]:

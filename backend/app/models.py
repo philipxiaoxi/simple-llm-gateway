@@ -711,3 +711,58 @@ class DocParseJob(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class Site(Base):
+    """静态站点部署单元。文件按版本目录落在 SITE_DEPLOY_PATH。"""
+
+    __tablename__ = "sites"
+    __table_args__ = (UniqueConstraint("slug"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    access_mode: Mapped[str] = mapped_column(String(16), default="public", nullable=False)
+    access_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    access_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    current_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    entry_file: Mapped[str] = mapped_column(String(128), default="index.html", nullable=False)
+    spa_fallback: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    created_by: Mapped[str] = mapped_column(String(16), default="admin", nullable=False)
+    mcp_key_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    total_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class SiteVersion(Base):
+    """站点的一次不可变文件快照。状态：unpacking / ready / failed / duplicate。"""
+
+    __tablename__ = "site_versions"
+    __table_args__ = (UniqueConstraint("site_id", "version_no"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    site_id: Mapped[str] = mapped_column(
+        ForeignKey("sites.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="unpacking", index=True, nullable=False)
+    stage: Mapped[str] = mapped_column(String(16), default="stored", nullable=False)
+    percent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    message: Mapped[str] = mapped_column(String(256), default="已接收，等待解包", nullable=False)
+    reused_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    entry_file: Mapped[str] = mapped_column(String(128), default="index.html", nullable=False)
+    file_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    source_name: Mapped[str] = mapped_column(String(256), default="upload.zip", nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(16), default="admin", nullable=False)
+    mcp_key_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    purged: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

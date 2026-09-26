@@ -59,6 +59,7 @@ def catalog_payload(*, only_enabled: bool = True) -> list[dict]:
                 "admin_path": spec.admin_path,
                 "icon": spec.icon,
                 "input_schema": spec.input_schema,
+                "integration": spec.integration,
                 "tools": [
                     {
                         "name": tool.name,
@@ -83,6 +84,10 @@ def ensure_defaults() -> None:
         from app.capabilities.docparse.provider import DocParseProvider
 
         register(DocParseProvider())
+    if "site" not in _providers:
+        from app.capabilities.site.provider import SiteProvider
+
+        register(SiteProvider())
 
 
 def reset_registry_for_tests() -> None:
