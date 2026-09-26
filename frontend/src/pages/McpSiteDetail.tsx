@@ -245,6 +245,9 @@ export function McpSiteDetailPage() {
                 onChange={(event) => setFile(event.target.files?.[0] || null)}
               />
             </Field>
+            <p className="text-xs text-mist">
+              支持 Vite/CRA 默认构建产物：以 / 开头的资源路径会自动改写，无需调整 base。
+            </p>
             <Field label="入口文件（可选，默认 index.html）">
               <Input value={entry} onChange={(event) => setEntry(event.target.value)} placeholder="index.html" disabled={deploy.isPending} />
             </Field>

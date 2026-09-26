@@ -155,6 +155,9 @@ export function McpSitesPage() {
                 onChange={(event) => setFile(event.target.files?.[0] || null)}
               />
             </Field>
+            <p className="text-xs text-mist">
+              支持 Vite/CRA 默认构建产物：以 / 开头的资源路径会自动改写，无需调整 base。
+            </p>
             <Field label="Slug（可选，留空自动生成）">
               <Input value={slug} onChange={(event) => setSlug(event.target.value)} placeholder="my-demo" disabled={create.isPending} />
             </Field>

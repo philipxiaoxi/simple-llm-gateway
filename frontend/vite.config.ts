@@ -49,6 +49,16 @@ export default defineConfig({
           '**/favicon.svg',
         ],
         navigateFallback: '/index.html',
+        // NavigationRoute 会接管 scope 内所有文档导航。托管站点是后端静态目录，
+        // 不是前端路由；不排除就会被预缓存的管理端 index.html 劫持成黑屏。
+        navigateFallbackDenylist: [
+          /^\/sites\//,
+          /^\/api\//,
+          /^\/v1\//,
+          /^\/mcp(\/|$)/,
+          /^\/anthropic\//,
+          /^\/health$/,
+        ],
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
