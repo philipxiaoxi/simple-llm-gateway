@@ -963,31 +963,6 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  // ---- 在线 Agent ----
-  onlineAgent: () => request<OnlineAgentState>('/api/admin/online-agent'),
-  startOnlineAgent: () => request<OnlineAgentState>('/api/admin/online-agent/start', { method: 'POST' }),
-  restartOnlineAgent: () => request<OnlineAgentState>('/api/admin/online-agent/restart', { method: 'POST' }),
-  syncOnlineAgent: () => request<OnlineAgentState>('/api/admin/online-agent/sync', { method: 'POST' }),
-  setOnlineAgentSkill: (target_id: string, enabled: boolean) =>
-    request<OnlineAgentState>('/api/admin/online-agent/skills', { method: 'PUT', body: JSON.stringify({ target_id, enabled }) }),
-  setOnlineAgentMcp: (target_id: string, enabled: boolean) =>
-    request<OnlineAgentState>('/api/admin/online-agent/mcp', { method: 'PUT', body: JSON.stringify({ target_id, enabled }) }),
-  onlineAgentSessions: () => request<{ items: OnlineAgentSession[] }>('/api/admin/online-agent/sessions'),
-  createOnlineAgentSession: () => request<OnlineAgentSession>('/api/admin/online-agent/sessions', { method: 'POST' }),
-  onlineAgentMessages: (id: string) =>
-    request<{ items: OnlineAgentMessage[] }>(`/api/admin/online-agent/sessions/${encodeURIComponent(id)}/messages`),
-  promptOnlineAgent: (id: string, text: string, model: string) =>
-    request<{ ok: boolean }>(`/api/admin/online-agent/sessions/${encodeURIComponent(id)}/prompt`, {
-      method: 'POST',
-      body: JSON.stringify({ text, model }),
-    }),
-  compactOnlineAgent: (id: string) =>
-    request<{ ok: boolean }>(`/api/admin/online-agent/sessions/${encodeURIComponent(id)}/compact`, { method: 'POST' }),
-  resetOnlineAgent: (id: string) =>
-    request<OnlineAgentSession>(`/api/admin/online-agent/sessions/${encodeURIComponent(id)}/reset`, { method: 'POST' }),
-  rememberOnlineAgent: (payload: { model?: string; session_id?: string }) =>
-    request<{ ok: boolean }>('/api/admin/online-agent/selection', { method: 'POST', body: JSON.stringify(payload) }),
-
   // ---- MCP 广场 ----
   mcpCatalog: () => request<{ items: McpCatalogItem[] }>('/api/admin/mcp/catalog'),
   docparseJobs: (query: { status?: string; q?: string } = {}) => {
@@ -1156,32 +1131,6 @@ export const api = {
     return request<McpCallLogList>(`/api/admin/mcp/calls${suffix}`)
   },
 }
-
-export type OnlineAgentModel = { id: string; label: string; account_name: string }
-export type OnlineAgentToggleItem = { id: string; name: string; enabled: boolean }
-export type OnlineAgentState = {
-  status: string
-  last_error: string | null
-  selected_model: string | null
-  last_session_id: string | null
-  model_count: number
-  models: OnlineAgentModel[]
-  skills: OnlineAgentToggleItem[]
-  mcp: OnlineAgentToggleItem[]
-  running: boolean
-}
-export type OnlineAgentSession = { id: string; title?: string; workspace_path?: string }
-export type OnlineAgentPart = {
-  type?: string
-  text?: string
-  name?: string
-  tool?: string
-  error?: string
-  input?: unknown
-  output?: unknown
-  state?: { status?: string; input?: unknown; output?: unknown; error?: string; title?: string }
-}
-export type OnlineAgentMessage = { info?: { role?: string; id?: string }; parts?: OnlineAgentPart[] }
 
 export type DocParseJob = {
   job_id: string
