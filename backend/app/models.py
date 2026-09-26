@@ -711,35 +711,3 @@ class DocParseJob(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
-
-
-class OnlineAgentSetting(Base):
-    __tablename__ = "online_agent_settings"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    status: Mapped[str] = mapped_column(String(16), default="stopped", nullable=False)
-    internal_key_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    mcp_key_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    selected_model: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    last_session_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
-
-
-class OnlineAgentToggle(Base):
-    __tablename__ = "online_agent_toggles"
-    __table_args__ = (UniqueConstraint("kind", "target_id"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    kind: Mapped[str] = mapped_column(String(16), nullable=False)
-    target_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    enabled: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-
-
-class OnlineAgentSession(Base):
-    __tablename__ = "online_agent_sessions"
-
-    session_id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    workspace_path: Mapped[str] = mapped_column(String(512), nullable=False)
-    title_generated: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
