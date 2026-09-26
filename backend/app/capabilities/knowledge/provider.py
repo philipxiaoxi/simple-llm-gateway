@@ -31,6 +31,25 @@ class KnowledgeProvider:
             },
             "list": {"type": "object", "properties": {}},
         },
+        integration={
+            "rest_endpoints": [
+                {
+                    "method": "POST",
+                    "path": "/v1/capabilities/knowledge/search",
+                    "summary": "检索知识库文本块",
+                    "content_type": "application/json",
+                },
+                {
+                    "method": "GET",
+                    "path": "/v1/capabilities/knowledge/bases",
+                    "summary": "列出当前 Key 可见的知识库",
+                },
+            ],
+            "notes": [
+                "search 支持 mode=vector/fulltext/hybrid，top_k 默认 5；可用 kb_ids 跨库检索",
+                "受限（restricted）知识库要求该 MCP Key 在库白名单内",
+            ],
+        },
     )
 
     def list_mcp_tools(self) -> list[McpToolDef]:

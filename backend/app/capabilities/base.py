@@ -39,6 +39,8 @@ class CapabilitySpec:
     admin_path: str = ""
     # 广场卡片图标名（前端映射），可选
     icon: str = ""
+    # 接入中心元数据：rest_endpoints 与 notes，用于按 Key 生成接入说明
+    integration: dict[str, Any] = field(default_factory=dict)
 
 
 class Provider(Protocol):

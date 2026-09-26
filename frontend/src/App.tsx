@@ -54,6 +54,10 @@ const McpKeysPage = lazy(() => import('./pages/McpKeys').then((m) => ({ default:
 const McpCallsPage = lazy(() => import('./pages/McpCalls').then((m) => ({ default: m.McpCallsPage })))
 const McpDocsPage = lazy(() => import('./pages/McpDocs').then((m) => ({ default: m.McpDocsPage })))
 const McpDocParsePage = lazy(() => import('./pages/McpDocParse').then((m) => ({ default: m.McpDocParsePage })))
+const McpSitesPage = lazy(() => import('./pages/McpSites').then((m) => ({ default: m.McpSitesPage })))
+const McpSiteDetailPage = lazy(() =>
+  import('./pages/McpSiteDetail').then((m) => ({ default: m.McpSiteDetailPage })),
+)
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -116,6 +120,8 @@ export default function App() {
                 <Route path="knowledge/jobs" element={<McpKnowledgeJobsPage />} />
                 <Route path="knowledge/:kbId" element={<McpKnowledgeDetailPage />} />
                 <Route path="docparse" element={<McpDocParsePage />} />
+                <Route path="sites" element={<McpSitesPage />} />
+                <Route path="sites/:siteId" element={<McpSiteDetailPage />} />
                 <Route path="keys" element={<McpKeysPage />} />
                 <Route path="calls" element={<McpCallsPage />} />
                 <Route path="docs" element={<McpDocsPage />} />

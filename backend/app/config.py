@@ -108,6 +108,17 @@ class Settings(BaseSettings):
     doc_parse_retention_days: int = 7
     doc_parse_ocr: int = 0
     doc_parse_mcp_max_bytes: int = 20 * 1024 * 1024
+    # 站点部署（静态资源托管）
+    site_deploy_path: str = ""
+    site_default_entry: str = "index.html"
+    site_max_archive_bytes: int = 50 * 1024 * 1024
+    site_max_total_bytes: int = 200 * 1024 * 1024
+    site_max_file_bytes: int = 50 * 1024 * 1024
+    site_max_files: int = 5000
+    site_max_ratio: int = 100
+    site_max_versions: int = 10
+    site_retention_days: int = 30
+    site_mcp_max_bytes: int = 10 * 1024 * 1024
 
     @property
     def database_url(self) -> str:
@@ -165,6 +176,10 @@ class Settings(BaseSettings):
     @property
     def resolved_docparse_path(self) -> Path:
         return self._resolve_data_path(self.doc_parse_path, "docparse")
+
+    @property
+    def resolved_site_deploy_path(self) -> Path:
+        return self._resolve_data_path(self.site_deploy_path, "sites")
 
 
 @lru_cache
