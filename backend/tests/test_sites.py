@@ -128,6 +128,230 @@ def test_absolute_asset_paths_are_rewritten(client: TestClient, auth_headers: di
     assert "url(/sites/rewrite/assets/bg.png)" in css.text
 
 
+def test_comment_mentioning_base_tag_still_injects_base(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """源码注释里出现 `<base href>` 不能阻止注入，否则相对链接会退回文档基准 URL。"""
+    html = (
+        '<html><head><!-- 依赖注入的 <base href> 兜底 --><link href="/assets/app.css"></head>'
+        "<body>doc</body></html>"
+    )
+    data = make_zip({"index.html": html.encode("utf-8"), "assets/app.css": b"body{}"})
+    deploy_admin(client, auth_headers, data, slug="base-comment")
+    page = client.get("/sites/base-comment/")
+    assert page.status_code == 200, page.text
+    assert '<base href="/sites/base-comment/">' in page.text
+    assert 'href="/sites/base-comment/assets/app.css"' in page.text
+
+
+def test_existing_base_tag_is_not_duplicated(client: TestClient, auth_headers: dict[str, str]) -> None:
+    data = make_zip({"index.html": b'<html><head><base href="/custom/"></head><body>x</body></html>'})
+    deploy_admin(client, auth_headers, data, slug="own-base")
+    page = client.get("/sites/own-base/")
+    assert page.status_code == 200, page.text
+    assert page.text.count("<base ") == 1
+
+
+def test_admin_edit_site_metadata(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = deploy_admin(client, auth_headers, site_zip("<p>edit</p>"), slug="edit-me")
+    site_id = created.json()["site"]["id"]
+
+    response = client.patch(
+        f"/api/admin/mcp/sites/{site_id}",
+        headers=auth_headers,
+        json={"name": "新名字", "description": "站点用途说明"},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["name"] == "新名字"
+    assert payload["description"] == "站点用途说明"
+
+    # 未提交的字段不能被顺手改掉
+    assert payload["slug"] == "edit-me"
+    assert client.get("/sites/edit-me/").status_code == 200
+
+
+def test_admin_edit_can_clear_description_and_reset_entry(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """空串必须被当作「显式清空」，不能被真值判断静默忽略。"""
+    created = deploy_admin(client, auth_headers, site_zip("<p>clear</p>"), slug="clear-me")
+    site_id = created.json()["site"]["id"]
+
+    client.patch(
+        f"/api/admin/mcp/sites/{site_id}",
+        headers=auth_headers,
+        json={"description": "待清空", "entry_file": "other.html"},
+    )
+    cleared = client.patch(
+        f"/api/admin/mcp/sites/{site_id}",
+        headers=auth_headers,
+        json={"description": "", "entry_file": ""},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["description"] == ""
+    assert cleared.json()["entry_file"] == "index.html"
+
+
+def test_admin_edit_slug_moves_preview_url(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = deploy_admin(client, auth_headers, site_zip("<p>move</p>"), slug="old-slug")
+    site_id = created.json()["site"]["id"]
+    assert client.get("/sites/old-slug/").status_code == 200
+
+    response = client.patch(f"/api/admin/mcp/sites/{site_id}", headers=auth_headers, json={"slug": "new-slug"})
+    assert response.status_code == 200, response.text
+    assert response.json()["slug"] == "new-slug"
+    assert client.get("/sites/new-slug/").status_code == 200
+    assert client.get("/sites/old-slug/").status_code == 404
+
+
+def test_admin_edit_slug_rejects_duplicate_and_invalid(client: TestClient, auth_headers: dict[str, str]) -> None:
+    first = deploy_admin(client, auth_headers, site_zip("a"), slug="taken-slug")
+    second = deploy_admin(client, auth_headers, site_zip("b"), slug="other-slug")
+    first_id = first.json()["site"]["id"]
+    second_id = second.json()["site"]["id"]
+
+    conflict = client.patch(f"/api/admin/mcp/sites/{second_id}", headers=auth_headers, json={"slug": "taken-slug"})
+    assert conflict.status_code == 409, conflict.text
+
+    invalid = client.patch(f"/api/admin/mcp/sites/{first_id}", headers=auth_headers, json={"slug": "Bad Slug"})
+    assert invalid.status_code == 400, invalid.text
+
+    # 失败不应改动任何数据
+    assert client.get("/sites/taken-slug/").status_code == 200
+    assert client.get("/sites/other-slug/").status_code == 200
+
+
+def test_admin_edit_rejects_bad_enum_values(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = deploy_admin(client, auth_headers, site_zip("enum"), slug="enum-site")
+    site_id = created.json()["site"]["id"]
+    for payload in ({"status": "paused"}, {"access_mode": "secret"}):
+        response = client.patch(f"/api/admin/mcp/sites/{site_id}", headers=auth_headers, json=payload)
+        assert response.status_code == 400, response.text
+
+
+def test_v1_edit_requires_ownership_and_site_capability(client: TestClient, auth_headers: dict[str, str]) -> None:
+    deployed = deploy_admin(client, auth_headers, site_zip("owned"), slug="owned-site")
+    owner_key = make_site_key(client, auth_headers, ["site"])
+    other_key = make_site_key(client, auth_headers, ["site"])
+    denied_key = make_site_key(client, auth_headers, ["knowledge"])
+
+    # 管理员部署（mcp_key_id 为空）的站点不属于任何 Key，Key 编辑应视为不存在
+    assert (
+        client.patch(
+            "/v1/sites/owned-site",
+            headers={"Authorization": f"Bearer {owner_key}"},
+            json={"name": "偷改"},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.patch(
+            "/v1/sites/owned-site",
+            headers={"Authorization": f"Bearer {denied_key}"},
+            json={"name": "无权"},
+        ).status_code
+        == 403
+    )
+
+    # Key 自己部署的站点可以编辑
+    client.post(
+        "/v1/sites",
+        headers={"Authorization": f"Bearer {owner_key}"},
+        data={"slug": "key-site"},
+        files={"file": ("site.zip", site_zip("key-site"), "application/zip")},
+    )
+    edited = client.patch(
+        "/v1/sites/key-site",
+        headers={"Authorization": f"Bearer {owner_key}"},
+        json={"name": "Key 改的", "spa_fallback": False},
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["name"] == "Key 改的"
+    assert edited.json()["spa_fallback"] is False
+    assert deployed.json()["site"]["id"]
+
+
+def test_mcp_site_update_tool_edits_site(client: TestClient, auth_headers: dict[str, str]) -> None:
+    import asyncio
+
+    from app.capabilities import ensure_defaults, invoke_tool
+    from app.services.mcp_auth import resolve_mcp_key
+
+    key = make_site_key(client, auth_headers, ["site"])
+    payload = {
+        "filename": "site.zip",
+        "archive_base64": base64.b64encode(site_zip("mcp-edit")).decode(),
+        "slug": "mcp-edit-site",
+    }
+    session = get_session_factory()()
+    ensure_defaults()
+    try:
+        owner = resolve_mcp_key(session, key)
+        assert owner is not None
+        created = asyncio.run(invoke_tool(session, mcp_key=owner, tool_name="site_deploy", payload=payload))
+        assert created["version"]["status"] == "ready"
+        session.commit()
+
+        result = asyncio.run(
+            invoke_tool(
+                session,
+                mcp_key=owner,
+                tool_name="site_update",
+                payload={
+                    "slug": "mcp-edit-site",
+                    "new_slug": "mcp-renamed",
+                    "name": "改名了",
+                    "description": "由 MCP 工具编辑",
+                    "spa_fallback": False,
+                },
+            )
+        )
+        session.commit()
+        assert result["slug"] == "mcp-renamed"
+        assert result["name"] == "改名了"
+        assert result["description"] == "由 MCP 工具编辑"
+        assert result["spa_fallback"] is False
+        assert "mcp-edit" in client.get("/sites/mcp-renamed/").text
+    finally:
+        session.close()
+
+
+def test_html_is_served_with_no_store(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """入口 HTML 不能留浏览器副本，否则新版本部署后仍引用已删除的哈希资源。"""
+    data = make_zip(
+        {
+            "index.html": b"<html><head></head><body>entry</body></html>",
+            "docs/guide.html": b"<html><head></head><body>guide</body></html>",
+            "assets/app.js": b"console.log(1)",
+            "assets/index-a1b2c3d4.js": b"console.log(2)",
+        }
+    )
+    deploy_admin(client, auth_headers, data, slug="nocache-html")
+
+    for path in ("/sites/nocache-html/", "/sites/nocache-html/index.html", "/sites/nocache-html/docs/guide.html"):
+        response = client.get(path)
+        assert response.status_code == 200, response.text
+        assert response.headers["cache-control"] == "no-store", path
+
+
+def test_only_hashed_assets_are_immutable(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """文件名不带内容哈希就不能强缓存，否则换版本后旧文件一年内不生效。"""
+    data = make_zip(
+        {
+            "index.html": b"<html><head></head><body>x</body></html>",
+            "assets/index-a1b2c3d4.js": b"console.log(1)",
+            "assets/logo.png": b"PNG",
+        }
+    )
+    deploy_admin(client, auth_headers, data, slug="hashed-assets")
+
+    hashed = client.get("/sites/hashed-assets/assets/index-a1b2c3d4.js")
+    assert hashed.status_code == 200
+    # 站点资源封顶三天，不复用管理端的一年
+    assert hashed.headers["cache-control"] == "public, max-age=259200, immutable"
+
+    mutable = client.get("/sites/hashed-assets/assets/logo.png")
+    assert mutable.status_code == 200
+    assert mutable.headers["cache-control"] == "public, max-age=86400"
+
+
 def test_html_in_subdirectory_uses_directory_as_base(client: TestClient, auth_headers: dict[str, str]) -> None:
     data = make_zip(
         {

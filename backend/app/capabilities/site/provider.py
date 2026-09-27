@@ -174,6 +174,28 @@ class SiteProvider:
                 },
                 operation="access_info",
             ),
+            McpToolDef(
+                name="site_update",
+                description=(
+                    "编辑站点元信息：显示名、描述、slug、入口文件、SPA 兜底、启用状态、访问模式。"
+                    "只传需要改动的字段；未传的字段保持不变。slug 改动后预览地址随之变化。"
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "slug": {"type": "string", "description": "要编辑的站点 slug"},
+                        "name": {"type": "string", "description": "新的显示名"},
+                        "description": {"type": "string", "description": "新的描述，空串清空"},
+                        "new_slug": {"type": "string", "description": "新的 slug（改地址用）"},
+                        "entry_file": {"type": "string", "description": "入口文件，空串重置为 index.html"},
+                        "spa_fallback": {"type": "boolean", "description": "无扩展名路径是否回退到入口文件"},
+                        "status": {"type": "string", "description": "active 或 disabled"},
+                        "access_mode": {"type": "string", "description": "public 或 token"},
+                    },
+                    "required": ["slug"],
+                },
+                operation="update",
+            ),
         ]
 
     async def dispatch(self, operation: str, payload: dict[str, Any], ctx: CallContext) -> dict[str, Any]:
@@ -215,6 +237,17 @@ class SiteProvider:
         if operation in {"access_info", "site_access_info"}:
             site = service.get_site_by_slug(ctx.db, str(payload.get("slug") or ""), key_id)
             return service.access_info(ctx.db, site)
+        if operation in {"update", "site_update"}:
+            site = service.get_site_by_slug(ctx.db, str(payload.get("slug") or ""), key_id)
+            # new_slug 是工具入参名，服务层字段叫 slug（入参的 slug 已被用作定位站点）。
+            fields: dict[str, Any] = {}
+            if "new_slug" in payload:
+                fields["slug"] = payload["new_slug"]
+            for name in ("name", "description", "entry_file", "spa_fallback", "status", "access_mode"):
+                if name in payload:
+                    fields[name] = payload[name]
+            service.update_site(ctx.db, site, **fields)
+            return service.site_detail_payload(ctx.db, site)
         raise SiteError(f"未知操作: {operation}", status_code=404, error_type="not_found")
 
     def _deploy(self, ctx: CallContext, payload: dict[str, Any], key_id: int) -> dict[str, Any]:

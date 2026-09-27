@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Copy, ExternalLink, RefreshCw, RotateCcw, Trash2, Upload } from 'lucide-react'
+import { Copy, ExternalLink, Pencil, RefreshCw, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Button, Card, Dialog, Field, Input } from '../components/ui'
-import { api, type McpSiteVersion } from '../lib/api'
+import { Button, Card, Dialog, Field, Input, Switch } from '../components/ui'
+import { api, type McpSite, type McpSiteVersion } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage, formatBytes, formatTime } from '../lib/utils'
 
@@ -31,6 +31,7 @@ export function McpSiteDetailPage() {
   const [percent, setPercent] = useState(0)
   const [issuedToken, setIssuedToken] = useState('')
   const [frameKey, setFrameKey] = useState(0)
+  const [editOpen, setEditOpen] = useState(false)
 
   const site = useQuery({
     queryKey: ['mcp-site', siteId],
@@ -156,6 +157,9 @@ export function McpSiteDetailPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h2 className="text-xl font-semibold">{data.name || data.slug}</h2>
+            {data.description ? (
+              <p className="mt-1 break-words text-sm text-mist [overflow-wrap:anywhere]">{data.description}</p>
+            ) : null}
             <div className="mt-2 flex flex-wrap gap-2 text-xs text-mist">
               <span className="rounded-full border border-line px-2 py-0.5">/{data.slug}</span>
               <span className="rounded-full border border-line px-2 py-0.5">
@@ -180,6 +184,9 @@ export function McpSiteDetailPage() {
           <div className="flex shrink-0 flex-wrap gap-2">
             <Button type="button" onClick={() => setOpen(true)}>
               <Upload size={15} /> 部署新版本
+            </Button>
+            <Button type="button" variant="line" onClick={() => setEditOpen(true)}>
+              <Pencil size={14} /> 编辑信息
             </Button>
             <Button
               type="button"
@@ -306,6 +313,24 @@ export function McpSiteDetailPage() {
         ) : null}
       </div>
 
+      {editOpen ? (
+        <EditSiteDialog
+          site={data}
+          pending={update.isPending}
+          onClose={() => (update.isPending ? null : setEditOpen(false))}
+          onSubmit={(payload) =>
+            update.mutate(payload, {
+              onSuccess: async () => {
+                setEditOpen(false)
+                notifyOk('站点信息已更新')
+                // slug 变了要让列表页的地址跟着更新；详情页用 site id 定位，无需跳转
+                await queryClient.invalidateQueries({ queryKey: ['mcp-sites'] })
+              },
+            })
+          }
+        />
+      ) : null}
+
       {open ? (
         <Dialog title="部署新版本" onClose={() => (deploy.isPending ? null : setOpen(false))}>
           <div className="space-y-3">
@@ -428,3 +453,109 @@ function VersionRow({
 }
 
 export default McpSiteDetailPage
+
+const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/
+
+type SiteEditPayload = Parameters<typeof api.updateMcpSite>[1]
+
+function EditSiteDialog({
+  site,
+  pending,
+  onClose,
+  onSubmit,
+}: {
+  site: McpSite
+  pending: boolean
+  onClose: () => void
+  onSubmit: (payload: SiteEditPayload) => void
+}) {
+  const [name, setName] = useState(site.name)
+  const [slug, setSlug] = useState(site.slug)
+  const [description, setDescription] = useState(site.description)
+  const [entryFile, setEntryFile] = useState(site.entry_file)
+  const [spaFallback, setSpaFallback] = useState(site.spa_fallback)
+
+  const slugTouched = slug !== site.slug
+  const slugInvalid = slugTouched && !SLUG_RE.test(slug)
+
+  function submit() {
+    if (slugInvalid) return
+    // 只提交真正改动的字段，避免空串把没动过的描述/入口清掉
+    const payload: SiteEditPayload = {}
+    if (name !== site.name) payload.name = name
+    if (slugTouched) payload.slug = slug
+    if (description !== site.description) payload.description = description
+    if (entryFile !== site.entry_file) payload.entry_file = entryFile
+    if (spaFallback !== site.spa_fallback) payload.spa_fallback = spaFallback
+    if (!Object.keys(payload).length) {
+      onClose()
+      return
+    }
+    onSubmit(payload)
+  }
+
+  return (
+    <Dialog title="编辑站点信息" onClose={onClose}>
+      <div className="space-y-3">
+        <Field label="显示名称">
+          <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="站点名称" disabled={pending} />
+        </Field>
+
+        <Field label="访问路径 (slug)">
+          <Input
+            value={slug}
+            onChange={(event) => setSlug(event.target.value.trim().toLowerCase())}
+            placeholder="my-site"
+            disabled={pending}
+          />
+        </Field>
+        {slugInvalid ? (
+          <p className="text-xs text-danger">只允许小写字母、数字与中划线，长度不超过 64</p>
+        ) : (
+          <p className="text-xs text-mist">
+            预览地址：<span className="break-all font-mono [overflow-wrap:anywhere]">{`/sites/${slug || '…'}/`}</span>
+            {slugTouched ? <span className="text-warn"> · 改动后旧地址立即失效</span> : null}
+          </p>
+        )}
+
+        <Field label="描述（可选）">
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            rows={3}
+            placeholder="这个站点是做什么的"
+            disabled={pending}
+            className="w-full rounded-md border border-line bg-ink px-3 py-2 text-base text-paper outline-none placeholder:text-mist/70 focus:border-signal/70 md:text-sm"
+          />
+        </Field>
+
+        <Field label="入口文件">
+          <Input
+            value={entryFile}
+            onChange={(event) => setEntryFile(event.target.value)}
+            placeholder="index.html"
+            disabled={pending}
+          />
+        </Field>
+        <p className="text-xs text-mist">留空则重置为默认 index.html。归档里必须存在该文件。</p>
+
+        <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-ink/60 px-3 py-2">
+          <div className="min-w-0">
+            <div className="text-sm text-paper">SPA 路由兜底</div>
+            <p className="mt-0.5 text-xs text-mist">访问无扩展名的未知路径时返回入口文件，而不是 404。</p>
+          </div>
+          <Switch checked={spaFallback} onCheckedChange={setSpaFallback} disabled={pending} />
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" disabled={pending} onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" disabled={pending || slugInvalid} onClick={submit}>
+            {pending ? '保存中…' : '保存'}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}

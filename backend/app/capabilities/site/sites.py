@@ -7,6 +7,7 @@ import secrets
 import shutil
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -21,6 +22,10 @@ from .errors import SiteError
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 TERMINAL_STATUSES = ("ready", "failed", "duplicate")
+
+# update_site 允许编辑的字段。路由层按此白名单透传请求体里出现过的键，
+# 未出现的字段保持原值；空串表示显式清空/重置为默认值。
+EDITABLE_FIELDS = ("name", "description", "slug", "access_mode", "entry_file", "spa_fallback", "status")
 
 
 def new_id() -> str:
@@ -452,30 +457,45 @@ def delete_site(db: Session, site: Site) -> None:
     db.flush()
 
 
+# 区分「未传该字段」与「显式清空」：None 表示不改，空串表示清空/重置为默认值。
+_UNSET: Any = object()
+
+
 def update_site(
     db: Session,
     site: Site,
     *,
-    name: str | None = None,
-    description: str | None = None,
-    access_mode: str | None = None,
-    entry_file: str | None = None,
-    spa_fallback: bool | None = None,
-    status: str | None = None,
+    name: Any = _UNSET,
+    description: Any = _UNSET,
+    slug: Any = _UNSET,
+    access_mode: Any = _UNSET,
+    entry_file: Any = _UNSET,
+    spa_fallback: Any = _UNSET,
+    status: Any = _UNSET,
 ) -> Site:
-    if name is not None:
-        site.name = name.strip()[:128]
-    if description is not None:
-        site.description = description
-    if access_mode is not None:
+    if name is not _UNSET:
+        site.name = str(name or "").strip()[:128]
+    if description is not _UNSET:
+        site.description = str(description or "")
+    if slug is not _UNSET:
+        cleaned = str(slug or "").strip().lower()
+        if not SLUG_PATTERN.match(cleaned):
+            raise SiteError("slug 只允许小写字母、数字与中划线，长度不超过 64")
+        if cleaned != site.slug:
+            taken = db.scalar(select(Site.id).where(Site.slug == cleaned, Site.id != site.id))
+            if taken is not None:
+                raise SiteError("slug 已被占用", status_code=409, error_type="conflict")
+            site.slug = cleaned
+    if access_mode is not _UNSET:
         if access_mode not in {"public", "token"}:
             raise SiteError("access_mode 只能是 public 或 token")
         site.access_mode = access_mode
-    if entry_file is not None:
-        site.entry_file = entry_file.strip().lstrip("/")[:128] or get_settings().site_default_entry
-    if spa_fallback is not None:
+    if entry_file is not _UNSET:
+        # 空串显式重置为默认入口，而不是被静默忽略
+        site.entry_file = str(entry_file or "").strip().lstrip("/")[:128] or get_settings().site_default_entry
+    if spa_fallback is not _UNSET:
         site.spa_fallback = bool(spa_fallback)
-    if status is not None:
+    if status is not _UNSET:
         if status not in {"active", "disabled"}:
             raise SiteError("status 只能是 active 或 disabled")
         site.status = status

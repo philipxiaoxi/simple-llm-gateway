@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Site, SiteVersion
+from app.static_assets import MUTABLE_ASSET_CACHE
 
 from . import sites, storage
 
@@ -69,7 +70,9 @@ _HTML_ROOT_URL_ATTR = re.compile(
     re.IGNORECASE,
 )
 _HTML_HEAD_TAG = re.compile(r"<head\b[^>]*>", re.IGNORECASE)
-_HTML_BASE_TAG = re.compile(r"<base\b", re.IGNORECASE)
+_HTML_BASE_TAG = re.compile(r"<base(?![\w-])", re.IGNORECASE)
+_HTML_COMMENT_OPEN = re.compile(r"<!--", re.IGNORECASE)
+_HTML_COMMENT_CLOSE = re.compile(r"-->", re.IGNORECASE)
 _CSS_URL = re.compile(r"url\(\s*(?P<quote>[\"']?)(?P<url>/(?!/)[^)\"']*)(?P=quote)\s*\)", re.IGNORECASE)
 _CSS_IMPORT = re.compile(
     r'@import\s+(?P<quote>["\'])(?P<url>/(?!/)[^"\']*)(?P=quote)', re.IGNORECASE
@@ -82,8 +85,38 @@ def _prefix_root_url(url: str, site_prefix: str) -> str:
     return site_prefix + url.lstrip("/")
 
 
+def _comment_end(text: str, pos: int) -> int | None:
+    """pos 处若为注释起始，返回注释结束下标；否则 None。"""
+    match = _HTML_COMMENT_OPEN.match(text, pos)
+    if match is None:
+        return None
+    close = _HTML_COMMENT_CLOSE.search(text, match.end())
+    return close.end() if close else len(text)
+
+
+def _has_base_tag(text: str) -> bool:
+    """是否已存在真正的 <base> 标签。
+
+    必须跳过注释：源码注释里提到 `<base href>` 是常见写法，若用纯正则匹配 <base\\b，
+    就会误判为已有 base 标签而跳过注入，站点里所有相对链接会退回文档基准 URL 变 404。
+    """
+    pos = 0
+    while True:
+        index = text.find("<", pos)
+        if index < 0:
+            return False
+        end = _comment_end(text, index)
+        if end is not None:
+            pos = end
+            continue
+        match = _HTML_BASE_TAG.match(text, index)
+        if match is not None:
+            return True
+        pos = index + 1
+
+
 def _rewrite_html(text: str, site_prefix: str, base_href: str) -> str:
-    if not _HTML_BASE_TAG.search(text):
+    if not _has_base_tag(text):
         head = _HTML_HEAD_TAG.search(text)
         base_tag = f'<base href="{base_href}">'
         text = text[: head.end()] + base_tag + text[head.end():] if head else base_tag + text
@@ -107,6 +140,24 @@ def _rewrite_css(text: str, site_prefix: str) -> str:
     )
 
 
+# Vite/CRA 构建产物形如 index-a1b2c3d4.js：文件名带内容哈希，改名即失效。
+_HASHED_NAME = re.compile(r"[-.][0-9A-Za-z_-]{8,}\.[0-9A-Za-z]+$")
+# 站点强缓存上限：不复用管理端的 HASHED_ASSET_CACHE（一年）。站点是可以反复部署的，
+# 文件名带哈希只是"通常安全"，用户也可能用同名文件覆盖旧资源，故封顶三天。
+_SITE_IMMUTABLE_CACHE = "public, max-age=259200, immutable"
+
+
+def _cache_control(relative: str, is_html: bool) -> str:
+    if is_html:
+        # 入口 HTML 必须每次回源：no-store 让浏览器连副本都不留，
+        # 避免部署新版本后仍拿旧 index.html 引用已删除的哈希资源。
+        return "no-store"
+    if _HASHED_NAME.search(relative):
+        return _SITE_IMMUTABLE_CACHE
+    # 非哈希静态文件（logo.png、app.js 等）文件名不随内容变化，沿用全站统一的短缓存
+    return MUTABLE_ASSET_CACHE
+
+
 def _file_response(site: Site, version: SiteVersion, file_path: Path, slug: str) -> Response:
     version_root = storage.version_dir(site.id, version.version_no)
     relative = file_path.relative_to(version_root).as_posix()
@@ -116,7 +167,7 @@ def _file_response(site: Site, version: SiteVersion, file_path: Path, slug: str)
     is_css = relative.lower().endswith(".css")
     headers = {
         "X-Content-Type-Options": "nosniff",
-        "Cache-Control": "no-cache" if is_html else "public, max-age=31536000, immutable",
+        "Cache-Control": _cache_control(relative, is_html),
     }
     if is_html or is_css:
         site_prefix = f"/sites/{slug}/"
