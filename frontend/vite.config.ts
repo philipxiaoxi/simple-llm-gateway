@@ -85,6 +85,7 @@ export default defineConfig({
       // 语音房间走 WebSocket，必须显式打开 ws（字符串简写不会代理 upgrade）
       '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true, ws: true },
       '/v1': 'http://127.0.0.1:8000',
+      '/sites': 'http://127.0.0.1:8000',
       '/anthropic': 'http://127.0.0.1:8000',
       '/health': 'http://127.0.0.1:8000',
       '/chat': 'http://127.0.0.1:8000',

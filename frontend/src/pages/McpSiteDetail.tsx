@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { RotateCcw, Trash2, Upload } from 'lucide-react'
+import { Copy, ExternalLink, RefreshCw, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, Card, Dialog, Field, Input } from '../components/ui'
@@ -30,6 +30,7 @@ export function McpSiteDetailPage() {
   const [entry, setEntry] = useState('')
   const [percent, setPercent] = useState(0)
   const [issuedToken, setIssuedToken] = useState('')
+  const [frameKey, setFrameKey] = useState(0)
 
   const site = useQuery({
     queryKey: ['mcp-site', siteId],
@@ -38,6 +39,12 @@ export function McpSiteDetailPage() {
       const active = query.state.data?.versions?.some((item) => item.status === 'unpacking')
       return active ? 1500 : 15000
     },
+  })
+
+  const siteToken = useQuery({
+    queryKey: ['mcp-site-token', siteId],
+    queryFn: () => api.revealMcpSiteToken(siteId),
+    enabled: Boolean(site.data && site.data.access_mode === 'token' && site.data.has_token),
   })
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['mcp-site', siteId] })
@@ -86,7 +93,9 @@ export function McpSiteDetailPage() {
   const update = useMutation({
     mutationFn: (payload: Parameters<typeof api.updateMcpSite>[1]) => api.updateMcpSite(siteId, payload),
     onSuccess: async () => {
+      setIssuedToken('')
       await invalidate()
+      await queryClient.invalidateQueries({ queryKey: ['mcp-site-token', siteId] })
     },
     onError: (caught) => notifyBad(errorMessage(caught, '更新失败')),
   })
@@ -97,6 +106,7 @@ export function McpSiteDetailPage() {
       setIssuedToken(result.token)
       notifyOk('已生成访问令牌')
       await invalidate()
+      await queryClient.invalidateQueries({ queryKey: ['mcp-site-token', siteId] })
     },
     onError: (caught) => notifyBad(errorMessage(caught, '生成失败')),
   })
@@ -121,6 +131,20 @@ export function McpSiteDetailPage() {
   const data = site.data
   const versions = data.versions ?? []
   const busy = activate.isPending || retry.isPending || removeVersion.isPending
+  const gateToken = issuedToken || siteToken.data?.token || ''
+  const accessUrl =
+    data.access_mode === 'token' && gateToken
+      ? `${data.preview_url}?token=${encodeURIComponent(gateToken)}`
+      : data.preview_url
+
+  async function copyAccessUrl() {
+    try {
+      await navigator.clipboard.writeText(accessUrl)
+      notifyOk('已复制访问链接')
+    } catch {
+      notifyBad('复制失败，请手动选择复制')
+    }
+  }
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
@@ -145,12 +169,12 @@ export function McpSiteDetailPage() {
               ) : null}
             </div>
             <a
-              href={data.preview_url}
+              href={accessUrl}
               target="_blank"
               rel="noreferrer"
               className="mt-3 inline-block break-all text-sm text-signal hover:underline [overflow-wrap:anywhere]"
             >
-              {data.preview_url}
+              {accessUrl}
             </a>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
@@ -207,9 +231,58 @@ export function McpSiteDetailPage() {
             访问令牌（仅本次展示）：
             <span className="ml-1 break-all font-mono [overflow-wrap:anywhere]">{issuedToken}</span>
             <br />
-            访问方式：预览地址后追加 <span className="font-mono">?token=令牌</span>，通过后浏览器会记住。
+            下方预览与「复制链接」都会自动带上该令牌。
           </div>
         ) : null}
+      </Card>
+
+      <Card className="min-w-0 space-y-3 overflow-hidden p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h3 className="text-sm font-medium text-paper">站点预览</h3>
+            <p className="mt-0.5 text-xs text-mist">
+              {data.access_mode === 'token'
+                ? gateToken
+                  ? '已带上访问令牌，可在下方 iframe 内直接预览。'
+                  : '令牌模式：生成令牌后即可在 iframe 内直接预览。'
+                : '公开访问，可直接在 iframe 内预览。'}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button type="button" variant="line" onClick={copyAccessUrl}>
+              <Copy size={14} /> 复制链接
+            </Button>
+            <a
+              href={accessUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-line bg-panel-2 px-3 py-2 text-sm font-medium text-paper transition hover:border-mist/40 md:min-h-9"
+            >
+              <ExternalLink size={14} /> 新标签页打开
+            </a>
+            <Button type="button" variant="line" onClick={() => setFrameKey((value) => value + 1)}>
+              <RefreshCw size={14} /> 刷新
+            </Button>
+          </div>
+        </div>
+        <div className="break-all rounded-md border border-line bg-ink/60 px-3 py-2 text-xs text-mist [overflow-wrap:anywhere]">
+          {accessUrl}
+        </div>
+        {data.current_version_id ? (
+          <div className="overflow-hidden rounded-lg border border-line bg-white">
+            <iframe
+              key={frameKey}
+              title="站点预览"
+              src={accessUrl}
+              className="h-[68vh] min-h-[420px] w-full"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+            />
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-line px-4 py-10 text-center text-sm text-mist">
+            站点尚未就绪，部署并激活版本后即可预览。
+          </div>
+        )}
       </Card>
 
       <div className="space-y-2">

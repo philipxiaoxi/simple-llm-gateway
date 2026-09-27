@@ -50,6 +50,7 @@ class SiteProvider:
                 },
                 "required": ["slug", "mode"],
             },
+            "access_info": {"type": "object", "properties": {"slug": {"type": "string"}}, "required": ["slug"]},
         },
         integration={
             "rest_endpoints": [
@@ -67,13 +68,22 @@ class SiteProvider:
                     "summary": "轮询版本状态与进度",
                 },
                 {"method": "POST", "path": "/v1/sites/{slug}/rollback", "summary": "回滚到指定版本"},
-                {"method": "POST", "path": "/v1/sites/{slug}/access", "summary": "切换公开/令牌保护"},
+                {
+                    "method": "POST",
+                    "path": "/v1/sites/{slug}/access",
+                    "summary": "切换公开/令牌保护；token 模式返回明文令牌与可访问 URL",
+                },
+                {
+                    "method": "GET",
+                    "path": "/v1/sites/{slug}/access",
+                    "summary": "查询当前访问模式、令牌与可访问 URL",
+                },
                 {"method": "DELETE", "path": "/v1/sites/{slug}", "summary": "删除站点"},
             ],
             "notes": [
                 "REST 部署为异步：先返回 unpacking，再轮询版本状态到 ready/duplicate/failed",
                 "MCP site_deploy 的 archive_base64 解码后不超过 10MB，更大文件走 REST multipart",
-                "预览地址为 {origin}/sites/{slug}/；令牌模式下访问需带 ?token=令牌",
+                "预览地址为 {origin}/sites/{slug}/；令牌模式下响应会带 token 与已拼好 ?token= 的 url，可直接交给用户",
             ],
         },
     )
@@ -139,7 +149,10 @@ class SiteProvider:
             ),
             McpToolDef(
                 name="site_access",
-                description="设置站点访问模式 public/token；token 模式下可生成或重置访问令牌，重置时返回一次性明文。",
+                description=(
+                    "设置站点访问模式 public/token；token 模式下返回明文令牌和已拼好 ?token= 的可访问 url，"
+                    "可直接发给用户。重置令牌时传 reset_token=true。"
+                ),
                 input_schema={
                     "type": "object",
                     "properties": {
@@ -150,6 +163,16 @@ class SiteProvider:
                     "required": ["slug", "mode"],
                 },
                 operation="access",
+            ),
+            McpToolDef(
+                name="site_access_info",
+                description="查询站点当前访问模式、明文令牌（令牌模式）与可直接访问的 url，用于拿地址给用户。",
+                input_schema={
+                    "type": "object",
+                    "properties": {"slug": {"type": "string"}},
+                    "required": ["slug"],
+                },
+                operation="access_info",
             ),
         ]
 
@@ -185,9 +208,13 @@ class SiteProvider:
                 mode=str(payload.get("mode") or ""),
                 reset_token=bool(payload.get("reset_token")),
             )
-            body = {"site": service.site_payload(site, current=service.current_version(ctx.db, site))}
+            body = service.access_info(ctx.db, site)
             body["token"] = token
+            body["url"] = service.access_url(site, token)
             return body
+        if operation in {"access_info", "site_access_info"}:
+            site = service.get_site_by_slug(ctx.db, str(payload.get("slug") or ""), key_id)
+            return service.access_info(ctx.db, site)
         raise SiteError(f"未知操作: {operation}", status_code=404, error_type="not_found")
 
     def _deploy(self, ctx: CallContext, payload: dict[str, Any], key_id: int) -> dict[str, Any]:
