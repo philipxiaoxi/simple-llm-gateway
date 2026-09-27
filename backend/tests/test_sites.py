@@ -358,7 +358,15 @@ def test_site_spec_registered() -> None:
     assert provider.spec.admin_path == "/mcp-plaza/sites"
     assert provider.spec.icon == "globe"
     tool_names = {tool.name for tool in provider.list_mcp_tools()}
-    assert {"site_deploy", "site_list", "site_status", "site_rollback", "site_delete", "site_access"} <= tool_names
+    assert {
+        "site_deploy",
+        "site_list",
+        "site_status",
+        "site_rollback",
+        "site_delete",
+        "site_access",
+        "site_access_info",
+    } <= tool_names
 
 
 def test_protocol_access_and_token_reset(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -377,15 +385,25 @@ def test_protocol_access_and_token_reset(client: TestClient, auth_headers: dict[
     token = opened.json()["token"]
     assert token and token.startswith("st-")
     assert opened.json()["site"]["access_mode"] == "token"
+    assert opened.json()["url"].endswith(f"/sites/access-site/?token={token}")
     assert client.get("/sites/access-site/").status_code == 401
     assert client.get("/sites/access-site/", params={"token": token}).status_code == 200
+
+    info = client.get("/v1/sites/access-site/access", headers=headers)
+    assert info.status_code == 200, info.text
+    assert info.json()["token"] == token
+    assert info.json()["url"].endswith(f"?token={token}")
 
     reopened = client.post("/v1/sites/access-site/access", headers=headers, json={"mode": "public"})
     assert reopened.status_code == 200
     assert reopened.json()["token"] is None
     assert client.get("/sites/access-site/").status_code == 200
 
-    client.post("/v1/sites/access-site/access", headers=headers, json={"mode": "token"})
+    switched = client.post("/v1/sites/access-site/access", headers=headers, json={"mode": "token"})
+    assert switched.status_code == 200, switched.text
+    assert switched.json()["token"] == token
+    assert switched.json()["url"].endswith(f"?token={token}")
+
     reset = client.post("/v1/sites/access-site/token", headers=headers)
     assert reset.status_code == 200
     new_token = reset.json()["token"]
@@ -431,7 +449,19 @@ def test_mcp_access_tool(client: TestClient, auth_headers: dict[str, str]) -> No
         session.commit()
         assert result["site"]["access_mode"] == "token"
         assert result["token"].startswith("st-")
+        assert result["url"].endswith(f"?token={result['token']}")
         assert client.get("/sites/mcp-access/", params={"token": result["token"]}).status_code == 200
+
+        info = asyncio.run(
+            invoke_tool(
+                session,
+                mcp_key=owner,
+                tool_name="site_access_info",
+                payload={"slug": "mcp-access"},
+            )
+        )
+        assert info["token"] == result["token"]
+        assert info["url"].endswith(f"?token={result['token']}")
     finally:
         session.close()
 

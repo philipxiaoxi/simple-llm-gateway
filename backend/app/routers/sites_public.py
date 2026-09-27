@@ -148,7 +148,22 @@ def set_access(
     except SiteError as error:
         return _error(error.status_code, error.error_type, error.message)
     db.commit()
-    return {"site": service.site_payload(site, current=service.current_version(db, site)), "token": token}
+    return {
+        "site": service.site_payload(site, current=service.current_version(db, site)),
+        "token": token,
+        "url": service.access_url(site, token),
+    }
+
+
+@router.get("/{slug}/access")
+def get_access(slug: str, db: Session = Depends(get_db), mcp_key=Depends(_mcp_key_dep)):
+    if not _require_site(mcp_key):
+        return _error(403, "permission_error", "MCP Key 未授权能力 site")
+    try:
+        site = service.get_site_by_slug(db, slug, mcp_key.id)
+    except SiteError as error:
+        return _error(error.status_code, error.error_type, error.message)
+    return service.access_info(db, site)
 
 
 @router.post("/{slug}/token")
@@ -161,7 +176,11 @@ def reset_token(slug: str, db: Session = Depends(get_db), mcp_key=Depends(_mcp_k
     except SiteError as error:
         return _error(error.status_code, error.error_type, error.message)
     db.commit()
-    return {"site": service.site_payload(site, current=service.current_version(db, site)), "token": token}
+    return {
+        "site": service.site_payload(site, current=service.current_version(db, site)),
+        "token": token,
+        "url": service.access_url(site, token),
+    }
 
 
 @router.delete("/{slug}", status_code=204)

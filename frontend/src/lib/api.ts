@@ -1035,9 +1035,14 @@ export const api = {
       { method: 'DELETE' },
     ),
   generateMcpSiteToken: (siteId: string) =>
-    request<{ token: string; site: McpSite }>(`/api/admin/mcp/sites/${encodeURIComponent(siteId)}/token`, {
-      method: 'POST',
-    }),
+    request<{ token: string; url: string; site: McpSite }>(
+      `/api/admin/mcp/sites/${encodeURIComponent(siteId)}/token`,
+      { method: 'POST' },
+    ),
+  revealMcpSiteToken: (siteId: string) =>
+    request<{ token: string | null; url: string; site: McpSite }>(
+      `/api/admin/mcp/sites/${encodeURIComponent(siteId)}/token`,
+    ),
   mcpKeys: () => request<McpKeyItem[]>('/api/admin/mcp/keys'),
   revealMcpKey: (id: number) =>
     request<{ id: number; name: string; key: string }>(`/api/admin/mcp/keys/${id}/reveal`),

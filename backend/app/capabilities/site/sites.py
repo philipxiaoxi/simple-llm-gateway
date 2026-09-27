@@ -50,6 +50,14 @@ def preview_url(slug: str) -> str:
     return f"{base}/sites/{slug}/"
 
 
+def access_url(site: Site, token: str | None = None) -> str:
+    """可直接访问的预览地址；令牌模式下自动拼接 ?token=。"""
+    url = preview_url(site.slug)
+    if site.access_mode == "token" and token:
+        return f"{url}?token={token}"
+    return url
+
+
 def _assert_owner(site: Site, mcp_key_id: int | None) -> None:
     if mcp_key_id is None:
         return
@@ -491,16 +499,31 @@ def set_token(db: Session, site: Site) -> str:
 
 
 def set_access(db: Session, site: Site, *, mode: str, reset_token: bool = False) -> tuple[Site, str | None]:
-    """设置访问模式；token 模式下按需生成或重置令牌，返回一次性明文。"""
+    """设置访问模式；token 模式始终返回可用明文，便于直接拼出访问 URL。"""
     if mode not in {"public", "token"}:
         raise SiteError("mode 只能是 public 或 token")
-    if mode == "token" and (reset_token or not site.access_token_hash):
-        token = set_token(db, site)
-        return site, token
+    if mode == "token":
+        if reset_token or not site.access_token_hash:
+            token = set_token(db, site)
+            return site, token
+        site.access_mode = mode
+        site.updated_at = utcnow()
+        db.flush()
+        return site, reveal_token(site)
     site.access_mode = mode
     site.updated_at = utcnow()
     db.flush()
     return site, None
+
+
+def access_info(db: Session, site: Site) -> dict:
+    """返回站点当前访问信息：令牌模式下带回明文令牌与可直接访问的 URL。"""
+    token = reveal_token(site) if site.access_mode == "token" and site.access_token_hash else None
+    return {
+        "site": site_payload(site, current=current_version(db, site)),
+        "token": token,
+        "url": access_url(site, token),
+    }
 
 
 def reset_token(db: Session, site: Site) -> str:

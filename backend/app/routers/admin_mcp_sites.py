@@ -206,6 +206,20 @@ def admin_delete_version(site_id: str, version_id: str, db: Session = Depends(ge
     db.commit()
 
 
+@router.get("/{site_id}/token")
+def admin_reveal_token(site_id: str, db: Session = Depends(get_db)):
+    try:
+        site = service.get_site(db, site_id, None)
+    except SiteError as error:
+        raise _http(error) from error
+    token = service.reveal_token(site) if site.access_mode == "token" and site.access_token_hash else None
+    return {
+        "token": token,
+        "url": service.access_url(site, token),
+        "site": service.site_payload(site, current=service.current_version(db, site)),
+    }
+
+
 @router.post("/{site_id}/token")
 def admin_token(site_id: str, db: Session = Depends(get_db)):
     try:
@@ -214,4 +228,8 @@ def admin_token(site_id: str, db: Session = Depends(get_db)):
     except SiteError as error:
         raise _http(error) from error
     db.commit()
-    return {"token": token, "site": service.site_payload(site, current=service.current_version(db, site))}
+    return {
+        "token": token,
+        "url": service.access_url(site, token),
+        "site": service.site_payload(site, current=service.current_version(db, site)),
+    }
