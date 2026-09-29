@@ -110,6 +110,29 @@ def get_version(slug: str, version_no: int, db: Session = Depends(get_db), mcp_k
     return service.version_payload(version, current_version_id=site.current_version_id)
 
 
+@router.patch("/{slug}")
+def update_site(
+    slug: str,
+    payload: dict[str, Any] = Body(default={}),
+    db: Session = Depends(get_db),
+    mcp_key=Depends(_mcp_key_dep),
+):
+    if not _require_site(mcp_key):
+        return _error(403, "permission_error", "MCP Key 未授权能力 site")
+    try:
+        site = service.get_site_by_slug(db, slug, mcp_key.id)
+        # 只透传请求里真正出现的字段，未出现的保持原值；空串表示显式清空。
+        service.update_site(
+            db,
+            site,
+            **{field: payload[field] for field in service.EDITABLE_FIELDS if field in payload},
+        )
+    except SiteError as error:
+        return _error(error.status_code, error.error_type, error.message)
+    db.commit()
+    return service.site_detail_payload(db, site)
+
+
 @router.post("/{slug}/rollback")
 def rollback(
     slug: str,

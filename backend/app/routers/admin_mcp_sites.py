@@ -109,15 +109,11 @@ def admin_version(site_id: str, version_id: str, db: Session = Depends(get_db)):
 def admin_update(site_id: str, payload: dict[str, Any] = Body(default={}), db: Session = Depends(get_db)):
     try:
         site = service.get_site(db, site_id, None)
+        # 只透传请求里真正出现的字段，未出现的保持原值；空串表示显式清空。
         service.update_site(
             db,
             site,
-            name=payload.get("name"),
-            description=payload.get("description"),
-            access_mode=payload.get("access_mode"),
-            entry_file=payload.get("entry_file"),
-            spa_fallback=payload.get("spa_fallback"),
-            status=payload.get("status"),
+            **{field: payload[field] for field in service.EDITABLE_FIELDS if field in payload},
         )
     except SiteError as error:
         raise _http(error) from error

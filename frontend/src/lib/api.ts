@@ -1015,7 +1015,15 @@ export const api = {
     uploadSite(`/api/admin/mcp/sites/${encodeURIComponent(siteId)}/versions`, file, fields, onProgress),
   updateMcpSite: (
     siteId: string,
-    payload: { name?: string; description?: string; access_mode?: string; entry_file?: string; spa_fallback?: boolean; status?: string },
+    payload: {
+      name?: string
+      description?: string
+      slug?: string
+      access_mode?: string
+      entry_file?: string
+      spa_fallback?: boolean
+      status?: string
+    },
   ) => request<McpSite>(`/api/admin/mcp/sites/${encodeURIComponent(siteId)}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteMcpSite: (siteId: string) =>
     request<void>(`/api/admin/mcp/sites/${encodeURIComponent(siteId)}`, { method: 'DELETE' }),
