@@ -4,7 +4,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from aihot_payloads import FLIGHT_PAYLOAD
+from aihot_payloads import FLIGHT_PAYLOAD, REACT_ROUTER_PAYLOAD
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -88,6 +88,39 @@ def test_parse_flight_leaderboard_payload() -> None:
     assert second["rank"] == 2
     assert second["score"] == 93.7
     assert all(item["score"] is not None for item in items)
+
+
+def test_parse_react_router_leaderboard_payload() -> None:
+    # 当前线上主用格式：React Router 单次取数（/leaderboard.data）
+    items = parse_leaderboard_payload(REACT_ROUTER_PAYLOAD)
+    assert len(items) == 30
+    assert [item["rank"] for item in items] == list(range(1, 31))
+    assert all(item["slug"] and item["name"] and item["score"] is not None for item in items)
+
+    top = items[0]
+    assert top["slug"] == "claude-opus-5-5"
+    assert top["name"] == "Claude Opus 5.5"
+    assert top["provider"] == "Anthropic"
+    assert top["released_at"] == "2026-09-17"
+    assert top["score"] == 95.0
+    assert top["confidence"] == "MEDIUM"
+    assert top["coverage"] == 0.35
+    assert top["metric_count"] == 10
+    assert top["cache_input_price_per_million_cny"] == pytest.approx(1.3421)
+    assert top["input_price_per_million_cny"] == pytest.approx(26.842)
+    assert top["output_price_per_million_cny"] == pytest.approx(134.21)
+    assert top["input_price_per_million_usd"] == pytest.approx(4)
+    assert top["pricing_source_url"] == "https://platform.claude.com/docs/en/models/opus-5-5/overview"
+    # 新版载荷不带上下文/输出上限，交给 models.dev 目录补齐
+    assert top["context_window_tokens"] is None
+    assert top["components"] == {}
+
+
+def test_react_router_payload_detects_structure_drift() -> None:
+    # model 字段改名时不能把只有 slug 的空壳写进缓存
+    broken = REACT_ROUTER_PAYLOAD.replace('"model"', '"renamedModel"')
+    with pytest.raises(LeaderboardError, match="entries"):
+        parse_leaderboard_payload(broken)
 
 
 def test_parse_leaderboard_payload_rejects_unknown_shape() -> None:
@@ -190,6 +223,31 @@ def test_admin_leaderboard_reads_cache_without_fetching(client: TestClient, auth
         assert item["local_covered"] is False
         assert item["local_matches"] == []
         assert fetch.await_count == 1
+
+
+def test_admin_leaderboard_reflects_react_router_payload(client: TestClient, auth_headers: dict[str, str]) -> None:
+    # 线上主用格式：拉取的是 /leaderboard.data，序列化解析后要能落进快照并回读
+    with patch(
+        "app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=REACT_ROUTER_PAYLOAD)
+    ) as fetch:
+        seeded = client.post("/api/admin/jobs/leaderboard/run", headers=auth_headers)
+    assert seeded.status_code == 200, seeded.text
+    assert fetch.await_count == 1
+
+    response = client.get("/api/admin/leaderboard", headers=auth_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 30
+    assert body["stale"] is False
+    item = _find_item(response, "claude-opus-5-5")
+    assert item["name"] == "Claude Opus 5.5"
+    assert item["provider"] == "Anthropic"
+    assert item["released_at"] == "2026-09-17"
+    assert item["score"] == 95.0
+    assert item["confidence"] == "MEDIUM"
+    assert item["coverage"] == 0.35
+    assert item["input_price_per_million_cny"] == pytest.approx(26.842)
+    assert item["output_price_per_million_cny"] == pytest.approx(134.21)
 
 
 def test_admin_leaderboard_ignores_refresh_query(client: TestClient, auth_headers: dict[str, str]) -> None:

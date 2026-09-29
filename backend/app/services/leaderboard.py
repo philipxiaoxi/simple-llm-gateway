@@ -11,17 +11,19 @@ from sqlalchemy.orm import Session
 
 from app.clock import utcnow
 from app.config import get_settings
-from app.models import BenchmarkResult, BenchmarkRun, GatewayAgent, GatewayAgentRoute, LeaderboardSnapshot, UpstreamAccount
+from app.models import (
+    BenchmarkResult,
+    BenchmarkRun,
+    GatewayAgent,
+    GatewayAgentRoute,
+    LeaderboardSnapshot,
+    UpstreamAccount,
+)
 from app.services import model_caps as model_caps_service
 
 USER_AGENT = "simple-llm-gateway/0.1 (internal cache; not a public mirror)"
 # 排行榜/仪表盘只回看最近这么多次测速，避免随历史增长全表重算
 BENCHMARK_LOOKBACK_RUNS = 30
-RSC_HEADERS = {
-    "RSC": "1",
-    "Accept": "text/x-component",
-    "User-Agent": USER_AGENT,
-}
 
 
 class LeaderboardError(RuntimeError):
@@ -378,7 +380,126 @@ def _parse_flight_entries(text: str) -> list[dict[str, Any]]:
     return []
 
 
+# ---- 新版载荷：React Router 单次取数（/leaderboard.data）----
+# 2026-09 页面从 Next.js RSC 迁到 React Router（Remix）后，渲染用的 class 名全部
+# 换掉了，HTML/RSC 解析直接失配。页面同源的 .data 端点返回 React Router 序列化
+# 载荷：一个扁平 JSON 数组，数组元素之间用下标互相引用（对象键形如 "_<下标>"，
+# 数组元素与对象值都是下标），resolve 后就是 run / board / tabs / entries 结构。
+# entries 里 model.slug / model.name / score 齐全，直接映射进快照。
+_RR_KEY_REF = re.compile(r"^_(\d+)$")
+
+
+def _rr_resolve(reference: Any, array: list[Any], seen: frozenset[int]) -> Any:
+    """把引用（数组下标）展开成对应元素；负数/越界/环引用按缺失处理。"""
+    if isinstance(reference, bool) or not isinstance(reference, int):
+        return _rr_walk(reference, array, seen)
+    if reference < 0 or reference >= len(array) or reference in seen:
+        return None
+    return _rr_walk(array[reference], array, seen | {reference})
+
+
+def _rr_walk(value: Any, array: list[Any], seen: frozenset[int]) -> Any:
+    if isinstance(value, list):
+        return [_rr_resolve(item, array, seen) for item in value]
+    if isinstance(value, dict):
+        decoded: dict[str, Any] = {}
+        for key, item in value.items():
+            match = _RR_KEY_REF.match(key) if isinstance(key, str) else None
+            if match is not None:
+                real_key = array[int(match.group(1))] if int(match.group(1)) < len(array) else None
+                if not isinstance(real_key, str):
+                    continue
+                decoded[real_key] = _rr_resolve(item, array, seen)
+            else:
+                decoded[str(key)] = _rr_resolve(item, array, seen)
+        return decoded
+    return value
+
+
+def _rr_find_entries(root: Any) -> list[Any] | None:
+    """在 resolve 后的路由数据里找 entries 列表（综合榜 / 分类榜路由都覆盖）。"""
+    if not isinstance(root, dict):
+        return None
+    for value in root.values():
+        data = value.get("data") if isinstance(value, dict) else None
+        if isinstance(data, dict) and isinstance(data.get("entries"), list):
+            return data["entries"]
+    return None
+
+
+def _rr_entry(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    model = raw.get("model") if isinstance(raw.get("model"), dict) else {}
+    slug = str(model.get("slug") or "").strip()
+    name = str(model.get("name") or "").strip()
+    score = raw.get("score")
+    if not slug or not name or isinstance(score, bool) or not isinstance(score, int | float):
+        return None
+    entry = _empty_entry()
+    entry["slug"] = slug
+    entry["name"] = name
+    entry["provider"] = str(model.get("provider") or "").strip()
+    entry["released_at"] = str(model.get("releasedAt") or "").strip() or None
+    entry["score"] = float(score)
+    rank = raw.get("rank")
+    entry["rank"] = int(rank) if isinstance(rank, int | float) and not isinstance(rank, bool) else None
+    coverage = raw.get("coverage")
+    entry["coverage"] = float(coverage) if isinstance(coverage, int | float) and not isinstance(coverage, bool) else None
+    confidence = raw.get("confidence")
+    entry["confidence"] = (str(confidence).strip() or None) if confidence is not None else None
+    source_count = raw.get("sourceCount")
+    entry["metric_count"] = (
+        int(source_count) if isinstance(source_count, int | float) and not isinstance(source_count, bool) else None
+    )
+    stability = raw.get("stability") if isinstance(raw.get("stability"), dict) else {}
+    for field, key in (("possible_rank_from", "from"), ("possible_rank_to", "to")):
+        value = stability.get(key)
+        entry[field] = int(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+    price = raw.get("price") if isinstance(raw.get("price"), dict) else {}
+    entry["cache_input_price_per_million_cny"] = _rr_number(price.get("cachedCny"))
+    entry["input_price_per_million_cny"] = _rr_number(price.get("inputCny"))
+    entry["output_price_per_million_cny"] = _rr_number(price.get("outputCny"))
+    entry["input_price_per_million_usd"] = _rr_number(price.get("input"))
+    entry["output_price_per_million_usd"] = _rr_number(price.get("output"))
+    entry["pricing_source_url"] = str(price.get("officialUrl") or "").strip() or None
+    return entry
+
+
+def _rr_number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
+def _parse_react_router_entries(text: str) -> list[dict[str, Any]] | None:
+    """解析 React Router 单次取数载荷；不是该格式返回 None。"""
+    try:
+        array = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(array, list) or not array:
+        return None
+    first = array[0]
+    if not isinstance(first, dict) or not any(
+        isinstance(key, str) and _RR_KEY_REF.match(key) for key in first
+    ):
+        return None
+    root = _rr_resolve(0, array, frozenset())
+    raw_entries = _rr_find_entries(root)
+    if raw_entries is None:
+        raise LeaderboardError("榜单载荷中没有 entries（AIHOT 页面结构可能已改版）")
+    entries = [entry for entry in (_rr_entry(raw) for raw in raw_entries) if entry]
+    # 有行却对不齐说明字段结构变了，宁可整体报错也不要把空壳写进缓存
+    if not raw_entries or len(entries) != len(raw_entries):
+        raise LeaderboardError("榜单载荷中没有 entries（AIHOT 页面结构可能已改版）")
+    return entries
+
+
 def parse_leaderboard_payload(text: str) -> list[dict[str, Any]]:
+    react_router_entries = _parse_react_router_entries(text)
+    if react_router_entries is not None:
+        return react_router_entries
     if '"entries":[' in text:
         try:
             return _normalize_entries(_extract_json_array(text, '"entries":['))
@@ -720,20 +841,31 @@ def refresh_is_too_soon(snapshot: LeaderboardSnapshot | None, now: datetime | No
     return snapshot.fetched_at >= (now or utcnow()) - timedelta(seconds=min_refresh)
 
 
+DATA_HEADERS = {
+    "Accept": "application/json, text/x-script, */*",
+    "User-Agent": USER_AGENT,
+}
+
+
 async def fetch_leaderboard_text(client: httpx.AsyncClient | None = None) -> str:
+    """拉取榜单数据。
+
+    新版页面用 React Router，渲染后的 HTML 里 class 名会随改版漂移，所以取页面
+    同源的单次取数端点（.data），返回结构化 JSON，解析对结构变化更稳。
+    """
     settings = get_settings()
     timeout = min(30, max(5, settings.request_timeout_seconds))
     try:
         if client is not None:
             response = await client.get(
-                settings.aihot_leaderboard_url,
-                headers=RSC_HEADERS,
+                settings.aihot_leaderboard_data_url,
+                headers=DATA_HEADERS,
                 timeout=timeout,
                 follow_redirects=True,
             )
         else:
             async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as http_client:
-                response = await http_client.get(settings.aihot_leaderboard_url, headers=RSC_HEADERS)
+                response = await http_client.get(settings.aihot_leaderboard_data_url, headers=DATA_HEADERS)
         response.raise_for_status()
         return response.text
     except httpx.HTTPError as error:
