@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Copy, ExternalLink, RefreshCw, RotateCcw, Trash2, Upload } from 'lucide-react'
+import { Copy, ExternalLink, Eye, EyeOff, RefreshCw, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, Card, Dialog, Field, Input } from '../components/ui'
@@ -31,6 +31,7 @@ export function McpSiteDetailPage() {
   const [percent, setPercent] = useState(0)
   const [issuedToken, setIssuedToken] = useState('')
   const [frameKey, setFrameKey] = useState(0)
+  const [previewing, setPreviewing] = useState(false)
 
   const site = useQuery({
     queryKey: ['mcp-site', siteId],
@@ -243,9 +244,9 @@ export function McpSiteDetailPage() {
             <p className="mt-0.5 text-xs text-mist">
               {data.access_mode === 'token'
                 ? gateToken
-                  ? '已带上访问令牌，可在下方 iframe 内直接预览。'
-                  : '令牌模式：生成令牌后即可在 iframe 内直接预览。'
-                : '公开访问，可直接在 iframe 内预览。'}
+                  ? '已带上访问令牌，点击「开始预览」后在下方 iframe 内查看。'
+                  : '令牌模式：生成令牌后即可预览。'
+                : '公开访问，点击「开始预览」后在下方 iframe 内查看。'}
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
@@ -260,24 +261,40 @@ export function McpSiteDetailPage() {
             >
               <ExternalLink size={14} /> 新标签页打开
             </a>
-            <Button type="button" variant="line" onClick={() => setFrameKey((value) => value + 1)}>
-              <RefreshCw size={14} /> 刷新
-            </Button>
+            {previewing ? (
+              <>
+                <Button type="button" variant="line" onClick={() => setFrameKey((value) => value + 1)}>
+                  <RefreshCw size={14} /> 刷新
+                </Button>
+                <Button type="button" variant="line" onClick={() => setPreviewing(false)}>
+                  <EyeOff size={14} /> 关闭预览
+                </Button>
+              </>
+            ) : null}
           </div>
         </div>
         <div className="break-all rounded-md border border-line bg-ink/60 px-3 py-2 text-xs text-mist [overflow-wrap:anywhere]">
           {accessUrl}
         </div>
         {data.current_version_id ? (
-          <div className="overflow-hidden rounded-lg border border-line bg-white">
-            <iframe
-              key={frameKey}
-              title="站点预览"
-              src={accessUrl}
-              className="h-[68vh] min-h-[420px] w-full"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
-            />
-          </div>
+          previewing ? (
+            <div className="overflow-hidden rounded-lg border border-line bg-white">
+              <iframe
+                key={frameKey}
+                title="站点预览"
+                src={accessUrl}
+                className="h-[68vh] min-h-[420px] w-full"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-line px-4 py-10 text-center">
+              <p className="text-sm text-mist">预览默认关闭，点击「开始预览」后再加载页面。</p>
+              <Button type="button" onClick={() => setPreviewing(true)}>
+                <Eye size={15} /> 开始预览
+              </Button>
+            </div>
+          )
         ) : (
           <div className="rounded-lg border border-dashed border-line px-4 py-10 text-center text-sm text-mist">
             站点尚未就绪，部署并激活版本后即可预览。
