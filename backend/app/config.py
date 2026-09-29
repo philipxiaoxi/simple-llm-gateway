@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     tools_download_timeout_seconds: int = 3600
     # AIHOT 模型榜（原 aihot.virxact.com 已 301 到新域名，直接用新域名少一跳）
     aihot_leaderboard_url: str = "https://aihot.news/leaderboard"
+    # 榜单数据走页面同源的单次取数端点（React Router .data），是结构化 JSON，
+    # 比解析渲染后的 HTML/RSC 稳；页面地址仍用于展示与「查看原榜」链接。
+    aihot_leaderboard_data_url: str = "https://aihot.news/leaderboard.data"
     aihot_leaderboard_ttl_seconds: int = 43200
     aihot_leaderboard_min_refresh_seconds: int = 60
     xai_oauth_client_id: str = "b1a00492-073a-47ea-816f-4c329264a828"

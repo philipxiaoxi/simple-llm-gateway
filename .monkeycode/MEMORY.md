@@ -97,15 +97,37 @@ Entries discovered by the Agent during task execution should follow this format:
   - 中文场景的召回依赖向量检索；`mode=hybrid` 用 RRF 融合两路结果
   - embedding 配置变更后旧向量不可复用：若集合签名与新配置不一致，写入前会自动清空集合并按新签名重建
 
-[AIHOT 模型榜改成 RSC 飞行载荷]
-- Date: 2026-09-14
-- Context: 任务面板一直报“榜单载荷中没有 entries（已缓存 30 条榜单）”，模型榜缓存自 09-10 起没再刷新成功
+[AIHOT 模型榜改走 React Router .data 端点]
+- Date: 2026-09-14（2026-09-29 更新）
+- Context: 线上模型榜再次无数据并提示“结构可能已改版”，旧 RSC/HTML 选择器全部失配
 - Category: Troubleshooting & Debugging
 - Instructions:
-  - AIHOT 已从 aihot.virxact.com 301 到 aihot.news；页面改版后不再内联 `{"entries":[...]}`，而是把榜单表格直接渲染进 React Server Component 载荷（`Content-Type: text/x-component`）
-  - 表格行形如 `["$","tr","<slug>",{"children":[["$","td",null,{"className":"lb-rank-number",...}]]}]`；前两行内联在页面块里，第 3 名起以 `$L<数据块 id>` 流式分块下发，必须回填引用才能取到
-  - 字段按 className 取：lb-rank-number（名次）/ lb-name-cell（strong=模型名，small=厂商）/ lb-release-cell（time dateTime）/ lb-evidence-cell（span=评测项数，small[data-confidence]）/ lb-price-cell×3（缓存输入、输入、输出，人民币）/ lb-score-cell（meter value）
-  - 新版不再提供上下文窗口、输出上限、覆盖率、名次变动和美元价；上下文/输出上限由 models.dev 目录在 `attach_catalog_windows` 里补
-  - 真实抓取样例固定在 `backend/tests/fixtures/aihot_leaderboard_flight.rsc`（30 条），解析回归测试直接用它，不依赖网络
-  - 解析要求“全行可解析”才返回，className 对不上时整体报错：宁可保留旧缓存 + 任务显示失败，也不要把只有 slug 的空壳写进快照
-  - 手动排查上游结构：`curl -sL -H 'RSC: 1' -H 'Accept: text/x-component' https://aihot.news/leaderboard`
+  - 域名已从 aihot.virxact.com 301 到 aihot.news；2026-09 页面又从 Next.js RSC 迁到 React Router（Remix）SSR
+  - 旧 class（lb-ranking-table/lb-name-cell/lb-rank-number/lb-score-cell/lb-price-cell）已全部消失，HTML/RSC 解析必然失败
+  - 官方公开 API v1（https://aihot.news/openapi-v1.json，匿名只读）与 MCP（https://aihot.news/api/mcp）只覆盖资讯类（items/hot-topics/stories/dailies/selected/codex-resets），**没有模型榜端点**；/api/v1/leaderboard 返回 404
+  - 模型榜数据源改为页面同源单次取数端点 `aihot_leaderboard_data_url`（默认 https://aihot.news/leaderboard.data；分类 /leaderboard/category/{coding|reasoning|knowledge|professional}.data），返回 React Router 序列化 JSON（扁平数组 + `_<下标>` 引用），resolve 后即 run/board/tabs/entries；`aihot_leaderboard_url` 仍作页面展示
+  - entries 字段：rank、score、model{slug,name,provider,releasedAt}、sourceCount、coverage、confidence、stability{from,to}、price{input,output,cached,inputCny,outputCny,cachedCny,officialUrl}；上下文/输出上限仍由 models.dev 目录补
+  - 真实抓取样例固定 `backend/tests/fixtures/aihot_leaderboard_rr.json`（30 条）；旧飞行载荷 `aihot_leaderboard_flight.rsc` 保留兼容回归；解析仍要求全行可解析，缺 slug/name/score 或行数对不上即整体报错、保留旧缓存
+  - 手动排查：`curl -sS -H 'Accept: application/json, text/x-script, */*' https://aihot.news/leaderboard.data | python3 -m json.tool | head`
+  - 站点条款：个人/公益/组织内部使用免费；对外商用、数据转售需书面授权
+
+[站点部署 API：更新同一地址需传 slug]
+- Date: 2026-09-27
+- Context: 通过 REST 向站点部署服务上传 zip 并更新已有站点
+- Category: Operations & Deployment
+- Instructions:
+  - Base URL：`https://xapi.xiaotao2333.top:344`，鉴权 `Authorization: Bearer <key>`，错误体为 `{"error":{"type","message"}}`
+  - 部署：`POST /v1/sites`，`multipart/form-data`，文件字段名 `file`；返回 202 与 `slug`、`version_no`、`preview_url`
+  - 异步：先 `unpacking`，轮询 `GET /v1/sites/{slug}/versions/{version_no}`；该接口直接返回版本对象（无 `version` 外层包装），看 `status` 到 `ready`/`duplicate`/`failed`
+  - 关键：`POST` 默认会新建站点（slug 自动递增 site、site-2…）；要更新同一地址必须显式传表单字段 `slug=<已有slug>`，否则落到新站点
+  - `name` 字段只作显示名，不控制 slug
+  - 预览地址 `{origin}/sites/{slug}/`；`GET /v1/sites/{slug}/access` 查看访问模式与令牌，公开模式无 token
+  - 删除站点 `DELETE /v1/sites/{slug}`（受 no-delete 规则约束，非必要不执行）
+
+[站点部署只更新版本，不新建站点]
+- Date: 2026-09-27
+- Context: 用户发现多次上传生成了 site / site-2 / site-3 多个站点，要求以后统一更新
+- Instructions:
+  - 后续部署该站点一律使用原 slug：上传时表单带 `slug=site`，只产生新版本，不再新建站点
+  - 不要用 `name` 字段（只改显示名，仍会新建站点）
+  - 前端静态资源（app.js、echarts.min.js）被服务端设为 `immutable, max-age=31536000`，更新 JS 必须改文件名或加 `?v=` 版本参数，否则浏览器不拉新
