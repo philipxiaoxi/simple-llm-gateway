@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-BUILTINS = ("knowledge", "docparse", "site")
+BUILTINS = ("knowledge", "docparse", "site", "diagram")
 
 
 def test_catalog_exposes_integration_metadata(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -36,6 +36,7 @@ def test_key_integration_marks_authorized_capabilities(client: TestClient, auth_
     assert by_id["knowledge"]["authorized"] is True
     assert by_id["docparse"]["authorized"] is False
     assert by_id["site"]["authorized"] is False
+    assert by_id["diagram"]["authorized"] is False
     assert by_id["knowledge"]["integration"]["rest_endpoints"]
 
 

@@ -77,7 +77,7 @@ async def create_site(
 def list_sites(db: Session = Depends(get_db), mcp_key=Depends(_mcp_key_dep)):
     if not _require_site(mcp_key):
         return _error(403, "permission_error", "MCP Key 未授权能力 site")
-    rows, total = service.list_sites(db, mcp_key_id=mcp_key.id)
+    rows, total = service.list_sites(db, mcp_key_id=mcp_key.id, origin="upload")
     return {
         "items": [service.site_payload(site, current=service.current_version(db, site)) for site in rows],
         "total": total,

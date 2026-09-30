@@ -89,7 +89,10 @@ async def _run_registered_tool(tool_name: str, arguments: dict[str, Any]) -> str
         return json.dumps(result, ensure_ascii=False, default=str)
     except CapabilityError as error:
         session.rollback()
-        return json.dumps({"error": {"type": error.error_type, "message": error.message}}, ensure_ascii=False)
+        payload: dict[str, Any] = {"error": {"type": error.error_type, "message": error.message}}
+        if error.diagnostics:
+            payload["error"]["diagnostics"] = error.diagnostics
+        return json.dumps(payload, ensure_ascii=False)
     except Exception as error:
         session.rollback()
         return json.dumps({"error": {"type": "internal_error", "message": str(error)}}, ensure_ascii=False)

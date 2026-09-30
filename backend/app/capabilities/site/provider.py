@@ -205,7 +205,7 @@ class SiteProvider:
         if operation in {"deploy", "site_deploy"}:
             return self._deploy(ctx, payload, key_id)
         if operation in {"list", "site_list"}:
-            rows, _total = service.list_sites(ctx.db, mcp_key_id=key_id)
+            rows, _total = service.list_sites(ctx.db, mcp_key_id=key_id, origin="upload")
             items = [
                 service.site_payload(site, current=service.current_version(ctx.db, site)) for site in rows
             ]

@@ -9,6 +9,7 @@ from app.capabilities.base import CallContext, CapabilityError, Provider
 from app.capabilities.registry import get_provider, resolve_tool
 from app.clock import utcnow
 from app.models import McpKey
+from app.capabilities.diagram.errors import DiagramError
 from app.capabilities.docparse.errors import DocParseError
 from app.capabilities.site.errors import SiteError
 from app.services.knowledge import KnowledgeError
@@ -19,6 +20,13 @@ from app.services.mcp_logs import record_mcp_call
 def _normalize_error(error: Exception) -> CapabilityError:
     if isinstance(error, CapabilityError):
         return error
+    if isinstance(error, DiagramError):
+        return CapabilityError(
+            error.message,
+            status_code=error.status_code,
+            error_type=error.error_type,
+            diagnostics=error.diagnostics,
+        )
     if isinstance(error, (KnowledgeError, DocParseError, SiteError)):
         return CapabilityError(error.message, status_code=error.status_code, error_type=error.error_type)
     return CapabilityError(str(error), status_code=500, error_type="internal_error")

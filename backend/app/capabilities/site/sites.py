@@ -100,10 +100,13 @@ def list_sites(
     offset: int = 0,
     q: str | None = None,
     status: str | None = None,
+    origin: str | None = None,
 ) -> tuple[list[Site], int]:
     filters = []
     if mcp_key_id is not None:
         filters.append(Site.mcp_key_id == mcp_key_id)
+    if origin is not None:
+        filters.append(Site.origin == origin)
     if status:
         filters.append(Site.status == status)
     if q and q.strip():
@@ -139,6 +142,7 @@ def site_payload(site: Site, *, current: SiteVersion | None = None) -> dict:
         "status": site.status,
         "entry_file": site.entry_file,
         "spa_fallback": bool(site.spa_fallback),
+        "origin": site.origin,
         "current_version_id": site.current_version_id,
         "current_version_no": current.version_no if current else None,
         "preview_url": preview_url(site.slug),
@@ -165,6 +169,8 @@ def version_payload(version: SiteVersion, *, current_version_id: str | None = No
         "file_count": version.file_count,
         "total_bytes": version.total_bytes,
         "source_name": version.source_name,
+        "diagram_type": version.diagram_type,
+        "quality": version.quality,
         "error_message": version.error_message,
         "created_by": version.created_by,
         "is_current": bool(current_version_id and version.id == current_version_id),
@@ -201,6 +207,7 @@ def _resolve_site_for_deploy(
     mcp_key_id: int | None,
     created_by: str,
     site: Site | None,
+    origin: str = "upload",
 ) -> Site:
     if site is not None:
         return site
@@ -226,6 +233,7 @@ def _resolve_site_for_deploy(
         current_version_id=None,
         entry_file=get_settings().site_default_entry,
         status="active",
+        origin=origin,
         created_by=created_by,
         mcp_key_id=mcp_key_id,
     )
@@ -246,10 +254,14 @@ def create_deploy(
     entry: str | None = None,
     activate: bool = True,
     site: Site | None = None,
+    origin: str = "upload",
+    diagram_type: str | None = None,
+    source_json: str | None = None,
+    quality: str | None = None,
 ) -> tuple[Site, SiteVersion]:
     _validate_archive(filename, archive_bytes)
     target = _resolve_site_for_deploy(
-        db, slug=slug, name=name, mcp_key_id=mcp_key_id, created_by=created_by, site=site
+        db, slug=slug, name=name, mcp_key_id=mcp_key_id, created_by=created_by, site=site, origin=origin
     )
     next_no = int(
         db.scalar(select(func.max(SiteVersion.version_no)).where(SiteVersion.site_id == target.id)) or 0
@@ -266,6 +278,9 @@ def create_deploy(
         source_name=(Path(filename).name or "upload.zip")[:256],
         created_by=created_by,
         mcp_key_id=mcp_key_id,
+        diagram_type=diagram_type,
+        source_json=source_json,
+        quality=quality,
     )
     db.add(version)
     db.flush()

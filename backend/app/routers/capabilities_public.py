@@ -18,10 +18,13 @@ from app.services.mcp_auth import allowed_capability_ids, get_mcp_key_from_heade
 router = APIRouter(tags=["capabilities"])
 
 
-def _error(status: int, error_type: str, message: str) -> JSONResponse:
+def _error(status: int, error_type: str, message: str, diagnostics: list[dict] | None = None) -> JSONResponse:
+    error: dict[str, Any] = {"type": error_type, "message": message}
+    if diagnostics:
+        error["diagnostics"] = diagnostics
     return JSONResponse(
         status_code=status,
-        content={"error": {"type": error_type, "message": message}},
+        content={"error": error},
     )
 
 
@@ -81,7 +84,7 @@ async def dispatch_capability(
             payload=payload,
         )
     except CapabilityError as error:
-        return _error(error.status_code, error.error_type, error.message)
+        return _error(error.status_code, error.error_type, error.message, error.diagnostics)
 
 
 @router.get("/v1/capabilities/knowledge/bases")

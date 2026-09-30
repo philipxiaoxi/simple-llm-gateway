@@ -730,6 +730,8 @@ class Site(Base):
     entry_file: Mapped[str] = mapped_column(String(128), default="index.html", nullable=False)
     spa_fallback: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    # 站点来源：upload（上传 zip）或 diagram（Archify 图表渲染）。用于列表分组与归属隔离。
+    origin: Mapped[str] = mapped_column(String(16), default="upload", nullable=False)
     created_by: Mapped[str] = mapped_column(String(16), default="admin", nullable=False)
     mcp_key_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     total_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -758,6 +760,10 @@ class SiteVersion(Base):
     file_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     source_name: Mapped[str] = mapped_column(String(256), default="upload.zip", nullable=False)
+    # diagram 版本：渲染类型、类型化 JSON 源与校验档位。源只存库，不进入发布目录。
+    diagram_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quality: Mapped[str | None] = mapped_column(String(16), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str] = mapped_column(String(16), default="admin", nullable=False)
     mcp_key_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

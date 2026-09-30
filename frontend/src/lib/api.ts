@@ -1051,6 +1051,69 @@ export const api = {
     request<{ token: string | null; url: string; site: McpSite }>(
       `/api/admin/mcp/sites/${encodeURIComponent(siteId)}/token`,
     ),
+  mcpDiagrams: (query: { q?: string; status?: string } = {}) => {
+    const params = new URLSearchParams()
+    if (query.q) params.set('q', query.q)
+    if (query.status) params.set('status', query.status)
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<McpSiteList>(`/api/admin/mcp/diagrams${suffix}`)
+  },
+  mcpDiagram: (siteId: string) =>
+    request<McpSite>(`/api/admin/mcp/diagrams/${encodeURIComponent(siteId)}`),
+  mcpDiagramSource: (siteId: string, versionNo?: number) => {
+    const suffix = versionNo ? `?version_no=${versionNo}` : ''
+    return request<McpDiagramSource>(
+      `/api/admin/mcp/diagrams/${encodeURIComponent(siteId)}/source${suffix}`,
+    )
+  },
+  createMcpDiagram: (payload: {
+    type: string
+    source: unknown
+    slug?: string
+    name?: string
+    quality?: string
+    activate?: boolean
+  }) =>
+    request<McpSiteDeployResult>('/api/admin/mcp/diagrams', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateMcpDiagram: (
+    siteId: string,
+    payload: {
+      name?: string
+      description?: string
+      slug?: string
+      access_mode?: string
+      entry_file?: string
+      status?: string
+    },
+  ) =>
+    request<McpSite>(`/api/admin/mcp/diagrams/${encodeURIComponent(siteId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteMcpDiagram: (siteId: string) =>
+    request<void>(`/api/admin/mcp/diagrams/${encodeURIComponent(siteId)}`, { method: 'DELETE' }),
+  rollbackMcpDiagram: (siteId: string, versionNo: number) =>
+    request<McpSite>(`/api/admin/mcp/diagrams/${encodeURIComponent(siteId)}/rollback`, {
+      method: 'POST',
+      body: JSON.stringify({ version_no: versionNo }),
+    }),
+  activateMcpDiagramVersion: (siteId: string, versionId: string) =>
+    request<McpSite>(`/api/admin/mcp/diagrams/${encodeURIComponent(siteId)}/rollback`, {
+      method: 'POST',
+      body: JSON.stringify({ version_id: versionId }),
+    }),
+  generateMcpDiagramToken: (siteId: string) =>
+    request<{ token: string; url: string; site: McpSite }>(
+      `/api/admin/mcp/diagrams/${encodeURIComponent(siteId)}/token`,
+      { method: 'POST' },
+    ),
+  revealMcpDiagramToken: (siteId: string) =>
+    request<{ token: string | null; url: string; site: McpSite }>(
+      `/api/admin/mcp/diagrams/${encodeURIComponent(siteId)}/token`,
+    ),
   mcpKeys: () => request<McpKeyItem[]>('/api/admin/mcp/keys'),
   revealMcpKey: (id: number) =>
     request<{ id: number; name: string; key: string }>(`/api/admin/mcp/keys/${id}/reveal`),
@@ -1280,6 +1343,8 @@ export type McpSiteVersion = {
   file_count: number
   total_bytes: number
   source_name: string
+  diagram_type: string | null
+  quality: string | null
   error_message: string | null
   created_by: string
   is_current: boolean
@@ -1299,6 +1364,7 @@ export type McpSite = {
   status: string
   entry_file: string
   spa_fallback: boolean
+  origin: string
   current_version_id: string | null
   current_version_no: number | null
   preview_url: string
@@ -1313,6 +1379,14 @@ export type McpSite = {
 export type McpSiteList = { items: McpSite[]; total: number }
 
 export type McpSiteDeployResult = { site: McpSite; version: McpSiteVersion; preview_url: string }
+
+export type McpDiagramSource = {
+  slug: string
+  version_no: number
+  type: string
+  quality: string
+  source: unknown
+}
 
 function uploadSite(
   path: string,

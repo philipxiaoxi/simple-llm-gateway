@@ -58,6 +58,12 @@ const McpSitesPage = lazy(() => import('./pages/McpSites').then((m) => ({ defaul
 const McpSiteDetailPage = lazy(() =>
   import('./pages/McpSiteDetail').then((m) => ({ default: m.McpSiteDetailPage })),
 )
+const McpDiagramsPage = lazy(() =>
+  import('./pages/McpDiagrams').then((m) => ({ default: m.McpDiagramsPage })),
+)
+const McpDiagramDetailPage = lazy(() =>
+  import('./pages/McpDiagramDetail').then((m) => ({ default: m.McpDiagramDetailPage })),
+)
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -122,6 +128,8 @@ export default function App() {
                 <Route path="docparse" element={<McpDocParsePage />} />
                 <Route path="sites" element={<McpSitesPage />} />
                 <Route path="sites/:siteId" element={<McpSiteDetailPage />} />
+                <Route path="diagrams" element={<McpDiagramsPage />} />
+                <Route path="diagrams/:siteId" element={<McpDiagramDetailPage />} />
                 <Route path="keys" element={<McpKeysPage />} />
                 <Route path="calls" element={<McpCallsPage />} />
                 <Route path="docs" element={<McpDocsPage />} />

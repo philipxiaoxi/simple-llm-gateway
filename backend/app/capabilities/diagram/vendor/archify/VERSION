@@ -1,0 +1,22 @@
+Archify vendored renderer
+=========================
+
+Upstream: https://github.com/tt-a1i/archify
+Version: 3.0.1
+Source commit: 5ca9c1233b82fac6478158cc1ee2d00c42d3ab1b (2026-09-30)
+License: MIT (see LICENSE and THIRD_PARTY_NOTICES.md in this directory)
+
+Vendored subset (runtime only; examples/ and test/ intentionally omitted):
+  bin/ renderers/ schemas/ assets/ recipes/ references/ migrations/ delta/ brand-marks/ scripts/
+
+The CLI imports only Node built-in modules (node:fs, node:path, node:crypto,
+node:child_process, node:os, node:url), so no npm install is required at runtime.
+Requires Node.js >= 18.
+
+Rendering entry used by the platform:
+  node bin/archify.mjs deliver <type> <source.json> <out.html> --quality showcase --json
+
+Set ARCHIFY_UPDATE_CHECK_DISABLED=1 to skip the outbound update check.
+
+To upgrade: replace this directory with the same subset from the new upstream
+release, refresh this VERSION file, and rerun backend/tests/test_diagrams.py.
