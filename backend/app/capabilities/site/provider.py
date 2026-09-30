@@ -32,7 +32,7 @@ class SiteProvider:
                     "entry": {"type": "string"},
                     "activate": {"type": "boolean"},
                 },
-                "required": ["filename", "archive_base64"],
+                "required": ["filename", "archive_base64", "slug"],
             },
             "status": {"type": "object", "properties": {"slug": {"type": "string"}}, "required": ["slug"]},
             "rollback": {
@@ -83,6 +83,8 @@ class SiteProvider:
             "notes": [
                 "REST 部署为异步：先返回 unpacking，再轮询版本状态到 ready/duplicate/failed",
                 "MCP site_deploy 的 archive_base64 解码后不超过 10MB，更大文件走 REST multipart",
+                "slug 必须语义化，用站点用途的英文短横线名，例如 spending-report、hello-site；不要用 site、site-2、demo 这种占位名",
+                "首次部署就要传 slug；更新同一地址时继续传同一个 slug，只追加版本。name 只是显示名，不控制地址",
                 "预览地址为 {origin}/sites/{slug}/；令牌模式下响应会带 token 与已拼好 ?token= 的 url，可直接交给用户",
             ],
         },
@@ -95,19 +97,27 @@ class SiteProvider:
                 name="site_deploy",
                 description=(
                     f"上传前端静态资源 zip 并部署为预览站点。archive_base64 解码后不超过 {limit} 字节，"
-                    "更大文件走 REST multipart。返回站点、版本与预览地址。"
+                    "更大文件走 REST multipart。必须传语义化 slug（如 spending-report），"
+                    "不要省略 slug，也不要用 site/site-2/demo 这类占位名；同一地址更新时继续传同一个 slug。"
+                    "返回站点、版本与预览地址。"
                 ),
                 input_schema={
                     "type": "object",
                     "properties": {
                         "filename": {"type": "string", "description": "归档文件名，需以 .zip 结尾"},
                         "archive_base64": {"type": "string", "description": "zip 内容的 base64"},
-                        "slug": {"type": "string", "description": "目标站点 slug；为空则新建站点"},
-                        "name": {"type": "string", "description": "新建站点时的显示名"},
+                        "slug": {
+                            "type": "string",
+                            "description": (
+                                "语义化站点地址，小写字母、数字与中划线，例如 spending-report、hello-site。"
+                                "首次部署必填；更新同一站点必须传同一个 slug。不要用 site、site-2、demo。"
+                            ),
+                        },
+                        "name": {"type": "string", "description": "显示名，不控制预览地址"},
                         "entry": {"type": "string", "description": "入口文件，默认 index.html"},
                         "activate": {"type": "boolean", "description": "是否设为当前版本，默认 true"},
                     },
-                    "required": ["filename", "archive_base64"],
+                    "required": ["filename", "archive_base64", "slug"],
                 },
                 operation="deploy",
             ),

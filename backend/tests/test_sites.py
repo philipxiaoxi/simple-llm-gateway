@@ -591,6 +591,9 @@ def test_site_spec_registered() -> None:
         "site_access",
         "site_access_info",
     } <= tool_names
+    deploy = next(tool for tool in provider.list_mcp_tools() if tool.name == "site_deploy")
+    assert "slug" in (deploy.input_schema.get("required") or [])
+    assert "语义化" in deploy.description
 
 
 def test_protocol_access_and_token_reset(client: TestClient, auth_headers: dict[str, str]) -> None:
