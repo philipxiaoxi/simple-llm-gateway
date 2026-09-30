@@ -10,6 +10,7 @@ from app.capabilities.site import hosting, sites as service
 from app.capabilities.site.errors import SiteError
 from app.db import get_db
 from app.services.mcp_auth import allowed_capability_ids, get_mcp_key_from_headers
+from app.services.mcp_logs import begin_mcp_call
 
 router = APIRouter(prefix="/v1/sites", tags=["sites"])
 hosting_router = APIRouter(tags=["sites-hosting"])
@@ -25,6 +26,14 @@ def _mcp_key_dep(
     x_api_key: str | None = Header(default=None, alias="x-api-key"),
 ):
     return get_mcp_key_from_headers(db, authorization, x_api_key)
+
+
+def _gate(db: Session, mcp_key, operation: str):
+    rec = begin_mcp_call(db, mcp_key, "site", operation)
+    if not _require_site(mcp_key):
+        rec.failure("MCP Key 未授权能力 site")
+        return rec, _error(403, "permission_error", "MCP Key 未授权能力 site")
+    return rec, None
 
 
 def _require_site(mcp_key) -> bool:
@@ -50,7 +59,9 @@ async def create_site(
     db: Session = Depends(get_db),
     mcp_key=Depends(_mcp_key_dep),
 ):
+    rec = begin_mcp_call(db, mcp_key, "site", "deploy")
     if not _require_site(mcp_key):
+        rec.failure("MCP Key 未授权能力 site")
         return _error(403, "permission_error", "MCP Key 未授权能力 site")
     raw = await file.read()
     await file.close()
@@ -67,7 +78,9 @@ async def create_site(
             activate=activate,
         )
     except SiteError as error:
+        rec.failure(error.message)
         return _error(error.status_code, error.error_type, error.message)
+    rec.success()
     db.commit()
     background.add_task(service.run_deploy_task, version.id, activate)
     return _deploy_payload(db, site, version)
@@ -75,8 +88,11 @@ async def create_site(
 
 @router.get("")
 def list_sites(db: Session = Depends(get_db), mcp_key=Depends(_mcp_key_dep)):
+    rec = begin_mcp_call(db, mcp_key, "site", "list")
     if not _require_site(mcp_key):
+        rec.failure("MCP Key 未授权能力 site")
         return _error(403, "permission_error", "MCP Key 未授权能力 site")
+    rec.success()
     rows, total = service.list_sites(db, mcp_key_id=mcp_key.id, origin="upload")
     return {
         "items": [service.site_payload(site, current=service.current_version(db, site)) for site in rows],
@@ -86,27 +102,34 @@ def list_sites(db: Session = Depends(get_db), mcp_key=Depends(_mcp_key_dep)):
 
 @router.get("/{slug}")
 def get_site(slug: str, db: Session = Depends(get_db), mcp_key=Depends(_mcp_key_dep)):
-    if not _require_site(mcp_key):
-        return _error(403, "permission_error", "MCP Key 未授权能力 site")
+    rec, denied = _gate(db, mcp_key, "status")
+    if denied:
+        return denied
     try:
         site = service.get_site_by_slug(db, slug, mcp_key.id)
     except SiteError as error:
+        rec.failure(error.message)
         return _error(error.status_code, error.error_type, error.message)
+    rec.success()
     return service.site_detail_payload(db, site)
 
 
 @router.get("/{slug}/versions/{version_no}")
 def get_version(slug: str, version_no: int, db: Session = Depends(get_db), mcp_key=Depends(_mcp_key_dep)):
-    if not _require_site(mcp_key):
-        return _error(403, "permission_error", "MCP Key 未授权能力 site")
+    rec, denied = _gate(db, mcp_key, "status")
+    if denied:
+        return denied
     try:
         site = service.get_site_by_slug(db, slug, mcp_key.id)
         versions = service.list_versions(db, site)
     except SiteError as error:
+        rec.failure(error.message)
         return _error(error.status_code, error.error_type, error.message)
     version = next((item for item in versions if item.version_no == version_no), None)
     if version is None:
+        rec.failure("版本不存在")
         return _error(404, "not_found", "版本不存在")
+    rec.success()
     return service.version_payload(version, current_version_id=site.current_version_id)
 
 
@@ -117,8 +140,9 @@ def update_site(
     db: Session = Depends(get_db),
     mcp_key=Depends(_mcp_key_dep),
 ):
-    if not _require_site(mcp_key):
-        return _error(403, "permission_error", "MCP Key 未授权能力 site")
+    rec, denied = _gate(db, mcp_key, "update")
+    if denied:
+        return denied
     try:
         site = service.get_site_by_slug(db, slug, mcp_key.id)
         # 只透传请求里真正出现的字段，未出现的保持原值；空串表示显式清空。
@@ -128,7 +152,9 @@ def update_site(
             **{field: payload[field] for field in service.EDITABLE_FIELDS if field in payload},
         )
     except SiteError as error:
+        rec.failure(error.message)
         return _error(error.status_code, error.error_type, error.message)
+    rec.success()
     db.commit()
     return service.site_detail_payload(db, site)
 
@@ -140,13 +166,16 @@ def rollback(
     db: Session = Depends(get_db),
     mcp_key=Depends(_mcp_key_dep),
 ):
-    if not _require_site(mcp_key):
-        return _error(403, "permission_error", "MCP Key 未授权能力 site")
+    rec, denied = _gate(db, mcp_key, "rollback")
+    if denied:
+        return denied
     try:
         site = service.get_site_by_slug(db, slug, mcp_key.id)
         version = service.rollback(db, site, int(payload.get("version_no") or 0))
     except SiteError as error:
+        rec.failure(error.message)
         return _error(error.status_code, error.error_type, error.message)
+    rec.success()
     db.commit()
     return {"site": service.site_payload(site, current=version), "version": service.version_payload(version, current_version_id=site.current_version_id)}
 
@@ -158,8 +187,9 @@ def set_access(
     db: Session = Depends(get_db),
     mcp_key=Depends(_mcp_key_dep),
 ):
-    if not _require_site(mcp_key):
-        return _error(403, "permission_error", "MCP Key 未授权能力 site")
+    rec, denied = _gate(db, mcp_key, "access")
+    if denied:
+        return denied
     try:
         site = service.get_site_by_slug(db, slug, mcp_key.id)
         site, token = service.set_access(
@@ -169,7 +199,9 @@ def set_access(
             reset_token=bool(payload.get("reset_token")),
         )
     except SiteError as error:
+        rec.failure(error.message)
         return _error(error.status_code, error.error_type, error.message)
+    rec.success()
     db.commit()
     return {
         "site": service.site_payload(site, current=service.current_version(db, site)),
@@ -180,24 +212,30 @@ def set_access(
 
 @router.get("/{slug}/access")
 def get_access(slug: str, db: Session = Depends(get_db), mcp_key=Depends(_mcp_key_dep)):
-    if not _require_site(mcp_key):
-        return _error(403, "permission_error", "MCP Key 未授权能力 site")
+    rec, denied = _gate(db, mcp_key, "access_info")
+    if denied:
+        return denied
     try:
         site = service.get_site_by_slug(db, slug, mcp_key.id)
     except SiteError as error:
+        rec.failure(error.message)
         return _error(error.status_code, error.error_type, error.message)
+    rec.success()
     return service.access_info(db, site)
 
 
 @router.post("/{slug}/token")
 def reset_token(slug: str, db: Session = Depends(get_db), mcp_key=Depends(_mcp_key_dep)):
-    if not _require_site(mcp_key):
-        return _error(403, "permission_error", "MCP Key 未授权能力 site")
+    rec, denied = _gate(db, mcp_key, "access")
+    if denied:
+        return denied
     try:
         site = service.get_site_by_slug(db, slug, mcp_key.id)
         token = service.reset_token(db, site)
     except SiteError as error:
+        rec.failure(error.message)
         return _error(error.status_code, error.error_type, error.message)
+    rec.success()
     db.commit()
     return {
         "site": service.site_payload(site, current=service.current_version(db, site)),
@@ -208,13 +246,16 @@ def reset_token(slug: str, db: Session = Depends(get_db), mcp_key=Depends(_mcp_k
 
 @router.delete("/{slug}", status_code=204)
 def delete_site(slug: str, db: Session = Depends(get_db), mcp_key=Depends(_mcp_key_dep)):
-    if not _require_site(mcp_key):
-        return _error(403, "permission_error", "MCP Key 未授权能力 site")
+    rec, denied = _gate(db, mcp_key, "delete")
+    if denied:
+        return denied
     try:
         site = service.get_site_by_slug(db, slug, mcp_key.id)
         service.delete_site(db, site)
     except SiteError as error:
+        rec.failure(error.message)
         return _error(error.status_code, error.error_type, error.message)
+    rec.success()
     db.commit()
 
 
