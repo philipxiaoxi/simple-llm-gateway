@@ -93,10 +93,12 @@ def replace_mcp_key_capabilities(db: Session, mcp_key: McpKey, capability_ids: l
             status_code=400,
             detail={"error": {"type": "invalid_request", "message": "白名单不能为空"}},
         )
-    mcp_key.capabilities.clear()
+    for item in list(mcp_key.capabilities):
+        db.delete(item)
     db.flush()
-    for cid in unique_ids:
-        db.add(McpKeyCapability(mcp_key_id=mcp_key.id, capability_id=cid))
+    replacements = [McpKeyCapability(mcp_key_id=mcp_key.id, capability_id=cid) for cid in unique_ids]
+    db.add_all(replacements)
+    mcp_key.capabilities = replacements
     db.flush()
 
 

@@ -41,3 +41,44 @@ def test_reveal_unknown_key_404(client: TestClient, auth_headers: dict[str, str]
 
 def test_reveal_requires_admin(client: TestClient) -> None:
     assert client.get("/api/admin/mcp/keys/1/reveal").status_code == 401
+
+
+def test_update_capabilities_can_revoke_and_keep_at_least_one(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    created = client.post(
+        "/api/admin/mcp/keys",
+        headers=auth_headers,
+        json={"name": "scoped", "capability_ids": ["knowledge", "site", "diagram"]},
+    )
+    assert created.status_code == 201, created.text
+    key_id = created.json()["id"]
+    assert set(created.json()["capability_ids"]) == {"knowledge", "site", "diagram"}
+
+    renamed = client.patch(
+        f"/api/admin/mcp/keys/{key_id}",
+        headers=auth_headers,
+        json={"name": "scoped-prod"},
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["name"] == "scoped-prod"
+
+    updated = client.put(
+        f"/api/admin/mcp/keys/{key_id}/capabilities",
+        headers=auth_headers,
+        json={"capability_ids": ["diagram"]},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["capability_ids"] == ["diagram"]
+
+    empty = client.put(
+        f"/api/admin/mcp/keys/{key_id}/capabilities",
+        headers=auth_headers,
+        json={"capability_ids": []},
+    )
+    assert empty.status_code in {400, 422}, empty.text
+
+    listed = client.get("/api/admin/mcp/keys", headers=auth_headers).json()
+    row = next(item for item in listed if item["id"] == key_id)
+    assert row["name"] == "scoped-prod"
+    assert row["capability_ids"] == ["diagram"]
