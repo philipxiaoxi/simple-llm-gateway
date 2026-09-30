@@ -48,7 +48,7 @@ def admin_list(
     status: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    rows, total = service.list_sites(db, limit=limit, offset=offset, q=q, status=status)
+    rows, total = service.list_sites(db, limit=limit, offset=offset, q=q, status=status, origin="upload")
     return {
         "items": [service.site_payload(site, current=service.current_version(db, site)) for site in rows],
         "total": total,

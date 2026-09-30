@@ -158,10 +158,18 @@ export function McpSitesPage() {
             <p className="text-xs text-mist">
               支持 Vite/CRA 默认构建产物：以 / 开头的资源路径会自动改写，无需调整 base。
             </p>
-            <Field label="Slug（可选，留空自动生成）">
-              <Input value={slug} onChange={(event) => setSlug(event.target.value)} placeholder="my-demo" disabled={create.isPending} />
+            <Field label="Slug（语义化地址，必填）">
+              <Input
+                value={slug}
+                onChange={(event) => setSlug(event.target.value)}
+                placeholder="spending-report"
+                disabled={create.isPending}
+              />
             </Field>
-            <Field label="站点名称（可选）">
+            <p className="text-xs text-mist">
+              用站点用途命名，例如 spending-report、hello-site。不要用 site、site-2、demo。更新同一地址时填同一个 slug。
+            </p>
+            <Field label="站点名称（可选，只影响显示）">
               <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="演示站" disabled={create.isPending} />
             </Field>
             <Field label="入口文件（可选，默认 index.html）">
@@ -182,7 +190,7 @@ export function McpSitesPage() {
               <Button type="button" variant="ghost" disabled={create.isPending} onClick={() => setOpen(false)}>
                 取消
               </Button>
-              <Button type="button" disabled={!file || create.isPending} onClick={() => create.mutate()}>
+              <Button type="button" disabled={!file || !slug.trim() || create.isPending} onClick={() => create.mutate()}>
                 上传并部署
               </Button>
             </div>

@@ -1,11 +1,41 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRound, Plus } from 'lucide-react'
+import { KeyRound, Pencil, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, Card, Dialog, Field, Input } from '../components/ui'
-import { api } from '../lib/api'
+import { api, type McpKeyItem } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
+
+function CapabilityPicker({
+  options,
+  selected,
+  onChange,
+}: {
+  options: { id: string; label: string }[]
+  selected: string[]
+  onChange: (next: string[]) => void
+}) {
+  return (
+    <div className="space-y-2">
+      {options.map((cap) => (
+        <label key={cap.id} className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={selected.includes(cap.id)}
+            onChange={(event) => {
+              onChange(
+                event.target.checked ? [...selected, cap.id] : selected.filter((id) => id !== cap.id),
+              )
+            }}
+          />
+          {cap.label}
+        </label>
+      ))}
+      {!options.length ? <div className="text-xs text-mist">暂无启用能力，请先在后端注册 Provider</div> : null}
+    </div>
+  )
+}
 
 export function McpKeysPage() {
   const queryClient = useQueryClient()
@@ -14,6 +44,9 @@ export function McpKeysPage() {
   const [selected, setSelected] = useState<string[]>([])
   const [createdKey, setCreatedKey] = useState<string | null>(null)
   const [revealed, setRevealed] = useState<{ id: number; name: string; key: string } | null>(null)
+  const [editing, setEditing] = useState<McpKeyItem | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editSelected, setEditSelected] = useState<string[]>([])
 
   const catalog = useQuery({
     queryKey: ['mcp-catalog'],
@@ -68,6 +101,36 @@ export function McpKeysPage() {
     onError: (caught) => notifyBad(errorMessage(caught, '查看失败')),
   })
 
+  const saveEdit = useMutation({
+    mutationFn: async () => {
+      if (!editing) throw new Error('未选择 MCP Key')
+      const trimmed = editName.trim()
+      const nameChanged = trimmed !== editing.name
+      const current = [...editing.capability_ids].sort().join(',')
+      const next = [...editSelected].sort().join(',')
+      const capsChanged = current !== next
+      if (!nameChanged && !capsChanged) return
+      if (nameChanged) {
+        await api.updateMcpKey(editing.id, { name: trimmed })
+      }
+      if (capsChanged) {
+        await api.updateMcpKeyCapabilities(editing.id, editSelected)
+      }
+    },
+    onSuccess: async () => {
+      notifyOk('MCP Key 已更新')
+      setEditing(null)
+      await queryClient.invalidateQueries({ queryKey: ['mcp-keys'] })
+    },
+    onError: (caught) => notifyBad(errorMessage(caught, '更新失败')),
+  })
+
+  function openEdit(item: McpKeyItem) {
+    setEditing(item)
+    setEditName(item.name)
+    setEditSelected([...item.capability_ids])
+  }
+
   async function copyKey(key: string) {
     try {
       await navigator.clipboard.writeText(key)
@@ -111,6 +174,9 @@ export function McpKeysPage() {
               >
                 接入
               </Link>
+              <Button type="button" variant="line" onClick={() => openEdit(item)}>
+                <Pencil size={14} /> 编辑
+              </Button>
               <Button
                 type="button"
                 variant="line"
@@ -171,25 +237,7 @@ export function McpKeysPage() {
                   <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="agent-prod" />
                 </Field>
                 <Field label="授权能力（来自服务目录注册表）">
-                  <div className="space-y-2">
-                    {capabilityOptions.map((cap) => (
-                      <label key={cap.id} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={selected.includes(cap.id)}
-                          onChange={(e) => {
-                            setSelected((prev) =>
-                              e.target.checked ? [...prev, cap.id] : prev.filter((id) => id !== cap.id),
-                            )
-                          }}
-                        />
-                        {cap.label}
-                      </label>
-                    ))}
-                    {!capabilityOptions.length ? (
-                      <div className="text-xs text-mist">暂无启用能力，请先在后端注册 Provider</div>
-                    ) : null}
-                  </div>
+                  <CapabilityPicker options={capabilityOptions} selected={selected} onChange={setSelected} />
                 </Field>
                 <div className="flex justify-end gap-2">
                   <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
@@ -205,6 +253,36 @@ export function McpKeysPage() {
                 </div>
               </>
             )}
+          </div>
+        </Dialog>
+      ) : null}
+      {editing ? (
+        <Dialog title={`编辑 MCP Key · ${editing.name}`} onClose={() => (saveEdit.isPending ? null : setEditing(null))}>
+          <div className="grid gap-3">
+            <Field label="名称">
+              <Input
+                value={editName}
+                onChange={(event) => setEditName(event.target.value)}
+                placeholder="agent-prod"
+                disabled={saveEdit.isPending}
+              />
+            </Field>
+            <Field label="授权能力">
+              <CapabilityPicker options={capabilityOptions} selected={editSelected} onChange={setEditSelected} />
+            </Field>
+            <p className="text-xs text-mist">取消勾选即收回该能力授权；至少保留一项。</p>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" disabled={saveEdit.isPending} onClick={() => setEditing(null)}>
+                取消
+              </Button>
+              <Button
+                type="button"
+                disabled={!editName.trim() || !editSelected.length || saveEdit.isPending}
+                onClick={() => saveEdit.mutate()}
+              >
+                {saveEdit.isPending ? '保存中…' : '保存'}
+              </Button>
+            </div>
           </div>
         </Dialog>
       ) : null}

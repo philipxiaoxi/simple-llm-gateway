@@ -145,7 +145,7 @@ curl -s https://你的站/v1/capabilities/knowledge/search \
 
 文档转换在 MCP 广场「文档转 Markdown」页上传预览。MCP Key 勾选 `docparse` 后，可走 REST `POST /v1/capabilities/docparse/jobs`（multipart 字段 `file`）或 MCP 工具 `docparse_convert`。Docker 部署随镜像安装 `markitdown`，文件落在数据卷 `/data/docparse`。旧版 `.doc/.xls/.ppt` 需要镜像外另行提供 LibreOffice。
 
-站点部署在 MCP 广场「站点部署」页使用：上传前端构建产物 `.zip`，系统安全解包为不可变版本并生成 `/sites/{slug}/` 预览地址，支持一键回滚与访问令牌保护。重复内容按归一去重摘要识别并复用版本。管理端与 REST（`POST /v1/sites`）为异步部署，返回 `unpacking` 状态后轮询版本接口；MCP Key 勾选 `site` 后可用 `site_deploy`、`site_list`、`site_status`、`site_rollback`、`site_delete`、`site_access`。文件落在数据卷 `/data/sites`，配置项见 `.env` 的 `SITE_*`。
+站点部署在 MCP 广场「站点部署」页使用：上传前端构建产物 `.zip`，系统安全解包为不可变版本并生成 `/sites/{slug}/` 预览地址，支持一键回滚与访问令牌保护。slug 必须语义化（如 `spending-report`、`hello-site`），不要用 `site` / `site-2` / `demo`；首次部署和更新同一地址都要传同一个 slug，`name` 只是显示名。重复内容按归一去重摘要识别并复用版本。管理端与 REST（`POST /v1/sites`）为异步部署，返回 `unpacking` 状态后轮询版本接口；MCP Key 勾选 `site` 后可用 `site_deploy`、`site_list`、`site_status`、`site_rollback`、`site_delete`、`site_access`。文件落在数据卷 `/data/sites`，配置项见 `.env` 的 `SITE_*`。
 
 托管会改写 HTML/CSS 里以 `/` 开头的根绝对资源路径（如 Vite 默认产物的 `/assets/index-*.js`），并在 `<head>` 注入 `<base>`，因此 `base: '/'` 的构建产物无需改动即可预览；`base: './'` 同样兼容。平台 Service Worker 的导航兜底已排除 `/sites/`，已安装 PWA 的浏览器不会把预览地址劫持成管理端外壳。
 

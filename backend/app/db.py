@@ -255,8 +255,27 @@ def _ensure_columns(engine: Engine) -> None:
         skill_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(skills)"))}
         if skill_columns and "category" in skill_columns:
             connection.execute(text("UPDATE skills SET category = substr(category, 1, 64) WHERE length(category) > 64"))
+        _ensure_site_diagram_columns(connection)
         _ensure_api_key_accounts(connection)
         _backfill_account_model_prefixes(connection)
+
+
+def _ensure_site_diagram_columns(connection) -> None:  # type: ignore[no-untyped-def]
+    """站点表增量列：origin 判别列与 diagram 版本元数据。"""
+    site_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(sites)"))}
+    if site_columns and "origin" not in site_columns:
+        connection.execute(
+            text("ALTER TABLE sites ADD COLUMN origin VARCHAR(16) DEFAULT 'upload' NOT NULL")
+        )
+    version_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(site_versions)"))}
+    if version_columns:
+        for column in ("diagram_type", "source_json", "quality"):
+            if column not in version_columns:
+                connection.execute(text(f"ALTER TABLE site_versions ADD COLUMN {column} TEXT"))
+    if site_columns:
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_sites_origin_key_created ON sites (origin, mcp_key_id, created_at)")
+        )
 
 
 def _ensure_api_key_accounts(connection) -> None:  # type: ignore[no-untyped-def]

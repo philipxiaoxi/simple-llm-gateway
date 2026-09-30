@@ -88,6 +88,13 @@ def ensure_defaults() -> None:
         from app.capabilities.site.provider import SiteProvider
 
         register(SiteProvider())
+    if "diagram" not in _providers:
+        from app.config import get_settings
+
+        if get_settings().diagram_enabled:
+            from app.capabilities.diagram.provider import DiagramProvider
+
+            register(DiagramProvider())
 
 
 def reset_registry_for_tests() -> None:

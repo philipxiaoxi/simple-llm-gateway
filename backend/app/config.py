@@ -122,6 +122,14 @@ class Settings(BaseSettings):
     site_max_versions: int = 10
     site_retention_days: int = 30
     site_mcp_max_bytes: int = 10 * 1024 * 1024
+    # Archify 图表生成（diagram 能力）
+    diagram_enabled: bool = True
+    archify_home: str = ""
+    diagram_node_binary: str = "node"
+    diagram_render_timeout_seconds: int = 60
+    diagram_render_concurrency: int = 2
+    diagram_max_source_bytes: int = 256 * 1024
+    diagram_default_quality: str = "showcase"
 
     @property
     def database_url(self) -> str:
@@ -183,6 +191,13 @@ class Settings(BaseSettings):
     @property
     def resolved_site_deploy_path(self) -> Path:
         return self._resolve_data_path(self.site_deploy_path, "sites")
+
+    @property
+    def resolved_archify_home(self) -> Path:
+        """vendored Archify 渲染器目录。可用 ARCHIFY_HOME 覆盖。"""
+        if self.archify_home:
+            return Path(self.archify_home).expanduser().resolve()
+        return Path(__file__).resolve().parent / "capabilities" / "diagram" / "vendor" / "archify"
 
 
 @lru_cache

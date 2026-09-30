@@ -14,14 +14,18 @@ from app.capabilities.base import CapabilityError
 from app.db import get_db
 from app.schemas import KnowledgeSearchRequest, KnowledgeSearchResponse, McpCapabilityOut
 from app.services.mcp_auth import allowed_capability_ids, get_mcp_key_from_headers
+from app.services.mcp_logs import begin_mcp_call
 
 router = APIRouter(tags=["capabilities"])
 
 
-def _error(status: int, error_type: str, message: str) -> JSONResponse:
+def _error(status: int, error_type: str, message: str, diagnostics: list[dict] | None = None) -> JSONResponse:
+    error: dict[str, Any] = {"type": error_type, "message": message}
+    if diagnostics:
+        error["diagnostics"] = diagnostics
     return JSONResponse(
         status_code=status,
-        content={"error": {"type": error_type, "message": message}},
+        content={"error": error},
     )
 
 
@@ -81,7 +85,7 @@ async def dispatch_capability(
             payload=payload,
         )
     except CapabilityError as error:
-        return _error(error.status_code, error.error_type, error.message)
+        return _error(error.status_code, error.error_type, error.message, error.diagnostics)
 
 
 @router.get("/v1/capabilities/knowledge/bases")
@@ -122,7 +126,9 @@ async def docparse_create_job(
     mcp_key=Depends(_mcp_key_dep),
 ):
     ensure_defaults()
+    rec = begin_mcp_call(db, mcp_key, "docparse", "convert")
     if "docparse" not in allowed_capability_ids(mcp_key):
+        rec.failure("MCP Key 未授权能力 docparse")
         return _error(403, "permission_error", "MCP Key 未授权能力 docparse")
     raw = await file.read()
     await file.close()
@@ -137,9 +143,11 @@ async def docparse_create_job(
         )
         run_job(db, job, raw)
     except DocParseError as error:
+        rec.failure(error.message)
         if job is not None:
             db.commit()
         return _error(error.status_code, error.error_type, error.message)
+    rec.success()
     db.commit()
     return job_payload(job)
 
@@ -147,41 +155,55 @@ async def docparse_create_job(
 @router.get("/v1/capabilities/docparse/jobs/{job_id}")
 def docparse_get_job(job_id: str, db: Session = Depends(get_db), mcp_key=Depends(_mcp_key_dep)):
     ensure_defaults()
+    rec = begin_mcp_call(db, mcp_key, "docparse", "job")
     if "docparse" not in allowed_capability_ids(mcp_key):
+        rec.failure("MCP Key 未授权能力 docparse")
         return _error(403, "permission_error", "MCP Key 未授权能力 docparse")
     try:
         job = get_owned_job(db, job_id, mcp_key.id)
     except DocParseError as error:
+        rec.failure(error.message)
         return _error(error.status_code, error.error_type, error.message)
+    rec.success()
     return job_payload(job)
 
 
 @router.get("/v1/capabilities/docparse/jobs/{job_id}/result")
 def docparse_result(job_id: str, db: Session = Depends(get_db), mcp_key=Depends(_mcp_key_dep)):
     ensure_defaults()
+    rec = begin_mcp_call(db, mcp_key, "docparse", "result")
     if "docparse" not in allowed_capability_ids(mcp_key):
+        rec.failure("MCP Key 未授权能力 docparse")
         return _error(403, "permission_error", "MCP Key 未授权能力 docparse")
     try:
         job = get_owned_job(db, job_id, mcp_key.id)
     except DocParseError as error:
+        rec.failure(error.message)
         return _error(error.status_code, error.error_type, error.message)
     if job.status != "succeeded":
+        rec.failure("任务尚未成功")
         return _error(400, "invalid_request", "任务尚未成功")
+    rec.success()
     return job_payload(job, include_markdown=True)
 
 
 @router.get("/v1/capabilities/docparse/jobs/{job_id}/download")
 def docparse_download(job_id: str, db: Session = Depends(get_db), mcp_key=Depends(_mcp_key_dep)):
     ensure_defaults()
+    rec = begin_mcp_call(db, mcp_key, "docparse", "result")
     if "docparse" not in allowed_capability_ids(mcp_key):
+        rec.failure("MCP Key 未授权能力 docparse")
         return _error(403, "permission_error", "MCP Key 未授权能力 docparse")
     try:
         job = get_owned_job(db, job_id, mcp_key.id)
     except DocParseError as error:
+        rec.failure(error.message)
         return _error(error.status_code, error.error_type, error.message)
     path = markdown_path(job.id)
     if job.status != "succeeded" or not path.is_file():
+        rec.failure("结果不存在")
         return _error(404, "not_found", "结果不存在")
+    rec.success()
     filename = job.source_name.rsplit(".", 1)[0] + ".md"
     return FileResponse(path, media_type="text/markdown; charset=utf-8", filename=filename)
 

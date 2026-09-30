@@ -46,6 +46,78 @@ def test_call_logs_paginated(client: TestClient, auth_headers: dict[str, str]):
     assert second["items"][0]["id"] != body["items"][0]["id"]
 
 
+def _create_key_with(client: TestClient, auth_headers: dict[str, str], name: str, capabilities: list[str]) -> str:
+    response = client.post(
+        "/api/admin/mcp/keys",
+        headers=auth_headers,
+        json={"name": name, "capability_ids": capabilities},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["key"]
+
+
+def test_site_rest_writes_call_logs(client: TestClient, auth_headers: dict[str, str]) -> None:
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("index.html", b"<p>logged</p>")
+    key = _create_key_with(client, auth_headers, "site-calls", ["site"])
+    headers = {"Authorization": f"Bearer {key}"}
+    created = client.post(
+        "/v1/sites",
+        headers=headers,
+        data={"slug": "logged-site"},
+        files={"file": ("site.zip", buffer.getvalue(), "application/zip")},
+    )
+    assert created.status_code == 202, created.text
+    listed = client.get("/v1/sites", headers=headers)
+    assert listed.status_code == 200, listed.text
+    denied = client.get("/v1/sites", headers={"Authorization": f"Bearer {_create_key(client, auth_headers, 'kb-only')}"})
+    assert denied.status_code == 403
+
+    logs = client.get("/api/admin/mcp/calls?capability_id=site", headers=auth_headers).json()
+    operations = {item["operation"] for item in logs["items"]}
+    assert {"deploy", "list"} <= operations
+    assert any(item["success"] is True and item["operation"] == "deploy" for item in logs["items"])
+    assert any(item["success"] is False and item["operation"] == "list" for item in logs["items"])
+
+
+def test_diagram_rest_writes_call_logs(client: TestClient, auth_headers: dict[str, str], monkeypatch) -> None:
+    from app.capabilities.diagram import renderer
+
+    def fake_run(diagram_type, source_path, out_path, quality, sandbox):
+        out_path.write_text("<!doctype html><html><body>logged</body></html>", encoding="utf-8")
+        return 0, '{"ok": true, "diagnostics": []}', ""
+
+    monkeypatch.setattr(renderer, "_run_cli", fake_run)
+    key = _create_key_with(client, auth_headers, "diagram-calls", ["diagram"])
+    headers = {"Authorization": f"Bearer {key}"}
+    created = client.post(
+        "/v1/diagrams",
+        headers=headers,
+        json={
+            "type": "architecture",
+            "source": {
+                "schema_version": 1,
+                "diagram_type": "architecture",
+                "meta": {"title": "logged", "output": "logged.html"},
+                "components": [{"id": "a", "type": "external", "label": "A"}],
+            },
+            "slug": "logged-diagram",
+        },
+    )
+    assert created.status_code == 202, created.text
+    detail = client.get("/v1/diagrams/logged-diagram", headers=headers)
+    assert detail.status_code == 200, detail.text
+
+    logs = client.get("/api/admin/mcp/calls?capability_id=diagram", headers=auth_headers).json()
+    operations = {item["operation"] for item in logs["items"]}
+    assert {"create", "status"} <= operations
+    assert all(item["capability_id"] == "diagram" for item in logs["items"])
+
+
 def test_call_logs_filters(client: TestClient, auth_headers: dict[str, str]):
     _seed_calls(client, auth_headers)
 

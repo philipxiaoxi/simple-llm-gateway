@@ -27,6 +27,7 @@ from app.routers import (
     admin_logs,
     admin_mcp_calls,
     admin_mcp_catalog,
+    admin_mcp_diagrams,
     admin_mcp_docparse,
     admin_mcp_keys,
     admin_mcp_knowledge,
@@ -36,6 +37,7 @@ from app.routers import (
     admin_skills,
     admin_tools,
     capabilities_public,
+    diagrams_public,
     health,
     local_agent,
     oauth,
@@ -164,6 +166,7 @@ app.include_router(admin_mcp_keys.router)
 app.include_router(admin_mcp_catalog.router)
 app.include_router(admin_mcp_docparse.router)
 app.include_router(admin_mcp_sites.router)
+app.include_router(admin_mcp_diagrams.router)
 app.include_router(admin_mcp_knowledge.router)
 app.include_router(admin_mcp_knowledge_jobs.router)
 app.include_router(admin_mcp_calls.router)
@@ -173,6 +176,7 @@ app.include_router(proxy.router)
 app.include_router(share.router)
 app.include_router(sites_public.router)
 app.include_router(sites_public.hosting_router)
+app.include_router(diagrams_public.router)
 app.include_router(voice_rooms.admin_router)
 app.include_router(voice_rooms.public_router)
 app.include_router(voice_rooms.router)
