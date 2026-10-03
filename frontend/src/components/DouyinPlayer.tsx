@@ -5,10 +5,11 @@ import { useEffect, useRef, useState } from 'react'
 type PlayerInstance = {
   play: () => Promise<void> | null | undefined
   destroy: () => void
-  on: (event: string, handler: () => void) => void
-  once: (event: string, handler: () => void) => void
+  on: (event: string, handler: (payload?: unknown) => void) => void
   muted: boolean
 }
+
+type UserAction = { action?: string; to?: boolean }
 
 type Props = {
   src: string
@@ -35,7 +36,6 @@ export function DouyinPlayer({ src, poster, autoPlay = false, className }: Props
         url: src,
         poster: poster || undefined,
         autoplay: autoPlay,
-        autoplayMuted: autoPlay,
         volume: 0.8,
         playsinline: true,
         width: '100%',
@@ -59,33 +59,38 @@ export function DouyinPlayer({ src, poster, autoPlay = false, className }: Props
 
     playerRef.current = player
 
-    const applyMuted = (muted: boolean) => {
-      if (!player || !alive) return
-      player.muted = muted
-      setShowUnmute(muted)
-    }
-
-    const tryAutoplay = () => {
-      if (!player || !autoPlay) return
-      const result = player.play()
+    const play = () => {
+      const result = playerRef.current?.play()
       if (result && typeof result.catch === 'function') {
-        void result.catch(() => {
-          applyMuted(true)
-          const retry = playerRef.current?.play()
-          if (retry && typeof retry.catch === 'function') {
-            void retry.catch(() => undefined)
-          }
-        })
+        void result.catch(() => undefined)
       }
     }
 
-    player.once('canplay', tryAutoplay)
+    // 自动播放（有声）被浏览器拦截：降级为静音播放并提示一键开声
+    player.on('autoplay_was_prevented', () => {
+      if (!alive || !player) return
+      player.muted = true
+      setShowUnmute(true)
+      play()
+    })
+
+    // 用户主动点击播放时恢复声音
+    player.on('user_action', (payload) => {
+      if (!alive || !player) return
+      const action = payload as UserAction | undefined
+      if (action?.action === 'switch_play_pause' && action.to === true && player.muted) {
+        player.muted = false
+        setShowUnmute(false)
+      }
+    })
+
     player.on('error', () => {
       if (!alive) return
       setFailed(true)
     })
 
-    const onWeixinReady = () => tryAutoplay()
+    // 微信 iOS：桥接就绪后再尝试播放
+    const onWeixinReady = () => play()
     document.addEventListener('WeixinJSBridgeReady', onWeixinReady, false)
 
     return () => {
@@ -113,7 +118,6 @@ export function DouyinPlayer({ src, poster, autoPlay = false, className }: Props
       <video
         controls
         autoPlay={autoPlay}
-        muted={autoPlay}
         playsInline
         preload="metadata"
         src={src}

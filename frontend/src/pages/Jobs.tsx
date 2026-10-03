@@ -56,12 +56,11 @@ function JobCard({ job }: { job: ScheduledJob }) {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState<Record<string, string>>({})
 
-  const paramSignature = job.params.map((param) => `${param.key}:${param.value}`).join('|')
   useEffect(() => {
     const next: Record<string, string> = {}
     for (const param of job.params) next[param.key] = String(param.value)
     setDraft(next)
-  }, [job.id, paramSignature])
+  }, [job.id, job.params])
 
   const runMutation = useMutation({
     mutationFn: () => api.runJob(job.id),

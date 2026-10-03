@@ -42,4 +42,16 @@ export default tseslint.config(
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
+  {
+    // 构建脚本运行在 Node 环境
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: globals.node },
+  },
+  {
+    // AudioWorklet 全局由 worklet 运行环境注入
+    files: ['public/**/*.js'],
+    languageOptions: {
+      globals: { AudioWorkletProcessor: 'readonly', registerProcessor: 'readonly' },
+    },
+  },
 )

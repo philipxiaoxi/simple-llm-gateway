@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Check, CircleDot, RefreshCw, RotateCcw, Route, Server } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Switch } from '../components/ui'
 import { api, type ModelCaps } from '../lib/api'
@@ -19,6 +19,7 @@ function RoutePrefixEditor({
   const [prefix, setPrefix] = useState(initialPrefix)
   const [pending, setPending] = useState(false)
   const [open, setOpen] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
   const normalizedPrefix = prefix.trim()
   const isValid = normalizedPrefix.length === 0 || /^[A-Za-z0-9_-]{1,32}$/.test(normalizedPrefix)
   const hasChanges = normalizedPrefix !== initialPrefix
@@ -26,6 +27,10 @@ function RoutePrefixEditor({
   useEffect(() => {
     setPrefix(initialPrefix)
   }, [initialPrefix])
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus()
+  }, [open])
 
   async function save() {
     setPending(true)
@@ -60,7 +65,7 @@ function RoutePrefixEditor({
             <Field label="模型前缀">
               <div className="relative">
                 <Input
-                  autoFocus
+                  ref={inputRef}
                   className={`pr-9 font-mono ${!isValid ? 'border-danger focus:border-danger' : ''}`}
                   value={prefix}
                   onChange={(event) => setPrefix(event.target.value)}
