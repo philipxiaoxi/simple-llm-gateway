@@ -1079,6 +1079,8 @@ export const api = {
     }),
   clearMcpDouyinProvider: () =>
     request<DouyinProviderStatus>('/api/admin/mcp/douyin/provider', { method: 'DELETE' }),
+  douyinShareMeta: (token: string) =>
+    request<DouyinShareMeta>(`/v1/douyin/share?token=${encodeURIComponent(token)}`),
   mcpDiagrams: (query: { q?: string; status?: string } = {}) => {
     const params = new URLSearchParams()
     if (query.q) params.set('q', query.q)
@@ -1458,6 +1460,16 @@ export type DouyinJob = {
 }
 
 export type DouyinJobList = { items: DouyinJob[]; total: number }
+
+export type DouyinShareMeta = {
+  id: string
+  kind: string
+  title: string
+  filename: string
+  content_type: string
+  size_bytes: number
+  download_url: string
+}
 
 export type DouyinProviderStatus = {
   base_url: string

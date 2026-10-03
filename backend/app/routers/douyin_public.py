@@ -150,6 +150,29 @@ def delete_job(job_id: str, db: Session = Depends(get_db), mcp_key=Depends(_mcp_
     db.commit()
 
 
+@router.get("/share")
+def share_meta(token: str | None = Query(default=None), db: Session = Depends(get_db)):
+    """公开分享元数据：仅凭签名令牌返回标题与播放所需信息，无需登录。"""
+    from app.models import DouyinMedia
+
+    media_id = tokens.media_id_from_token(token or "")
+    if not media_id:
+        return _error(401, "authentication_error", "链接无效或已过期")
+    media = db.get(DouyinMedia, media_id)
+    if media is None or media.purged or media.status != "ready":
+        return _error(410, "expired", "媒体文件已过期或不可用")
+    job = media.job
+    return {
+        "id": media.id,
+        "kind": media.kind,
+        "title": (job.title if job else "") or "",
+        "filename": media.filename,
+        "content_type": media.content_type,
+        "size_bytes": media.size_bytes,
+        "download_url": tokens.download_path(media.id, token),
+    }
+
+
 @router.get("/media/{media_id}")
 def download_media(
     media_id: str,

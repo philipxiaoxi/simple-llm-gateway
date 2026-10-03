@@ -162,9 +162,10 @@ spec = CapabilitySpec(
 | GET | `/v1/douyin/jobs/{job_id}/result` | 终态任务的元数据与媒体列表 |
 | POST | `/v1/douyin/jobs/{job_id}/retry` | 重试 `failed` 任务 |
 | DELETE | `/v1/douyin/jobs/{job_id}` | 删除任务与媒体文件 |
-| GET | `/v1/douyin/media/{media_id}` | 下载媒体：`?token=` 或归属 MCP Key |
+| GET | `/v1/douyin/media/{media_id}` | 下载媒体：`?token=` 或归属 MCP Key（公开，令牌鉴权） |
+| GET | `/v1/douyin/share` | 公开分享元数据：仅凭 `?token=` 返回标题/类型/下载地址，无需登录 |
 
-鉴权复用 `_mcp_key_dep` 与 `allowed_capability_ids`（参考 `backend/app/routers/capabilities_public.py:32`）。跨 Key 访问返回 404。
+鉴权复用 `_mcp_key_dep` 与 `allowed_capability_ids`（参考 `backend/app/routers/capabilities_public.py:32`）。跨 Key 访问返回 404。`/v1/douyin/media/{media_id}` 与 `/v1/douyin/share` 为公开路由，仅靠签名令牌鉴权。
 
 ### 1.3 Admin（`Depends(get_current_admin)`）
 
@@ -256,7 +257,7 @@ MCP/REST 结果里同时给出 `original_url`（抖音直链）、`download_url`
 
 仿 `site_retention`（参考 `backend/app/services/site_retention.py:23`）：
 
-- 清理超过 `DOUYIN_RETENTION_DAYS`（默认 7）的媒体文件，置 `purged=1`，保留任务与媒体元数据。
+- `DOUYIN_RETENTION_DAYS` 默认 `0`（永久保留，不自动清理）；设为正数时清理超过该天数的媒体文件，置 `purged=1`，保留任务与媒体元数据。
 - 清理超过 1 天的 `.tmp` 残留。
 - 任务在全部媒体被清理后，状态保持原值，下载返回 410。
 - 在 `backend/app/main.py` 的 lifespan 内追加 `asyncio.create_task(douyin_retention_loop())`（参考 `backend/app/main.py:126`），启动时调用 `reconcile_stuck(db)` 把残留 `queued/downloading` 任务置 `failed`（参考 `backend/app/main.py:107`）。
@@ -273,7 +274,7 @@ MCP/REST 结果里同时给出 `original_url`（抖音直链）、`download_url`
 | `DOUYIN_MCP_MAX_WAIT_SECONDS` | 45 | MCP 内联等待上限 |
 | `DOUYIN_MAX_REDIRECTS` | 5 | 短链最大跳数 |
 | `DOUYIN_DOWNLOAD_TOKEN_TTL_SECONDS` | 3600 | 下载令牌有效期 |
-| `DOUYIN_RETENTION_DAYS` | 7 | 媒体保留天数 |
+| `DOUYIN_RETENTION_DAYS` | 0 | 媒体保留天数，0 = 永久保留 |
 | `DOUYIN_MAX_CONCURRENT_PER_KEY` | 2 | 单 Key 并发任务上限 |
 | `DOUYIN_USER_AGENT` | 桌面 Chrome UA | 拉取媒体 CDN 所用 UA |
 | `DOUYIN_TIKHUB_BASE_URL` | `https://api.tikhub.io` | TikHub API 根地址（管理页可覆盖） |
@@ -287,13 +288,14 @@ MCP/REST 结果里同时给出 `original_url`（抖音直链）、`download_url`
 | 文件 | 改动 |
 |------|------|
 | `frontend/src/pages/McpPlaza.tsx` | `iconMap` 增加 `download: Download` |
-| `frontend/src/App.tsx` | 懒加载并注册 `mcp-plaza/douyin` 与 `mcp-plaza/douyin/:jobId`（参考 `frontend/src/App.tsx:129`） |
+| `frontend/src/App.tsx` | 懒加载并注册 `mcp-plaza/douyin`、`mcp-plaza/douyin/:jobId`，以及公开路由 `share/douyin`（参考 `frontend/src/App.tsx:129`） |
 | `frontend/src/pages/McpDouyin.tsx` | 任务列表 + 粘贴分享文案/直链对话框 + 进度轮询 + TikHub 配置面板 |
-| `frontend/src/pages/McpDouyinDetail.tsx` | 元数据、媒体网格、预览、复制下载地址、重试、删除 |
+| `frontend/src/pages/McpDouyinDetail.tsx` | 元数据、媒体网格、预览、复制下载地址、分享、重试、删除 |
+| `frontend/src/pages/McpDouyinShare.tsx` | 公开预览页：1 秒「抖音跨平台分享功能」标题后播放视频/音频或展示图片 |
 | `frontend/src/lib/api.ts` | 增加抖音下载相关方法（参考 MCP 小节 `frontend/src/lib/api.ts`） |
 | `frontend/src/pages/McpDocs.tsx` | 增加 Douyin 接入小节与 `douyin_*` 工具说明 |
 
-页面交互：列表展示封面缩略图、标题、作者、状态徽标、媒体数与创建时间，进行中任务额外展示阶段文案与百分比进度条；提交后进入详情页轮询 `stage/percent/message/downloaded_bytes`，以「解析中 → 下载中 → 完成」步骤条展示阶段，下载中展示「已下载 x / y」。媒体卡片默认不加载播放器，点击「预览」才按类型渲染视频/图片/音频，「复制地址」复制带令牌的完整公网 URL（`window.location.origin + download_url`）。
+页面交互：列表展示封面缩略图、标题、作者、状态徽标、媒体数与创建时间，进行中任务额外展示阶段文案与百分比进度条；提交后进入详情页轮询 `stage/percent/message/downloaded_bytes`，以「解析中 → 下载中 → 完成」步骤条展示阶段，下载中展示「已下载 x / y」。媒体卡片默认不加载播放器，点击「预览」才按类型渲染视频/图片/音频，「复制地址」复制带令牌的完整公网 URL（`window.location.origin + download_url），「分享」直接复制仅含令牌的公开预览链接 `/share/douyin?token=..`，页面再调公开接口 `/v1/douyin/share?token=..` 取回标题/类型/下载地址。公开预览页无需登录：进入先展示 1 秒「抖音跨平台分享功能」标题，再按 `kind` 渲染视频/音频/图片，移动端与微信内置浏览器自适应。
 
 设置区展示 TikHub 配置：Base URL 输入框、API Key 输入框（留空则不修改，不回显，已配置时占位提示）、配置状态徽标与来源（管理页/环境变量）、更新时间，提供「保存」与「清除」；保存后即时对后续解析生效，无需重启。
 
