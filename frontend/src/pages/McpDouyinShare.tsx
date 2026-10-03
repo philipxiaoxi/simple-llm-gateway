@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { copyText } from '../lib/utils'
+import { copyText, douyinShareText } from '../lib/utils'
 
 const SPLASH_MS = 1000
 
@@ -48,9 +48,10 @@ export function McpDouyinSharePage() {
   }, [])
 
   async function onShare() {
+    const link = window.location.href
     try {
-      await copyText(window.location.href)
-      notifyOk('链接已复制，可粘贴到微信打开')
+      await copyText(douyinShareText(link, { title: meta.data?.title, kind: meta.data?.kind }))
+      notifyOk('分享文案已复制，可粘贴到微信打开')
     } catch {
       notifyBad('复制失败，请手动复制地址栏链接')
     }
