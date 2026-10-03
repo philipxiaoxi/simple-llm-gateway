@@ -51,6 +51,13 @@ export function formatTime(value: string | null | undefined) {
   return parsed.local().format('YYYY-MM-DD HH:mm:ss')
 }
 
+export function elapsedSeconds(value: string | null | undefined, now = Date.now()) {
+  if (!value) return 0
+  const parsed = /[zZ]|[+-]\d{2}:\d{2}$/.test(value) ? dayjs(value) : dayjs.utc(value)
+  if (!parsed.isValid()) return 0
+  return Math.max(0, Math.floor((now - parsed.valueOf()) / 1000))
+}
+
 export function formatEmbeddedTimes(value: string) {
   return value.replace(ISO_TIME, (match) => formatTime(match))
 }

@@ -1051,6 +1051,34 @@ export const api = {
     request<{ token: string | null; url: string; site: McpSite }>(
       `/api/admin/mcp/sites/${encodeURIComponent(siteId)}/token`,
     ),
+  mcpDouyinJobs: (query: { q?: string; status?: string } = {}) => {
+    const params = new URLSearchParams()
+    if (query.q) params.set('q', query.q)
+    if (query.status) params.set('status', query.status)
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<DouyinJobList>(`/api/admin/mcp/douyin/jobs${suffix}`)
+  },
+  createMcpDouyinJob: (payload: { url?: string; share_text?: string; rehost?: boolean }) =>
+    request<DouyinJob>('/api/admin/mcp/douyin/jobs', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  mcpDouyinJob: (id: string) =>
+    request<DouyinJob>(`/api/admin/mcp/douyin/jobs/${encodeURIComponent(id)}`),
+  retryMcpDouyinJob: (id: string) =>
+    request<DouyinJob>(`/api/admin/mcp/douyin/jobs/${encodeURIComponent(id)}/retry`, {
+      method: 'POST',
+    }),
+  deleteMcpDouyinJob: (id: string) =>
+    request<void>(`/api/admin/mcp/douyin/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  mcpDouyinProvider: () => request<DouyinProviderStatus>('/api/admin/mcp/douyin/provider'),
+  saveMcpDouyinProvider: (payload: { base_url?: string; api_key?: string }) =>
+    request<DouyinProviderStatus>('/api/admin/mcp/douyin/provider', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  clearMcpDouyinProvider: () =>
+    request<DouyinProviderStatus>('/api/admin/mcp/douyin/provider', { method: 'DELETE' }),
   mcpDiagrams: (query: { q?: string; status?: string } = {}) => {
     const params = new URLSearchParams()
     if (query.q) params.set('q', query.q)
@@ -1379,6 +1407,65 @@ export type McpSite = {
 export type McpSiteList = { items: McpSite[]; total: number }
 
 export type McpSiteDeployResult = { site: McpSite; version: McpSiteVersion; preview_url: string }
+
+export type DouyinMedia = {
+  id: string
+  index_no: number
+  kind: string
+  status: string
+  content_type: string
+  size_bytes: number
+  width: number | null
+  height: number | null
+  duration_ms: number
+  original_url: string
+  filename: string
+  download_url: string | null
+  absolute_download_url: string | null
+  token: string | null
+  error_message: string | null
+  purged: boolean
+}
+
+export type DouyinJob = {
+  id: string
+  status: string
+  stage: string
+  percent: number
+  message: string
+  extractor: string
+  kind: string
+  aweme_id: string | null
+  title: string
+  author_name: string
+  author_id: string
+  cover_url: string
+  duration_ms: number
+  rehost: boolean
+  media_count: number
+  success_count: number
+  total_bytes: number
+  downloaded_bytes: number
+  expected_bytes: number
+  source_url: string
+  error_message: string | null
+  created_by: string
+  mcp_key_id: number | null
+  created_at: string | null
+  started_at: string | null
+  finished_at: string | null
+  media?: DouyinMedia[]
+}
+
+export type DouyinJobList = { items: DouyinJob[]; total: number }
+
+export type DouyinProviderStatus = {
+  base_url: string
+  configured: boolean
+  has_key: boolean
+  source: string
+  updated_at: string | null
+}
 
 export type McpDiagramSource = {
   slug: string
