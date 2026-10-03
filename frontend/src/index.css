@@ -135,8 +135,25 @@ body {
   animation: page-enter 0.12s ease-out;
 }
 
+@keyframes douyin-splash-sweep {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(420%);
+  }
+}
+
+.douyin-splash-sweep {
+  animation: douyin-splash-sweep 1.05s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page-enter {
+    animation: none;
+  }
+
+  .douyin-splash-sweep {
     animation: none;
   }
 }

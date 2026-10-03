@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Copy, Download, ExternalLink, Play, RefreshCw, Share2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { DouyinPlayer } from '../components/DouyinPlayer'
 import { Badge, Button, Card } from '../components/ui'
 import { api, type DouyinMedia } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
@@ -247,9 +248,7 @@ function MediaCard({
     <div className="overflow-hidden rounded-xl border border-line bg-panel">
       <div className="flex h-44 items-center justify-center bg-ink">
         {playable && previewing && media.kind === 'video' ? (
-          <video controls playsInline preload="none" src={url} className="h-full w-full bg-black object-contain">
-            <track kind="captions" />
-          </video>
+          <DouyinPlayer src={url || ''} autoPlay className="h-full w-full" />
         ) : playable && previewing && media.kind === 'image' ? (
           <img src={url} alt="" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
         ) : playable && previewing && media.kind === 'audio' ? (

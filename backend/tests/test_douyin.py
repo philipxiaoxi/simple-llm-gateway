@@ -167,6 +167,7 @@ def test_public_share_meta(
     assert body["id"] == media["id"]
     assert body["kind"] == "video"
     assert body["title"] == "测试作品"
+    assert "cover_url" in body
     assert body["download_url"].startswith(f"/v1/douyin/media/{media['id']}")
 
     assert client.get("/v1/douyin/share?token=bad").status_code == 401

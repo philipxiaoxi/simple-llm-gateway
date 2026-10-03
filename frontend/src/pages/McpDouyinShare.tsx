@@ -2,19 +2,48 @@ import { useQuery } from '@tanstack/react-query'
 import { Download, Share2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { DouyinPlayer } from '../components/DouyinPlayer'
 import { api } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { copyText, douyinShareText } from '../lib/utils'
 
-const SPLASH_MS = 1000
+const SPLASH_MS = 1100
+const SPLASH_FADE_MS = 320
 
-function Splash() {
+function Splash({ closing }: { closing: boolean }) {
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-ink px-6 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-signal to-fuchsia-500 text-2xl font-black text-white shadow-lg">
-        抖
+    <div
+      className={`fixed inset-0 z-50 overflow-hidden bg-ink transition-opacity duration-300 ${
+        closing ? 'pointer-events-none opacity-0' : 'opacity-100'
+      }`}
+    >
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-1/3 left-1/2 h-[75vmax] w-[75vmax] -translate-x-1/2 rounded-full bg-signal/10 blur-[130px]" />
+        <div className="absolute -bottom-1/4 right-0 h-[45vmax] w-[45vmax] translate-x-1/4 rounded-full bg-info/10 blur-[110px]" />
+        <div className="absolute inset-0 opacity-[0.5] [background-image:linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(60%_50%_at_50%_45%,black,transparent)]" />
       </div>
-      <h1 className="text-xl font-semibold text-paper">抖音跨平台分享功能</h1>
+
+      <div className="relative flex h-full flex-col items-center justify-center gap-7 px-8 text-center">
+        <div className="relative isolate">
+          <div className="absolute -inset-3 rounded-[32px] bg-gradient-to-tr from-signal/40 via-fuchsia-400/30 to-info/40 opacity-70 blur-xl" />
+          <div className="relative flex h-20 w-20 items-center justify-center rounded-[24px] border border-white/10 bg-gradient-to-br from-[#1c2331] to-[#0d1117] shadow-2xl shadow-black/50">
+            <span className="bg-gradient-to-br from-paper via-paper to-mist bg-clip-text text-[2rem] font-black tracking-tighter text-transparent">
+              抖
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <h1 className="text-2xl font-semibold tracking-tight text-paper">抖音跨平台分享功能</h1>
+          <p className="text-[0.7rem] font-medium uppercase tracking-[0.42em] text-mist">
+            Douyin · Cross Platform
+          </p>
+        </div>
+
+        <div className="h-[3px] w-44 overflow-hidden rounded-full bg-white/[0.06]">
+          <div className="douyin-splash-sweep h-full w-1/3 rounded-full bg-gradient-to-r from-transparent via-signal to-transparent" />
+        </div>
+      </div>
     </div>
   )
 }
@@ -34,6 +63,7 @@ export function McpDouyinSharePage() {
   const [params] = useSearchParams()
   const token = params.get('token') || ''
   const [showSplash, setShowSplash] = useState(true)
+  const [splashClosing, setSplashClosing] = useState(false)
 
   const meta = useQuery({
     queryKey: ['douyin-share', token],
@@ -43,8 +73,12 @@ export function McpDouyinSharePage() {
   })
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setShowSplash(false), SPLASH_MS)
-    return () => window.clearTimeout(timer)
+    const fade = window.setTimeout(() => setSplashClosing(true), SPLASH_MS)
+    const done = window.setTimeout(() => setShowSplash(false), SPLASH_MS + SPLASH_FADE_MS)
+    return () => {
+      window.clearTimeout(fade)
+      window.clearTimeout(done)
+    }
   }, [])
 
   async function onShare() {
@@ -57,7 +91,7 @@ export function McpDouyinSharePage() {
     }
   }
 
-  if (showSplash) return <Splash />
+  if (showSplash) return <Splash closing={splashClosing} />
 
   if (!token) return <Notice title="链接无效或已过期" desc="请向分享者重新获取预览链接。" />
   if (meta.isLoading) {
@@ -103,9 +137,7 @@ export function McpDouyinSharePage() {
             <track kind="captions" />
           </audio>
         ) : (
-          <video controls autoPlay playsInline src={src} className="max-h-full max-w-full object-contain">
-            <track kind="captions" />
-          </video>
+          <DouyinPlayer src={src} poster={data.cover_url} autoPlay className="h-full w-full" />
         )}
       </div>
 
