@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Copy, Download, ExternalLink, Play, RefreshCw, Trash2 } from 'lucide-react'
+import { Copy, Download, ExternalLink, Play, RefreshCw, Share2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge, Button, Card } from '../components/ui'
@@ -225,6 +225,16 @@ function MediaCard({ media }: { media: DouyinMedia }) {
     }
   }
 
+  async function onShare() {
+    const link = `${window.location.origin}/share/douyin?token=${encodeURIComponent(media.token || '')}`
+    try {
+      await copyText(link)
+      notifyOk('分享链接已复制，可在微信中打开')
+    } catch {
+      notifyBad('复制失败')
+    }
+  }
+
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-panel">
       <div className="flex h-44 items-center justify-center bg-ink">
@@ -271,6 +281,11 @@ function MediaCard({ media }: { media: DouyinMedia }) {
           {url ? (
             <Button type="button" variant="line" className="min-h-9 px-2 py-1 text-xs md:min-h-8" onClick={onCopy}>
               <Copy size={14} /> 复制地址
+            </Button>
+          ) : null}
+          {url ? (
+            <Button type="button" variant="line" className="min-h-9 px-2 py-1 text-xs md:min-h-8" onClick={onShare}>
+              <Share2 size={14} /> 分享
             </Button>
           ) : null}
           {url ? (

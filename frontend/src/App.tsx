@@ -62,6 +62,9 @@ const McpDouyinPage = lazy(() => import('./pages/McpDouyin').then((m) => ({ defa
 const McpDouyinDetailPage = lazy(() =>
   import('./pages/McpDouyinDetail').then((m) => ({ default: m.McpDouyinDetailPage })),
 )
+const McpDouyinSharePage = lazy(() =>
+  import('./pages/McpDouyinShare').then((m) => ({ default: m.McpDouyinSharePage })),
+)
 const McpDiagramsPage = lazy(() =>
   import('./pages/McpDiagrams').then((m) => ({ default: m.McpDiagramsPage })),
 )
@@ -106,6 +109,7 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/share" element={<SharePage />} />
             <Route path="/share/leaderboard" element={<PublicLeaderboardPage />} />
+            <Route path="/share/douyin" element={<McpDouyinSharePage />} />
             <Route path="/voice/join" element={<VoiceJoinPage />} />
             <Route path="/voice/send/:roomId" element={<VoiceSendPage />} />
             <Route

@@ -140,6 +140,39 @@ def test_admin_parse_download_and_serve(
     assert no_token.status_code == 401
 
 
+def test_public_share_meta(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "app.capabilities.douyin.jobs.build_extractor",
+        fake_extractor([ExtractedMedia(kind="video", url="https://v3.douyinvod.com/share.mp4")]),
+    )
+    install_downloader(monkeypatch)
+
+    created = admin_create(client, auth_headers, {"share_text": SAMPLE_SHARE})
+    job_id = created.json()["id"]
+    detail = client.get(f"/api/admin/mcp/douyin/jobs/{job_id}", headers=auth_headers).json()
+    media = detail["media"][0]
+    token = media["token"]
+    assert token
+
+    # 公开接口无需登录，且令牌自包含 media_id
+    from app.capabilities.douyin.tokens import media_id_from_token
+
+    assert media_id_from_token(token) == media["id"]
+
+    meta = client.get(f"/v1/douyin/share?token={token}")
+    assert meta.status_code == 200, meta.text
+    body = meta.json()
+    assert body["id"] == media["id"]
+    assert body["kind"] == "video"
+    assert body["title"] == "测试作品"
+    assert body["download_url"].startswith(f"/v1/douyin/media/{media['id']}")
+
+    assert client.get("/v1/douyin/share?token=bad").status_code == 401
+    assert client.get("/v1/douyin/share").status_code == 401
+
+
 def test_admin_parse_gallery(client: TestClient, auth_headers: dict[str, str], monkeypatch) -> None:
     media = [
         ExtractedMedia(kind="image", url="https://p3.douyinpic.com/1.jpeg"),

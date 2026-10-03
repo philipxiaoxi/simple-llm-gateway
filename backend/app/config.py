@@ -131,7 +131,8 @@ class Settings(BaseSettings):
     douyin_mcp_max_wait_seconds: int = 45
     douyin_max_redirects: int = 5
     douyin_download_token_ttl_seconds: int = 3600
-    douyin_retention_days: int = 7
+    # 0 表示永久保留，不做自动清理
+    douyin_retention_days: int = 0
     douyin_max_concurrent_per_key: int = 2
     douyin_user_agent: str = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "

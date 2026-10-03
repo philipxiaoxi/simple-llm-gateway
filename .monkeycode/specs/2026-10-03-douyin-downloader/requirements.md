@@ -126,19 +126,32 @@
 6. THE 页面 SHALL 在 PC 与移动端均可完成解析、查看、复制与删除；PC 保持信息密度，移动端避免控件挤压换行。
 7. WHEN 管理员打开设置区, THE 页面 SHALL 展示 TikHub 配置状态（Base URL、是否已配置 Key、来源、更新时间），并提供保存与清除入口。
 8. WHEN 管理员查看任务详情, THE 页面 SHALL 展示该任务实际使用的提取器名称。
+9. WHEN 管理员点击媒体项的“分享”, THE 页面 SHALL 直接复制仅含签名令牌的公开预览链接，供用户在微信等外部应用中打开观看。
 
-### Requirement 8: 保留清理与生命周期
+### Requirement 8: 公开预览页
+
+**User Story:** AS 分享接收者, I WANT 直接打开链接就能观看视频, SO THAT 无需登录平台、无需安装应用。
+
+#### Acceptance Criteria
+
+1. THE 系统 SHALL 提供无需管理员登录的公开预览页 `/share/douyin?token=...`，页面仅凭签名令牌调用公开接口 `/v1/douyin/share?token=...` 获取标题、媒体类型与下载地址，不在链接中携带其他信息。
+2. WHEN 打开公开预览页, THE 页面 SHALL 先展示 1 秒的「抖音跨平台分享功能」标题画面，随后进入播放器。
+3. WHEN 媒体为视频或音频, THE 页面 SHALL 以内嵌播放器播放；WHEN 为图片, THE 页面 SHALL 展示图片。
+4. IF `media_id` 或 `token` 缺失, THE 页面 SHALL 提示链接无效或已过期。
+5. THE 公开预览页 SHALL 在移动端（含微信内置浏览器）自适应，并提供「直接打开 / 下载」入口。
+
+### Requirement 9: 保留清理与生命周期
 
 **User Story:** AS 平台管理员, I WANT 媒体按策略自动清理, SO THAT 磁盘不会被历史文件占满。
 
 #### Acceptance Criteria
 
-1. THE 系统 SHALL 按保留天数清理超过期限的媒体文件，并保留任务记录。
+1. WHILE 配置了正的保留天数, THE 系统 SHALL 按保留天数清理超过期限的媒体文件，并保留任务记录；默认保留天数为 `0`，即永久保留、不自动清理。
 2. THE 系统 SHALL 对已清理的媒体标记为已清理，使下载返回 410 而不是 404。
 3. WHEN 管理员删除任务, THE 系统 SHALL 同时删除媒体文件与媒体记录。
 4. THE 系统 SHALL 在进程启动时清理上次异常退出遗留的临时文件。
 
-### Requirement 9: TikHub 解析适配
+### Requirement 10: TikHub 解析适配
 
 **User Story:** AS 平台管理员, I WANT 解析固定走 TikHub 托管 API, SO THAT 无需本地依赖即可稳定解析抖音作品。
 
@@ -150,7 +163,7 @@
 4. THE 系统 SHALL 通过环境变量控制 TikHub 超时、大小上限、保留天数与下载令牌有效期。
 5. IF 抖音以 WAF/签名拦截，THE 系统 SHALL 通过 TikHub 上游错误返回 `upstream_error` 并附摘要。
 
-### Requirement 10: TikHub 解析 API 配置
+### Requirement 11: TikHub 解析 API 配置
 
 **User Story:** AS 平台管理员, I WANT 在管理页配置 TikHub 托管解析服务, SO THAT 无需本地依赖即可稳定解析抖音作品。
 
