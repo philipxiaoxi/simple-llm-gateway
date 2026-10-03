@@ -166,6 +166,7 @@ def share_meta(token: str | None = Query(default=None), db: Session = Depends(ge
         "id": media.id,
         "kind": media.kind,
         "title": (job.title if job else "") or "",
+        "cover_url": (job.cover_url if job else "") or "",
         "filename": media.filename,
         "content_type": media.content_type,
         "size_bytes": media.size_bytes,

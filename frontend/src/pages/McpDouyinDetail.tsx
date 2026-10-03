@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Copy, Download, ExternalLink, Play, RefreshCw, Share2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { DouyinPlayer } from '../components/DouyinPlayer'
 import { Badge, Button, Card } from '../components/ui'
 import { api, type DouyinMedia } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { copyText, elapsedSeconds, errorMessage, formatBytes, formatTime } from '../lib/utils'
+import { copyText, douyinShareText, elapsedSeconds, errorMessage, formatBytes, formatTime } from '../lib/utils'
 
 const STATUS: Record<string, { label: string; tone: 'ok' | 'bad' | 'warn' | 'mist' | 'info' }> = {
   queued: { label: '排队中', tone: 'mist' },
@@ -188,7 +189,7 @@ export function McpDouyinDetailPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {media.map((item) => (
-          <MediaCard key={item.id} media={item} />
+          <MediaCard key={item.id} media={item} title={job.title || job.aweme_id} kind={job.kind} />
         ))}
       </div>
     </div>
@@ -210,7 +211,15 @@ function mediaUrl(media: DouyinMedia): string | undefined {
   return `${window.location.origin}${media.download_url}`
 }
 
-function MediaCard({ media }: { media: DouyinMedia }) {
+function MediaCard({
+  media,
+  title,
+  kind,
+}: {
+  media: DouyinMedia
+  title?: string | null
+  kind?: string | null
+}) {
   const [previewing, setPreviewing] = useState(false)
   const url = mediaUrl(media)
   const playable = media.status === 'ready' && Boolean(url)
@@ -228,8 +237,8 @@ function MediaCard({ media }: { media: DouyinMedia }) {
   async function onShare() {
     const link = `${window.location.origin}/share/douyin?token=${encodeURIComponent(media.token || '')}`
     try {
-      await copyText(link)
-      notifyOk('分享链接已复制，可在微信中打开')
+      await copyText(douyinShareText(link, { title, kind }))
+      notifyOk('分享文案已复制，可在微信中打开')
     } catch {
       notifyBad('复制失败')
     }
@@ -239,9 +248,7 @@ function MediaCard({ media }: { media: DouyinMedia }) {
     <div className="overflow-hidden rounded-xl border border-line bg-panel">
       <div className="flex h-44 items-center justify-center bg-ink">
         {playable && previewing && media.kind === 'video' ? (
-          <video controls playsInline preload="none" src={url} className="h-full w-full bg-black object-contain">
-            <track kind="captions" />
-          </video>
+          <DouyinPlayer src={url || ''} autoPlay className="h-full w-full" />
         ) : playable && previewing && media.kind === 'image' ? (
           <img src={url} alt="" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
         ) : playable && previewing && media.kind === 'audio' ? (

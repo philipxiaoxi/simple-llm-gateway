@@ -44,7 +44,7 @@ function FilePicker({
       event.target.value = ''
     }} />
     <input ref={dirRef} type="file" className="hidden" multiple // @ts-expect-error webkitdirectory is not in the React type yet
-      webkitdirectory="" directory="" onChange={(event) => {
+      webkitdirectory="" onChange={(event) => {
         onPicked(Array.from(event.target.files ?? []))
         event.target.value = ''
       }} />
@@ -146,7 +146,7 @@ export function SkillsPage() {
     queryFn: () => api.skills({ q: keyword, category: category === '全部' ? '' : category }),
   })
   const items = data?.items ?? []
-  const categories = data?.categories ?? []
+  const categories = useMemo(() => data?.categories ?? [], [data])
   const categoryNames = useMemo(
     () => categories.filter((item) => item.name !== '全部').map((item) => item.name),
     [categories],

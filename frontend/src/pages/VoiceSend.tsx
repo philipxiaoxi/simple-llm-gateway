@@ -6,7 +6,7 @@ import { notifyBad, notifyOk } from '../lib/toast'
 import { cn } from '../lib/utils'
 import { createVoiceRecorder } from '../lib/voiceAudio'
 import type { VoiceRecorder } from '../lib/voiceAudio'
-import { getVoiceClientName, getVoiceClientUid, loadVoiceSession } from './VoiceJoin'
+import { getVoiceClientName, getVoiceClientUid, loadVoiceSession } from '../lib/voiceSession'
 
 type Sentence = {
   segId: string
@@ -51,6 +51,7 @@ export function VoiceSendPage() {
   const heartbeatRef = useRef<number | null>(null)
   const closedByUsRef = useRef(false)
   const listRef = useRef<HTMLDivElement | null>(null)
+  const stopRecordingRef = useRef<(discard: boolean) => void>(() => {})
 
   const token = useMemo(() => loadVoiceSession(roomId), [roomId])
 
@@ -102,7 +103,7 @@ export function VoiceSendPage() {
       if (heartbeatRef.current) window.clearInterval(heartbeatRef.current)
       heartbeatRef.current = null
       setConnection('offline')
-      stopRecording(false)
+      stopRecordingRef.current(false)
       if (closedByUsRef.current) return
       // 指数退避重连
       const attempt = (reconnectRef.current += 1)
@@ -111,7 +112,7 @@ export function VoiceSendPage() {
     }
 
     socket.onerror = () => setConnection('offline')
-  }, [roomId, token, send])
+  }, [roomId, token])
 
   const handleMessageRef = useRef<(message: Record<string, unknown>) => void>(() => {})
 
@@ -310,6 +311,7 @@ export function VoiceSendPage() {
     cancelRef.current = false
     setCancelling(false)
   }
+  stopRecordingRef.current = stopRecording
 
   function handlePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
     if (connection !== 'online') {

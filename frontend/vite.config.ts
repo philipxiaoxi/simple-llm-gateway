@@ -72,7 +72,11 @@ export default defineConfig({
       output: {
         // 业务代码改版不失效的公共依赖 chunk
         codeSplitting: {
-          groups: [{ name: 'vendor', test: /[\\/]node_modules[\\/]/ }],
+          groups: [
+            // 播放器只在公开分享/详情页动态加载，单独成块避免混入常驻 vendor
+            { name: 'xgplayer', test: /[\\/]node_modules[\\/]xgplayer[\\/]/ },
+            { name: 'vendor', test: /[\\/]node_modules[\\/]/ },
+          ],
         },
       },
     },

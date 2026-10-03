@@ -1465,6 +1465,7 @@ export type DouyinShareMeta = {
   id: string
   kind: string
   title: string
+  cover_url: string
   filename: string
   content_type: string
   size_bytes: number

@@ -13,6 +13,15 @@ export function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
+export function douyinShareText(
+  url: string,
+  opts: { title?: string | null; kind?: string | null } = {},
+) {
+  const kindLabel = opts.kind === 'gallery' ? '图集' : '视频'
+  const title = (opts.title || '').trim() || '抖音作品'
+  return `【抖音${kindLabel}分享】${title}\n点此观看：${url}`
+}
+
 export async function copyText(text: string) {
   try {
     await navigator.clipboard.writeText(text)

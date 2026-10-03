@@ -880,6 +880,11 @@ function CustomModelDialog({
   const [modelId, setModelId] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
 
   async function save() {
     const cleaned = modelId.trim()
@@ -907,10 +912,10 @@ function CustomModelDialog({
         </p>
         <Field label="模型 ID">
           <Input
+            ref={inputRef}
             value={modelId}
             onChange={(event) => setModelId(event.target.value)}
             placeholder="embedding-3"
-            autoFocus
             onKeyDown={(event) => {
               if (event.key === 'Enter') void save()
             }}
