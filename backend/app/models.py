@@ -772,3 +772,83 @@ class SiteVersion(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class DouyinJob(Base):
+    """抖音视频/图集解析与转存任务。媒体文件落在 DOUYIN_MEDIA_PATH。"""
+
+    __tablename__ = "douyin_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mcp_key_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(16), default="admin", nullable=False)
+    raw_input: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    source_url: Mapped[str] = mapped_column(String(512), default="", nullable=False)
+    aweme_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    extractor: Mapped[str] = mapped_column(String(16), default="", nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), default="video", nullable=False)
+    title: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    author_name: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    author_id: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    cover_url: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    rehost: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True, nullable=False)
+    stage: Mapped[str] = mapped_column(String(16), default="resolving", nullable=False)
+    percent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    message: Mapped[str] = mapped_column(String(256), default="排队中", nullable=False)
+    media_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    success_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    downloaded_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    expected_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    media: Mapped[list[DouyinMedia]] = relationship(
+        back_populates="job", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class DouyinMedia(Base):
+    """抖音作品里的单个可下载媒体项。"""
+
+    __tablename__ = "douyin_media"
+    __table_args__ = (UniqueConstraint("job_id", "index_no"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("douyin_jobs.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    index_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), default="video", nullable=False)
+    remote_url: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
+    filename: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    content_type: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    purged: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+
+    job: Mapped[DouyinJob] = relationship(back_populates="media")
+
+
+class DouyinSettings(Base):
+    """抖音下载的全局单例设置（TikHub 托管解析 API）。"""
+
+    __tablename__ = "douyin_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # TikHub 托管解析 API：base_url 明文，api_key 加密（Fernet，APP_SECRET_KEY 派生密钥）
+    tikhub_base_url: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    tikhub_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tikhub_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

@@ -29,6 +29,7 @@ from app.routers import (
     admin_mcp_catalog,
     admin_mcp_diagrams,
     admin_mcp_docparse,
+    admin_mcp_douyin,
     admin_mcp_keys,
     admin_mcp_knowledge,
     admin_mcp_knowledge_jobs,
@@ -38,6 +39,7 @@ from app.routers import (
     admin_tools,
     capabilities_public,
     diagrams_public,
+    douyin_public,
     health,
     local_agent,
     oauth,
@@ -53,6 +55,7 @@ from app.services.jobs import start_job_loops
 from app.services.knowledge_jobs import reconcile_stuck_jobs as reconcile_stuck_knowledge_jobs
 from app.services.knowledge_jobs import start_knowledge_job_workers
 from app.services.docparse_retention import retention_loop as docparse_retention_loop
+from app.services.douyin_retention import retention_loop as douyin_retention_loop
 from app.services.site_retention import retention_loop as site_retention_loop
 from app.services.knowledge_retention import retention_loop as knowledge_retention_loop
 from app.services.voice_retention import voice_cleanup_loop
@@ -107,6 +110,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         from app.capabilities.site.sites import reconcile_stuck as reconcile_stuck_site_versions
 
         reconcile_stuck_site_versions(session)
+        from app.capabilities.douyin.jobs import reconcile_stuck as reconcile_stuck_douyin_jobs
+
+        reconcile_stuck_douyin_jobs(session)
         session.commit()
     finally:
         session.close()
@@ -124,6 +130,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         background_tasks.append(asyncio.create_task(knowledge_retention_loop()))
         background_tasks.append(asyncio.create_task(docparse_retention_loop()))
         background_tasks.append(asyncio.create_task(site_retention_loop()))
+        background_tasks.append(asyncio.create_task(douyin_retention_loop()))
         try:
             yield
         finally:
@@ -166,6 +173,7 @@ app.include_router(admin_mcp_keys.router)
 app.include_router(admin_mcp_catalog.router)
 app.include_router(admin_mcp_docparse.router)
 app.include_router(admin_mcp_sites.router)
+app.include_router(admin_mcp_douyin.router)
 app.include_router(admin_mcp_diagrams.router)
 app.include_router(admin_mcp_knowledge.router)
 app.include_router(admin_mcp_knowledge_jobs.router)
@@ -176,6 +184,7 @@ app.include_router(proxy.router)
 app.include_router(share.router)
 app.include_router(sites_public.router)
 app.include_router(sites_public.hosting_router)
+app.include_router(douyin_public.router)
 app.include_router(diagrams_public.router)
 app.include_router(voice_rooms.admin_router)
 app.include_router(voice_rooms.public_router)

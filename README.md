@@ -27,6 +27,7 @@
 - **网关代理**: 可将受限网络中的固定上游地址安全地反向接入 Gateway
 - **Skills 仓库**: 上传符合 `SKILL.md` 规范的目录 / zip / tar，按分类浏览、编辑元数据并下载
 - **MCP 广场**: 独立 MCP Key、能力白名单、知识库（文本分块 + 向量/全文检索），REST `/v1/capabilities` 与 MCP `/mcp` 双协议
+- **抖音下载**: 解析抖音分享文案/直链，转存视频与图集并返回稳定下载地址；解析器默认 yt-dlp，依赖可在管理页安装/更新/卸载
 - **手机语音输入**: 手机按住说话 → 阿里云实时识别边说边出字 → AI 纠错原地替换 → 自动填进电脑输入框，全链路日志可查
 
 ## 环境要求
@@ -141,11 +142,14 @@ curl -s https://你的站/v1/capabilities/knowledge/search \
 # tools: knowledge_list, knowledge_search
 #        docparse_convert, docparse_job, docparse_result
 #        site_deploy, site_list, site_status, site_rollback, site_delete, site_access
+#        douyin_parse, douyin_job, douyin_result, douyin_list
 ```
 
 文档转换在 MCP 广场「文档转 Markdown」页上传预览。MCP Key 勾选 `docparse` 后，可走 REST `POST /v1/capabilities/docparse/jobs`（multipart 字段 `file`）或 MCP 工具 `docparse_convert`。Docker 部署随镜像安装 `markitdown`，文件落在数据卷 `/data/docparse`。旧版 `.doc/.xls/.ppt` 需要镜像外另行提供 LibreOffice。
 
 站点部署在 MCP 广场「站点部署」页使用：上传前端构建产物 `.zip`，系统安全解包为不可变版本并生成 `/sites/{slug}/` 预览地址，支持一键回滚与访问令牌保护。slug 必须语义化（如 `spending-report`、`hello-site`），不要用 `site` / `site-2` / `demo`；首次部署和更新同一地址都要传同一个 slug，`name` 只是显示名。重复内容按归一去重摘要识别并复用版本。管理端与 REST（`POST /v1/sites`）为异步部署，返回 `unpacking` 状态后轮询版本接口；MCP Key 勾选 `site` 后可用 `site_deploy`、`site_list`、`site_status`、`site_rollback`、`site_delete`、`site_access`。文件落在数据卷 `/data/sites`，配置项见 `.env` 的 `SITE_*`。
+
+抖音下载在 MCP 广场「抖音视频下载」页使用：粘贴分享文案或直链（如 `https://v.douyin.com/xxxx/`），系统解析作品并把视频/图集转存到数据卷，生成 `/v1/douyin/media/{media_id}` 稳定下载地址（带签名令牌，可直接分享）。解析统一走 TikHub 托管解析 API（同页「TikHub 解析 API」区填 Base URL 与 API Key，Key 加密存储；也可用环境变量 `DOUYIN_TIKHUB_BASE_URL` / `DOUYIN_TIKHUB_API_KEY` 兜底）。抖音对服务端请求有 WAF/签名拦截，平台侧反爬由 TikHub 处理，本地不再安装任何解析依赖。MCP Key 勾选 `douyin` 后可用工具 `douyin_parse`、`douyin_job`、`douyin_result`、`douyin_list`，REST 前缀为 `/v1/douyin`。文件落在数据卷 `/data/douyin`，配置项见 `.env` 的 `DOUYIN_*`。仅限个人合规留存，请自行确认作品使用授权。
 
 托管会改写 HTML/CSS 里以 `/` 开头的根绝对资源路径（如 Vite 默认产物的 `/assets/index-*.js`），并在 `<head>` 注入 `<base>`，因此 `base: '/'` 的构建产物无需改动即可预览；`base: './'` 同样兼容。平台 Service Worker 的导航兜底已排除 `/sites/`，已安装 PWA 的浏览器不会把预览地址劫持成管理端外壳。
 

@@ -256,6 +256,8 @@ def _ensure_columns(engine: Engine) -> None:
         if skill_columns and "category" in skill_columns:
             connection.execute(text("UPDATE skills SET category = substr(category, 1, 64) WHERE length(category) > 64"))
         _ensure_site_diagram_columns(connection)
+        _ensure_douyin_columns(connection)
+        _ensure_douyin_job_columns(connection)
         _ensure_api_key_accounts(connection)
         _backfill_account_model_prefixes(connection)
 
@@ -275,6 +277,36 @@ def _ensure_site_diagram_columns(connection) -> None:  # type: ignore[no-untyped
     if site_columns:
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_sites_origin_key_created ON sites (origin, mcp_key_id, created_at)")
+        )
+
+
+def _ensure_douyin_columns(connection) -> None:  # type: ignore[no-untyped-def]
+    """douyin_settings 增量列：TikHub 托管解析 API 配置。"""
+    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(douyin_settings)"))}
+    if not columns:
+        return
+    if "tikhub_base_url" not in columns:
+        connection.execute(
+            text("ALTER TABLE douyin_settings ADD COLUMN tikhub_base_url VARCHAR(256) DEFAULT '' NOT NULL")
+        )
+    if "tikhub_api_key_encrypted" not in columns:
+        connection.execute(text("ALTER TABLE douyin_settings ADD COLUMN tikhub_api_key_encrypted TEXT"))
+    if "tikhub_updated_at" not in columns:
+        connection.execute(text("ALTER TABLE douyin_settings ADD COLUMN tikhub_updated_at DATETIME"))
+
+
+def _ensure_douyin_job_columns(connection) -> None:  # type: ignore[no-untyped-def]
+    """douyin_jobs 增量列：下载进度字节数。"""
+    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(douyin_jobs)"))}
+    if not columns:
+        return
+    if "downloaded_bytes" not in columns:
+        connection.execute(
+            text("ALTER TABLE douyin_jobs ADD COLUMN downloaded_bytes INTEGER DEFAULT 0 NOT NULL")
+        )
+    if "expected_bytes" not in columns:
+        connection.execute(
+            text("ALTER TABLE douyin_jobs ADD COLUMN expected_bytes INTEGER DEFAULT 0 NOT NULL")
         )
 
 

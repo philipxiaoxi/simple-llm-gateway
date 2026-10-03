@@ -88,6 +88,10 @@ def ensure_defaults() -> None:
         from app.capabilities.site.provider import SiteProvider
 
         register(SiteProvider())
+    if "douyin" not in _providers:
+        from app.capabilities.douyin.provider import DouyinProvider
+
+        register(DouyinProvider())
     if "diagram" not in _providers:
         from app.config import get_settings
 

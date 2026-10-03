@@ -122,6 +122,25 @@ class Settings(BaseSettings):
     site_max_versions: int = 10
     site_retention_days: int = 30
     site_mcp_max_bytes: int = 10 * 1024 * 1024
+    # 抖音视频/图集下载（douyin 能力）
+    douyin_media_path: str = ""
+    douyin_max_media_bytes: int = 5 * 1024 * 1024 * 1024
+    douyin_max_item_bytes: int = 5 * 1024 * 1024 * 1024
+    douyin_max_items: int = 60
+    douyin_http_timeout_seconds: int = 20
+    douyin_mcp_max_wait_seconds: int = 45
+    douyin_max_redirects: int = 5
+    douyin_download_token_ttl_seconds: int = 3600
+    douyin_retention_days: int = 7
+    douyin_max_concurrent_per_key: int = 2
+    douyin_user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    )
+    # TikHub 托管解析 API：无本地依赖，平台侧反爬由服务方处理
+    douyin_tikhub_base_url: str = "https://api.tikhub.io"
+    douyin_tikhub_api_key: str = ""
+    douyin_tikhub_timeout_seconds: int = 60
     # Archify 图表生成（diagram 能力）
     diagram_enabled: bool = True
     archify_home: str = ""
@@ -191,6 +210,10 @@ class Settings(BaseSettings):
     @property
     def resolved_site_deploy_path(self) -> Path:
         return self._resolve_data_path(self.site_deploy_path, "sites")
+
+    @property
+    def resolved_douyin_media_path(self) -> Path:
+        return self._resolve_data_path(self.douyin_media_path, "douyin")
 
     @property
     def resolved_archify_home(self) -> Path:
