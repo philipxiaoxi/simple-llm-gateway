@@ -6,6 +6,7 @@ type PlayerInstance = {
   play: () => Promise<void> | null | undefined
   destroy: () => void
   on: (event: string, handler: (payload?: unknown) => void) => void
+  media?: HTMLMediaElement | null
   muted: boolean
 }
 
@@ -21,7 +22,7 @@ type Props = {
 export function DouyinPlayer({ src, poster, autoPlay = false, className }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const playerRef = useRef<PlayerInstance | null>(null)
-  const [showUnmute, setShowUnmute] = useState(false)
+  const [showSoundHint, setShowSoundHint] = useState(false)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
@@ -60,28 +61,47 @@ export function DouyinPlayer({ src, poster, autoPlay = false, className }: Props
     playerRef.current = player
 
     const play = () => {
-      const result = playerRef.current?.play()
+      const result = playerRef.current?.media?.play() ?? playerRef.current?.play()
       if (result && typeof result.catch === 'function') {
         void result.catch(() => undefined)
       }
     }
 
-    // 自动播放（有声）被浏览器拦截：降级为静音播放并提示一键开声
+    // 直接操作媒体元素解锁声音，避免播放器内部状态回写
+    const unmute = () => {
+      const media = playerRef.current?.media
+      if (!media || !media.muted) return
+      media.muted = false
+      if (media.volume < 0.8) media.volume = 0.8
+      setShowSoundHint(false)
+    }
+
+    // 自动播放（有声）被浏览器拦截：降级为静音播放，并提示轻触开声
     player.on('autoplay_was_prevented', () => {
-      if (!alive || !player) return
-      player.muted = true
-      setShowUnmute(true)
+      const media = playerRef.current?.media
+      if (!alive || !media) return
+      media.muted = true
+      setShowSoundHint(true)
       play()
     })
 
-    // 用户主动点击播放时恢复声音
+    // 用户任何一次主动点按都视为交互手势：若静音则解锁声音（不改变播放/暂停）
+    const onGesture = () => {
+      if (alive) unmute()
+    }
+    host.addEventListener('pointerdown', onGesture, true)
+    host.addEventListener('touchstart', onGesture, true)
+
+    // 兜底：播放器自身的用户动作事件（点击播放/暂停）
     player.on('user_action', (payload) => {
-      if (!alive || !player) return
+      if (!alive) return
       const action = payload as UserAction | undefined
-      if (action?.action === 'switch_play_pause' && action.to === true && player.muted) {
-        player.muted = false
-        setShowUnmute(false)
-      }
+      if (action?.action === 'switch_play_pause' && action.to === true) unmute()
+    })
+
+    player.on('volumechange', () => {
+      if (!alive) return
+      if (playerRef.current?.media && !playerRef.current.media.muted) setShowSoundHint(false)
     })
 
     player.on('error', () => {
@@ -95,6 +115,8 @@ export function DouyinPlayer({ src, poster, autoPlay = false, className }: Props
 
     return () => {
       alive = false
+      host.removeEventListener('pointerdown', onGesture, true)
+      host.removeEventListener('touchstart', onGesture, true)
       document.removeEventListener('WeixinJSBridgeReady', onWeixinReady, false)
       try {
         player?.destroy()
@@ -105,12 +127,14 @@ export function DouyinPlayer({ src, poster, autoPlay = false, className }: Props
     }
   }, [src, poster, autoPlay])
 
-  function unmute() {
-    const player = playerRef.current
-    if (!player) return
-    player.muted = false
-    setShowUnmute(false)
-    void player.play()
+  function enableSound(event: React.MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation()
+    const media = playerRef.current?.media
+    if (!media) return
+    media.muted = false
+    if (media.volume < 0.8) media.volume = 0.8
+    void media.play().catch(() => undefined)
+    setShowSoundHint(false)
   }
 
   if (failed) {
@@ -132,12 +156,13 @@ export function DouyinPlayer({ src, poster, autoPlay = false, className }: Props
   return (
     <div className={className ? `relative ${className}` : 'relative'}>
       <div ref={hostRef} className="h-full w-full" />
-      {showUnmute ? (
+      {showSoundHint ? (
         <button
           type="button"
-          onClick={unmute}
-          className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/15 bg-black/55 px-4 py-2 text-xs font-medium text-paper backdrop-blur-md transition hover:border-signal/60 hover:text-signal"
+          onClick={enableSound}
+          className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full border border-white/15 bg-black/60 px-3 py-1 text-xs font-medium text-paper backdrop-blur-md transition hover:border-signal/60 hover:text-signal"
         >
+          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-signal" />
           点击开启声音
         </button>
       ) : null}
