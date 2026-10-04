@@ -131,3 +131,24 @@ Entries discovered by the Agent during task execution should follow this format:
   - 后续部署该站点一律使用原 slug：上传时表单带 `slug=site`，只产生新版本，不再新建站点
   - 不要用 `name` 字段（只改显示名，仍会新建站点）
   - 前端静态资源（app.js、echarts.min.js）被服务端设为 `immutable, max-age=31536000`，更新 JS 必须改文件名或加 `?v=` 版本参数，否则浏览器不拉新
+
+[SQLite 写事务绝不能跨网络 I/O]
+- Date: 2026-10-04
+- Context: 实现资讯收集的媒体转存 worker 时，登录接口突然 500
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - 症状：`sqlite3.OperationalError: database is locked`，出错语句是无关的 `UPDATE admins SET last_login_at=...`；同时 `/health` 也会卡住
+  - 根因：worker 一口气「查 pending → 逐个下载 → 逐个 flush」提交，第 1 项 flush 后的**写事务跨到了第 2 项的下载期间**。下载视频几十秒，写锁被占住
+  - WAL 与 `PRAGMA busy_timeout=10000`（见 `backend/app/db.py`）**救不了**这种占用：等待上限只有 10 秒
+  - 定式：**短读拿快照 → 结束事务 → 事务外做网络 I/O → 每项一次短事务写回**；参考 `app/info/collector.py` 的 `pending_media_snapshot` / `apply_media_result`
+  - 同理，调用上游前先 `db.rollback()` 结束当前事务，拿到响应后再 `db.get()` 取回 ORM 实例继续写
+
+[本机 Python 子进程无法写 %TEMP%]
+- Date: 2026-10-04
+- Context: 装依赖时 pip / ensurepip 反复失败，pytest 把临时目录落到了仓库里
+- Category: Environment Configuration
+- Instructions:
+  - 本机 PowerShell 能写 `C:\Users\philip\AppData\Local\Temp`，但**Python 进程建文件/建目录会 PermissionError**（listdir 正常，只有创建被拒），因此 `tempfile` 找不到可用临时目录
+  - 后果：`tempfile.gettempdir()` 回退成**当前工作目录**；pip 的解包/构建临时目录会落到仓库根（表现为一堆 `pip-metadata-*` / `pip-unpack-*` 目录，需清理）
+  - 本机跑 pytest 会在 `backend/` 下留 `pytest-of-philip/`，属正常回退产物，可直接删
+  - 绕过：给需要临时目录的命令显式指定一个**工作区内**的可写目录（`$env:TEMP` 指向工作区子目录），POSIX 侧无此问题

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, event, text
@@ -49,6 +50,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
     _ensure_api_keys_account_id_nullable(engine)
+    _ensure_info_items_source_nullable(engine)
     _ensure_request_logs_have_no_parent_fks(engine)
     _ensure_knowledge_fts(engine)
 
@@ -399,6 +401,92 @@ def _api_keys_account_id_not_null(engine: Engine) -> bool:
             if row[1] == "account_id":
                 return bool(row[3])
     return False
+
+
+def _info_items_source_id_not_null(engine: Engine) -> bool:
+    with engine.begin() as connection:
+        columns = list(connection.execute(text("PRAGMA table_info(info_items)")))
+    source = next((row for row in columns if row[1] == "source_id"), None)
+    return bool(source and source[3])
+
+
+def _ensure_info_items_source_nullable(engine: Engine) -> None:
+    """把 info_items.source_id 改成可空（删渠道默认保留内容，DB 侧 SET NULL）。
+
+    SQLite 不能直接改列约束，沿用 `_ensure_api_keys_account_id_nullable` 的重建表做法。
+    只在检测到旧的 NOT NULL 结构时才执行，全新库由 create_all 直接建出正确结构。
+    """
+    if not _info_items_source_id_not_null(engine):
+        return
+    raw_connection = engine.raw_connection()
+    try:
+        cursor = raw_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=OFF")
+        cursor.execute("BEGIN")
+        cursor.execute(
+            """
+            CREATE TABLE info_items_new (
+                id VARCHAR(36) NOT NULL PRIMARY KEY,
+                source_id VARCHAR(36),
+                external_id VARCHAR(64) NOT NULL,
+                kind VARCHAR(16) NOT NULL,
+                text TEXT NOT NULL,
+                excerpt VARCHAR(512) NOT NULL,
+                permalink VARCHAR(512) NOT NULL,
+                author_name VARCHAR(128) NOT NULL,
+                source_type VARCHAR(16) NOT NULL,
+                published_at DATETIME,
+                views INTEGER,
+                views_text VARCHAR(16),
+                reactions_total INTEGER,
+                reactions_json TEXT,
+                is_forwarded BOOLEAN NOT NULL,
+                link_preview_json TEXT,
+                media_count INTEGER NOT NULL,
+                cover_media_id VARCHAR(36),
+                cover_seed INTEGER NOT NULL,
+                status VARCHAR(16) NOT NULL,
+                is_favorite BOOLEAN NOT NULL,
+                is_hidden BOOLEAN NOT NULL,
+                collected_at DATETIME NOT NULL,
+                created_at DATETIME NOT NULL,
+                FOREIGN KEY(source_id) REFERENCES info_sources (id) ON DELETE SET NULL,
+                UNIQUE (source_id, external_id)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO info_items_new (
+                id, source_id, external_id, kind, text, excerpt, permalink, author_name, source_type,
+                published_at, views, views_text, reactions_total, reactions_json, is_forwarded,
+                link_preview_json, media_count, cover_media_id, cover_seed, status, is_favorite,
+                is_hidden, collected_at, created_at
+            )
+            SELECT
+                id, source_id, external_id, kind, text, excerpt, permalink, author_name, source_type,
+                published_at, views, views_text, reactions_total, reactions_json, is_forwarded,
+                link_preview_json, media_count, cover_media_id, cover_seed, status, is_favorite,
+                is_hidden, collected_at, created_at
+            FROM info_items
+            """
+        )
+        cursor.execute("DROP TABLE info_items")
+        cursor.execute("ALTER TABLE info_items_new RENAME TO info_items")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_info_items_source_id ON info_items (source_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_info_items_kind ON info_items (kind)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_info_items_published_at ON info_items (published_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_info_items_is_favorite ON info_items (is_favorite)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_info_items_is_hidden ON info_items (is_hidden)")
+        cursor.execute("COMMIT")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+    except Exception:
+        with contextlib.suppress(Exception):
+            raw_connection.rollback()
+        raise
+    finally:
+        raw_connection.close()
 
 
 def _ensure_api_keys_account_id_nullable(engine: Engine) -> None:

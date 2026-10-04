@@ -1,0 +1,278 @@
+{
+  "code": 200,
+  "request_id": "fixture",
+  "message": "Request successful. This request will incur a charge.",
+  "message_zh": "请求成功，本次请求将被计费。",
+  "support": "Discord: https://discord.gg/aMEAS8Xsvz",
+  "time": "2026-10-04 08:29:00",
+  "time_stamp": 1791127740,
+  "time_zone": "America/Los_Angeles",
+  "docs": "https://api.tikhub.io/#/Telegram-Web-API/fetch_channel_posts_api_v1_telegram_web_fetch_channel_posts_get",
+  "cache_message": "This response is cached and accessible via the URL below for 24 hours at no extra cost. The cache is for request tracing only — it doesn't affect the API's data freshness and won't be returned through the API again.",
+  "cache_message_zh": "本次响应已缓存，可通过下方 URL 直接查看，有效期 24 小时，访问缓存链接无额外费用。缓存仅用于请求溯源，不影响接口数据的时效性，也不会再次通过接口返回。",
+  "cache_url": "https://cache.tikhub.io/api/v1/cache/public/FIXTURE?sign=FIXTURE",
+  "router": "/api/v1/telegram/web/fetch_channel_posts",
+  "params": {
+    "channel": "durov",
+    "limit": "5",
+    "after": "0"
+  },
+  "data": {
+    "channel": "durov",
+    "channel_info": {
+      "username": "durov",
+      "title": "Pavel Durov",
+      "verified": true,
+      "description": "Founder of Telegram.",
+      "photo": "https://cdn4.telesco.pe/file/FIXTURE-1.jpg",
+      "subscribers": "10.5M",
+      "counters": {
+        "subscribers": "10.5M",
+        "photos": "102",
+        "videos": "46",
+        "links": "200"
+      }
+    },
+    "messages": [
+      {
+        "id": 548,
+        "channel": "durov",
+        "url": "https://t.me/durov/548",
+        "type": "text",
+        "date": "2026-09-11T16:04:02+00:00",
+        "text": "🤝 Telegram has become the sponsor of Codeforces — the largest competitive programming platform in the world. \n\n ⚡CodeForces organizes over 100 coding contests every year and has 4 million contestants signed up.\n\n🌱 Since 2010, I've supported Codeforces through the companies I started.\n\n🆙 But this year will be special. Its founder Mike wants to bring Codeforces to the next level — and we'll be happy to help him do that 🤝",
+        "text_html": "🤝 Telegram has become the sponsor of <a href=\"https://codeforces.com/blog/entry/156620\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">Codeforces</a> — the largest competitive programming platform in the world. <br><br> ⚡CodeForces organizes over <b>100</b> coding contests every year and has <b>4 million</b> contestants signed up.<br><br>🌱 Since 2010, I've supported Codeforces through the companies I started.<br><br>🆙 But this year will be special. Its founder Mike wants to bring Codeforces to the next level — and we'll be happy to help him do that 🤝",
+        "views": "2M",
+        "author": "Pavel Durov",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": {
+          "url": "https://codeforces.com/blog/entry/156620",
+          "site_name": "Codeforces",
+          "title": "Telegram Returns as Title Sponsor of Codeforces!",
+          "description": "Hi, Codeforces!"
+        },
+        "media": {
+          "photos": [],
+          "videos": [],
+          "has_unsupported": true
+        },
+        "reactions": [
+          {
+            "emoji": "⭐",
+            "count": "21.2K",
+            "paid": true
+          },
+          {
+            "emoji": "",
+            "count": "31.5K",
+            "paid": false
+          },
+          {
+            "emoji": "",
+            "count": "9.14K",
+            "paid": false
+          },
+          {
+            "emoji": "",
+            "count": "8.64K",
+            "paid": false
+          }
+        ]
+      },
+      {
+        "id": 547,
+        "channel": "durov",
+        "url": "https://t.me/durov/547",
+        "type": "text",
+        "date": "2026-09-06T17:40:39+00:00",
+        "text": "💸 In just one month, Telegram has awarded over $2,222,000 to some of the brightest minds on our planet.\n\n🎨 This week alone we distributed $222,000 among the winners of our two latest competitions — the Design Contest and the Digital Freedom Contest.\n\nOn top of that, over the past month we awarded prizes worth more than $2 million to the winners of the 2026 International Olympiads in Informatics and AI.\n\nWe're proud to support the best! 🎁",
+        "text_html": "💸 In just one month, Telegram has awarded over <b>$2,222,000</b> to some of the brightest minds on our planet.<br><br>🎨 This week alone we distributed <b>$222,000 </b>among the winners of our two latest competitions — the <a href=\"https://t.me/contest/460\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">Design Contest</a> and the <a href=\"https://t.me/contest/462\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">Digital Freedom Contest</a>.<br><br>On top of that, over the past month we awarded prizes <a href=\"https://t.me/transferintelligencecups/688\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">worth more</a> than <b>$2 million</b> to the winners of the 2026 International Olympiads in <a href=\"https://t.me/durov/542\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">Informatics</a> and <a href=\"https://t.me/durov/537\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">AI</a>.<br><br>We're proud to support the best! 🎁",
+        "views": "2.9M",
+        "author": "Pavel Durov",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": {
+          "url": "https://t.me/contest/460",
+          "site_name": "Telegram",
+          "title": "Telegram Contests",
+          "description": "🏆 Design Contest 2026, Round 2: Results\n\n😲 90% of eligible winners from Round 1 decided to continue making Telegram better and suggested a bunch of meaningful improvements to further polish the apps. \n\n🤲 Thank you all for your efforts – this steady pace and…"
+        },
+        "media": {
+          "photos": [],
+          "videos": [],
+          "has_unsupported": true
+        },
+        "reactions": [
+          {
+            "emoji": "⭐",
+            "count": "8.31K",
+            "paid": true
+          },
+          {
+            "emoji": "",
+            "count": "27K",
+            "paid": false
+          },
+          {
+            "emoji": "",
+            "count": "8.06K",
+            "paid": false
+          },
+          {
+            "emoji": "",
+            "count": "7.43K",
+            "paid": false
+          }
+        ]
+      },
+      {
+        "id": 546,
+        "channel": "durov",
+        "url": "https://t.me/durov/546",
+        "type": "video",
+        "date": "2026-08-31T16:30:15+00:00",
+        "text": "🏳️ Gram Wallet in Telegram is ready and is now accessible to a select group of users.\n\n🤩 We'll be gradually rolling it out to our billion+ users over the next couple of weeks.\n\n⚡️ Thanks to the validators who approved the smart contract that powers it, future upgrades of the wallet won't require painful migrations.\n\nThis is just one of the innovations we've built to make non-custodial wallets usable ✨",
+        "text_html": "🏳️ Gram Wallet in Telegram is ready and is now accessible to a select group of users.<br><br>🤩 We'll be gradually rolling it out to our billion+ users over the next couple of weeks.<br><br>⚡️ Thanks to the validators who approved the smart contract that powers it, future upgrades of the wallet won't require painful migrations.<br><br>This is just one of the innovations we've built to make non-custodial wallets usable ✨",
+        "views": "3.24M",
+        "author": "Pavel Durov",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": null,
+        "media": {
+          "photos": [],
+          "videos": [
+            {
+              "url": "https://cdn4.telesco.pe/file/FIXTURE-2.mp4",
+              "thumb": "https://cdn4.telesco.pe/file/FIXTURE-3.bin",
+              "duration": "0:20"
+            }
+          ],
+          "has_unsupported": true
+        },
+        "reactions": [
+          {
+            "emoji": "⭐",
+            "count": "35.6K",
+            "paid": true
+          },
+          {
+            "emoji": "",
+            "count": "26.9K",
+            "paid": false
+          },
+          {
+            "emoji": "",
+            "count": "8.75K",
+            "paid": false
+          },
+          {
+            "emoji": "",
+            "count": "7.09K",
+            "paid": false
+          }
+        ]
+      },
+      {
+        "id": 545,
+        "channel": "durov",
+        "url": "https://t.me/durov/545",
+        "type": "text",
+        "date": "2026-08-30T09:10:19+00:00",
+        "text": "A high-school student just made $20,000 from a Telegram Gift.\n\nJonathan He, an IOI gold medalist ranked #7 in the world, sold his Algorithm Cup — an NFT we gave to the top young coders this month — for 💎 15,000 Grams.\n\nHappy for him. It's a meaningful sum for someone still in school, and I suspect a small fraction of what he'll go on to build.\n\n20 years ago, $20K was enough for me to launch my first company. Within months, it had reached 1M users and raised $12M at a $60M valuation. 💸\n\nI hope some of this year's winners put their Grams to similar use! 📈",
+        "text_html": "A high-school student just made <b>$20,000</b> from a <b>Telegram Gift</b>.<br><br><a href=\"https://stats.ioinformatics.org/people/9089\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">Jonathan He</a>, an IOI gold medalist ranked <b>#7</b> in the world, sold his <a href=\"https://t.me/nft/algorithmcup-7\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">Algorithm Cup</a> — an NFT <a href=\"https://t.me/durov/540\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">we gave to the top young coders</a> this month — for 💎 <b>15,000 Grams</b>.<br><br>Happy for him. It's a meaningful sum for someone still in school, and I suspect a small fraction of what he'll go on to build.<br><br><b>20</b> years ago,<b> $20K</b> was enough for me to launch my first company. Within months, it had reached<b> 1M</b> users and raised <b>$12M</b> at a <b>$60M</b> valuation. 💸<br><br>I hope some of this year's winners put their Grams to similar use! 📈",
+        "views": "2.6M",
+        "author": "Pavel Durov",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": null,
+        "media": {
+          "photos": [],
+          "videos": [],
+          "has_unsupported": true
+        },
+        "reactions": [
+          {
+            "emoji": "⭐",
+            "count": "4.42K",
+            "paid": true
+          },
+          {
+            "emoji": "",
+            "count": "41.9K",
+            "paid": false
+          },
+          {
+            "emoji": "",
+            "count": "12.3K",
+            "paid": false
+          },
+          {
+            "emoji": "",
+            "count": "9.69K",
+            "paid": false
+          }
+        ]
+      },
+      {
+        "id": 544,
+        "channel": "durov",
+        "url": "https://t.me/durov/544",
+        "type": "text",
+        "date": "2026-08-24T21:21:51+00:00",
+        "text": "🚨 Two years ago, I was detained in Paris by police for 3 days — the longest they can hold someone before charging them.\n\nIn an unprecedented move, French authorities accused the head of a major platform of crimes committed by its users.\n\nThat investigation is still ongoing, although it makes less sense with each passing year. \n\nWhy?\n\nBecause we now have extensive evidence that Telegram was neither worse than other popular platforms at moderation, nor the worst at cooperating with authorities.\n\nSo why was Telegram singled out?\n\nOver the last two years, we have seen a pattern emerge in multiple countries: Telegram is quietly pressured to grant political favors — such as illegal censorship or surveillance. When we refuse, local media and “non-governmental” organizations launch orchestrated campaigns portraying Telegram as a cesspool of crime, from child pornography to terrorism.\n\nOur moderation is no worse than that of other major platforms. Yet these campaigns instill the idea that Telegram should be persecuted or restricted.\n\nSuddenly, officials start caring about crime and protecting children — but only on platforms that reject their secret political demands. Platforms that accept such deals get away with almost anything — including literally selling ads promoting child pornography.\n\nIs the French investigation against me political? It certainly fits the pattern we see elsewhere, mostly in authoritarian countries. And it definitely raises questions.\n\nIn time, this investigation may itself be investigated — especially now that Macron’s war against free speech is facing pushback. This month, France’s Constitutional Council struck down his social media ban for children under 15 on freedom-of-expression grounds.\n\nIn the end, freedom and truth will prevail ✊",
+        "text_html": "🚨 Two years ago, I was detained in Paris by police for 3 days — the longest they can hold someone before charging them.<br><br>In an unprecedented move, French authorities accused the head of a major platform of crimes committed by its users.<br><br>That investigation is still ongoing, although it makes less sense with each passing year. <br><br>Why?<br><br>Because we now have extensive evidence that Telegram was neither worse than other popular platforms at moderation, nor the worst at cooperating with authorities.<br><br>So why was Telegram singled out?<br><br>Over the last two years, we have seen a pattern emerge in multiple countries: Telegram is quietly pressured to grant political favors — such as illegal censorship or surveillance. When we refuse, local media and “non-governmental” organizations launch orchestrated campaigns portraying Telegram as a cesspool of crime, from child pornography to terrorism.<br><br><a href=\"https://telegram.org/safety\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">Our moderation</a> is no worse than that of other major platforms. Yet these campaigns instill the idea that Telegram should be persecuted or restricted.<br><br>Suddenly, officials start caring about crime and protecting children — but only on platforms that reject their secret political demands. Platforms that accept such deals get away with almost anything — including literally <a href=\"https://www.engadget.com/2231100/meta-apps-displayed-ads-that-contained-ai-generated-csam/\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">selling ads promoting</a> child pornography.<br><br>Is the French investigation against me political? It certainly <a href=\"https://t.me/durov/418\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">fits the pattern</a> we see elsewhere, mostly in authoritarian countries. And it definitely <a href=\"https://t.me/durov/451\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">raises questions</a>.<br><br>In time, this investigation may itself be investigated — especially now that Macron’s war against free speech is facing pushback. This month, France’s Constitutional Council <a href=\"https://www.france24.com/en/france/20260814-france-s-constitutional-authority-strikes-down-social-media-ban-for-under-15s\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">struck down</a> his social media ban for children under 15 on freedom-of-expression grounds.<br><br>In the end, freedom and truth will prevail ✊",
+        "views": "3.49M",
+        "author": "Pavel Durov",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": {
+          "url": "https://france24.com/en/france/20260814-france-s-constitutional-authority-strikes-down-social-media-ban-for-under-15s",
+          "site_name": "France 24",
+          "title": "France's top court blocks Macron's social media ban for under-15s",
+          "description": "France's constitutional council struck down a proposed ban on social media for children under 15 on Friday, citing freedom of expression. President Emmanuel Macron tasked Prime Minister Sébastien Lecornu…"
+        },
+        "media": {
+          "photos": [],
+          "videos": [],
+          "has_unsupported": true
+        },
+        "reactions": [
+          {
+            "emoji": "⭐",
+            "count": "15K",
+            "paid": true
+          },
+          {
+            "emoji": "",
+            "count": "39.9K",
+            "paid": false
+          },
+          {
+            "emoji": "",
+            "count": "16.4K",
+            "paid": false
+          },
+          {
+            "emoji": "",
+            "count": "11K",
+            "paid": false
+          }
+        ]
+      }
+    ],
+    "pagination": {
+      "before_cursor": 544,
+      "after_cursor": 548,
+      "has_more_before": true,
+      "count": 5,
+      "limit": 5,
+      "pages_fetched": 1
+    }
+  }
+}

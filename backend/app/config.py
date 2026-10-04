@@ -150,6 +150,28 @@ class Settings(BaseSettings):
     diagram_render_concurrency: int = 2
     diagram_max_source_bytes: int = 256 * 1024
     diagram_default_quality: str = "showcase"
+    # ---- 资讯收集（Telegram 等公开渠道 → 瀑布流浏览）----
+    # 媒体目录留空时与数据库同级（Docker 下即 /data/info，已被 ./data 卷覆盖）
+    info_media_path: str = ""
+    info_tick_seconds: int = 60
+    info_backfill_limit: int = 30
+    info_poll_limit: int = 20
+    info_max_concurrent_sources: int = 2
+    info_max_concurrent_downloads: int = 3
+    info_max_item_bytes: int = 200 * 1024 * 1024
+    info_max_media_per_item: int = 20
+    info_media_token_ttl_seconds: int = 43200
+    # 0 表示媒体永久保留，不做自动清理
+    info_retention_days: int = 0
+    info_http_timeout_seconds: int = 30
+    info_max_redirects: int = 5
+    info_user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    )
+    # TikHub 凭据兜底：优先读数据库里与抖音下载共用的加密配置
+    info_tikhub_base_url: str = ""
+    info_tikhub_api_key: str = ""
 
     @property
     def database_url(self) -> str:
@@ -215,6 +237,10 @@ class Settings(BaseSettings):
     @property
     def resolved_douyin_media_path(self) -> Path:
         return self._resolve_data_path(self.douyin_media_path, "douyin")
+
+    @property
+    def resolved_info_media_path(self) -> Path:
+        return self._resolve_data_path(self.info_media_path, "info")
 
     @property
     def resolved_archify_home(self) -> Path:

@@ -1289,6 +1289,61 @@ export const api = {
     const suffix = params.toString() ? `?${params}` : ''
     return request<McpCallLogList>(`/api/admin/mcp/calls${suffix}`)
   },
+
+  // ---- 资讯收集（独立功能，非 MCP 能力）----
+  infoSources: () => request<InfoSourceList>('/api/admin/info/sources'),
+  infoSourcePreview: (raw: string) =>
+    request<InfoSourcePreview>('/api/admin/info/sources/preview', {
+      method: 'POST',
+      body: JSON.stringify({ raw }),
+    }),
+  infoSourceCreate: (payload: {
+    raw: string
+    title?: string
+    poll_interval_seconds?: number
+    enabled?: boolean
+  }) =>
+    request<InfoSource>('/api/admin/info/sources', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  infoSourceUpdate: (
+    id: string,
+    payload: { title?: string; poll_interval_seconds?: number; enabled?: boolean },
+  ) =>
+    request<InfoSource>(`/api/admin/info/sources/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  infoSourceDelete: (id: string, purgeItems = false) =>
+    request<void>(
+      `/api/admin/info/sources/${encodeURIComponent(id)}${purgeItems ? '?purge_items=true' : ''}`,
+      { method: 'DELETE' },
+    ),
+  infoSourceCollect: (id: string) =>
+    request<InfoCollectResult>(`/api/admin/info/sources/${encodeURIComponent(id)}/collect`, {
+      method: 'POST',
+    }),
+  infoItems: (query: InfoItemQuery = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<InfoItemList>(`/api/admin/info/items${suffix}`)
+  },
+  infoItem: (id: string) => request<InfoItemDetail>(`/api/admin/info/items/${encodeURIComponent(id)}`),
+  infoItemFavorite: (id: string, favorite: boolean) =>
+    request<InfoItem>(`/api/admin/info/items/${encodeURIComponent(id)}/favorite`, {
+      method: 'POST',
+      body: JSON.stringify({ favorite }),
+    }),
+  infoItemHidden: (id: string, hidden: boolean) =>
+    request<InfoItem>(`/api/admin/info/items/${encodeURIComponent(id)}/hidden`, {
+      method: 'POST',
+      body: JSON.stringify({ hidden }),
+    }),
+  infoStats: () => request<InfoStats>('/api/admin/info/stats'),
 }
 
 export type DocParseJob = {
@@ -1986,4 +2041,156 @@ export type VoiceJoinResponse = {
   wsPath: string
   wsUrl: string
   room: { roomId: string; name: string; asrModel: string; maxRecordingSeconds: number; polishMode: VoicePolishMode }
+}
+
+// ---- 资讯收集（/api/admin/info/*，契约见 design.md）----
+
+export type InfoSource = {
+  id: string
+  kind: string
+  identifier: string
+  title: string
+  username: string
+  description: string
+  avatar_url: string
+  subscriber_count_text: string | null
+  enabled: boolean
+  poll_interval_seconds: number
+  cursor_after: number | null
+  last_polled_at: string | null
+  last_success_at: string | null
+  last_error: string | null
+  consecutive_failures: number
+  item_count: number
+  created_at: string
+}
+
+export type InfoProviderStatus = {
+  configured: boolean
+  has_key: boolean
+  source: string
+  base_url: string
+}
+
+export type InfoSourceList = {
+  sources: InfoSource[]
+  provider: InfoProviderStatus
+}
+
+export type InfoSourcePreview = {
+  identifier: string
+  title: string
+  username: string
+  description: string
+  avatar_url: string
+  subscriber_count_text: string | null
+  already_added: boolean
+}
+
+export type InfoCollectResult = {
+  source_id: string
+  fetched: number
+  created: number
+  skipped: number
+  error: string | null
+}
+
+export type InfoSourceRef = {
+  id: string
+  title: string
+  username: string
+  kind: string
+  avatar_url: string
+}
+
+export type InfoReaction = {
+  emoji: string
+  count: string
+  paid?: boolean
+}
+
+export type InfoLinkPreview = {
+  url?: string
+  site_name?: string
+  title?: string
+  description?: string
+}
+
+export type InfoCover = {
+  media_id: string
+  kind: string
+  url: string
+  width: number | null
+  height: number | null
+  duration_ms: number | null
+  // 视频条目的封面通常是 poster，后端额外给出可播放地址供桌面端 hover 预览
+  video_url?: string | null
+}
+
+export type InfoItem = {
+  id: string
+  // 渠道被删除但内容保留时后端返回 null
+  source: InfoSourceRef | null
+  kind: string
+  text: string
+  excerpt: string
+  permalink: string
+  author_name: string
+  published_at: string | null
+  views: number | null
+  views_text: string | null
+  reactions_total: number | null
+  reactions: InfoReaction[]
+  media_count: number
+  cover_seed: number
+  cover: InfoCover | null
+  // ready / media_pending / media_partial / failed
+  status: string
+  is_favorite: boolean
+  is_hidden: boolean
+  is_forwarded: boolean
+  link_preview: InfoLinkPreview | null
+  collected_at: string | null
+}
+
+export type InfoMedia = {
+  id: string
+  kind: string
+  index_no: number
+  // 尚未转存或已清理时为 null
+  url: string | null
+  width: number | null
+  height: number | null
+  duration_ms: number | null
+  status: string
+  error_message: string | null
+  poster_url?: string | null
+}
+
+export type InfoItemDetail = InfoItem & { media: InfoMedia[] }
+
+export type InfoItemList = {
+  items: InfoItem[]
+  next_cursor: string | null
+  total: number
+}
+
+export type InfoItemQuery = {
+  cursor?: string
+  limit?: number
+  source_id?: string
+  kind?: string
+  q?: string
+  favorite?: string | number
+  include_hidden?: string | number
+  /** 排序：desc = 最新优先（契约默认），asc = 最早优先 */
+  order?: 'desc' | 'asc'
+}
+
+export type InfoStats = {
+  source_count: number
+  item_count: number
+  media_bytes: number
+  last_collect_at: string | null
+  provider_configured: boolean
 }

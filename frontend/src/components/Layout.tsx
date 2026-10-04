@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, Mic, RadioTower, ServerCog, ShieldAlert, Sparkles, Store, Timer, Trophy, UserRoundPen, X } from 'lucide-react'
+import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, Mic, Newspaper, RadioTower, ServerCog, ShieldAlert, Sparkles, Store, Timer, Trophy, UserRoundPen, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
@@ -16,6 +16,7 @@ const links = [
   { to: '/skills', label: 'Skills', icon: Sparkles },
   { to: '/mcp-plaza', label: 'MCP 广场', icon: Store },
   { to: '/tools', label: '工具中心', icon: Download },
+  { to: '/info', label: '资讯收集', icon: Newspaper },
   { to: '/benchmark', label: '模型测速', icon: Gauge },
   { to: '/benchmark/history', label: '测速历史', icon: Activity },
   { to: '/leaderboard', label: '模型榜', icon: Trophy },
@@ -197,7 +198,18 @@ export function Layout() {
   const mainRef = useRef<HTMLElement>(null)
   useMobileSwipeDrawer(open, setOpen)
 
+  const previousPathRef = useRef<string | null>(null)
+
   useEffect(() => {
+    const previousPath = previousPathRef.current
+    previousPathRef.current = location.pathname
+    // 详情浮层是叠在列表之上的子路由（/info -> /info/:id）：打开或关闭它都不该把
+    // 瀑布流滚回顶部，否则用户每次看完一条都要重新找位置。
+    const isOverlayTransition =
+      (previousPath === '/info' && location.pathname.startsWith('/info/')) ||
+      (Boolean(previousPath?.startsWith('/info/')) && location.pathname === '/info')
+    if (isOverlayTransition) return
+
     // Instant reset; also interrupts any leftover smooth scroll from previous pages.
     const main = mainRef.current
     if (main) {
