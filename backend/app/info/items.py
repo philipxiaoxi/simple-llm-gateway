@@ -74,7 +74,12 @@ def _filters(
         clauses.append(InfoItem.ai_score.is_not(None))
         clauses.append(InfoItem.ai_score >= int(min_score))
     if ai_status:
-        clauses.append(InfoItem.ai_status == ai_status)
+        # 支持逗号分隔的多状态（例如「进行中」= pending,processing）
+        values = [value.strip() for value in ai_status.split(",") if value.strip()]
+        if len(values) == 1:
+            clauses.append(InfoItem.ai_status == values[0])
+        elif values:
+            clauses.append(InfoItem.ai_status.in_(values))
     if query:
         # 转义 LIKE 通配符：否则用户输入 `%` 会命中整表、`_` 会变成任意单字符
         escaped = (
@@ -291,16 +296,16 @@ def stats(db: Session) -> dict[str, Any]:
     )
     last_collect = db.scalar(select(func.max(InfoSource.last_polled_at)))
     provider = tikhub_status(db)
-    ai_pending = int(
-        db.scalar(
-            select(func.count()).select_from(InfoItem).where(InfoItem.ai_status.in_(("pending", "processing")))
-        )
-        or 0
-    )
-    ai_failed = int(
-        db.scalar(select(func.count()).select_from(InfoItem).where(InfoItem.ai_status == "failed"))
-        or 0
-    )
+    # 一次分组查询取各判定状态数量，避免为每个状态各查一次
+    status_rows = db.execute(
+        select(InfoItem.ai_status, func.count()).group_by(InfoItem.ai_status)
+    ).all()
+    ai_counts = {str(status or "pending"): int(count) for status, count in status_rows}
+    ai_pending = ai_counts.get("pending", 0)
+    ai_processing = ai_counts.get("processing", 0)
+    ai_failed = ai_counts.get("failed", 0)
+    ai_done = ai_counts.get("done", 0)
+    ai_skipped = ai_counts.get("skipped", 0)
     featured_count = int(
         db.scalar(select(func.count()).select_from(InfoItem).where(InfoItem.is_featured.is_(True)))
         or 0
@@ -311,7 +316,11 @@ def stats(db: Session) -> dict[str, Any]:
         "media_bytes": media_bytes,
         "last_collect_at": last_collect.isoformat() if last_collect else None,
         "provider_configured": provider["configured"],
-        "ai_pending": ai_pending,
+        "ai_pending": ai_pending + ai_processing,
+        "ai_queued": ai_pending,
+        "ai_processing": ai_processing,
+        "ai_done": ai_done,
         "ai_failed": ai_failed,
+        "ai_skipped": ai_skipped,
         "featured_count": featured_count,
     }

@@ -7,12 +7,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import re
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.clock import utcnow
@@ -181,9 +182,10 @@ def _record_failure(factory, item_id: str, message: str) -> None:
         session.close()
 
 
-async def _score_item(
-    factory, item_id: str, account_id: int, config: dict[str, Any]
-) -> str:
+def _prepare_item(
+    factory, item_id: str, runtime: dict[str, Any], config: dict[str, Any]
+) -> list[dict[str, Any]] | None:
+    """读取条目并构造消息（含图片 base64，放在线程池执行，避免阻塞事件循环）。"""
     session = factory()
     try:
         item = session.get(
@@ -191,76 +193,84 @@ async def _score_item(
             item_id,
             options=[selectinload(InfoItem.media), selectinload(InfoItem.source)],
         )
-        account = session.get(UpstreamAccount, account_id)
         if item is None:
-            return "skipped"
-        if account is None:
-            return "skipped"
-        model = (config["model"] or model_caps.first_model_id(account.models_json) or "").strip()
-        if not model:
-            return "skipped"
-        prompt = (config["prompt_template"] or "").strip() or DEFAULT_PROMPT
+            return None
         image_parts: list[dict[str, Any]] = []
-        if model_supports_images(account, model):
+        if runtime["vision"]:
             image_parts = _image_parts(
                 item,
                 list(item.media),
                 limit=int(config["vision_max_images"]),
                 max_bytes=int(config["max_image_bytes"]),
             )
-        messages = _build_messages(item, prompt, image_parts)
-        credential = require_upstream_credential(account)
-    except CredentialError as error:
-        _record_failure(factory, item_id, str(error))
-        return "failed"
+        return _build_messages(item, runtime["prompt"], image_parts)
     finally:
         session.close()
 
-    try:
-        result = await call_chat(account, messages, model, False, {}, credential)
-        decision = _parse_decision(_extract_content(result))
-    except Exception as error:  # noqa: BLE001 - 网络/上游失败
-        _record_failure(factory, item_id, error)
-        return "failed"
 
-    if decision is None:
-        _record_failure(factory, item_id, "模型返回无法解析为约定 JSON")
-        return "failed"
-
+def _apply_and_commit(
+    factory, item_id: str, decision: dict[str, Any], runtime: dict[str, Any], config: dict[str, Any]
+) -> bool:
     session = factory()
     try:
         row = session.get(InfoItem, item_id)
         if row is None:
-            return "skipped"
-        _apply_decision(row, decision, model=model, config=config)
+            return False
+        _apply_decision(row, decision, model=runtime["model"], config=config)
         session.commit()
+        return True
     except Exception:  # noqa: BLE001
         session.rollback()
         raise
     finally:
         session.close()
-    return "done"
 
 
-def recover_stuck_scoring(session: Session) -> int:
-    """把启动时残留的 processing 条目恢复为 pending。"""
-    rows = session.scalars(select(InfoItem).where(InfoItem.ai_status == "processing")).all()
-    for row in rows:
-        row.ai_status = "pending"
-    return len(rows)
+def _mark_batch(factory, ids: list[str], *, status: str, error: str = "") -> None:
+    if not ids:
+        return
+    session = factory()
+    try:
+        session.execute(
+            update(InfoItem)
+            .where(InfoItem.id.in_(ids))
+            .values(ai_status=status, ai_error=error[:1000])
+        )
+        session.commit()
+    except Exception:  # noqa: BLE001
+        session.rollback()
+    finally:
+        session.close()
 
 
-async def score_pending_once() -> dict[str, int]:
-    settings = get_settings()
-    factory = get_session_factory()
+def _fail_batch(factory, ids: list[str], message: str) -> None:
+    if not ids:
+        return
+    session = factory()
+    try:
+        session.execute(
+            update(InfoItem)
+            .where(InfoItem.id.in_(ids))
+            .values(
+                ai_status="failed",
+                ai_error=str(message)[:1000],
+                ai_attempts=InfoItem.ai_attempts + 1,
+            )
+        )
+        session.commit()
+    except Exception:  # noqa: BLE001
+        session.rollback()
+    finally:
+        session.close()
 
+
+def _prepare_batch(factory, settings) -> tuple[list[str], int, dict[str, Any]] | None:
+    """取一批待判定条目并标记为 processing，返回 (ids, account_id, config)。"""
     session = factory()
     try:
         ai = get_ai_settings(session)
-        if not ai.enabled:
-            return {"processed": 0, "scored": 0, "failed": 0, "skipped": 0}
-        if not ai.account_id:
-            return {"processed": 0, "scored": 0, "failed": 0, "skipped": 0}
+        if not ai.enabled or not ai.account_id:
+            return None
         config = {
             "model": ai.model,
             "vision_max_images": int(ai.vision_max_images),
@@ -270,7 +280,6 @@ async def score_pending_once() -> dict[str, int]:
             "max_attempts": int(ai.max_attempts),
             "prompt_template": ai.prompt_template,
         }
-        account_id = int(ai.account_id)
         batch = max(1, settings.info_ai_batch_size)
         ids = list(
             session.scalars(
@@ -283,29 +292,104 @@ async def score_pending_once() -> dict[str, int]:
                 .limit(batch)
             ).all()
         )
-        for item_id in ids:
-            row = session.get(InfoItem, item_id)
-            if row is not None:
-                row.ai_status = "processing"
-        session.commit()
+        if ids:
+            session.execute(
+                update(InfoItem).where(InfoItem.id.in_(ids)).values(ai_status="processing")
+            )
+            session.commit()
+        return ids, int(ai.account_id), config
     finally:
         session.close()
 
-    processed = 0
-    scored = 0
-    failed = 0
-    skipped = 0
-    for item_id in ids:
-        processed += 1
-        try:
-            outcome = await _score_item(factory, item_id, account_id, config)
-        except Exception as error:  # noqa: BLE001 - 未预期异常也不能中断整批
-            _record_failure(factory, item_id, error)
-            outcome = "failed"
-        if outcome == "done":
-            scored += 1
-        elif outcome == "failed":
-            failed += 1
-        else:
-            skipped += 1
-    return {"processed": processed, "scored": scored, "failed": failed, "skipped": skipped}
+
+def _resolve_runtime(factory, account_id: int, config: dict[str, Any]) -> dict[str, Any] | None:
+    """解析账号、模型、凭据与视觉能力，整批只做一次。"""
+    session = factory()
+    try:
+        account = session.get(UpstreamAccount, account_id)
+        if account is None:
+            return None
+        model = (config["model"] or model_caps.first_model_id(account.models_json) or "").strip()
+        if not model:
+            return None
+        credential = require_upstream_credential(account)
+        return {
+            "account": account,
+            "model": model,
+            "credential": credential,
+            "vision": model_supports_images(account, model),
+            "prompt": (config["prompt_template"] or "").strip() or DEFAULT_PROMPT,
+        }
+    finally:
+        session.close()
+
+
+async def _score_item(
+    factory, item_id: str, runtime: dict[str, Any], config: dict[str, Any]
+) -> str:
+    messages = await asyncio.to_thread(_prepare_item, factory, item_id, runtime, config)
+    if messages is None:
+        return "skipped"
+    try:
+        result = await call_chat(
+            runtime["account"], messages, runtime["model"], False, {}, runtime["credential"]
+        )
+        decision = _parse_decision(_extract_content(result))
+    except Exception as error:  # noqa: BLE001 - 网络/上游失败
+        await asyncio.to_thread(_record_failure, factory, item_id, str(error))
+        return "failed"
+    if decision is None:
+        await asyncio.to_thread(_record_failure, factory, item_id, "模型返回无法解析为约定 JSON")
+        return "failed"
+    applied = await asyncio.to_thread(_apply_and_commit, factory, item_id, decision, runtime, config)
+    return "done" if applied else "skipped"
+
+
+def recover_stuck_scoring(session: Session) -> int:
+    """把启动时残留的 processing 条目恢复为 pending。"""
+    result = session.execute(
+        update(InfoItem).where(InfoItem.ai_status == "processing").values(ai_status="pending")
+    )
+    return int(result.rowcount or 0)
+
+
+async def score_pending_once() -> dict[str, int]:
+    settings = get_settings()
+    factory = get_session_factory()
+
+    prepared = await asyncio.to_thread(_prepare_batch, factory, settings)
+    if prepared is None:
+        return {"processed": 0, "scored": 0, "failed": 0, "skipped": 0}
+    ids, account_id, config = prepared
+    if not ids:
+        return {"processed": 0, "scored": 0, "failed": 0, "skipped": 0}
+
+    try:
+        runtime = await asyncio.to_thread(_resolve_runtime, factory, account_id, config)
+    except CredentialError as error:
+        await asyncio.to_thread(_fail_batch, factory, ids, str(error))
+        return {"processed": len(ids), "scored": 0, "failed": len(ids), "skipped": 0}
+    if runtime is None:
+        # 上游账号或模型不可用：标记跳过，待管理员修好后重新判定
+        await asyncio.to_thread(
+            _mark_batch, factory, ids, status="skipped", error="未配置可用的上游账号或模型"
+        )
+        return {"processed": len(ids), "scored": 0, "failed": 0, "skipped": len(ids)}
+
+    semaphore = asyncio.Semaphore(max(1, settings.info_ai_max_concurrent))
+
+    async def run(item_id: str) -> str:
+        async with semaphore:
+            try:
+                return await _score_item(factory, item_id, runtime, config)
+            except Exception as error:  # noqa: BLE001 - 未预期异常也不能中断整批
+                await asyncio.to_thread(_record_failure, factory, item_id, str(error))
+                return "failed"
+
+    outcomes = await asyncio.gather(*(run(item_id) for item_id in ids))
+    return {
+        "processed": len(ids),
+        "scored": outcomes.count("done"),
+        "failed": outcomes.count("failed"),
+        "skipped": outcomes.count("skipped"),
+    }

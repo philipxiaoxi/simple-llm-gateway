@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.clock import utcnow
@@ -335,22 +335,19 @@ def update_ai_settings(payload: AiSettingsBody, db: Session = Depends(get_db)):
 
 @router.post("/ai/rescore")
 def rescore_items(payload: RescoreBody, db: Session = Depends(get_db)):
-    query = select(InfoItem)
+    # 用一条批量 UPDATE，避免把整表 ORM 对象加载进内存
+    statement = update(InfoItem).values(ai_status="pending", ai_attempts=0, ai_error="")
     if payload.ids:
-        query = query.where(InfoItem.id.in_(payload.ids))
+        statement = statement.where(InfoItem.id.in_(payload.ids))
     elif payload.scope == "failed":
-        query = query.where(InfoItem.ai_status == "failed")
+        statement = statement.where(InfoItem.ai_status == "failed")
     elif payload.scope == "all":
         pass
     else:
-        query = query.where(InfoItem.ai_status.in_(("pending", "failed")))
-    rows = db.scalars(query).all()
-    for row in rows:
-        row.ai_status = "pending"
-        row.ai_attempts = 0
-        row.ai_error = ""
+        statement = statement.where(InfoItem.ai_status.in_(("pending", "failed", "skipped")))
+    result = db.execute(statement)
     db.commit()
-    return {"count": len(rows)}
+    return {"count": int(result.rowcount or 0)}
 
 
 @router.get("/stats")

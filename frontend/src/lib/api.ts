@@ -2254,7 +2254,12 @@ export type InfoStats = {
   media_bytes: number
   last_collect_at: string | null
   provider_configured: boolean
+  // ai_pending = 待判定 + 判定中；ai_queued 仅待判定
   ai_pending: number
+  ai_queued: number
+  ai_processing: number
+  ai_done: number
   ai_failed: number
+  ai_skipped: number
   featured_count: number
 }

@@ -1,8 +1,9 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Heart, ImageOff, Play, Plus, Search, Send, SlidersHorizontal, Sparkles, Star } from 'lucide-react'
+import { Heart, ImageOff, ListChecks, Play, Plus, Search, Send, SlidersHorizontal, Sparkles, Star } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SyntheticEvent } from 'react'
 import { Link, Outlet, useNavigate, useSearchParams } from 'react-router-dom'
+import { InfoAiProgressDialog } from '../components/InfoAiProgressDialog'
 import { InfoAiSettingsDialog } from '../components/InfoAiSettingsDialog'
 import { InfoMasonry } from '../components/InfoMasonry'
 import { InfoTextCover } from '../components/InfoTextCover'
@@ -83,6 +84,7 @@ export function InfoFeedPage() {
 
   const [search, setSearch] = useState(keyword)
   const [aiOpen, setAiOpen] = useState(false)
+  const [progressOpen, setProgressOpen] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const hideBar = useHideOnScroll()
   const [measured, setMeasured] = useState<Record<string, number>>({})
@@ -245,6 +247,18 @@ export function InfoFeedPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="line" onClick={() => setProgressOpen(true)}>
+            <ListChecks size={15} /> 判定进度
+            {stats.data && stats.data.ai_pending > 0 ? (
+              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-signal px-1 text-[10px] font-semibold text-ink">
+                {stats.data.ai_pending}
+              </span>
+            ) : stats.data && stats.data.ai_failed > 0 ? (
+              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold text-paper">
+                {stats.data.ai_failed}
+              </span>
+            ) : null}
+          </Button>
           <Button type="button" variant="line" onClick={() => setAiOpen(true)}>
             <Sparkles size={15} /> AI 判定
           </Button>
@@ -433,6 +447,7 @@ export function InfoFeedPage() {
       <Outlet />
 
       {aiOpen ? <InfoAiSettingsDialog open onClose={() => setAiOpen(false)} /> : null}
+      {progressOpen ? <InfoAiProgressDialog open onClose={() => setProgressOpen(false)} /> : null}
     </div>
   )
 }
