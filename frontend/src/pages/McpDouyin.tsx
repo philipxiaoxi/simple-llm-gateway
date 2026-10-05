@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Cloud, Download, Link2, Search, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Cloud, Download, Link2, Search } from 'lucide-react'
+import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { TikHubConfigDialog, TIKHUB_QUERY_KEY } from '../components/TikHubConfigDialog'
 import { Badge, Button, Card, Dialog, Field, Input, Switch } from '../components/ui'
 import { api, type DouyinJob } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
@@ -36,36 +37,8 @@ export function McpDouyinPage() {
     },
   })
 
-  const provider = useQuery({ queryKey: ['mcp-douyin-provider'], queryFn: () => api.mcpDouyinProvider() })
-  const [providerBase, setProviderBase] = useState('')
-  const [providerKey, setProviderKey] = useState('')
-
-  useEffect(() => {
-    if (provider.data) setProviderBase(provider.data.base_url || '')
-  }, [provider.data])
-
-  const saveProvider = useMutation({
-    mutationFn: () =>
-      api.saveMcpDouyinProvider({
-        base_url: providerBase.trim(),
-        ...(providerKey.trim() ? { api_key: providerKey.trim() } : {}),
-      }),
-    onSuccess: async () => {
-      notifyOk('TikHub 配置已保存')
-      setProviderKey('')
-      await queryClient.invalidateQueries({ queryKey: ['mcp-douyin-provider'] })
-    },
-    onError: (caught) => notifyBad(errorMessage(caught, '保存失败')),
-  })
-
-  const clearProvider = useMutation({
-    mutationFn: () => api.clearMcpDouyinProvider(),
-    onSuccess: async () => {
-      notifyOk('TikHub 配置已清除')
-      await queryClient.invalidateQueries({ queryKey: ['mcp-douyin-provider'] })
-    },
-    onError: (caught) => notifyBad(errorMessage(caught, '清除失败')),
-  })
+  const [configOpen, setConfigOpen] = useState(false)
+  const provider = useQuery({ queryKey: TIKHUB_QUERY_KEY, queryFn: api.tikhubStatus })
 
   const create = useMutation({
     mutationFn: () => api.createMcpDouyinJob({ share_text: text.trim(), rehost }),
@@ -104,63 +77,15 @@ export function McpDouyinPage() {
         </Button>
       </div>
 
-      <Card className="p-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-paper">
-          <Cloud size={16} className="text-signal" /> TikHub 解析 API
-        </div>
-        <p className="mt-1 text-xs text-mist">
-          抖音作品统一通过 TikHub 托管 API 解析，平台侧反爬由 TikHub 处理。填入 Base URL 与 API Key；Key 加密存储、不回显。
-        </p>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-mist">
+      <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-paper">
+          <Cloud size={16} className="text-signal" /> TikHub 凭据
           {provider.data?.configured ? <Badge tone="ok">已配置</Badge> : <Badge tone="warn">未配置</Badge>}
-          {provider.data?.source ? (
-            <span>
-              来源：
-              {provider.data.source === 'page' ? '管理页' : provider.data.source === 'env' ? '环境变量' : provider.data.source}
-            </span>
-          ) : null}
-          {provider.data?.updated_at ? <span>更新：{formatTime(provider.data.updated_at)}</span> : null}
+          <span className="text-xs text-mist">抖音下载与资讯采集共用一份</span>
         </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <Field label="Base URL">
-            <Input
-              value={providerBase}
-              onChange={(event) => setProviderBase(event.target.value)}
-              placeholder="https://api.tikhub.io"
-              disabled={saveProvider.isPending}
-            />
-          </Field>
-          <Field label="API Key（留空则不修改）">
-            <Input
-              type="password"
-              value={providerKey}
-              onChange={(event) => setProviderKey(event.target.value)}
-              placeholder={provider.data?.has_key ? '已配置' : 'tk_...'}
-              disabled={saveProvider.isPending}
-            />
-          </Field>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button
-            type="button"
-            disabled={saveProvider.isPending || !providerBase.trim()}
-            onClick={() => saveProvider.mutate()}
-          >
-            {saveProvider.isPending ? '保存中…' : '保存'}
-          </Button>
-          {provider.data?.source === 'page' ? (
-            <Button
-              type="button"
-              variant="danger"
-              disabled={clearProvider.isPending}
-              onClick={() => {
-                if (window.confirm('清除 TikHub 配置？')) clearProvider.mutate()
-              }}
-            >
-              <Trash2 size={14} /> 清除
-            </Button>
-          ) : null}
-        </div>
+        <Button type="button" variant="line" onClick={() => setConfigOpen(true)}>
+          配置 TikHub
+        </Button>
       </Card>
 
       <Card className="p-4">
@@ -229,6 +154,8 @@ export function McpDouyinPage() {
           </div>
         </Dialog>
       ) : null}
+
+      {configOpen ? <TikHubConfigDialog open onClose={() => setConfigOpen(false)} /> : null}
     </div>
   )
 }

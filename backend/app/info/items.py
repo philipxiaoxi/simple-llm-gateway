@@ -51,6 +51,10 @@ def _filters(
     query: str | None,
     favorite: bool,
     include_hidden: bool,
+    featured: bool = False,
+    label: str | None = None,
+    min_score: int | None = None,
+    ai_status: str | None = None,
 ) -> list[Any]:
     clauses: list[Any] = []
     if source_id:
@@ -62,6 +66,15 @@ def _filters(
             clauses.append(InfoItem.kind == values[0])
         elif values:
             clauses.append(InfoItem.kind.in_(values))
+    if featured:
+        clauses.append(InfoItem.is_featured.is_(True))
+    if label:
+        clauses.append(InfoItem.ai_label == label)
+    if min_score is not None:
+        clauses.append(InfoItem.ai_score.is_not(None))
+        clauses.append(InfoItem.ai_score >= int(min_score))
+    if ai_status:
+        clauses.append(InfoItem.ai_status == ai_status)
     if query:
         # 转义 LIKE 通配符：否则用户输入 `%` 会命中整表、`_` 会变成任意单字符
         escaped = (
@@ -91,6 +104,10 @@ def list_items(
     query: str | None = None,
     favorite: bool = False,
     include_hidden: bool = False,
+    featured: bool = False,
+    label: str | None = None,
+    min_score: int | None = None,
+    ai_status: str | None = None,
     order: str = "desc",
 ) -> tuple[list[InfoItem], str | None, int]:
     size = max(1, min(MAX_LIMIT, int(limit or DEFAULT_LIMIT)))
@@ -101,6 +118,10 @@ def list_items(
         query=query,
         favorite=favorite,
         include_hidden=include_hidden,
+        featured=featured,
+        label=label,
+        min_score=min_score,
+        ai_status=ai_status,
     )
 
     total = int(
@@ -213,6 +234,15 @@ def serialize_item(item: InfoItem, *, include_media: bool = False) -> dict[str, 
         "is_hidden": bool(item.is_hidden),
         "is_forwarded": bool(item.is_forwarded),
         "link_preview": _parse_json(item.link_preview_json),
+        "ai_status": item.ai_status,
+        "ai_label": item.ai_label,
+        "ai_score": item.ai_score,
+        "ai_reason": item.ai_reason,
+        "ai_tags": _parse_json(item.ai_tags_json) or [],
+        "ai_model": item.ai_model,
+        "ai_error": item.ai_error,
+        "ai_scored_at": item.ai_scored_at.isoformat() if item.ai_scored_at else None,
+        "is_featured": bool(item.is_featured),
         "collected_at": item.collected_at.isoformat() if item.collected_at else None,
     }
     if include_media:
@@ -261,10 +291,27 @@ def stats(db: Session) -> dict[str, Any]:
     )
     last_collect = db.scalar(select(func.max(InfoSource.last_polled_at)))
     provider = tikhub_status(db)
+    ai_pending = int(
+        db.scalar(
+            select(func.count()).select_from(InfoItem).where(InfoItem.ai_status.in_(("pending", "processing")))
+        )
+        or 0
+    )
+    ai_failed = int(
+        db.scalar(select(func.count()).select_from(InfoItem).where(InfoItem.ai_status == "failed"))
+        or 0
+    )
+    featured_count = int(
+        db.scalar(select(func.count()).select_from(InfoItem).where(InfoItem.is_featured.is_(True)))
+        or 0
+    )
     return {
         "source_count": source_count,
         "item_count": item_count,
         "media_bytes": media_bytes,
         "last_collect_at": last_collect.isoformat() if last_collect else None,
         "provider_configured": provider["configured"],
+        "ai_pending": ai_pending,
+        "ai_failed": ai_failed,
+        "featured_count": featured_count,
     }

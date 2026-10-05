@@ -22,6 +22,7 @@ from app.routers import (
     admin_content_audit,
     admin_dashboard,
     admin_info,
+    admin_integrations,
     admin_jobs,
     admin_keys,
     admin_leaderboard,
@@ -119,6 +120,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         from app.info.collector import reconcile_stuck_media
 
         reconcile_stuck_media(session)
+        from app.services.info_ai import recover_stuck_scoring
+
+        recover_stuck_scoring(session)
         session.commit()
     finally:
         session.close()
@@ -173,6 +177,7 @@ app.include_router(admin_logs.router)
 app.include_router(admin_dashboard.router)
 app.include_router(admin_info.router)
 app.include_router(admin_info.media_router)
+app.include_router(admin_integrations.router)
 app.include_router(admin_skills.router)
 app.include_router(admin_skills.download_router)
 app.include_router(admin_skill_bundles.router)

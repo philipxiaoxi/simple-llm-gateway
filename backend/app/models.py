@@ -854,6 +854,18 @@ class DouyinSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
+class TikHubSettings(Base):
+    """TikHub 凭据的全局单例设置，抖音下载与资讯收集共享。"""
+
+    __tablename__ = "tikhub_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # base_url 明文，api_key 加密（Fernet，APP_SECRET_KEY 派生密钥）
+    base_url: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class InfoSource(Base):
     """资讯收集的采集渠道（v1 为 Telegram 公开频道）。"""
 
@@ -921,6 +933,21 @@ class InfoItem(Base):
     status: Mapped[str] = mapped_column(String(16), default="ready", nullable=False)
     is_favorite: Mapped[bool] = mapped_column(Boolean, default=False, index=True, nullable=False)
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, index=True, nullable=False)
+    # AI 判定：pending / processing / done / failed / skipped
+    ai_status: Mapped[str] = mapped_column(String(16), default="pending", index=True, nullable=False)
+    # ad / valuable / general / other
+    ai_label: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    ai_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ai_reason: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    ai_tags_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_model: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    ai_error: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    ai_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    ai_scored_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False, index=True, nullable=False)
+    # 人工覆盖后，后续判定不再改写对应字段
+    ai_featured_manual: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    ai_hidden_manual: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     collected_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
@@ -960,3 +987,23 @@ class InfoMedia(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     item: Mapped[InfoItem] = relationship(back_populates="media")
+
+
+class InfoAiSettings(Base):
+    """资讯 AI 判定的全局单例设置。"""
+
+    __tablename__ = "info_ai_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("upstream_accounts.id", ondelete="SET NULL"), nullable=True
+    )
+    model: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    vision_max_images: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    max_image_bytes: Mapped[int] = mapped_column(Integer, default=5 * 1024 * 1024, nullable=False)
+    feature_threshold: Mapped[int] = mapped_column(Integer, default=80, nullable=False)
+    hide_ads: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    prompt_template: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

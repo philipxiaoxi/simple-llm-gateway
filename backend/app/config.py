@@ -142,6 +142,9 @@ class Settings(BaseSettings):
     douyin_tikhub_base_url: str = "https://api.tikhub.io"
     douyin_tikhub_api_key: str = ""
     douyin_tikhub_timeout_seconds: int = 60
+    # TikHub 凭据：抖音下载与资讯收集共享。中立命名，优先级高于 DOUYIN_* / INFO_*
+    tikhub_base_url: str = ""
+    tikhub_api_key: str = ""
     # Archify 图表生成（diagram 能力）
     diagram_enabled: bool = True
     archify_home: str = ""
@@ -172,6 +175,10 @@ class Settings(BaseSettings):
     # TikHub 凭据兜底：优先读数据库里与抖音下载共用的加密配置
     info_tikhub_base_url: str = ""
     info_tikhub_api_key: str = ""
+    # AI 判定 worker：轮询间隔、每轮批量、并发
+    info_ai_tick_seconds: int = 30
+    info_ai_batch_size: int = 5
+    info_ai_max_concurrent: int = 2
 
     @property
     def database_url(self) -> str:

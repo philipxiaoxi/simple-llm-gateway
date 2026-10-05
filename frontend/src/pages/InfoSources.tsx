@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CircleAlert, Pencil, Plus, RefreshCw, Send, Trash2 } from 'lucide-react'
+import { ArrowLeft, CircleAlert, Pencil, Plus, RefreshCw, Send, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { TikHubConfigDialog, TIKHUB_QUERY_KEY } from '../components/TikHubConfigDialog'
 import { Badge, Button, Card, Dialog, Field, Input, Select, Switch } from '../components/ui'
 import { api, type InfoSource, type InfoSourcePreview } from '../lib/api'
 import { formatCount, formatInterval, relativeTime } from '../lib/info'
@@ -27,9 +28,10 @@ export function InfoSourcesPage() {
   const queryClient = useQueryClient()
   const query = useQuery({ queryKey: ['info-sources'], queryFn: api.infoSources })
   const sources = query.data?.sources ?? []
-  const provider = query.data?.provider
+  const provider = useQuery({ queryKey: TIKHUB_QUERY_KEY, queryFn: api.tikhubStatus })
 
   const [addOpen, setAddOpen] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
   const [editing, setEditing] = useState<InfoSource | null>(null)
   const [removing, setRemoving] = useState<InfoSource | null>(null)
   const [collectingId, setCollectingId] = useState('')
@@ -60,6 +62,13 @@ export function InfoSourcesPage() {
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1080px] space-y-4">
+      <Link
+        to="/info"
+        className="inline-flex items-center gap-1 text-sm text-mist transition hover:text-paper"
+      >
+        <ArrowLeft size={15} /> 返回瀑布流
+      </Link>
+
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-xl font-semibold">渠道管理</h2>
@@ -67,31 +76,29 @@ export function InfoSourcesPage() {
             采集公开 Telegram 频道的内容，媒体会转存到平台本地，前端不直连上游。
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="line" onClick={() => setConfigOpen(true)}>
+            TikHub 凭据
+          </Button>
           <Button type="button" variant="line" onClick={() => setAddOpen(true)}>
             <Plus size={15} /> 添加渠道
           </Button>
-          <Link
-            to="/info"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-signal px-3 py-2 text-sm font-medium text-ink transition hover:brightness-110 md:min-h-9"
-          >
-            返回瀑布流
-          </Link>
         </div>
       </div>
 
-      {provider && !provider.configured ? (
+      {provider.data && !provider.data.configured ? (
         <div className="flex flex-col gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2.5 text-xs text-warn sm:flex-row sm:items-center sm:justify-between">
           <span className="flex items-start gap-2">
             <CircleAlert size={14} className="mt-0.5 shrink-0" />
             TikHub 凭据未配置：资讯采集与抖音下载共用同一份 TikHub API Key，配置后才能拉取频道内容。
           </span>
-          <Link
-            to="/mcp-plaza/douyin"
+          <button
+            type="button"
             className="inline-flex shrink-0 items-center gap-1 rounded-md border border-warn/40 px-2 py-1 text-warn transition hover:bg-warn/15"
+            onClick={() => setConfigOpen(true)}
           >
-            去配置 TikHub 凭据
-          </Link>
+            配置 TikHub 凭据
+          </button>
         </div>
       ) : null}
 
@@ -204,6 +211,7 @@ export function InfoSourcesPage() {
       {addOpen ? <AddSourceDialog onClose={() => setAddOpen(false)} /> : null}
       {editing ? <EditSourceDialog source={editing} onClose={() => setEditing(null)} /> : null}
       {removing ? <DeleteSourceDialog source={removing} onClose={() => setRemoving(null)} /> : null}
+      {configOpen ? <TikHubConfigDialog open onClose={() => setConfigOpen(false)} /> : null}
     </div>
   )
 }

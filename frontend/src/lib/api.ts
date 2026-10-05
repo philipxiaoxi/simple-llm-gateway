@@ -1079,6 +1079,14 @@ export const api = {
     }),
   clearMcpDouyinProvider: () =>
     request<DouyinProviderStatus>('/api/admin/mcp/douyin/provider', { method: 'DELETE' }),
+  tikhubStatus: () => request<TikHubStatus>('/api/admin/integrations/tikhub'),
+  saveTikhub: (payload: { base_url?: string; api_key?: string }) =>
+    request<TikHubStatus>('/api/admin/integrations/tikhub', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  clearTikhub: () =>
+    request<TikHubStatus>('/api/admin/integrations/tikhub', { method: 'DELETE' }),
   douyinShareMeta: (token: string) =>
     request<DouyinShareMeta>(`/v1/douyin/share?token=${encodeURIComponent(token)}`),
   mcpDiagrams: (query: { q?: string; status?: string } = {}) => {
@@ -1343,6 +1351,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ hidden }),
     }),
+  infoItemFeatured: (id: string, featured: boolean) =>
+    request<InfoItem>(`/api/admin/info/items/${encodeURIComponent(id)}/featured`, {
+      method: 'POST',
+      body: JSON.stringify({ featured }),
+    }),
+  infoAiSettings: () => request<InfoAiSettings>('/api/admin/info/ai/settings'),
+  infoAiSettingsUpdate: (payload: Partial<InfoAiSettings>) =>
+    request<InfoAiSettings>('/api/admin/info/ai/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  infoAiRescore: (payload: { scope?: string; ids?: string[] } = {}) =>
+    request<{ count: number }>('/api/admin/info/ai/rescore', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   infoStats: () => request<InfoStats>('/api/admin/info/stats'),
 }
 
@@ -1532,6 +1556,15 @@ export type DouyinProviderStatus = {
   configured: boolean
   has_key: boolean
   source: string
+  updated_at: string | null
+}
+
+export type TikHubStatus = {
+  base_url: string
+  configured: boolean
+  has_key: boolean
+  source: string
+  shared_with_douyin: boolean
   updated_at: string | null
 }
 
@@ -2150,6 +2183,16 @@ export type InfoItem = {
   is_hidden: boolean
   is_forwarded: boolean
   link_preview: InfoLinkPreview | null
+  // pending / processing / done / failed / skipped
+  ai_status: string
+  ai_label: string
+  ai_score: number | null
+  ai_reason: string
+  ai_tags: string[]
+  ai_model: string
+  ai_error: string
+  ai_scored_at: string | null
+  is_featured: boolean
   collected_at: string | null
 }
 
@@ -2182,9 +2225,27 @@ export type InfoItemQuery = {
   kind?: string
   q?: string
   favorite?: string | number
+  featured?: string | number
   include_hidden?: string | number
+  label?: string
+  min_score?: string | number
+  ai_status?: string
   /** 排序：desc = 最新优先（契约默认），asc = 最早优先 */
   order?: 'desc' | 'asc'
+}
+
+export type InfoAiSettings = {
+  enabled: boolean
+  account_id: number | null
+  account_name: string | null
+  model: string
+  vision_max_images: number
+  max_image_bytes: number
+  feature_threshold: number
+  hide_ads: boolean
+  max_attempts: number
+  prompt_template: string
+  updated_at: string | null
 }
 
 export type InfoStats = {
@@ -2193,4 +2254,7 @@ export type InfoStats = {
   media_bytes: number
   last_collect_at: string | null
   provider_configured: boolean
+  ai_pending: number
+  ai_failed: number
+  featured_count: number
 }

@@ -49,6 +49,7 @@ def init_db() -> None:
     _migrate_legacy_logs(engine)
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
+    _migrate_douyin_settings_to_tikhub(engine)
     _ensure_api_keys_account_id_nullable(engine)
     _ensure_info_items_source_nullable(engine)
     _ensure_request_logs_have_no_parent_fks(engine)
@@ -260,6 +261,7 @@ def _ensure_columns(engine: Engine) -> None:
         _ensure_site_diagram_columns(connection)
         _ensure_douyin_columns(connection)
         _ensure_douyin_job_columns(connection)
+        _ensure_info_item_ai_columns(connection)
         _ensure_api_key_accounts(connection)
         _backfill_account_model_prefixes(connection)
 
@@ -297,6 +299,48 @@ def _ensure_douyin_columns(connection) -> None:  # type: ignore[no-untyped-def]
         connection.execute(text("ALTER TABLE douyin_settings ADD COLUMN tikhub_updated_at DATETIME"))
 
 
+def _migrate_douyin_settings_to_tikhub(engine: Engine) -> None:
+    """把旧 douyin_settings 的 TikHub 凭据幂等迁移到共享 tikhub_settings。
+
+    仅当 tikhub_settings 不存在任何记录时执行。清除凭据时保留单例空记录，
+    因此清除后重启不会被旧数据复活。旧表数据保留供回滚。
+    """
+    with engine.begin() as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+        }
+        if "douyin_settings" not in tables or "tikhub_settings" not in tables:
+            return
+        existing = connection.execute(text("SELECT 1 FROM tikhub_settings LIMIT 1")).first()
+        if existing is not None:
+            return
+        legacy_columns = {
+            row[1] for row in connection.execute(text("PRAGMA table_info(douyin_settings)"))
+        }
+        if not {"tikhub_base_url", "tikhub_api_key_encrypted"} <= legacy_columns:
+            return
+        legacy = connection.execute(
+            text(
+                "SELECT tikhub_base_url, tikhub_api_key_encrypted, tikhub_updated_at "
+                "FROM douyin_settings WHERE id = 1"
+            )
+        ).first()
+        if legacy is None:
+            return
+        base_url = (legacy[0] or "").strip()
+        encrypted = legacy[1]
+        if not base_url and not encrypted:
+            return
+        connection.execute(
+            text(
+                "INSERT INTO tikhub_settings (id, base_url, api_key_encrypted, updated_at) "
+                "VALUES (1, :base_url, :encrypted, :updated_at)"
+            ),
+            {"base_url": base_url, "encrypted": encrypted, "updated_at": legacy[2]},
+        )
+
+
 def _ensure_douyin_job_columns(connection) -> None:  # type: ignore[no-untyped-def]
     """douyin_jobs 增量列：下载进度字节数。"""
     columns = {row[1] for row in connection.execute(text("PRAGMA table_info(douyin_jobs)"))}
@@ -310,6 +354,36 @@ def _ensure_douyin_job_columns(connection) -> None:  # type: ignore[no-untyped-d
         connection.execute(
             text("ALTER TABLE douyin_jobs ADD COLUMN expected_bytes INTEGER DEFAULT 0 NOT NULL")
         )
+
+
+def _ensure_info_item_ai_columns(connection) -> None:  # type: ignore[no-untyped-def]
+    """info_items 增量列：AI 判定结果与精选标记。"""
+    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(info_items)"))}
+    if not columns:
+        return
+    statements = {
+        "ai_status": "ALTER TABLE info_items ADD COLUMN ai_status VARCHAR(16) DEFAULT 'pending' NOT NULL",
+        "ai_label": "ALTER TABLE info_items ADD COLUMN ai_label VARCHAR(32) DEFAULT '' NOT NULL",
+        "ai_score": "ALTER TABLE info_items ADD COLUMN ai_score INTEGER",
+        "ai_reason": "ALTER TABLE info_items ADD COLUMN ai_reason TEXT DEFAULT '' NOT NULL",
+        "ai_tags_json": "ALTER TABLE info_items ADD COLUMN ai_tags_json TEXT",
+        "ai_model": "ALTER TABLE info_items ADD COLUMN ai_model VARCHAR(128) DEFAULT '' NOT NULL",
+        "ai_error": "ALTER TABLE info_items ADD COLUMN ai_error TEXT DEFAULT '' NOT NULL",
+        "ai_attempts": "ALTER TABLE info_items ADD COLUMN ai_attempts INTEGER DEFAULT 0 NOT NULL",
+        "ai_scored_at": "ALTER TABLE info_items ADD COLUMN ai_scored_at DATETIME",
+        "is_featured": "ALTER TABLE info_items ADD COLUMN is_featured BOOLEAN DEFAULT 0 NOT NULL",
+        "ai_featured_manual": "ALTER TABLE info_items ADD COLUMN ai_featured_manual BOOLEAN DEFAULT 0 NOT NULL",
+        "ai_hidden_manual": "ALTER TABLE info_items ADD COLUMN ai_hidden_manual BOOLEAN DEFAULT 0 NOT NULL",
+    }
+    for column, statement in statements.items():
+        if column not in columns:
+            connection.execute(text(statement))
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_info_items_ai_status ON info_items (ai_status)")
+    )
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_info_items_is_featured ON info_items (is_featured)")
+    )
 
 
 def _ensure_api_key_accounts(connection) -> None:  # type: ignore[no-untyped-def]

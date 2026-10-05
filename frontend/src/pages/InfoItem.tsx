@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Copy, ExternalLink, Eye, Heart, ImageOff, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Copy, ExternalLink, Eye, EyeOff, Heart, ImageOff, Sparkles, Star, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { InfoTextCover } from '../components/InfoTextCover'
@@ -91,14 +91,28 @@ export function InfoItemPage() {
     onError: (caught) => notifyBad(errorMessage(caught, '操作失败')),
   })
 
-  const hide = useMutation({
-    mutationFn: () => api.infoItemHidden(itemId, true),
-    onSuccess: () => {
-      removeInfoItemFromCaches(queryClient, itemId)
-      notifyOk('已隐藏该内容')
-      close()
+  const hidden = useMutation({
+    mutationFn: (next: boolean) => api.infoItemHidden(itemId, next),
+    onSuccess: (updated, next) => {
+      patchInfoItemCaches(queryClient, itemId, { is_hidden: updated?.is_hidden ?? next })
+      if (next) {
+        removeInfoItemFromCaches(queryClient, itemId)
+        notifyOk('已隐藏该内容')
+      } else {
+        notifyOk('已恢复显示')
+      }
     },
-    onError: (caught) => notifyBad(errorMessage(caught, '隐藏失败')),
+    onError: (caught) => notifyBad(errorMessage(caught, '操作失败')),
+  })
+
+  const featured = useMutation({
+    mutationFn: (next: boolean) => api.infoItemFeatured(itemId, next),
+    onSuccess: (updated, next) => {
+      const value = updated?.is_featured ?? next
+      patchInfoItemCaches(queryClient, itemId, { is_featured: value })
+      notifyOk(value ? '已加入精选' : '已取消精选')
+    },
+    onError: (caught) => notifyBad(errorMessage(caught, '操作失败')),
   })
 
   function markBroken(id: string) {
@@ -136,11 +150,22 @@ export function InfoItemPage() {
           <Button
             type="button"
             variant="ghost"
-            disabled={!item || hide.isPending}
-            onClick={() => hide.mutate()}
+            disabled={!item || featured.isPending}
+            onClick={() => featured.mutate(!(item?.is_featured ?? false))}
+            className={cn('min-h-9 px-2 py-1 text-xs', item?.is_featured && 'text-amber-300')}
+          >
+            <Star size={14} className={cn(item?.is_featured && 'fill-amber-300')} />
+            {item?.is_featured ? '已精选' : '精选'}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={!item || hidden.isPending}
+            onClick={() => hidden.mutate(!(item?.is_hidden ?? false))}
             className="min-h-9 px-2 py-1 text-xs"
           >
-            <Eye size={14} /> 隐藏
+            {item?.is_hidden ? <Eye size={14} /> : <EyeOff size={14} />}
+            {item?.is_hidden ? '取消隐藏' : '隐藏'}
           </Button>
         </div>
       </div>
@@ -269,6 +294,36 @@ export function InfoItemPage() {
               {item.is_forwarded ? <span className="text-warn">转发内容</span> : null}
             </div>
 
+            {item.ai_status !== 'pending' || item.ai_score != null || item.ai_label ? (
+              <div className="rounded-lg border border-line bg-panel-2 p-3">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="inline-flex items-center gap-1 text-paper">
+                    <Sparkles size={13} className="text-signal" /> AI 判定
+                  </span>
+                  {item.is_featured ? <Badge tone="ok">精选</Badge> : null}
+                  {item.ai_score != null ? <Badge tone="info">{item.ai_score} 分</Badge> : null}
+                  {item.ai_label ? (
+                    <Badge tone={item.ai_label === 'ad' ? 'bad' : 'mist'}>{aiLabelText(item.ai_label)}</Badge>
+                  ) : null}
+                  <span className="text-mist">{aiStatusText(item.ai_status)}</span>
+                </div>
+                {item.ai_reason ? <p className="mt-2 text-xs text-mist">{item.ai_reason}</p> : null}
+                {item.ai_tags.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {item.ai_tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded-full border border-line px-2 py-0.5 text-[11px] text-mist"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {item.ai_error ? <p className="mt-2 text-xs text-danger">{item.ai_error}</p> : null}
+              </div>
+            ) : null}
+
             {item.text ? (
               <p className="whitespace-pre-wrap break-words text-sm leading-6 text-paper [overflow-wrap:anywhere]">
                 {item.text}
@@ -341,6 +396,22 @@ export function InfoItemPage() {
       ) : null}
     </div>
   )
+}
+
+function aiLabelText(label: string) {
+  if (label === 'ad') return '广告'
+  if (label === 'valuable') return '高价值'
+  if (label === 'general') return '常规'
+  if (label === 'other') return '其他'
+  return label
+}
+
+function aiStatusText(status: string) {
+  if (status === 'pending') return '待判定'
+  if (status === 'processing') return '判定中'
+  if (status === 'failed') return '判定失败'
+  if (status === 'skipped') return '已跳过'
+  return '已判定'
 }
 
 function mediaRatio(media: InfoMedia | null, item: InfoItemDetail) {

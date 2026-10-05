@@ -13,6 +13,7 @@ from app.db import get_session_factory
 from app.info import collector, sources
 from app.info import media as media_service
 from app.info.errors import InfoError
+from app.services import info_ai
 
 MEDIA_WORKER_INTERVAL_SECONDS = 5
 
@@ -119,8 +120,24 @@ async def media_worker_loop() -> None:
         await asyncio.sleep(MEDIA_WORKER_INTERVAL_SECONDS)
 
 
+async def ai_score_loop() -> None:
+    interval = max(5, int(get_settings().info_ai_tick_seconds))
+    while True:
+        try:
+            result = await info_ai.score_pending_once()
+            if result.get("processed"):
+                print(
+                    f"[info] AI 判定：处理 {result['processed']}，成功 {result.get('scored')}，"
+                    f"失败 {result.get('failed')}，跳过 {result.get('skipped')}"
+                )
+        except Exception as error:  # noqa: BLE001
+            print(f"[info] AI 判定循环异常: {error}")
+        await asyncio.sleep(interval)
+
+
 def start_info_workers() -> list[asyncio.Task]:
     return [
         asyncio.create_task(collect_loop()),
         asyncio.create_task(media_worker_loop()),
+        asyncio.create_task(ai_score_loop()),
     ]

@@ -1,12 +1,13 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Heart, ImageOff, Play, Plus, Search, Send } from 'lucide-react'
+import { Heart, ImageOff, Play, Plus, Search, Send, SlidersHorizontal, Sparkles, Star } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SyntheticEvent } from 'react'
 import { Link, Outlet, useNavigate, useSearchParams } from 'react-router-dom'
+import { InfoAiSettingsDialog } from '../components/InfoAiSettingsDialog'
 import { InfoMasonry } from '../components/InfoMasonry'
 import { InfoTextCover } from '../components/InfoTextCover'
 import { Button, Input, Select } from '../components/ui'
-import { api, type InfoItem } from '../lib/api'
+import { api, type InfoItem, type InfoSource } from '../lib/api'
 import {
   formatCount,
   formatDuration,
@@ -41,6 +42,31 @@ type FeedEntry =
   | { kind: 'item'; key: string; item: InfoItem; ratio: number }
   | { kind: 'skeleton'; key: string; item: null; ratio: number }
 
+/** 向下滚动隐藏筛选栏，向上滚动或回到顶部时显示，形成沉浸式瀑布流。 */
+function useHideOnScroll(threshold = 96) {
+  const [hidden, setHidden] = useState(false)
+  useEffect(() => {
+    let lastY = window.scrollY
+    let ticking = false
+    function onScroll() {
+      if (ticking) return
+      ticking = true
+      window.requestAnimationFrame(() => {
+        const y = window.scrollY
+        const delta = y - lastY
+        if (y <= threshold) setHidden(false)
+        else if (delta > 8) setHidden(true)
+        else if (delta < -8) setHidden(false)
+        lastY = y
+        ticking = false
+      })
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [threshold])
+  return hidden
+}
+
 export function InfoFeedPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -49,10 +75,16 @@ export function InfoFeedPage() {
   const sourceId = params.get('source_id') || ''
   const kind = params.get('kind') || 'all'
   const favoriteOnly = params.get('favorite') === '1'
+  const featuredOnly = params.get('featured') === '1'
+  const label = params.get('label') || ''
+  const minScore = params.get('min_score') || ''
   const keyword = params.get('q') || ''
   const order = params.get('order') === 'asc' ? 'asc' : 'desc'
 
   const [search, setSearch] = useState(keyword)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const hideBar = useHideOnScroll()
   const [measured, setMeasured] = useState<Record<string, number>>({})
   const sentinel = useRef<HTMLDivElement>(null)
 
@@ -61,7 +93,7 @@ export function InfoFeedPage() {
   const sourceList = sources.data?.sources ?? []
 
   const feed = useInfiniteQuery({
-    queryKey: ['info-items', { sourceId, kind, favoriteOnly, keyword, order }],
+    queryKey: ['info-items', { sourceId, kind, favoriteOnly, featuredOnly, label, minScore, keyword, order }],
     queryFn: ({ pageParam }) =>
       api.infoItems({
         cursor: pageParam || undefined,
@@ -70,6 +102,9 @@ export function InfoFeedPage() {
         kind: kind === 'all' ? undefined : kind,
         q: keyword || undefined,
         favorite: favoriteOnly ? 1 : undefined,
+        featured: featuredOnly ? 1 : undefined,
+        label: label || undefined,
+        min_score: minScore || undefined,
         order,
       }),
     initialPageParam: '',
@@ -179,7 +214,17 @@ export function InfoFeedPage() {
     return list
   }, [items, measured, feed.isLoading, isFetchingNextPage])
 
-  const filtersActive = Boolean(sourceId || keyword || favoriteOnly || kind !== 'all')
+  const filtersActive = Boolean(
+    sourceId || keyword || favoriteOnly || featuredOnly || label || minScore || kind !== 'all',
+  )
+  const activeFilterCount = [
+    Boolean(sourceId),
+    kind !== 'all',
+    favoriteOnly,
+    featuredOnly,
+    Boolean(label),
+    Boolean(minScore),
+  ].filter(Boolean).length
   const filteredTotal = feed.data?.pages[0]?.total ?? 0
   const noSources = !sources.isLoading && sourceList.length === 0
   const showEmpty = !feed.isLoading && items.length === 0 && !feed.isError
@@ -192,79 +237,108 @@ export function InfoFeedPage() {
           <p className="mt-1 text-xs text-mist">
             {stats.isLoading
               ? '统计加载中…'
-              : `总 ${formatCount(stats.data?.item_count ?? 0)} 条 · ${stats.data?.source_count ?? 0} 个渠道`}
+              : `总 ${formatCount(stats.data?.item_count ?? 0)} 条 · ${stats.data?.source_count ?? 0} 个渠道 · 精选 ${formatCount(stats.data?.featured_count ?? 0)}`}
+            {stats.data && stats.data.ai_pending > 0 ? ` · 待判定 ${formatCount(stats.data.ai_pending)}` : ''}
             {filtersActive ? ` · 筛选后 ${formatCount(filteredTotal)} 条` : ''}
           </p>
         </div>
-        <Button type="button" onClick={() => navigate('/info/sources')}>
-          <Plus size={15} /> 添加渠道
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="line" onClick={() => setAiOpen(true)}>
+            <Sparkles size={15} /> AI 判定
+          </Button>
+          <Button type="button" onClick={() => navigate('/info/sources')}>
+            <Plus size={15} /> 添加渠道
+          </Button>
+        </div>
       </div>
 
-      <div className="sticky top-[calc(var(--app-header)+env(safe-area-inset-top))] z-20 -mx-4 border-y border-line bg-ink/95 px-4 py-2 backdrop-blur-md lg:top-0 lg:mx-0 lg:rounded-lg lg:border lg:px-3 lg:py-2.5">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-2">
-          <Select
-            aria-label="渠道筛选"
-            className="w-full lg:w-40 lg:shrink-0"
-            value={sourceId}
-            onChange={(event) => setParam('source_id', event.target.value)}
+      <div
+        className={cn(
+          'sticky top-[calc(var(--app-header)+env(safe-area-inset-top))] z-20 -mx-4 border-b border-line bg-ink/95 px-4 py-2 backdrop-blur-md transition-all duration-300 lg:top-0 lg:mx-0 lg:rounded-lg lg:border lg:px-3 lg:py-2.5',
+          hideBar ? 'pointer-events-none -translate-y-[140%] opacity-0' : 'translate-y-0 opacity-100',
+        )}
+      >
+        {/* 移动端：搜索 + 可开合筛选，避免单行挤压显示不全 */}
+        <div className="flex items-center gap-2 lg:hidden">
+          <SearchBox value={search} onChange={setSearch} className="flex-1" />
+          <button
+            type="button"
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((value) => !value)}
+            className={cn(CHIP_CLASS, filtersOpen ? CHIP_ACTIVE : CHIP_IDLE)}
           >
-            <option value="">全部渠道</option>
-            {sourceList.map((source) => (
-              <option key={source.id} value={source.id}>
-                {source.title || source.username || source.identifier}
-              </option>
-            ))}
-          </Select>
+            <SlidersHorizontal size={13} /> 筛选
+            {activeFilterCount ? (
+              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-signal px-1 text-[10px] font-semibold text-ink">
+                {activeFilterCount}
+              </span>
+            ) : null}
+          </button>
+        </div>
 
-          <div className="-mx-1 flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 lg:contents">
-            {KIND_FILTERS.map((filter) => {
-              const active = kind === filter.value
-              return (
-                <button
-                  key={filter.value}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setParam('kind', filter.value === 'all' ? '' : filter.value)}
-                  className={cn(CHIP_CLASS, active ? CHIP_ACTIVE : CHIP_IDLE)}
-                >
-                  {filter.label}
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="flex min-w-0 items-center gap-2 lg:contents">
-            <button
-              type="button"
-              aria-pressed={favoriteOnly}
-              onClick={() => setParam('favorite', favoriteOnly ? '' : '1')}
-              className={cn(CHIP_CLASS, favoriteOnly ? CHIP_ACTIVE : CHIP_IDLE)}
-            >
-              <Heart size={13} className={cn(favoriteOnly && 'fill-current')} /> 收藏
-            </button>
-
-            <div className="relative min-w-0 flex-1 lg:w-52 lg:flex-none">
-              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-mist" />
-              <Input
-                className="h-9 py-1.5 pl-9"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="搜索内容"
-                aria-label="搜索内容"
+        {filtersOpen ? (
+          <div className="mt-2 space-y-2 border-t border-line/70 pt-2 lg:hidden">
+            <SourceSelect
+              value={sourceId}
+              onChange={(value) => setParam('source_id', value)}
+              sources={sourceList}
+            />
+            <div className="flex flex-wrap gap-1.5">
+              <KindChips kind={kind} onPick={(value) => setParam('kind', value === 'all' ? '' : value)} />
+              <FavoriteChip
+                active={favoriteOnly}
+                onToggle={() => setParam('favorite', favoriteOnly ? '' : '1')}
+              />
+              <FeaturedChip
+                active={featuredOnly}
+                onToggle={() => setParam('featured', featuredOnly ? '' : '1')}
               />
             </div>
-
-            <Select
-              aria-label="排序"
-              className="w-24 shrink-0"
-              value={order}
-              onChange={(event) => setParam('order', event.target.value === 'asc' ? 'asc' : '')}
-            >
-              <option value="desc">最新</option>
-              <option value="asc">最早</option>
-            </Select>
+            <div className="grid grid-cols-3 gap-2">
+              <LabelSelect value={label} onChange={(value) => setParam('label', value)} />
+              <ScoreSelect value={minScore} onChange={(value) => setParam('min_score', value)} />
+              <OrderSelect
+                value={order}
+                onChange={(value) => setParam('order', value === 'asc' ? 'asc' : '')}
+              />
+            </div>
+            {filtersActive ? (
+              <button
+                type="button"
+                className="text-xs text-mist underline-offset-2 transition hover:text-paper hover:underline"
+                onClick={() => {
+                  setSearch('')
+                  setFiltersOpen(false)
+                  setParams(new URLSearchParams(), { replace: true })
+                }}
+              >
+                清除全部筛选
+              </button>
+            ) : null}
           </div>
+        ) : null}
+
+        {/* 桌面端：单行筛选 */}
+        <div className="hidden items-center gap-2 lg:flex">
+          <SourceSelect
+            value={sourceId}
+            onChange={(value) => setParam('source_id', value)}
+            sources={sourceList}
+            className="w-40 shrink-0"
+          />
+          <div className="flex min-w-0 items-center gap-1.5">
+            <KindChips kind={kind} onPick={(value) => setParam('kind', value === 'all' ? '' : value)} />
+          </div>
+          <FavoriteChip active={favoriteOnly} onToggle={() => setParam('favorite', favoriteOnly ? '' : '1')} />
+          <FeaturedChip active={featuredOnly} onToggle={() => setParam('featured', featuredOnly ? '' : '1')} />
+          <LabelSelect value={label} onChange={(value) => setParam('label', value)} className="w-24 shrink-0" />
+          <ScoreSelect value={minScore} onChange={(value) => setParam('min_score', value)} className="w-24 shrink-0" />
+          <SearchBox value={search} onChange={setSearch} className="w-52 shrink-0" />
+          <OrderSelect
+            value={order}
+            onChange={(value) => setParam('order', value === 'asc' ? 'asc' : '')}
+            className="w-24 shrink-0"
+          />
         </div>
       </div>
 
@@ -351,7 +425,178 @@ export function InfoFeedPage() {
 
       {/* 详情浮层：作为子路由渲染在瀑布流之上，返回时可保留列表状态 */}
       <Outlet />
+
+      {aiOpen ? <InfoAiSettingsDialog open onClose={() => setAiOpen(false)} /> : null}
     </div>
+  )
+}
+
+function SearchBox({
+  value,
+  onChange,
+  className,
+}: {
+  value: string
+  onChange: (value: string) => void
+  className?: string
+}) {
+  return (
+    <div className={cn('relative min-w-0', className)}>
+      <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-mist" />
+      <Input
+        className="h-9 py-1.5 pl-9"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="搜索内容"
+        aria-label="搜索内容"
+      />
+    </div>
+  )
+}
+
+function SourceSelect({
+  value,
+  onChange,
+  sources,
+  className,
+}: {
+  value: string
+  onChange: (value: string) => void
+  sources: InfoSource[]
+  className?: string
+}) {
+  return (
+    <Select
+      aria-label="渠道筛选"
+      className={cn('w-full', className)}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      <option value="">全部渠道</option>
+      {sources.map((source) => (
+        <option key={source.id} value={source.id}>
+          {source.title || source.username || source.identifier}
+        </option>
+      ))}
+    </Select>
+  )
+}
+
+function KindChips({ kind, onPick }: { kind: string; onPick: (value: string) => void }) {
+  return (
+    <>
+      {KIND_FILTERS.map((filter) => {
+        const active = kind === filter.value
+        return (
+          <button
+            key={filter.value}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onPick(filter.value)}
+            className={cn(CHIP_CLASS, active ? CHIP_ACTIVE : CHIP_IDLE)}
+          >
+            {filter.label}
+          </button>
+        )
+      })}
+    </>
+  )
+}
+
+function FavoriteChip({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onToggle}
+      className={cn(CHIP_CLASS, active ? CHIP_ACTIVE : CHIP_IDLE)}
+    >
+      <Heart size={13} className={cn(active && 'fill-current')} /> 收藏
+    </button>
+  )
+}
+
+function FeaturedChip({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onToggle}
+      className={cn(CHIP_CLASS, active ? CHIP_ACTIVE : CHIP_IDLE)}
+    >
+      <Star size={13} className={cn(active && 'fill-current')} /> 精选
+    </button>
+  )
+}
+
+function LabelSelect({
+  value,
+  onChange,
+  className,
+}: {
+  value: string
+  onChange: (value: string) => void
+  className?: string
+}) {
+  return (
+    <Select
+      aria-label="AI 标签筛选"
+      className={cn('w-full', className)}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      <option value="">全部标签</option>
+      <option value="valuable">高价值</option>
+      <option value="ad">广告</option>
+      <option value="general">常规</option>
+      <option value="other">其他</option>
+    </Select>
+  )
+}
+
+function ScoreSelect({
+  value,
+  onChange,
+  className,
+}: {
+  value: string
+  onChange: (value: string) => void
+  className?: string
+}) {
+  return (
+    <Select
+      aria-label="最低分数筛选"
+      className={cn('w-full', className)}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      <option value="">不限分数</option>
+      <option value="60">60 分以上</option>
+      <option value="80">80 分以上</option>
+      <option value="90">90 分以上</option>
+    </Select>
+  )
+}
+
+function OrderSelect({
+  value,
+  onChange,
+  className,
+}: {
+  value: string
+  onChange: (value: string) => void
+  className?: string
+}) {
+  return (
+    <Select
+      aria-label="排序"
+      className={cn('w-full', className)}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      <option value="desc">最新</option>
+      <option value="asc">最早</option>
+    </Select>
   )
 }
 
@@ -490,9 +735,20 @@ function InfoCard({
             </span>
           ) : null}
 
-          {!image ? (
+          {item.is_featured || item.ai_score != null ? (
+            <span className="pointer-events-none absolute left-1.5 top-1.5 flex items-center gap-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-paper">
+              {item.is_featured ? <Star size={11} className="fill-amber-300 text-amber-300" /> : null}
+              {item.ai_score != null ? <span>{item.ai_score}</span> : null}
+            </span>
+          ) : !image ? (
             <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-black/45 px-1.5 py-0.5 text-[10px] text-paper/80">
               文字
+            </span>
+          ) : null}
+
+          {item.ai_label === 'ad' ? (
+            <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-danger/80 px-1.5 py-0.5 text-[10px] text-paper">
+              广告
             </span>
           ) : null}
 
