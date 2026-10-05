@@ -1,0 +1,20 @@
+{
+  "user_name": "gh_363b924965e9",
+  "nick_name": "人民日报",
+  "user_role": 0,
+  "service_type": 0,
+  "ban_type": 0,
+  "ip_wording": "北京",
+  "original_article_count": 852,
+  "original_content_str": "852 original articles",
+  "finder_nickname": "人民日报",
+  "finder_username": "v2_060000231003b20faec8c6e4811dc1d4c602ee30b0771bbcf220c67926bb76ab7702ac335a53@finder",
+  "signature": null,
+  "head_url": null,
+  "unavailable": [
+    "signature",
+    "head_url"
+  ],
+  "debug_id": "fixture",
+  "debug_info": "fixture"
+}

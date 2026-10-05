@@ -50,6 +50,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
     _migrate_douyin_settings_to_tikhub(engine)
+    _migrate_info_poll_interval(engine)
     _ensure_api_keys_account_id_nullable(engine)
     _ensure_info_items_source_nullable(engine)
     _ensure_request_logs_have_no_parent_fks(engine)
@@ -341,6 +342,41 @@ def _migrate_douyin_settings_to_tikhub(engine: Engine) -> None:
         )
 
 
+def _migrate_info_poll_interval(engine: Engine) -> None:
+    """一次性把资讯信源的采集间隔统一为 24 小时（86400 秒）。
+
+    用 app_migrations 记录是否执行过，避免每次启动覆盖用户后续的调整。
+    """
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS app_migrations "
+                "(key VARCHAR(64) PRIMARY KEY, applied_at DATETIME)"
+            )
+        )
+        done = connection.execute(
+            text("SELECT 1 FROM app_migrations WHERE key = :key"),
+            {"key": "info_poll_interval_24h"},
+        ).first()
+        if done is not None:
+            return
+        tables = {
+            row[0]
+            for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+        }
+        if "info_sources" in tables:
+            connection.execute(
+                text(
+                    "UPDATE info_sources SET poll_interval_seconds = 86400 "
+                    "WHERE poll_interval_seconds != 86400"
+                )
+            )
+        connection.execute(
+            text("INSERT INTO app_migrations (key, applied_at) VALUES (:key, datetime('now'))"),
+            {"key": "info_poll_interval_24h"},
+        )
+
+
 def _ensure_douyin_job_columns(connection) -> None:  # type: ignore[no-untyped-def]
     """douyin_jobs 增量列：下载进度字节数。"""
     columns = {row[1] for row in connection.execute(text("PRAGMA table_info(douyin_jobs)"))}
@@ -374,6 +410,9 @@ def _ensure_info_item_ai_columns(connection) -> None:  # type: ignore[no-untyped
         "is_featured": "ALTER TABLE info_items ADD COLUMN is_featured BOOLEAN DEFAULT 0 NOT NULL",
         "ai_featured_manual": "ALTER TABLE info_items ADD COLUMN ai_featured_manual BOOLEAN DEFAULT 0 NOT NULL",
         "ai_hidden_manual": "ALTER TABLE info_items ADD COLUMN ai_hidden_manual BOOLEAN DEFAULT 0 NOT NULL",
+        "content_status": "ALTER TABLE info_items ADD COLUMN content_status VARCHAR(16) DEFAULT '' NOT NULL",
+        "content_attempts": "ALTER TABLE info_items ADD COLUMN content_attempts INTEGER DEFAULT 0 NOT NULL",
+        "content_html": "ALTER TABLE info_items ADD COLUMN content_html TEXT",
     }
     for column, statement in statements.items():
         if column not in columns:

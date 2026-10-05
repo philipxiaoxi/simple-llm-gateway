@@ -199,7 +199,12 @@ class TelegramAdapter:
         return _channel_preview(info)
 
     def fetch(
-        self, identifier: str, *, after: int | None, limit: int, before: int | None = None
+        self,
+        identifier: str,
+        *,
+        after: int | str | None,
+        limit: int,
+        before: int | str | None = None,
     ) -> FetchedPage:
         params: dict[str, Any] = {"channel": identifier, "limit": max(1, min(100, int(limit)))}
         # after = 取更新的消息；before = 取更老的消息（首次回填向历史翻页用）

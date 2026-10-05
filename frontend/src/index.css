@@ -157,3 +157,62 @@ body {
     animation: none;
   }
 }
+
+/* 公众号正文：保留原文内联样式的同时补齐默认排版（段落/图片/引用/表格） */
+.wx-content {
+  overflow-wrap: anywhere;
+}
+.wx-content img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.75rem auto;
+}
+.wx-content p {
+  margin: 0.75em 0;
+}
+.wx-content h1,
+.wx-content h2,
+.wx-content h3,
+.wx-content h4,
+.wx-content h5,
+.wx-content h6 {
+  margin: 1em 0 0.5em;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.wx-content blockquote {
+  margin: 0.75em 0;
+  padding: 0.25em 0.75em;
+  border-left: 3px solid currentColor;
+  opacity: 0.85;
+}
+.wx-content ul,
+.wx-content ol {
+  margin: 0.75em 0;
+  padding-left: 1.5em;
+  list-style: revert;
+}
+.wx-content a {
+  color: #3b82f6;
+  text-decoration: underline;
+}
+.wx-content table {
+  max-width: 100%;
+  margin: 0.75em 0;
+  border-collapse: collapse;
+}
+.wx-content td,
+.wx-content th {
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  padding: 4px 8px;
+}
+.wx-content pre,
+.wx-content code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.wx-content section,
+.wx-content div {
+  max-width: 100%;
+}

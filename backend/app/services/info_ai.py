@@ -287,6 +287,8 @@ def _prepare_batch(factory, settings) -> tuple[list[str], int, dict[str, Any]] |
                 .where(
                     InfoItem.ai_status.in_(("pending", "failed")),
                     InfoItem.ai_attempts < config["max_attempts"],
+                    # 微信全文补全完成前（content_status=pending）不参与判定，避免拿摘要打分
+                    InfoItem.content_status != "pending",
                 )
                 .order_by(InfoItem.collected_at.asc())
                 .limit(batch)

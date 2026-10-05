@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.clock import utcnow
@@ -21,6 +21,7 @@ from app.deps import get_current_admin
 from app.info import collector, items, sources, storage
 from app.info import tokens as info_tokens
 from app.info.errors import InfoError
+from app.info.sanitize import sanitize_wechat_html
 from app.models import InfoItem, InfoMedia, InfoSource, UpstreamAccount
 from app.services import info_ai
 from app.services.tikhub_config import tikhub_status
@@ -59,6 +60,16 @@ class UpdateBody(BaseModel):
     title: str | None = None
     poll_interval_seconds: int | None = None
     enabled: bool | None = None
+
+
+class SaveArticleBody(BaseModel):
+    url: str
+
+
+class BatchIntervalBody(BaseModel):
+    # ids 为空 / 不传表示全部渠道；poll_interval_seconds = 0 表示「手动触发」
+    ids: list[str] | None = None
+    poll_interval_seconds: int = 86400
 
 
 class StateBody(BaseModel):
@@ -146,6 +157,15 @@ def update_source(source_id: str, payload: UpdateBody, db: Session = Depends(get
     return sources.serialize_source(source)
 
 
+@router.post("/sources/batch-interval")
+def batch_interval(payload: BatchIntervalBody, db: Session = Depends(get_db)):
+    changed = sources.batch_update_interval(
+        db, source_ids=payload.ids, poll_interval_seconds=payload.poll_interval_seconds
+    )
+    db.commit()
+    return {"updated": changed}
+
+
 @router.delete("/sources/{source_id}", status_code=204)
 def delete_source(
     source_id: str, purge_items: bool = Query(default=False), db: Session = Depends(get_db)
@@ -168,7 +188,7 @@ def collect_source(source_id: str, db: Session = Depends(get_db)):
         raise _http(error) from error
 
     try:
-        result = collector.collect_source(db, source, backfill=source.cursor_after is None)
+        result = collector.collect_source(db, source, backfill=source.last_success_at is None)
     except InfoError as error:
         # 契约：采集失败（上游不可用等）仍返回 200，失败信息放在 error 字段，
         # 前端据此给出分类提示；渠道上的 last_error / 连续失败次数已在采集层落库。
@@ -182,6 +202,55 @@ def collect_source(source_id: str, db: Session = Depends(get_db)):
         }
     db.commit()
     return result
+
+
+@router.post("/sources/{source_id}/rebuild-content")
+def rebuild_source_content(source_id: str, db: Session = Depends(get_db)):
+    """重新补全该公众号条目的正文（含 HTML 排版）并重新判定。"""
+    try:
+        source = sources.get_source(db, source_id)
+    except InfoError as error:
+        raise _http(error) from error
+    if source.kind != "wechat":
+        raise HTTPException(status_code=400, detail="只有微信公众号渠道支持重新补全正文")
+    reset = collector.reset_wechat_content(db, source)
+    db.commit()
+    return {"reset": reset}
+
+
+@router.post("/articles", status_code=201)
+def save_article(payload: SaveArticleBody, db: Session = Depends(get_db)):
+    """手动保存单篇公众号文章，归到内置「其他」渠道（只调用一次详情接口）。"""
+    try:
+        adapter = collector.adapter_for(db, "wechat")
+        url = adapter.normalize(payload.url)
+        post, raw_html = adapter.fetch_article_post(url)
+    except InfoError as error:
+        db.rollback()
+        raise _http(error) from error
+
+    if not post.text.strip() and not post.media:
+        raise HTTPException(status_code=422, detail="文章没有可用内容")
+
+    cleaned = sanitize_wechat_html(raw_html)
+    if cleaned and len(cleaned) > get_settings().info_wechat_html_max_chars:
+        cleaned = ""
+
+    source = sources.ensure_manual_source(db)
+    item_id = collector.insert_article(db, source, post, content_html=cleaned or None)
+    if item_id is None:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="该文章已保存到「其他」")
+
+    source.item_count = int(
+        db.scalar(
+            select(func.count()).select_from(InfoItem).where(InfoItem.source_id == source.id)
+        )
+        or 0
+    )
+    source.updated_at = utcnow()
+    db.commit()
+    return {"id": item_id, "source_id": source.id}
 
 
 @router.get("/items")

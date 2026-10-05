@@ -61,7 +61,14 @@ def _apply_channel(source: InfoSource, channel: SourcePreview) -> None:
         source.subscriber_count_text = channel.subscriber_count_text[:16]
 
 
-def _insert_item(db: Session, source: InfoSource, post: FetchedPost) -> bool:
+def _insert_item(
+    db: Session,
+    source: InfoSource,
+    post: FetchedPost,
+    *,
+    content_html: str | None = None,
+    content_status: str | None = None,
+) -> bool:
     """写入一条内容及其媒体行；已存在或内容为空时返回 False。
 
     存在性检查与写入放在同一个 SAVEPOINT 里，并用唯一约束兜底：定时循环与
@@ -106,6 +113,14 @@ def _insert_item(db: Session, source: InfoSource, post: FetchedPost) -> bool:
                 ),
                 cover_seed=cover_seed_for(source.id, post.external_id),
                 status="media_pending" if media_items else "ready",
+                # 微信走全文模式：先入库列表字段，正文由后台 worker 补全后再交给 AI。
+                # 手动保存的单篇直接带正文 HTML 入库（content_status 显式传入）。
+                content_status=(
+                    content_status
+                    if content_status is not None
+                    else ("pending" if source.kind == "wechat" else "")
+                ),
+                content_html=content_html,
                 collected_at=utcnow(),
                 created_at=utcnow(),
             )
@@ -141,6 +156,23 @@ def _insert_item(db: Session, source: InfoSource, post: FetchedPost) -> bool:
         return False
 
 
+def insert_article(
+    db: Session, source: InfoSource, post: FetchedPost, *, content_html: str | None = None
+) -> str | None:
+    """手动保存单篇文章：直接带正文 HTML 入库（content_status=done）。
+
+    返回新条目 id；已存在（同 source + external_id）时返回 None。
+    """
+    if not _insert_item(db, source, post, content_html=content_html, content_status="done"):
+        return None
+    return db.scalar(
+        select(InfoItem.id).where(
+            InfoItem.source_id == source.id,
+            InfoItem.external_id == post.external_id[:64],
+        )
+    )
+
+
 def _dump_json(value: object) -> str:
     import json
 
@@ -157,12 +189,13 @@ def _fetch_backfill(
 
     只发 `after` 是拿不到历史的——上游语义里 `after` 是「取更新」，`before` 才是
     「取更老」。回填必须在 `before` 方向走，游标推进（`cursor_after`）才顺理成章地
-    留给后续的增量轮询。
+    留给后续的增量轮询。`before` 是上游不透明游标：Telegram 为整数 post_id，
+    微信公众号为 base64 字符串。
     """
     collected: list[FetchedPost] = []
     seen: set[str] = set()
     channel: SourcePreview | None = None
-    before: int | None = None
+    before: int | str | None = None
 
     for _ in range(max(1, max_pages)):
         remaining = max(1, limit - len(collected))
@@ -195,8 +228,9 @@ def collect_source(
     source_id = source.id
     identifier = source.identifier
 
-    # 首次采集（还没有游标）回填更多历史
-    first_run = source.cursor_after is None
+    # 首次采集（尚无成功记录）回填更多历史。用 last_success_at 判定而非游标，
+    # 这样字符串游标渠道（微信公众号）成功后不会每轮重复回填。
+    first_run = source.last_success_at is None
     limit = settings.info_backfill_limit if (backfill or first_run) else settings.info_poll_limit
     after = None if (backfill or first_run) else source.cursor_after
     db.rollback()
@@ -261,6 +295,28 @@ def collect_source(
         "skipped": skipped,
         "error": None,
     }
+
+
+def reset_wechat_content(db: Session, source: InfoSource) -> int:
+    """把该公众号的条目重置为待补全正文，交给全文 worker 重新拉取。
+
+    用于：旧数据补 `content_html`（保留排版），或正文更新后重新做 AI 判定。
+    仅微信渠道有 `content_status`，其余渠道不会被命中。
+    """
+    result = db.execute(
+        update(InfoItem)
+        .where(InfoItem.source_id == source.id, InfoItem.content_status != "")
+        .values(
+            content_status="pending",
+            content_attempts=0,
+            content_html=None,
+            ai_status="pending",
+            ai_attempts=0,
+            ai_error="",
+        )
+    )
+    db.flush()
+    return int(result.rowcount or 0)
 
 
 def refresh_item_media_state(db: Session, item: InfoItem) -> None:

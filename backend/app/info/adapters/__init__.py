@@ -4,6 +4,7 @@ from app.info.errors import InfoError
 
 from .base import (
     DISPLAY_MEDIA_KINDS,
+    FetchedArticle,
     FetchedMedia,
     FetchedPage,
     FetchedPost,
@@ -18,9 +19,11 @@ from .base import (
     reactions_total,
 )
 from .telegram import TelegramAdapter
+from .wechat import WeChatMpAdapter
 
 _ADAPTERS: dict[str, type] = {
     TelegramAdapter.kind: TelegramAdapter,
+    WeChatMpAdapter.kind: WeChatMpAdapter,
 }
 
 
@@ -41,12 +44,14 @@ def build_adapter(
 
 __all__ = [
     "DISPLAY_MEDIA_KINDS",
+    "FetchedArticle",
     "FetchedMedia",
     "FetchedPage",
     "FetchedPost",
     "SourceAdapter",
     "SourcePreview",
     "TelegramAdapter",
+    "WeChatMpAdapter",
     "build_adapter",
     "build_excerpt",
     "classify",

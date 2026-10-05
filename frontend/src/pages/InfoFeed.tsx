@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Heart, ImageOff, ListChecks, Play, Plus, Search, Send, SlidersHorizontal, Sparkles, Star } from 'lucide-react'
+import { Heart, ImageOff, ListChecks, Play, Search, Send, Settings, SlidersHorizontal, Sparkles, Star } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SyntheticEvent } from 'react'
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
@@ -266,7 +266,7 @@ export function InfoFeedPage() {
             <Sparkles size={15} /> AI 判定
           </Button>
           <Button type="button" onClick={() => navigate('/info/sources')}>
-            <Plus size={15} /> 添加渠道
+            <Settings size={15} /> 渠道管理
           </Button>
         </div>
       </div>
@@ -377,12 +377,12 @@ export function InfoFeedPage() {
             <ImageOff size={20} />
           </div>
           <p className="mt-3 text-sm text-mist">
-            {noSources ? '还没有采集渠道，先添加一个 Telegram 频道' : filtersActive ? '没有符合条件的内容' : '该渠道暂无可展示内容'}
+            {noSources ? '还没有采集渠道，先去渠道管理添加' : filtersActive ? '没有符合条件的内容' : '该渠道暂无可展示内容'}
           </p>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             {noSources ? (
               <Button type="button" onClick={() => navigate('/info/sources')}>
-                <Plus size={15} /> 添加 Telegram 频道
+                <Settings size={15} /> 渠道管理
               </Button>
             ) : null}
             {!noSources && sourceId ? (

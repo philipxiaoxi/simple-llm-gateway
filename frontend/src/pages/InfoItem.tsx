@@ -308,7 +308,15 @@ export function InfoItemPage() {
       ) : null}
 
       {item ? (
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] lg:gap-4 lg:overflow-hidden lg:p-4">
+        <div
+          className={cn(
+            'flex min-h-0 flex-1 flex-col overflow-y-auto lg:gap-4 lg:p-4',
+            item.content_html
+              ? 'items-center'
+              : 'lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] lg:overflow-hidden',
+          )}
+        >
+          {item.content_html ? null : (
           <div className="relative flex min-h-0 flex-col bg-black/40 lg:h-full lg:rounded-lg lg:border lg:border-line">
             <div
               ref={mediaRef}
@@ -377,8 +385,14 @@ export function InfoItemPage() {
               </div>
             ) : null}
           </div>
+          )}
 
-          <div className="min-h-0 space-y-3 px-4 pb-6 pt-3 lg:overflow-y-auto lg:px-1 lg:pb-2">
+          <div
+            className={cn(
+              'min-h-0 space-y-3 px-4 pb-6 pt-3 lg:px-1 lg:pb-2',
+              item.content_html ? 'w-full max-w-[760px]' : 'lg:overflow-y-auto',
+            )}
+          >
             <div className="flex items-center gap-2">
               <ChannelAvatar name={item.source?.title || item.author_name || ''} url={item.source?.avatar_url || ''} />
               <div className="min-w-0">
@@ -431,7 +445,12 @@ export function InfoItemPage() {
               </div>
             ) : null}
 
-            {item.text ? (
+            {item.content_html ? (
+              <div
+                className="wx-content break-words text-sm leading-6 text-paper"
+                dangerouslySetInnerHTML={{ __html: item.content_html }}
+              />
+            ) : item.text ? (
               <p className="whitespace-pre-wrap break-words text-sm leading-6 text-paper [overflow-wrap:anywhere]">
                 {item.text}
               </p>

@@ -179,6 +179,14 @@ class Settings(BaseSettings):
     info_ai_tick_seconds: int = 30
     info_ai_batch_size: int = 5
     info_ai_max_concurrent: int = 2
+    # 微信全文补全 worker：每轮批量、轮询间隔、单条最大尝试次数
+    info_wechat_detail_batch_size: int = 3
+    info_wechat_detail_interval_seconds: int = 10
+    info_wechat_detail_max_attempts: int = 3
+    # 正文 HTML 清洗后保留的最大字符数，超出则不存（详情页退回纯文本）
+    info_wechat_html_max_chars: int = 300_000
+    # 单篇公众号正文最多转存多少张图（公众号长图文常超 Telegram 的通用上限）
+    info_wechat_max_body_images: int = 80
 
     @property
     def database_url(self) -> str:

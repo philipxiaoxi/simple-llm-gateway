@@ -204,7 +204,9 @@ export function formatDuration(value: number | null | undefined) {
 
 /** 采集间隔：1800 → 30 分钟 */
 export function formatInterval(seconds: number | null | undefined) {
-  if (!seconds || seconds <= 0) return '—'
+  if (seconds === 0) return '手动'
+  if (!seconds || seconds < 0) return '—'
+  if (seconds % 86400 === 0) return `${seconds / 86400} 天`
   if (seconds % 3600 === 0) return `${seconds / 3600} 小时`
   if (seconds % 60 === 0) return `${seconds / 60} 分钟`
   return `${seconds} 秒`

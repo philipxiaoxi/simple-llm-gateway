@@ -20,7 +20,10 @@ from urllib.parse import urlparse
 from .errors import InfoError
 
 # Telegram 媒体 CDN：cdn1.telesco.pe / cdn4.telesco.pe 等
-MEDIA_HOSTS = ("telesco.pe", "cdn-telegram.org")
+TELEGRAM_MEDIA_HOSTS = ("telesco.pe", "cdn-telegram.org")
+# 微信公众号图片：mmbiz.qpic.cn 为正文/封面图，qlogo 为头像
+WECHAT_MEDIA_HOSTS = ("mmbiz.qpic.cn", "mmbiz.qlogo.cn", "wx.qlogo.cn")
+MEDIA_HOSTS = (*TELEGRAM_MEDIA_HOSTS, *WECHAT_MEDIA_HOSTS)
 
 _CHANNEL_URL = re.compile(
     # 允许省略 scheme：`t.me/xxx` 是最常见的粘贴形式
@@ -99,3 +102,41 @@ def normalize_channel(raw: str) -> str:
 
 def channel_permalink(identifier: str, post_id: str | int) -> str:
     return f"https://t.me/{identifier}/{post_id}"
+
+
+# 微信公众号文章链接：https://mp.weixin.qq.com/s/xxx 或带 __biz 的长链
+_WECHAT_URL = re.compile(r"https?://mp\.weixin\.qq\.com/s([/?][^\s]*)?", re.IGNORECASE)
+# 公众号 username：gh_…、gh_…@app、以及自定义微信号（与上游 OpenAPI pattern 一致）
+_WECHAT_USERNAME = re.compile(r"^[0-9A-Za-z][-_0-9A-Za-z]{1,63}(@[0-9A-Za-z]{1,16})?$")
+
+
+def wechat_article_url(value: str) -> str | None:
+    """从输入中提取微信公众号文章链接；没有则返回 None。"""
+    match = _WECHAT_URL.search(value or "")
+    return match.group(0) if match else None
+
+
+def normalize_wechat(raw: str) -> str:
+    """归一化微信公众号输入：文章链接保留原链接，用户名去掉 @ 前缀。
+
+    接受：`gh_xxx`、`gh_xxx@app`、自定义微信号（如 `nikejdi`）、
+    `https://mp.weixin.qq.com/s/…` 文章链接（含夹在整段文本里的情况）。
+    文章链接不做解析，交给预览/创建时通过 `fetch_article_detail` 反查 username。
+    """
+    text = (raw or "").strip()
+    if not text:
+        raise InfoError("请填写公众号名称或文章链接", status_code=400, error_type="invalid_channel")
+
+    url = wechat_article_url(text)
+    if url:
+        return url
+
+    stripped = text.strip().strip("，。,.；;、").lstrip("@")
+    if _WECHAT_USERNAME.match(stripped):
+        return stripped
+
+    raise InfoError(
+        "无法识别的公众号，请填 gh_ 开头的 username、微信号或 mp.weixin.qq.com 文章链接",
+        status_code=400,
+        error_type="invalid_channel",
+    )

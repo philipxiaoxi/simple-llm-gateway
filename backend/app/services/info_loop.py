@@ -7,12 +7,18 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
+
+from sqlalchemy import select
 
 from app.config import get_settings
 from app.db import get_session_factory
 from app.info import collector, sources
 from app.info import media as media_service
+from app.info.adapters import build_excerpt
 from app.info.errors import InfoError
+from app.info.sanitize import sanitize_wechat_html
+from app.models import InfoItem, InfoMedia, InfoSource
 from app.services import info_ai
 
 MEDIA_WORKER_INTERVAL_SECONDS = 5
@@ -95,6 +101,110 @@ def download_pending_once() -> dict[str, int]:
     return {"processed": processed, "succeeded": succeeded}
 
 
+def _pending_wechat_snapshot(factory, *, limit: int, max_attempts: int):
+    """短读：列出待补全正文的微信条目，并取回带凭据的适配器。
+
+    正文补全在事务外进行；适配器只持有 base_url/api_key 字符串，会话关闭后仍可用。
+    """
+    session = factory()
+    try:
+        rows = list(
+            session.execute(
+                select(InfoItem.id, InfoItem.permalink, InfoItem.content_attempts)
+                .join(InfoSource, InfoItem.source_id == InfoSource.id)
+                .where(
+                    InfoSource.kind == "wechat",
+                    InfoItem.content_status != "done",
+                    InfoItem.content_attempts < max_attempts,
+                )
+                .order_by(InfoItem.created_at.asc())
+                .limit(max(1, limit))
+            ).all()
+        )
+        adapter = collector.adapter_for(session, "wechat")
+        session.rollback()
+        return rows, adapter
+    finally:
+        session.close()
+
+
+def enrich_wechat_content_once() -> dict[str, int]:
+    """把一批微信条目的正文与正文图片补全，成功后才交给 AI 判定。"""
+    settings = get_settings()
+    factory = get_session_factory()
+    snapshot, adapter = _pending_wechat_snapshot(
+        factory,
+        limit=settings.info_wechat_detail_batch_size,
+        max_attempts=settings.info_wechat_detail_max_attempts,
+    )
+
+    processed = 0
+    done = 0
+    failed = 0
+    for item_id, permalink, _attempts in snapshot:
+        processed += 1
+        article = None
+        error = False
+        try:
+            article = adapter.fetch_article(permalink)
+        except Exception as caught:  # noqa: BLE001 - 单条失败不影响整批
+            error = True
+            print(f"[info] 微信全文补全失败 {str(permalink)[:80]}: {caught}")
+
+        text = article.text if article is not None else ""
+        media = article.media if article is not None else []
+        html = sanitize_wechat_html(article.html) if article is not None else ""
+
+        session = factory()
+        try:
+            item = session.get(InfoItem, item_id)
+            if item is None:
+                session.rollback()
+                continue
+            item.content_attempts = int(item.content_attempts or 0) + 1
+            if error or not text.strip():
+                item.content_status = "failed"
+                failed += 1
+            else:
+                item.text = text
+                item.excerpt = build_excerpt(text, 200)
+                # 保留原排版的清洗后 HTML；过大则退回纯文本
+                item.content_html = (
+                    html if html and len(html) <= settings.info_wechat_html_max_chars else None
+                )
+                existing = {row.remote_url for row in item.media}
+                next_index = max((row.index_no for row in item.media), default=-1) + 1
+                added = 0
+                for entry in media or []:
+                    if entry.remote_url in existing:
+                        continue
+                    if added >= settings.info_wechat_max_body_images:
+                        break
+                    session.add(
+                        InfoMedia(
+                            id=str(uuid.uuid4()),
+                            item_id=item.id,
+                            index_no=next_index,
+                            kind="image",
+                            remote_url=entry.remote_url[:1024],
+                            status="pending",
+                        )
+                    )
+                    existing.add(entry.remote_url)
+                    next_index += 1
+                    added += 1
+                collector.refresh_item_media_state(session, item)
+                item.content_status = "done"
+                done += 1
+            session.commit()
+        except Exception:  # noqa: BLE001
+            session.rollback()
+            raise
+        finally:
+            session.close()
+    return {"processed": processed, "done": done, "failed": failed}
+
+
 async def collect_loop() -> None:
     interval = max(15, int(get_settings().info_tick_seconds))
     while True:
@@ -120,6 +230,21 @@ async def media_worker_loop() -> None:
         await asyncio.sleep(MEDIA_WORKER_INTERVAL_SECONDS)
 
 
+async def wechat_content_loop() -> None:
+    interval = max(5, int(get_settings().info_wechat_detail_interval_seconds))
+    while True:
+        try:
+            result = await asyncio.to_thread(enrich_wechat_content_once)
+            if result.get("processed"):
+                print(
+                    f"[info] 微信全文补全：处理 {result['processed']}，完成 {result.get('done')}，"
+                    f"失败 {result.get('failed')}"
+                )
+        except Exception as error:  # noqa: BLE001
+            print(f"[info] 微信全文补全循环异常: {error}")
+        await asyncio.sleep(interval)
+
+
 async def ai_score_loop() -> None:
     interval = max(5, int(get_settings().info_ai_tick_seconds))
     while True:
@@ -138,6 +263,7 @@ async def ai_score_loop() -> None:
 def start_info_workers() -> list[asyncio.Task]:
     return [
         asyncio.create_task(collect_loop()),
+        asyncio.create_task(wechat_content_loop()),
         asyncio.create_task(media_worker_loop()),
         asyncio.create_task(ai_score_loop()),
     ]

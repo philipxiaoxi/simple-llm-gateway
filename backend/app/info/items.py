@@ -8,7 +8,9 @@
 from __future__ import annotations
 
 import base64
+import html as html_lib
 import json
+import re
 from datetime import datetime
 from typing import Any
 
@@ -17,6 +19,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.info import tokens
 from app.info.adapters import DISPLAY_MEDIA_KINDS
+from app.info.content_style import adapt_dark_theme
 from app.models import InfoItem, InfoMedia, InfoSource
 
 MAX_LIMIT = 60
@@ -252,7 +255,57 @@ def serialize_item(item: InfoItem, *, include_media: bool = False) -> dict[str, 
     }
     if include_media:
         payload["media"] = _serialize_media(item)
+        # 公众号正文 HTML 可能较大，只在详情接口下发；
+        # 图片改写成本地媒体地址，并把内联样式适配到深色主题
+        if item.content_html:
+            payload["content_html"] = adapt_dark_theme(
+                _rewrite_content_images(item.content_html, item)
+            )
+        else:
+            payload["content_html"] = None
     return payload
+
+
+_IMG_TAG = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+_SRC_ATTR = re.compile(r'(?:data-src|src)\s*=\s*"([^"]*)"', re.IGNORECASE)
+
+
+def _rewrite_content_images(html: str, item: InfoItem) -> str:
+    """把正文 HTML 里的公众号图片改写成平台本地媒体地址。
+
+    上游图片有防盗链，浏览器直连会 403；这里按 remote_url 匹配已转存好的媒体行，
+    把 `data-src`/`src` 换成带令牌的本地地址。未转存成功的图片保持原样。
+    """
+    def normalize(url: str) -> str:
+        # 兼容历史数据：remote_url 可能是 `&amp;` 转义形态，正文里是 `&`
+        return html_lib.unescape(url or "").split("#")[0]
+
+    mapping: dict[str, str] = {}
+    for row in item.media:
+        if row.kind != "image" or row.status != "ready" or row.purged:
+            continue
+        key = normalize(row.remote_url)
+        if key:
+            mapping[key] = _media_url(row)
+    if not mapping:
+        return html
+
+    def replace(match: re.Match[str]) -> str:
+        tag = match.group(0)
+        local: str | None = None
+        for found in _SRC_ATTR.finditer(tag):
+            url = normalize(found.group(1).strip())
+            if url in mapping:
+                local = mapping[url]
+                break
+        if local is None:
+            return tag
+        stripped = _SRC_ATTR.sub("", tag)
+        if stripped.endswith("/>"):
+            return stripped[:-2] + f' src="{local}"/>'
+        return stripped[:-1] + f' src="{local}">'
+
+    return _IMG_TAG.sub(replace, html)
 
 
 def _serialize_media(item: InfoItem) -> list[dict[str, Any]]:
