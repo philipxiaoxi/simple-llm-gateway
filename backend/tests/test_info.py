@@ -800,3 +800,80 @@ def test_stats_reports_counts(client: TestClient, auth_headers: dict[str, str], 
     assert stats["media_bytes"] == 0
     assert stats["last_collect_at"] is not None
     assert isinstance(stats["provider_configured"], bool)
+
+
+# ---------------------------------------------------------------- 采集间隔：手动与批量
+
+
+def test_manual_interval_value_and_scheduling(client: TestClient) -> None:
+    from app.db import get_session_factory
+    from app.info.sources import clamp_interval, due_sources
+    from app.models import InfoSource
+
+    # 0 / 负数 = 手动触发；None 用默认自动间隔
+    assert clamp_interval(0) == 0
+    assert clamp_interval(-5) == 0
+    assert clamp_interval(None) == 86400
+
+    now = utcnow()
+    session = get_session_factory()()
+    try:
+        session.add_all(
+            [
+                InfoSource(
+                    id="s-manual", kind="telegram", identifier="manualch", title="manual",
+                    username="manualch", description="", avatar_url="", subscriber_count_text="",
+                    enabled=True, poll_interval_seconds=0, item_count=0,
+                    created_at=now, updated_at=now,
+                ),
+                InfoSource(
+                    id="s-auto", kind="telegram", identifier="autoch", title="auto",
+                    username="autoch", description="", avatar_url="", subscriber_count_text="",
+                    enabled=True, poll_interval_seconds=86400, last_polled_at=None,
+                    item_count=0, created_at=now, updated_at=now,
+                ),
+            ]
+        )
+        session.commit()
+        due = {source.id for source in due_sources(session)}
+        assert "s-manual" not in due  # 手动触发不参与定时轮询
+        assert "s-auto" in due
+    finally:
+        session.close()
+
+
+def test_batch_update_interval_endpoint(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    monkeypatch.setattr("app.info.collector.adapter_for", lambda db, kind: FakeAdapter([]))
+    first = _create_source(client, auth_headers, "@ch1")
+    second = _create_source(client, auth_headers, "@ch2")
+
+    # 指定子集，设为手动触发
+    response = client.post(
+        "/api/admin/info/sources/batch-interval",
+        headers=auth_headers,
+        json={"ids": [first], "poll_interval_seconds": 0},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["updated"] == 1
+
+    listed = {
+        row["id"]: row
+        for row in client.get("/api/admin/info/sources", headers=auth_headers).json()["sources"]
+    }
+    assert listed[first]["poll_interval_seconds"] == 0
+    assert listed[second]["poll_interval_seconds"] == 86400
+
+    # 不传 ids = 全部渠道
+    response = client.post(
+        "/api/admin/info/sources/batch-interval",
+        headers=auth_headers,
+        json={"poll_interval_seconds": 3600},
+    )
+    assert response.json()["updated"] == 2
+    listed = {
+        row["id"]: row
+        for row in client.get("/api/admin/info/sources", headers=auth_headers).json()["sources"]
+    }
+    assert all(row["poll_interval_seconds"] == 3600 for row in listed.values())

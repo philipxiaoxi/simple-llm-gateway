@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.clock import utcnow
@@ -14,16 +14,24 @@ from app.info.adapters import SourcePreview
 from app.info.errors import InfoError
 from app.models import InfoSource
 
-DEFAULT_POLL_INTERVAL_SECONDS = 1800
+DEFAULT_POLL_INTERVAL_SECONDS = 24 * 3600
 MIN_POLL_INTERVAL_SECONDS = 300
-MAX_POLL_INTERVAL_SECONDS = 24 * 3600
+MAX_POLL_INTERVAL_SECONDS = 7 * 24 * 3600
 DEFAULT_KIND = "telegram"
+# 手动保存的单篇文章统一归到这个内置渠道（不参与定时采集）
+MANUAL_KIND = "manual"
+MANUAL_IDENTIFIER = "other"
+MANUAL_TITLE = "其他"
 
 
 def clamp_interval(value: int | None) -> int:
-    if not value:
+    # 0（或负数）表示「手动触发」：不参与定时采集，只能手动采集
+    if value is None:
         return DEFAULT_POLL_INTERVAL_SECONDS
-    return max(MIN_POLL_INTERVAL_SECONDS, min(MAX_POLL_INTERVAL_SECONDS, int(value)))
+    number = int(value)
+    if number <= 0:
+        return 0
+    return max(MIN_POLL_INTERVAL_SECONDS, min(MAX_POLL_INTERVAL_SECONDS, number))
 
 
 def list_sources(db: Session) -> list[InfoSource]:
@@ -54,13 +62,22 @@ def create_source(
     adapter = collector.adapter_for(db, kind)
     identifier = adapter.normalize(raw)
 
+    # 文章链接要先预览反查出真正的 username（微信）再判重；
+    # 普通用户名可直接判重，重复添加不必白跑一次上游预览
+    preview = None
+    resolved = identifier
+    if identifier.startswith(("http://", "https://")):
+        preview = adapter.preview(identifier)
+        resolved = (preview.identifier or identifier).strip() or identifier
     existing = db.scalar(
-        select(InfoSource).where(InfoSource.kind == kind, InfoSource.identifier == identifier)
+        select(InfoSource).where(InfoSource.kind == kind, InfoSource.identifier == resolved)
     )
     if existing is not None:
         raise InfoError("该渠道已在列表中", status_code=409, error_type="source_exists")
+    if preview is None:
+        preview = adapter.preview(resolved)
+    identifier = resolved
 
-    preview = adapter.preview(identifier)
     now = utcnow()
     source = InfoSource(
         id=str(uuid.uuid4()),
@@ -101,6 +118,51 @@ def update_source(
     source.updated_at = utcnow()
     db.flush()
     return source
+
+
+def ensure_manual_source(db: Session) -> InfoSource:
+    """取（必要时创建）内置「其他」渠道，用于存放手动保存的单篇文章。"""
+    source = db.scalar(
+        select(InfoSource).where(
+            InfoSource.kind == MANUAL_KIND, InfoSource.identifier == MANUAL_IDENTIFIER
+        )
+    )
+    if source is not None:
+        return source
+    now = utcnow()
+    source = InfoSource(
+        id=str(uuid.uuid4()),
+        kind=MANUAL_KIND,
+        identifier=MANUAL_IDENTIFIER,
+        title=MANUAL_TITLE,
+        username="",
+        description="",
+        avatar_url="",
+        subscriber_count_text="",
+        enabled=True,
+        poll_interval_seconds=0,
+        item_count=0,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(source)
+    db.flush()
+    return source
+
+
+def batch_update_interval(
+    db: Session, *, source_ids: list[str] | None, poll_interval_seconds: int
+) -> int:
+    """批量设置采集间隔；`source_ids` 为空表示全部渠道。返回受影响行数。"""
+    interval = clamp_interval(poll_interval_seconds)
+    statement = update(InfoSource).values(
+        poll_interval_seconds=interval, updated_at=utcnow()
+    )
+    if source_ids:
+        statement = statement.where(InfoSource.id.in_(list(source_ids)))
+    result = db.execute(statement)
+    db.flush()
+    return int(result.rowcount or 0)
 
 
 def delete_source(db: Session, source: InfoSource, *, purge_items: bool = False) -> None:
@@ -147,9 +209,12 @@ def due_sources(db: Session) -> list[InfoSource]:
     now = utcnow()
     due: list[InfoSource] = []
     for source in list_sources(db):
-        if not source.enabled:
+        if not source.enabled or source.kind == MANUAL_KIND:
             continue
         interval = clamp_interval(source.poll_interval_seconds)
+        # 0 = 手动触发，不参与定时轮询
+        if interval <= 0:
+            continue
         failures = int(source.consecutive_failures or 0)
         if failures:
             # 连续失败时指数退避，最多放大到 8 倍，避免上游故障时持续打点

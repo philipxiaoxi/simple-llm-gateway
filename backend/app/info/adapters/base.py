@@ -88,6 +88,16 @@ class FetchedMedia:
 
 
 @dataclass(frozen=True)
+class FetchedArticle:
+    """全文模式下一篇公众号文章的正文结果。"""
+
+    text: str
+    media: list[FetchedMedia]
+    # 正文 HTML（原文，未清洗）；详情页保留排版用，worker 入库前会清洗
+    html: str = ""
+
+
+@dataclass(frozen=True)
 class FetchedPost:
     external_id: str
     text: str
@@ -105,8 +115,9 @@ class FetchedPost:
 @dataclass(frozen=True)
 class FetchedPage:
     posts: list[FetchedPost]
-    after_cursor: int | None
-    before_cursor: int | None
+    # 游标是上游的不透明值：Telegram 是整数 post_id，微信公众号是 base64 字符串
+    after_cursor: int | str | None
+    before_cursor: int | str | None
     # 是否还有更老的消息可翻（首次回填向更老翻页时用）
     has_more_before: bool | None = None
     # 上游在同一响应里带回的频道信息，采集时顺便刷新渠道元数据
@@ -136,9 +147,9 @@ class SourceAdapter(Protocol):
         self,
         identifier: str,
         *,
-        after: int | None,
+        after: int | str | None,
         limit: int,
-        before: int | None = None,
+        before: int | str | None = None,
     ) -> FetchedPage: ...
 
 

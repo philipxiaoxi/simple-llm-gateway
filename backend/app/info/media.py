@@ -75,6 +75,14 @@ def _resolve_content_type(header_value: str, url: str, kind: str) -> str:
     return DEFAULT_TYPE.get(kind, "application/octet-stream")
 
 
+def referer_for(url: str) -> str:
+    """按图片主机选择 Referer：微信图床校验来源页，缺省会返回 403。"""
+    host = (urlparse(url).hostname or "").lower()
+    if host == "mmbiz.qpic.cn" or host.endswith(".mmbiz.qpic.cn"):
+        return "https://mp.weixin.qq.com/"
+    return "https://t.me/"
+
+
 def _open_stream(client: httpx.Client, url: str, max_redirects: int) -> httpx.Response:
     current = url
     for _ in range(max(1, max_redirects) + 1):
@@ -115,7 +123,7 @@ def fetch_media(
 ) -> FetchedFile:
     """流式下载单个媒体项到条目目录，返回落盘信息。失败不留下半成品。"""
     settings = get_settings()
-    headers = {"User-Agent": settings.info_user_agent, "Referer": "https://t.me/"}
+    headers = {"User-Agent": settings.info_user_agent, "Referer": referer_for(remote_url)}
     # 先落临时名，content-type 解析出扩展名后再改名，避免用错后缀
     tmp = media_path(item_id, f"{index_no:03d}.part")
     digest = hashlib.sha256()

@@ -1300,13 +1300,14 @@ export const api = {
 
   // ---- 资讯收集（独立功能，非 MCP 能力）----
   infoSources: () => request<InfoSourceList>('/api/admin/info/sources'),
-  infoSourcePreview: (raw: string) =>
+  infoSourcePreview: (raw: string, kind = 'telegram') =>
     request<InfoSourcePreview>('/api/admin/info/sources/preview', {
       method: 'POST',
-      body: JSON.stringify({ raw }),
+      body: JSON.stringify({ raw, kind }),
     }),
   infoSourceCreate: (payload: {
     raw: string
+    kind?: string
     title?: string
     poll_interval_seconds?: number
     enabled?: boolean
@@ -1331,6 +1332,21 @@ export const api = {
   infoSourceCollect: (id: string) =>
     request<InfoCollectResult>(`/api/admin/info/sources/${encodeURIComponent(id)}/collect`, {
       method: 'POST',
+    }),
+  infoSourcesBatchInterval: (payload: { ids?: string[]; poll_interval_seconds: number }) =>
+    request<{ updated: number }>('/api/admin/info/sources/batch-interval', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  infoSourceRebuildContent: (id: string) =>
+    request<{ reset: number }>(
+      `/api/admin/info/sources/${encodeURIComponent(id)}/rebuild-content`,
+      { method: 'POST' },
+    ),
+  infoSaveArticle: (url: string) =>
+    request<{ id: string; source_id: string }>('/api/admin/info/articles', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
     }),
   infoItems: (query: InfoItemQuery = {}) => {
     const params = new URLSearchParams()
@@ -2194,6 +2210,8 @@ export type InfoItem = {
   ai_scored_at: string | null
   is_featured: boolean
   collected_at: string | null
+  // 公众号详情接口下发的正文 HTML（已清洗、图片改写成本地地址）；列表接口为 undefined
+  content_html?: string | null
 }
 
 export type InfoMedia = {

@@ -883,7 +883,7 @@ class InfoSource(Base):
     # 上游是 "9.4M" 这类带单位字符串，原样保存不强行解析
     subscriber_count_text: Mapped[str] = mapped_column(String(16), default="", nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=1800, nullable=False)
+    poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=86400, nullable=False)
     # 增量游标：已采到的最大 post_id
     cursor_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_polled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -944,6 +944,11 @@ class InfoItem(Base):
     ai_error: Mapped[str] = mapped_column(Text, default="", nullable=False)
     ai_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     ai_scored_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # 全文补全（微信公众号）：'' / pending / done / failed
+    content_status: Mapped[str] = mapped_column(String(16), default="", nullable=False)
+    content_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # 公众号正文 HTML（已清洗），用于详情页保留原排版；列表接口不下发
+    content_html: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False, index=True, nullable=False)
     # 人工覆盖后，后续判定不再改写对应字段
     ai_featured_manual: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
