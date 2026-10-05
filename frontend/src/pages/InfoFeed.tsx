@@ -228,6 +228,8 @@ export function InfoFeedPage() {
   const filteredTotal = feed.data?.pages[0]?.total ?? 0
   const noSources = !sources.isLoading && sourceList.length === 0
   const showEmpty = !feed.isLoading && items.length === 0 && !feed.isError
+  // 筛选面板展开时视为正在交互，不收起；仅在滚动向下且面板关闭时折叠
+  const barCollapsed = hideBar && !filtersOpen
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1280px] space-y-3">
@@ -254,10 +256,12 @@ export function InfoFeedPage() {
 
       <div
         className={cn(
-          'sticky top-[calc(var(--app-header)+env(safe-area-inset-top))] z-20 -mx-4 border-b border-line bg-ink/95 px-4 py-2 backdrop-blur-md transition-all duration-300 lg:top-0 lg:mx-0 lg:rounded-lg lg:border lg:px-3 lg:py-2.5',
-          hideBar ? 'pointer-events-none -translate-y-[140%] opacity-0' : 'translate-y-0 opacity-100',
+          'sticky top-[calc(var(--app-header)+env(safe-area-inset-top))] z-20 -mx-4 grid transition-all duration-300 ease-out lg:top-0 lg:mx-0',
+          barCollapsed ? 'pointer-events-none grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100',
         )}
       >
+        <div className="min-h-0 overflow-hidden border-b border-line bg-ink/95 backdrop-blur-md lg:rounded-lg lg:border">
+          <div className="px-4 py-2 lg:px-3 lg:py-2.5">
         {/* 移动端：搜索 + 可开合筛选，避免单行挤压显示不全 */}
         <div className="flex items-center gap-2 lg:hidden">
           <SearchBox value={search} onChange={setSearch} className="flex-1" />
@@ -339,6 +343,8 @@ export function InfoFeedPage() {
             onChange={(value) => setParam('order', value === 'asc' ? 'asc' : '')}
             className="w-24 shrink-0"
           />
+        </div>
+          </div>
         </div>
       </div>
 
