@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, event, text
@@ -48,7 +49,9 @@ def init_db() -> None:
     _migrate_legacy_logs(engine)
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
+    _migrate_douyin_settings_to_tikhub(engine)
     _ensure_api_keys_account_id_nullable(engine)
+    _ensure_info_items_source_nullable(engine)
     _ensure_request_logs_have_no_parent_fks(engine)
     _ensure_knowledge_fts(engine)
 
@@ -258,6 +261,7 @@ def _ensure_columns(engine: Engine) -> None:
         _ensure_site_diagram_columns(connection)
         _ensure_douyin_columns(connection)
         _ensure_douyin_job_columns(connection)
+        _ensure_info_item_ai_columns(connection)
         _ensure_api_key_accounts(connection)
         _backfill_account_model_prefixes(connection)
 
@@ -295,6 +299,48 @@ def _ensure_douyin_columns(connection) -> None:  # type: ignore[no-untyped-def]
         connection.execute(text("ALTER TABLE douyin_settings ADD COLUMN tikhub_updated_at DATETIME"))
 
 
+def _migrate_douyin_settings_to_tikhub(engine: Engine) -> None:
+    """把旧 douyin_settings 的 TikHub 凭据幂等迁移到共享 tikhub_settings。
+
+    仅当 tikhub_settings 不存在任何记录时执行。清除凭据时保留单例空记录，
+    因此清除后重启不会被旧数据复活。旧表数据保留供回滚。
+    """
+    with engine.begin() as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+        }
+        if "douyin_settings" not in tables or "tikhub_settings" not in tables:
+            return
+        existing = connection.execute(text("SELECT 1 FROM tikhub_settings LIMIT 1")).first()
+        if existing is not None:
+            return
+        legacy_columns = {
+            row[1] for row in connection.execute(text("PRAGMA table_info(douyin_settings)"))
+        }
+        if not {"tikhub_base_url", "tikhub_api_key_encrypted"} <= legacy_columns:
+            return
+        legacy = connection.execute(
+            text(
+                "SELECT tikhub_base_url, tikhub_api_key_encrypted, tikhub_updated_at "
+                "FROM douyin_settings WHERE id = 1"
+            )
+        ).first()
+        if legacy is None:
+            return
+        base_url = (legacy[0] or "").strip()
+        encrypted = legacy[1]
+        if not base_url and not encrypted:
+            return
+        connection.execute(
+            text(
+                "INSERT INTO tikhub_settings (id, base_url, api_key_encrypted, updated_at) "
+                "VALUES (1, :base_url, :encrypted, :updated_at)"
+            ),
+            {"base_url": base_url, "encrypted": encrypted, "updated_at": legacy[2]},
+        )
+
+
 def _ensure_douyin_job_columns(connection) -> None:  # type: ignore[no-untyped-def]
     """douyin_jobs 增量列：下载进度字节数。"""
     columns = {row[1] for row in connection.execute(text("PRAGMA table_info(douyin_jobs)"))}
@@ -308,6 +354,36 @@ def _ensure_douyin_job_columns(connection) -> None:  # type: ignore[no-untyped-d
         connection.execute(
             text("ALTER TABLE douyin_jobs ADD COLUMN expected_bytes INTEGER DEFAULT 0 NOT NULL")
         )
+
+
+def _ensure_info_item_ai_columns(connection) -> None:  # type: ignore[no-untyped-def]
+    """info_items 增量列：AI 判定结果与精选标记。"""
+    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(info_items)"))}
+    if not columns:
+        return
+    statements = {
+        "ai_status": "ALTER TABLE info_items ADD COLUMN ai_status VARCHAR(16) DEFAULT 'pending' NOT NULL",
+        "ai_label": "ALTER TABLE info_items ADD COLUMN ai_label VARCHAR(32) DEFAULT '' NOT NULL",
+        "ai_score": "ALTER TABLE info_items ADD COLUMN ai_score INTEGER",
+        "ai_reason": "ALTER TABLE info_items ADD COLUMN ai_reason TEXT DEFAULT '' NOT NULL",
+        "ai_tags_json": "ALTER TABLE info_items ADD COLUMN ai_tags_json TEXT",
+        "ai_model": "ALTER TABLE info_items ADD COLUMN ai_model VARCHAR(128) DEFAULT '' NOT NULL",
+        "ai_error": "ALTER TABLE info_items ADD COLUMN ai_error TEXT DEFAULT '' NOT NULL",
+        "ai_attempts": "ALTER TABLE info_items ADD COLUMN ai_attempts INTEGER DEFAULT 0 NOT NULL",
+        "ai_scored_at": "ALTER TABLE info_items ADD COLUMN ai_scored_at DATETIME",
+        "is_featured": "ALTER TABLE info_items ADD COLUMN is_featured BOOLEAN DEFAULT 0 NOT NULL",
+        "ai_featured_manual": "ALTER TABLE info_items ADD COLUMN ai_featured_manual BOOLEAN DEFAULT 0 NOT NULL",
+        "ai_hidden_manual": "ALTER TABLE info_items ADD COLUMN ai_hidden_manual BOOLEAN DEFAULT 0 NOT NULL",
+    }
+    for column, statement in statements.items():
+        if column not in columns:
+            connection.execute(text(statement))
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_info_items_ai_status ON info_items (ai_status)")
+    )
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_info_items_is_featured ON info_items (is_featured)")
+    )
 
 
 def _ensure_api_key_accounts(connection) -> None:  # type: ignore[no-untyped-def]
@@ -399,6 +475,92 @@ def _api_keys_account_id_not_null(engine: Engine) -> bool:
             if row[1] == "account_id":
                 return bool(row[3])
     return False
+
+
+def _info_items_source_id_not_null(engine: Engine) -> bool:
+    with engine.begin() as connection:
+        columns = list(connection.execute(text("PRAGMA table_info(info_items)")))
+    source = next((row for row in columns if row[1] == "source_id"), None)
+    return bool(source and source[3])
+
+
+def _ensure_info_items_source_nullable(engine: Engine) -> None:
+    """把 info_items.source_id 改成可空（删渠道默认保留内容，DB 侧 SET NULL）。
+
+    SQLite 不能直接改列约束，沿用 `_ensure_api_keys_account_id_nullable` 的重建表做法。
+    只在检测到旧的 NOT NULL 结构时才执行，全新库由 create_all 直接建出正确结构。
+    """
+    if not _info_items_source_id_not_null(engine):
+        return
+    raw_connection = engine.raw_connection()
+    try:
+        cursor = raw_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=OFF")
+        cursor.execute("BEGIN")
+        cursor.execute(
+            """
+            CREATE TABLE info_items_new (
+                id VARCHAR(36) NOT NULL PRIMARY KEY,
+                source_id VARCHAR(36),
+                external_id VARCHAR(64) NOT NULL,
+                kind VARCHAR(16) NOT NULL,
+                text TEXT NOT NULL,
+                excerpt VARCHAR(512) NOT NULL,
+                permalink VARCHAR(512) NOT NULL,
+                author_name VARCHAR(128) NOT NULL,
+                source_type VARCHAR(16) NOT NULL,
+                published_at DATETIME,
+                views INTEGER,
+                views_text VARCHAR(16),
+                reactions_total INTEGER,
+                reactions_json TEXT,
+                is_forwarded BOOLEAN NOT NULL,
+                link_preview_json TEXT,
+                media_count INTEGER NOT NULL,
+                cover_media_id VARCHAR(36),
+                cover_seed INTEGER NOT NULL,
+                status VARCHAR(16) NOT NULL,
+                is_favorite BOOLEAN NOT NULL,
+                is_hidden BOOLEAN NOT NULL,
+                collected_at DATETIME NOT NULL,
+                created_at DATETIME NOT NULL,
+                FOREIGN KEY(source_id) REFERENCES info_sources (id) ON DELETE SET NULL,
+                UNIQUE (source_id, external_id)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO info_items_new (
+                id, source_id, external_id, kind, text, excerpt, permalink, author_name, source_type,
+                published_at, views, views_text, reactions_total, reactions_json, is_forwarded,
+                link_preview_json, media_count, cover_media_id, cover_seed, status, is_favorite,
+                is_hidden, collected_at, created_at
+            )
+            SELECT
+                id, source_id, external_id, kind, text, excerpt, permalink, author_name, source_type,
+                published_at, views, views_text, reactions_total, reactions_json, is_forwarded,
+                link_preview_json, media_count, cover_media_id, cover_seed, status, is_favorite,
+                is_hidden, collected_at, created_at
+            FROM info_items
+            """
+        )
+        cursor.execute("DROP TABLE info_items")
+        cursor.execute("ALTER TABLE info_items_new RENAME TO info_items")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_info_items_source_id ON info_items (source_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_info_items_kind ON info_items (kind)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_info_items_published_at ON info_items (published_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_info_items_is_favorite ON info_items (is_favorite)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_info_items_is_hidden ON info_items (is_hidden)")
+        cursor.execute("COMMIT")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+    except Exception:
+        with contextlib.suppress(Exception):
+            raw_connection.rollback()
+        raise
+    finally:
+        raw_connection.close()
 
 
 def _ensure_api_keys_account_id_nullable(engine: Engine) -> None:

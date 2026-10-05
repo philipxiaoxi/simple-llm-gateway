@@ -142,6 +142,9 @@ class Settings(BaseSettings):
     douyin_tikhub_base_url: str = "https://api.tikhub.io"
     douyin_tikhub_api_key: str = ""
     douyin_tikhub_timeout_seconds: int = 60
+    # TikHub 凭据：抖音下载与资讯收集共享。中立命名，优先级高于 DOUYIN_* / INFO_*
+    tikhub_base_url: str = ""
+    tikhub_api_key: str = ""
     # Archify 图表生成（diagram 能力）
     diagram_enabled: bool = True
     archify_home: str = ""
@@ -150,6 +153,32 @@ class Settings(BaseSettings):
     diagram_render_concurrency: int = 2
     diagram_max_source_bytes: int = 256 * 1024
     diagram_default_quality: str = "showcase"
+    # ---- 资讯收集（Telegram 等公开渠道 → 瀑布流浏览）----
+    # 媒体目录留空时与数据库同级（Docker 下即 /data/info，已被 ./data 卷覆盖）
+    info_media_path: str = ""
+    info_tick_seconds: int = 60
+    info_backfill_limit: int = 30
+    info_poll_limit: int = 20
+    info_max_concurrent_sources: int = 2
+    info_max_concurrent_downloads: int = 3
+    info_max_item_bytes: int = 200 * 1024 * 1024
+    info_max_media_per_item: int = 20
+    info_media_token_ttl_seconds: int = 43200
+    # 0 表示媒体永久保留，不做自动清理
+    info_retention_days: int = 0
+    info_http_timeout_seconds: int = 30
+    info_max_redirects: int = 5
+    info_user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    )
+    # TikHub 凭据兜底：优先读数据库里与抖音下载共用的加密配置
+    info_tikhub_base_url: str = ""
+    info_tikhub_api_key: str = ""
+    # AI 判定 worker：轮询间隔、每轮批量、并发
+    info_ai_tick_seconds: int = 30
+    info_ai_batch_size: int = 5
+    info_ai_max_concurrent: int = 2
 
     @property
     def database_url(self) -> str:
@@ -215,6 +244,10 @@ class Settings(BaseSettings):
     @property
     def resolved_douyin_media_path(self) -> Path:
         return self._resolve_data_path(self.douyin_media_path, "douyin")
+
+    @property
+    def resolved_info_media_path(self) -> Path:
+        return self._resolve_data_path(self.info_media_path, "info")
 
     @property
     def resolved_archify_home(self) -> Path:

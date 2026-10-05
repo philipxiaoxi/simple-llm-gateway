@@ -1,0 +1,303 @@
+{
+  "code": 200,
+  "request_id": "fixture",
+  "message": "Request successful. This request will incur a charge.",
+  "message_zh": "请求成功，本次请求将被计费。",
+  "support": "Discord: https://discord.gg/aMEAS8Xsvz",
+  "time": "2026-10-04 08:29:56",
+  "time_stamp": 1791127796,
+  "time_zone": "America/Los_Angeles",
+  "docs": "https://api.tikhub.io/#/Telegram-Web-API/fetch_channel_posts_api_v1_telegram_web_fetch_channel_posts_get",
+  "cache_message": "This response is cached and accessible via the URL below for 24 hours at no extra cost. The cache is for request tracing only — it doesn't affect the API's data freshness and won't be returned through the API again.",
+  "cache_message_zh": "本次响应已缓存，可通过下方 URL 直接查看，有效期 24 小时，访问缓存链接无额外费用。缓存仅用于请求溯源，不影响接口数据的时效性，也不会再次通过接口返回。",
+  "cache_url": "https://cache.tikhub.io/api/v1/cache/public/FIXTURE?sign=FIXTURE",
+  "router": "/api/v1/telegram/web/fetch_channel_posts",
+  "params": {
+    "channel": "telegram",
+    "limit": "10",
+    "after": "0"
+  },
+  "data": {
+    "channel": "telegram",
+    "channel_info": {
+      "username": "telegram",
+      "title": "Telegram News",
+      "verified": true,
+      "description": "The official Telegram on Telegram. Much recursion. Very Telegram. Wow.",
+      "photo": "https://cdn1.telesco.pe/file/FIXTURE-1.jpg",
+      "subscribers": "9.4M",
+      "counters": {
+        "subscribers": "9.4M",
+        "photos": "16",
+        "videos": "228",
+        "links": "378"
+      }
+    },
+    "messages": [
+      {
+        "id": 460,
+        "channel": "telegram",
+        "url": "https://t.me/telegram/460",
+        "type": "text",
+        "date": "2026-08-26T19:12:34+00:00",
+        "text": "For all the info from today's update and a look back at 13 years of Telegram features — check out our blog:\nhttps://telegram.org/blog/welcome-messages-buttons-TG-13\n\nAugust Features\n1 • 2 • 3 • 4 • 5 • More",
+        "text_html": "For all the info from today's update and a look back at <b>13 years of Telegram features</b> — check out our blog:<br><a href=\"https://telegram.org/blog/welcome-messages-buttons-TG-13\" target=\"_blank\" rel=\"noopener\">https://telegram.org/blog/welcome-messages-buttons-TG-13</a><br><br>August Features<br><a href=\"https://t.me/telegram/455\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">1</a> •&nbsp;<a href=\"https://t.me/telegram/456\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">2</a> •&nbsp;<a href=\"https://t.me/telegram/457\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">3</a> •&nbsp;<a href=\"https://t.me/telegram/458\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">4</a> •&nbsp;<a href=\"https://t.me/telegram/459\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">5</a> •&nbsp;<b>More</b>",
+        "views": "1.65M",
+        "author": "Telegram News",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": {
+          "url": "https://telegram.org/blog/welcome-messages-buttons-TG-13",
+          "site_name": "Telegram",
+          "title": "Welcome Messages, Buttons in Messages and Signed Gifts",
+          "description": "Introducing Welcome Messages to greet new members of groups or channels, Buttons in Messages to make any text interactive, Inline Documents in Messages and much more."
+        },
+        "media": {
+          "photos": [],
+          "videos": [],
+          "has_unsupported": false
+        },
+        "reactions": []
+      },
+      {
+        "id": 459,
+        "channel": "telegram",
+        "url": "https://t.me/telegram/459",
+        "type": "video",
+        "date": "2026-08-26T19:12:24+00:00",
+        "text": "Signed Gifts. You can now add your signature and a comment to gifts you buy via the gift marketplace.\n\nAugust Features\n1 • 2 • 3 • 4 • 5 • More",
+        "text_html": "<b>Signed Gifts.</b> You can now add <b>your signature</b> and a comment to gifts you buy via the <a href=\"https://t.me/telegram/382\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">gift marketplace</a>.<br><br>August Features<br><a href=\"https://t.me/telegram/455\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">1</a> •&nbsp;<a href=\"https://t.me/telegram/456\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">2</a> •&nbsp;<a href=\"https://t.me/telegram/457\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">3</a> •&nbsp;<a href=\"https://t.me/telegram/458\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">4</a> •&nbsp;<b>5</b> •&nbsp;<a href=\"https://t.me/telegram/460\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">More</a>",
+        "views": "1.45M",
+        "author": "Telegram News",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": null,
+        "media": {
+          "photos": [],
+          "videos": [
+            {
+              "url": "https://cdn1.telesco.pe/file/FIXTURE-2.mp4",
+              "thumb": "https://cdn1.telesco.pe/file/FIXTURE-3.bin",
+              "duration": "0:12"
+            }
+          ],
+          "has_unsupported": true
+        },
+        "reactions": []
+      },
+      {
+        "id": 458,
+        "channel": "telegram",
+        "url": "https://t.me/telegram/458",
+        "type": "photo",
+        "date": "2026-08-26T19:12:04+00:00",
+        "text": "Placeholders for App Updates. If a user with an outdated app encounters a new feature, they can now instantly tap to download the latest update.\n\nAugust Features\n1 • 2 • 3 • 4 • 5 • More",
+        "text_html": "<b>Placeholders for App Updates.</b> If a user with an <b>outdated app</b> encounters a new feature, they can now <b>instantly tap</b> to download the latest update.<br><br>August Features<br><a href=\"https://t.me/telegram/455\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">1</a> •&nbsp;<a href=\"https://t.me/telegram/456\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">2</a> •&nbsp;<a href=\"https://t.me/telegram/457\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">3</a> •&nbsp;<b>4</b> •&nbsp;<a href=\"https://t.me/telegram/459\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">5</a> •&nbsp;<a href=\"https://t.me/telegram/460\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">More</a>",
+        "views": "928K",
+        "author": "Telegram News",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": null,
+        "media": {
+          "photos": [
+            "https://cdn1.telesco.pe/file/FIXTURE-4.jpg"
+          ],
+          "videos": [],
+          "has_unsupported": false
+        },
+        "reactions": []
+      },
+      {
+        "id": 457,
+        "channel": "telegram",
+        "url": "https://t.me/telegram/457",
+        "type": "photo",
+        "date": "2026-08-26T19:11:54+00:00",
+        "text": "Inline Documents. The rich text editor now supports inline documents, files and music anywhere in your text.\n\nAugust Features\n1 • 2 • 3 • 4 • 5 • More",
+        "text_html": "<b>Inline Documents.</b> The <a href=\"https://t.me/telegram/450\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">rich text editor</a> now supports <b>inline documents</b>, files and <b>music</b> anywhere in your text.<br><br>August Features<br><a href=\"https://t.me/telegram/455\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">1</a> •&nbsp;<a href=\"https://t.me/telegram/456\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">2</a> •&nbsp;<b>3</b> •&nbsp;<a href=\"https://t.me/telegram/458\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">4</a> •&nbsp;<a href=\"https://t.me/telegram/459\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">5</a> •&nbsp;<a href=\"https://t.me/telegram/460\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">More</a>",
+        "views": "844K",
+        "author": "Telegram News",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": null,
+        "media": {
+          "photos": [
+            "https://cdn1.telesco.pe/file/FIXTURE-5.jpg"
+          ],
+          "videos": [],
+          "has_unsupported": false
+        },
+        "reactions": []
+      },
+      {
+        "id": 456,
+        "channel": "telegram",
+        "url": "https://t.me/telegram/456",
+        "type": "video",
+        "date": "2026-08-26T19:11:39+00:00",
+        "text": "Buttons Inside Messages. Developers are now able to put multiple buttons inside a message and create custom flows.\n\nAugust Features\n1 • 2 • 3 • 4 • 5 • More",
+        "text_html": "<b>Buttons Inside Messages.</b> Developers are now able to put <b>multiple buttons</b> inside a message and create <b>custom flows</b>.<br><br>August Features<br><a href=\"https://t.me/telegram/455\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">1</a> •&nbsp;<b>2</b> •&nbsp;<a href=\"https://t.me/telegram/457\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">3</a> •&nbsp;<a href=\"https://t.me/telegram/458\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">4</a> •&nbsp;<a href=\"https://t.me/telegram/459\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">5</a> •&nbsp;<a href=\"https://t.me/telegram/460\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">More</a>",
+        "views": "958K",
+        "author": "Telegram News",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": null,
+        "media": {
+          "photos": [],
+          "videos": [
+            {
+              "url": "https://cdn1.telesco.pe/file/FIXTURE-6.mp4",
+              "thumb": "https://cdn1.telesco.pe/file/FIXTURE-7.bin",
+              "duration": "0:10"
+            }
+          ],
+          "has_unsupported": true
+        },
+        "reactions": []
+      },
+      {
+        "id": 455,
+        "channel": "telegram",
+        "url": "https://t.me/telegram/455",
+        "type": "video",
+        "date": "2026-08-26T19:11:05+00:00",
+        "text": "Welcome Messages. Group and channel owners can now add messages that appear when a new member joins.\n\nThese messages are only visible to the person who joins the chat.\n\nAugust Features\n1 • 2 • 3 • 4 • 5 • More",
+        "text_html": "<b>Welcome Messages.</b> Group and channel owners can now add messages that appear when a <b>new member joins</b>.<br><br>These messages are <b>only visible</b> to the person who joins the chat.<br><br>August Features<br><b>1</b> •&nbsp;<a href=\"https://t.me/telegram/456\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">2</a> •&nbsp;<a href=\"https://t.me/telegram/457\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">3</a> •&nbsp;<a href=\"https://t.me/telegram/458\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">4</a> •&nbsp;<a href=\"https://t.me/telegram/459\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">5</a> •&nbsp;<a href=\"https://t.me/telegram/460\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">More</a>",
+        "views": "953K",
+        "author": "Telegram News",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": null,
+        "media": {
+          "photos": [],
+          "videos": [
+            {
+              "url": "https://cdn1.telesco.pe/file/FIXTURE-8.mp4",
+              "thumb": "https://cdn1.telesco.pe/file/FIXTURE-9.bin",
+              "duration": "0:10"
+            }
+          ],
+          "has_unsupported": true
+        },
+        "reactions": []
+      },
+      {
+        "id": 454,
+        "channel": "telegram",
+        "url": "https://t.me/telegram/454",
+        "type": "text",
+        "date": "2026-07-19T17:58:20+00:00",
+        "text": "For all the details on these new features, check out our blog:\nhttps://telegram.org/blog/communities-editor-invisible-messages\n\nJuly Features\n1 • 2 • 3 • 4 • More",
+        "text_html": "For all the details on these new features, check out our blog:<br><a href=\"https://telegram.org/blog/communities-editor-invisible-messages\" target=\"_blank\" rel=\"noopener\">https://telegram.org/blog/communities-editor-invisible-messages</a><br><br>July Features<br><a href=\"https://t.me/telegram/450\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">1</a> • <a href=\"https://t.me/telegram/451\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">2</a> •&nbsp;<a href=\"https://t.me/telegram/452\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">3</a> •&nbsp;<a href=\"https://t.me/telegram/453\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">4</a> •&nbsp;<b>More</b>",
+        "views": "2.48M",
+        "author": "Telegram News",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": {
+          "url": "https://telegram.org/blog/communities-editor-invisible-messages",
+          "site_name": "Telegram",
+          "title": "Rich Text Editor, Communities, Ephemeral Messages in Groups, 350 Million GIFs",
+          "description": "Introducing a rich text editor to format and generate text, Telegram Communities linking together several groups, channels and bots, ephemeral bot messages in groups, search for over 350 million GIFs and much more."
+        },
+        "media": {
+          "photos": [],
+          "videos": [],
+          "has_unsupported": false
+        },
+        "reactions": []
+      },
+      {
+        "id": 453,
+        "channel": "telegram",
+        "url": "https://t.me/telegram/453",
+        "type": "video",
+        "date": "2026-07-19T17:58:17+00:00",
+        "text": "350 Million GIFs. The GIF panel now contains over 350 million GIFs in 36 languages.\n\nYour Telegram GIF searches are entirely private and do not rely on any third parties.\n\nJuly Features\n1 • 2 • 3 • 4 • More",
+        "text_html": "<b>350 Million GIFs.</b> The GIF panel now contains over 350 million GIFs <b>in 36 languages</b>.<br><br>Your Telegram GIF searches are <b>entirely private</b> and <b>do not rely</b> on any third parties.<br><br>July Features<br><a href=\"https://t.me/telegram/450\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">1</a> • <a href=\"https://t.me/telegram/451\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">2</a> •&nbsp;<a href=\"https://t.me/telegram/452\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">3</a> •&nbsp;<b>4</b> •&nbsp;<a href=\"https://t.me/telegram/454\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">More</a>",
+        "views": "1.92M",
+        "author": "Telegram News",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": null,
+        "media": {
+          "photos": [],
+          "videos": [
+            {
+              "url": "https://cdn1.telesco.pe/file/FIXTURE-10.mp4",
+              "thumb": "https://cdn1.telesco.pe/file/FIXTURE-11.bin",
+              "duration": "0:09"
+            }
+          ],
+          "has_unsupported": true
+        },
+        "reactions": []
+      },
+      {
+        "id": 452,
+        "channel": "telegram",
+        "url": "https://t.me/telegram/452",
+        "type": "photo",
+        "date": "2026-07-19T17:57:31+00:00",
+        "text": "Ephemeral Bot Messages. You can now send private commands to bots in group chats and receive replies that are only visible to you.\n\nJuly Features\n1 • 2 • 3 • 4 • More",
+        "text_html": "<b>Ephemeral Bot Messages.</b> You can now send <b>private commands</b> to bots in group chats and receive replies that are <b>only visible to you</b>.<br><br>July Features<br><a href=\"https://t.me/telegram/450\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">1</a> • <a href=\"https://t.me/telegram/451\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">2</a> •&nbsp;<b>3</b> •&nbsp;<a href=\"https://t.me/telegram/453\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">4</a> •&nbsp;<a href=\"https://t.me/telegram/454\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">More</a>",
+        "views": "1.32M",
+        "author": "Telegram News",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": null,
+        "media": {
+          "photos": [
+            "https://cdn1.telesco.pe/file/FIXTURE-12.jpg"
+          ],
+          "videos": [],
+          "has_unsupported": false
+        },
+        "reactions": []
+      },
+      {
+        "id": 451,
+        "channel": "telegram",
+        "url": "https://t.me/telegram/451",
+        "type": "video",
+        "date": "2026-07-19T17:57:29+00:00",
+        "text": "Telegram Communities. Several groups, channels and bots can now be linked together in a single community, where members can view and join other chats instantly.\n\nJuly Features\n1 • 2 • 3 • 4 • More",
+        "text_html": "<b>Telegram Communities.</b> Several groups, channels and bots can now be <b>linked together</b> in a single community, where members can view and <b>join other chats</b> instantly.<br><br>July Features<br><a href=\"https://t.me/telegram/450\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">1</a> • <b>2</b> •&nbsp;<a href=\"https://t.me/telegram/452\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">3</a> •&nbsp;<a href=\"https://t.me/telegram/453\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">4</a> •&nbsp;<a href=\"https://t.me/telegram/454\" target=\"_blank\" rel=\"noopener\" onclick=\"return confirm('Open this link?\\n\\n'+this.href);\">More</a>",
+        "views": "1.38M",
+        "author": "Telegram News",
+        "is_forwarded": false,
+        "forwarded_from": null,
+        "reply_to": null,
+        "link_preview": null,
+        "media": {
+          "photos": [],
+          "videos": [
+            {
+              "url": "https://cdn1.telesco.pe/file/FIXTURE-13.mp4",
+              "thumb": "https://cdn1.telesco.pe/file/FIXTURE-14.bin",
+              "duration": "0:18"
+            }
+          ],
+          "has_unsupported": true
+        },
+        "reactions": []
+      }
+    ],
+    "pagination": {
+      "before_cursor": 451,
+      "after_cursor": 460,
+      "has_more_before": true,
+      "count": 10,
+      "limit": 10,
+      "pages_fetched": 1
+    }
+  }
+}

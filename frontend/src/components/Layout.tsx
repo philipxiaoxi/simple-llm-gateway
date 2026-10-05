@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, Mic, RadioTower, ServerCog, ShieldAlert, Sparkles, Store, Timer, Trophy, UserRoundPen, X } from 'lucide-react'
+import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, Mic, Newspaper, RadioTower, ServerCog, ShieldAlert, Sparkles, Store, Timer, Trophy, UserRoundPen, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
@@ -16,6 +16,7 @@ const links = [
   { to: '/skills', label: 'Skills', icon: Sparkles },
   { to: '/mcp-plaza', label: 'MCP 广场', icon: Store },
   { to: '/tools', label: '工具中心', icon: Download },
+  { to: '/info', label: '资讯收集', icon: Newspaper },
   { to: '/benchmark', label: '模型测速', icon: Gauge },
   { to: '/benchmark/history', label: '测速历史', icon: Activity },
   { to: '/leaderboard', label: '模型榜', icon: Trophy },
@@ -127,67 +128,6 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
-function useMobileSwipeDrawer(open: boolean, setOpen: (next: boolean) => void) {
-  useEffect(() => {
-    const mobile = window.matchMedia('(max-width: 1023px)')
-    let startX = 0
-    let startY = 0
-    let tracking = false
-
-    function isIgnored(target: EventTarget | null) {
-      return target instanceof Element && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
-    }
-
-    function onStart(event: TouchEvent) {
-      if (!mobile.matches || event.touches.length !== 1 || isIgnored(event.target)) {
-        tracking = false
-        return
-      }
-      const touch = event.touches[0]
-      const height = window.innerHeight
-      if (touch.clientX < 20) return
-      if (touch.clientY < 72 || touch.clientY > height - 88) return
-      startX = touch.clientX
-      startY = touch.clientY
-      tracking = true
-    }
-
-    function onMove(event: TouchEvent) {
-      if (!tracking || event.touches.length !== 1) return
-      const touch = event.touches[0]
-      const dx = touch.clientX - startX
-      const dy = touch.clientY - startY
-      if (Math.abs(dy) > 36 && Math.abs(dy) > Math.abs(dx)) {
-        tracking = false
-        return
-      }
-      if (!open && dx > 56 && Math.abs(dy) < 40) {
-        tracking = false
-        setOpen(true)
-      }
-      if (open && dx < -56 && Math.abs(dy) < 40) {
-        tracking = false
-        setOpen(false)
-      }
-    }
-
-    function onEnd() {
-      tracking = false
-    }
-
-    document.addEventListener('touchstart', onStart, { passive: true })
-    document.addEventListener('touchmove', onMove, { passive: true })
-    document.addEventListener('touchend', onEnd)
-    document.addEventListener('touchcancel', onEnd)
-    return () => {
-      document.removeEventListener('touchstart', onStart)
-      document.removeEventListener('touchmove', onMove)
-      document.removeEventListener('touchend', onEnd)
-      document.removeEventListener('touchcancel', onEnd)
-    }
-  }, [open, setOpen])
-}
-
 export function Layout() {
   const [open, setOpen] = useState(false)
   const [profile, setProfile] = useState(false)
@@ -195,9 +135,19 @@ export function Layout() {
   const queryClient = useQueryClient()
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
-  useMobileSwipeDrawer(open, setOpen)
+
+  const previousPathRef = useRef<string | null>(null)
 
   useEffect(() => {
+    const previousPath = previousPathRef.current
+    previousPathRef.current = location.pathname
+    // 详情浮层是叠在列表之上的子路由（/info -> /info/:id）：打开或关闭它都不该把
+    // 瀑布流滚回顶部，否则用户每次看完一条都要重新找位置。
+    const isOverlayTransition =
+      (previousPath === '/info' && location.pathname.startsWith('/info/')) ||
+      (Boolean(previousPath?.startsWith('/info/')) && location.pathname === '/info')
+    if (isOverlayTransition) return
+
     // Instant reset; also interrupts any leftover smooth scroll from previous pages.
     const main = mainRef.current
     if (main) {

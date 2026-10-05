@@ -852,3 +852,158 @@ class DouyinSettings(Base):
     tikhub_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     tikhub_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class TikHubSettings(Base):
+    """TikHub 凭据的全局单例设置，抖音下载与资讯收集共享。"""
+
+    __tablename__ = "tikhub_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # base_url 明文，api_key 加密（Fernet，APP_SECRET_KEY 派生密钥）
+    base_url: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class InfoSource(Base):
+    """资讯收集的采集渠道（v1 为 Telegram 公开频道）。"""
+
+    __tablename__ = "info_sources"
+    __table_args__ = (UniqueConstraint("kind", "identifier"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), default="telegram", nullable=False)
+    identifier: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    title: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    username: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # 频道头像仍是上游直链（会过期），前端加载失败时回退首字母头像
+    avatar_url: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
+    # 上游是 "9.4M" 这类带单位字符串，原样保存不强行解析
+    subscriber_count_text: Mapped[str] = mapped_column(String(16), default="", nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=1800, nullable=False)
+    # 增量游标：已采到的最大 post_id
+    cursor_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_polled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    item_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    # 刻意不做 delete-orphan 级联：删渠道默认保留内容（DB 侧 SET NULL），
+    # 只有显式 purge_items 时由 collector.delete_source 主动删除内容与媒体文件。
+    items: Mapped[list[InfoItem]] = relationship(back_populates="source", passive_deletes=True)
+
+
+class InfoItem(Base):
+    """一条采集到的资讯内容。必须有文本或媒体至少其一。"""
+
+    __tablename__ = "info_items"
+    __table_args__ = (UniqueConstraint("source_id", "external_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    # 删除渠道时默认保留已采集内容（source_id 置空），只有显式 purge_items 才连带删除
+    source_id: Mapped[str | None] = mapped_column(
+        ForeignKey("info_sources.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    external_id: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    # text / image / video / mixed
+    kind: Mapped[str] = mapped_column(String(16), default="text", index=True, nullable=False)
+    text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    excerpt: Mapped[str] = mapped_column(String(512), default="", nullable=False)
+    permalink: Mapped[str] = mapped_column(String(512), default="", nullable=False)
+    author_name: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    source_type: Mapped[str] = mapped_column(String(16), default="", nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, index=True, nullable=True)
+    views: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    views_text: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    reactions_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reactions_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_forwarded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    link_preview_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    media_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cover_media_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # 纯文字封面的稳定随机种子：同一内容永远得到同一张封面
+    cover_seed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # ready / media_pending / media_partial / failed（无任何可用媒体）
+    status: Mapped[str] = mapped_column(String(16), default="ready", nullable=False)
+    is_favorite: Mapped[bool] = mapped_column(Boolean, default=False, index=True, nullable=False)
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, index=True, nullable=False)
+    # AI 判定：pending / processing / done / failed / skipped
+    ai_status: Mapped[str] = mapped_column(String(16), default="pending", index=True, nullable=False)
+    # ad / valuable / general / other
+    ai_label: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    ai_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ai_reason: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    ai_tags_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_model: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    ai_error: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    ai_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    ai_scored_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False, index=True, nullable=False)
+    # 人工覆盖后，后续判定不再改写对应字段
+    ai_featured_manual: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    ai_hidden_manual: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    collected_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    # 渠道被删除但内容保留时 source 为 None
+    source: Mapped[InfoSource | None] = relationship(back_populates="items", passive_deletes=True)
+    media: Mapped[list[InfoMedia]] = relationship(
+        back_populates="item", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class InfoMedia(Base):
+    """资讯条目下的单个媒体项（图片 / 视频 / 视频封面）。"""
+
+    __tablename__ = "info_media"
+    __table_args__ = (UniqueConstraint("item_id", "index_no"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    item_id: Mapped[str] = mapped_column(
+        ForeignKey("info_items.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    index_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    # image / video / poster
+    kind: Mapped[str] = mapped_column(String(16), default="image", nullable=False)
+    remote_url: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
+    filename: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    content_type: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # 上游不给宽高，落盘时用 Pillow 探测真实尺寸，供瀑布流精确占位
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # pending / ready / failed
+    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    purged: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    item: Mapped[InfoItem] = relationship(back_populates="media")
+
+
+class InfoAiSettings(Base):
+    """资讯 AI 判定的全局单例设置。"""
+
+    __tablename__ = "info_ai_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("upstream_accounts.id", ondelete="SET NULL"), nullable=True
+    )
+    model: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    vision_max_images: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    max_image_bytes: Mapped[int] = mapped_column(Integer, default=5 * 1024 * 1024, nullable=False)
+    feature_threshold: Mapped[int] = mapped_column(Integer, default=80, nullable=False)
+    hide_ads: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    prompt_template: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

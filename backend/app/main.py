@@ -21,6 +21,8 @@ from app.routers import (
     admin_benchmark_history,
     admin_content_audit,
     admin_dashboard,
+    admin_info,
+    admin_integrations,
     admin_jobs,
     admin_keys,
     admin_leaderboard,
@@ -50,14 +52,16 @@ from app.routers import (
 )
 from app.seed import seed_admin, seed_desktop_tools, seed_skill_categories
 from app.services.desktop_tools import reconcile_stuck_downloads
+from app.services.docparse_retention import retention_loop as docparse_retention_loop
+from app.services.douyin_retention import retention_loop as douyin_retention_loop
 from app.services.grok_oauth import cleanup_expired_oauth_states
+from app.services.info_loop import start_info_workers
+from app.services.info_retention import retention_loop as info_retention_loop
 from app.services.jobs import start_job_loops
 from app.services.knowledge_jobs import reconcile_stuck_jobs as reconcile_stuck_knowledge_jobs
 from app.services.knowledge_jobs import start_knowledge_job_workers
-from app.services.docparse_retention import retention_loop as docparse_retention_loop
-from app.services.douyin_retention import retention_loop as douyin_retention_loop
-from app.services.site_retention import retention_loop as site_retention_loop
 from app.services.knowledge_retention import retention_loop as knowledge_retention_loop
+from app.services.site_retention import retention_loop as site_retention_loop
 from app.services.voice_retention import voice_cleanup_loop
 from app.static_assets import (
     FONT_CACHE,
@@ -113,6 +117,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         from app.capabilities.douyin.jobs import reconcile_stuck as reconcile_stuck_douyin_jobs
 
         reconcile_stuck_douyin_jobs(session)
+        from app.info.collector import reconcile_stuck_media
+
+        reconcile_stuck_media(session)
+        from app.services.info_ai import recover_stuck_scoring
+
+        recover_stuck_scoring(session)
         session.commit()
     finally:
         session.close()
@@ -131,6 +141,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         background_tasks.append(asyncio.create_task(docparse_retention_loop()))
         background_tasks.append(asyncio.create_task(site_retention_loop()))
         background_tasks.append(asyncio.create_task(douyin_retention_loop()))
+        # 资讯收集：定时采集 + 媒体转存 worker + 保留清理
+        background_tasks.extend(start_info_workers())
+        background_tasks.append(asyncio.create_task(info_retention_loop()))
         try:
             yield
         finally:
@@ -162,6 +175,9 @@ app.include_router(admin_jobs.router)
 app.include_router(admin_content_audit.router)
 app.include_router(admin_logs.router)
 app.include_router(admin_dashboard.router)
+app.include_router(admin_info.router)
+app.include_router(admin_info.media_router)
+app.include_router(admin_integrations.router)
 app.include_router(admin_skills.router)
 app.include_router(admin_skills.download_router)
 app.include_router(admin_skill_bundles.router)

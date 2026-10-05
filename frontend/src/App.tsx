@@ -19,6 +19,9 @@ const BenchmarkHistoryPage = lazy(() =>
 )
 const ContentAuditPage = lazy(() => import('./pages/ContentAudit').then((m) => ({ default: m.ContentAuditPage })))
 const JobsPage = lazy(() => import('./pages/Jobs').then((m) => ({ default: m.JobsPage })))
+const InfoFeedPage = lazy(() => import('./pages/InfoFeed').then((m) => ({ default: m.InfoFeedPage })))
+const InfoItemPage = lazy(() => import('./pages/InfoItem').then((m) => ({ default: m.InfoItemPage })))
+const InfoSourcesPage = lazy(() => import('./pages/InfoSources').then((m) => ({ default: m.InfoSourcesPage })))
 const KeysPage = lazy(() => import('./pages/Keys').then((m) => ({ default: m.KeysPage })))
 const LeaderboardPage = lazy(() => import('./pages/Leaderboard').then((m) => ({ default: m.LeaderboardPage })))
 const LogDetailPage = lazy(() => import('./pages/LogDetail').then((m) => ({ default: m.LogDetailPage })))
@@ -145,6 +148,11 @@ export default function App() {
                 <Route path="docs" element={<McpDocsPage />} />
               </Route>
               <Route path="/tools" element={<ToolsPage />} />
+              {/* 资讯收集：详情是浮层，挂在 /info 子路由上，瀑布流保持挂载（返回即回到原滚动位置） */}
+              <Route path="/info" element={<InfoFeedPage />}>
+                <Route path=":itemId" element={<InfoItemPage />} />
+              </Route>
+              <Route path="/info/sources" element={<InfoSourcesPage />} />
               <Route path="/benchmark" element={<BenchmarkPage />} />
               <Route path="/benchmark/history" element={<BenchmarkHistoryPage />} />
               <Route path="/leaderboard" element={<LeaderboardPage />} />
