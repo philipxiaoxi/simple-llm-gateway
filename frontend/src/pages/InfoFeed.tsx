@@ -2,7 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { Heart, ImageOff, ListChecks, Play, Plus, Search, Send, SlidersHorizontal, Sparkles, Star } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SyntheticEvent } from 'react'
-import { Link, Outlet, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { InfoAiProgressDialog } from '../components/InfoAiProgressDialog'
 import { InfoAiSettingsDialog } from '../components/InfoAiSettingsDialog'
 import { InfoMasonry } from '../components/InfoMasonry'
@@ -71,7 +71,10 @@ function useHideOnScroll(threshold = 96) {
 export function InfoFeedPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const location = useLocation()
   const [params, setParams] = useSearchParams()
+  // 打开详情时带上当前筛选串，详情关闭后筛选与图片缓存都能保留
+  const detailSearch = location.search
 
   const sourceId = params.get('source_id') || ''
   const kind = params.get('kind') || 'all'
@@ -421,6 +424,7 @@ export function InfoFeedPage() {
               <InfoCard
                 item={entry.item}
                 ratio={entry.ratio}
+                search={detailSearch}
                 onMeasure={measure}
                 onToggleFavorite={(target) =>
                   favorite.mutate({ id: target.id, next: !target.is_favorite })
@@ -669,11 +673,13 @@ function ChannelAvatar({ name, url, size = 18 }: { name: string; url: string; si
 function InfoCard({
   item,
   ratio,
+  search,
   onMeasure,
   onToggleFavorite,
 }: {
   item: InfoItem
   ratio: number
+  search: string
   onMeasure: (id: string, ratio: number) => void
   onToggleFavorite: (item: InfoItem) => void
 }) {
@@ -714,7 +720,7 @@ function InfoCard({
   return (
     <article className="group overflow-hidden rounded-xl border border-line bg-panel transition [contain-intrinsic-size:auto_420px] [content-visibility:auto] hover:border-signal/30 motion-reduce:translate-none motion-reduce:transform-none lg:hover:-translate-y-0.5">
       <Link
-        to={`/info/${item.id}`}
+        to={`/info/${item.id}${search}`}
         className="block"
         onMouseEnter={startPreview}
         onMouseLeave={() => setPreview(false)}
@@ -800,7 +806,7 @@ function InfoCard({
 
       <div className="flex items-center gap-2 px-3 py-2">
         <Link
-          to={`/info/${item.id}`}
+          to={`/info/${item.id}${search}`}
           className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-mist hover:text-paper"
         >
           <ChannelAvatar name={channel} url={avatar} />

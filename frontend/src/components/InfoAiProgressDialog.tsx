@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { api, type InfoItem } from '../lib/api'
 import { relativeTime } from '../lib/info'
 import { notifyBad, notifyOk } from '../lib/toast'
@@ -38,6 +38,7 @@ function labelText(label: string) {
 
 export function InfoAiProgressDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient()
+  const location = useLocation()
   const [tab, setTab] = useState<TabKey>('queue')
   const active = TABS.find((item) => item.key === tab) ?? TABS[0]
 
@@ -169,7 +170,7 @@ export function InfoAiProgressDialog({ open, onClose }: { open: boolean; onClose
             <div className="px-3 py-10 text-center text-sm text-mist">该状态下暂无条目</div>
           ) : null}
           {list.map((item) => (
-            <ProgressRow key={item.id} item={item} onOpen={onClose} />
+            <ProgressRow key={item.id} item={item} search={location.search} onOpen={onClose} />
           ))}
         </div>
         <p className="text-[11px] text-mist/80">判定进行中时列表会自动刷新；点击条目可查看详情。</p>
@@ -178,12 +179,12 @@ export function InfoAiProgressDialog({ open, onClose }: { open: boolean; onClose
   )
 }
 
-function ProgressRow({ item, onOpen }: { item: InfoItem; onOpen: () => void }) {
+function ProgressRow({ item, search, onOpen }: { item: InfoItem; search: string; onOpen: () => void }) {
   const meta = STATUS_META[item.ai_status] ?? { label: item.ai_status, tone: 'mist' as const }
   const text = item.excerpt || item.text || '（无正文）'
   return (
     <Link
-      to={`/info/${item.id}`}
+      to={`/info/${item.id}${search}`}
       onClick={onOpen}
       className="flex items-start gap-3 border-b border-line/70 px-3 py-2.5 transition last:border-0 hover:bg-white/[0.03]"
     >

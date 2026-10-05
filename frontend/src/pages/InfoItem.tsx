@@ -47,8 +47,8 @@ export function InfoItemPage() {
 
   const close = useCallback(() => {
     if (location.key && location.key !== 'default') navigate(-1)
-    else navigate('/info', { replace: true })
-  }, [location.key, navigate])
+    else navigate(`/info${location.search}`, { replace: true })
+  }, [location.key, location.search, navigate])
 
   const step = useCallback(
     (delta: number) => {
