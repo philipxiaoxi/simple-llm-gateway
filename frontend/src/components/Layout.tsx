@@ -128,67 +128,6 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
-function useMobileSwipeDrawer(open: boolean, setOpen: (next: boolean) => void) {
-  useEffect(() => {
-    const mobile = window.matchMedia('(max-width: 1023px)')
-    let startX = 0
-    let startY = 0
-    let tracking = false
-
-    function isIgnored(target: EventTarget | null) {
-      return target instanceof Element && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
-    }
-
-    function onStart(event: TouchEvent) {
-      if (!mobile.matches || event.touches.length !== 1 || isIgnored(event.target)) {
-        tracking = false
-        return
-      }
-      const touch = event.touches[0]
-      const height = window.innerHeight
-      if (touch.clientX < 20) return
-      if (touch.clientY < 72 || touch.clientY > height - 88) return
-      startX = touch.clientX
-      startY = touch.clientY
-      tracking = true
-    }
-
-    function onMove(event: TouchEvent) {
-      if (!tracking || event.touches.length !== 1) return
-      const touch = event.touches[0]
-      const dx = touch.clientX - startX
-      const dy = touch.clientY - startY
-      if (Math.abs(dy) > 36 && Math.abs(dy) > Math.abs(dx)) {
-        tracking = false
-        return
-      }
-      if (!open && dx > 56 && Math.abs(dy) < 40) {
-        tracking = false
-        setOpen(true)
-      }
-      if (open && dx < -56 && Math.abs(dy) < 40) {
-        tracking = false
-        setOpen(false)
-      }
-    }
-
-    function onEnd() {
-      tracking = false
-    }
-
-    document.addEventListener('touchstart', onStart, { passive: true })
-    document.addEventListener('touchmove', onMove, { passive: true })
-    document.addEventListener('touchend', onEnd)
-    document.addEventListener('touchcancel', onEnd)
-    return () => {
-      document.removeEventListener('touchstart', onStart)
-      document.removeEventListener('touchmove', onMove)
-      document.removeEventListener('touchend', onEnd)
-      document.removeEventListener('touchcancel', onEnd)
-    }
-  }, [open, setOpen])
-}
-
 export function Layout() {
   const [open, setOpen] = useState(false)
   const [profile, setProfile] = useState(false)
@@ -196,7 +135,6 @@ export function Layout() {
   const queryClient = useQueryClient()
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
-  useMobileSwipeDrawer(open, setOpen)
 
   const previousPathRef = useRef<string | null>(null)
 

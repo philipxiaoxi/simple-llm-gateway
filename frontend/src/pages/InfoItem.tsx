@@ -37,7 +37,10 @@ export function InfoItemPage() {
 
   const [index, setIndex] = useState(0)
   const [broken, setBroken] = useState<Record<string, boolean>>({})
-  const touchStart = useRef<{ x: number; y: number } | null>(null)
+  const [dragX, setDragX] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const mediaRef = useRef<HTMLDivElement>(null)
 
   const safeIndex = media.length ? Math.min(index, media.length - 1) : 0
   const current = media[safeIndex] ?? null
@@ -57,6 +60,114 @@ export function InfoItemPage() {
     },
     [media.length],
   )
+
+  // 手势：右滑跟随退出；左滑切下一张媒体。用原生 touch 监听并在横滑锁定时
+  // preventDefault，阻止原生滚动接管（滚动会触发 pointercancel 把手势打断），
+  // 这是 react-swipeable / framer-motion 等库处理“拖拽 vs 滚动”冲突的通用做法。
+  useEffect(() => {
+    const node = overlayRef.current
+    if (!node) return
+    let active = false
+    let locked = false
+    let dragging = false
+    let inMedia = false
+    let startX = 0
+    let startY = 0
+
+    function onTouchStart(event: TouchEvent) {
+      if (event.touches.length !== 1) {
+        active = false
+        return
+      }
+      const touch = event.touches[0]
+      const target = event.target
+      if (
+        target instanceof Element &&
+        target.closest('button, a, input, textarea, select, video, [contenteditable="true"]')
+      ) {
+        active = false
+        return
+      }
+      active = true
+      locked = false
+      dragging = false
+      startX = touch.clientX
+      startY = touch.clientY
+      inMedia = Boolean(mediaRef.current && target instanceof Node && mediaRef.current.contains(target))
+    }
+
+    function onTouchMove(event: TouchEvent) {
+      if (!active || event.touches.length !== 1) return
+      const touch = event.touches[0]
+      const dx = touch.clientX - startX
+      const dy = touch.clientY - startY
+      if (!locked) {
+        const absX = Math.abs(dx)
+        const absY = Math.abs(dy)
+        if (absX < 10 && absY < 10) return
+        // 垂直分量一旦不输于水平，直接让位给滚动，不做横滑判定
+        if (absY >= absX) {
+          active = false
+          return
+        }
+        // 只有横向明显占优（1.5 倍且超过最小距离）才锁定为横滑，
+        // 否则继续保持中立，交给浏览器滚动
+        if (absX <= absY * 1.5 || absX < 16) return
+        locked = true
+      }
+      // 横向锁定后阻止原生滚动，保证拖拽过程不被打断
+      if (event.cancelable) event.preventDefault()
+      if (dx <= 0) return
+      dragging = true
+      setDragging(true)
+      setDragX(Math.max(0, dx))
+    }
+
+    function onTouchEnd(event: TouchEvent) {
+      const wasDragging = dragging
+      const mediaNav = inMedia && media.length > 1
+      const touch = event.changedTouches[0]
+      const dx = (touch ? touch.clientX : startX) - startX
+      const dy = touch ? touch.clientY - startY : 0
+      active = false
+      locked = false
+      dragging = false
+      if (wasDragging) {
+        const finalX = Math.max(0, dx)
+        const threshold = Math.min(120, window.innerWidth * 0.25)
+        setDragging(false)
+        if (finalX > threshold || (finalX > 64 && dx > 0)) {
+          // 先滑出再关闭，形成退场动效
+          setDragX(window.innerWidth)
+          window.setTimeout(close, 200)
+        } else {
+          setDragX(0)
+        }
+        return
+      }
+      // 左滑切下一张；右滑始终是退出，不与媒体切换竞争
+      if (dx <= -48 && Math.abs(dx) > Math.abs(dy) && mediaNav) step(1)
+    }
+
+    function onTouchCancel() {
+      active = false
+      locked = false
+      dragging = false
+      setDragging(false)
+      setDragX(0)
+    }
+
+    node.addEventListener('touchstart', onTouchStart, { passive: true })
+    node.addEventListener('touchmove', onTouchMove, { passive: false })
+    node.addEventListener('touchend', onTouchEnd)
+    node.addEventListener('touchcancel', onTouchCancel)
+    return () => {
+      node.removeEventListener('touchstart', onTouchStart)
+      node.removeEventListener('touchmove', onTouchMove)
+      node.removeEventListener('touchend', onTouchEnd)
+      node.removeEventListener('touchcancel', onTouchCancel)
+    }
+  }, [close, media.length, step])
 
   // ESC 关闭、←/→ 切换媒体
   useEffect(() => {
@@ -120,7 +231,16 @@ export function InfoItemPage() {
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-ink/95 backdrop-blur-sm">
+    <div
+      ref={overlayRef}
+      data-swipe-overlay
+      style={{
+        transform: dragX ? `translateX(${dragX}px)` : undefined,
+        transition: dragging ? 'none' : 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1)',
+        touchAction: 'pan-y',
+      }}
+      className="fixed inset-0 z-40 flex flex-col bg-ink/95 backdrop-blur-sm"
+    >
       <div className="flex items-center justify-between gap-2 border-b border-line bg-panel/95 px-2 pt-[env(safe-area-inset-top)]">
         <button
           type="button"
@@ -191,22 +311,9 @@ export function InfoItemPage() {
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] lg:gap-4 lg:overflow-hidden lg:p-4">
           <div className="relative flex min-h-0 flex-col bg-black/40 lg:h-full lg:rounded-lg lg:border lg:border-line">
             <div
+              ref={mediaRef}
               className="relative flex w-full items-center justify-center overflow-hidden bg-ink/80 lg:h-full lg:min-h-0 lg:aspect-auto"
               style={{ aspectRatio: `${mediaRatio(current, item)}` }}
-              onTouchStart={(event) => {
-                const touch = event.touches[0]
-                touchStart.current = { x: touch.clientX, y: touch.clientY }
-              }}
-              onTouchEnd={(event) => {
-                const start = touchStart.current
-                touchStart.current = null
-                if (!start || media.length < 2) return
-                const touch = event.changedTouches[0]
-                const dx = touch.clientX - start.x
-                const dy = touch.clientY - start.y
-                if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy)) return
-                step(dx < 0 ? 1 : -1)
-              }}
             >
               <MediaStage
                 item={item}
