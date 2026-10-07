@@ -34,6 +34,7 @@ from app.info.adapters import (
     reactions_total,
 )
 from app.info.errors import InfoError
+from app.info.sanitize import sanitize_feed_html
 from app.models import InfoItem, InfoMedia, InfoSource
 from app.services.tikhub_config import get_tikhub_credentials
 
@@ -91,6 +92,9 @@ def _insert_item(
                 return False
 
             media_items = list(post.media)[: max(0, settings.info_max_media_per_item)]
+            # RSS 等一次性拿到正文的渠道：把 post.html 清洗后作为正文 HTML 入库
+            if content_html is None and post.html:
+                content_html = sanitize_feed_html(post.html) or None
             item = InfoItem(
                 id=str(uuid.uuid4()),
                 source_id=source.id,
@@ -297,26 +301,64 @@ def collect_source(
     }
 
 
-def reset_wechat_content(db: Session, source: InfoSource) -> int:
-    """把该公众号的条目重置为待补全正文，交给全文 worker 重新拉取。
+def collect_many(db: Session, source_list: list[InfoSource]) -> dict[str, object]:
+    """串行采集一组渠道（用于「批量立即采集 / 一键全部采集」）。
 
-    用于：旧数据补 `content_html`（保留排版），或正文更新后重新做 AI 判定。
-    仅微信渠道有 `content_status`，其余渠道不会被命中。
+    单独渠道失败不影响其它渠道；每个渠道采集后立即提交，避免下一轮 `collect_source`
+    内部的事务回滚把上一轮结果一并丢弃。返回聚合结果与每渠道明细。
     """
-    result = db.execute(
-        update(InfoItem)
-        .where(InfoItem.source_id == source.id, InfoItem.content_status != "")
-        .values(
-            content_status="pending",
-            content_attempts=0,
-            content_html=None,
-            ai_status="pending",
-            ai_attempts=0,
-            ai_error="",
-        )
-    )
-    db.flush()
-    return int(result.rowcount or 0)
+    targets = [
+        (source.id, source.title or source.identifier, source.last_success_at is None)
+        for source in source_list
+    ]
+    results: list[dict[str, object]] = []
+    succeeded = 0
+    failed = 0
+    created = 0
+    fetched = 0
+    skipped = 0
+    for source_id, title, first_run in targets:
+        source = db.get(InfoSource, source_id)
+        if source is None:
+            continue
+        try:
+            result = collect_source(db, source, backfill=first_run)
+            db.commit()
+            succeeded += 1
+            created += int(result.get("created") or 0)
+            fetched += int(result.get("fetched") or 0)
+            skipped += int(result.get("skipped") or 0)
+            results.append({"source_id": source_id, "title": title, "error": None})
+        except InfoError as error:
+            # 失败信息已写入渠道（last_error / 连续失败次数），提交以持久化
+            db.commit()
+            failed += 1
+            results.append(
+                {
+                    "source_id": source_id,
+                    "title": title,
+                    "error": {"type": error.error_type, "message": error.message},
+                }
+            )
+        except Exception as error:  # noqa: BLE001 - 单渠道异常不影响整批
+            db.rollback()
+            failed += 1
+            results.append(
+                {
+                    "source_id": source_id,
+                    "title": title,
+                    "error": {"type": "exception", "message": str(error)},
+                }
+            )
+    return {
+        "total": len(targets),
+        "succeeded": succeeded,
+        "failed": failed,
+        "created": created,
+        "fetched": fetched,
+        "skipped": skipped,
+        "results": results,
+    }
 
 
 def refresh_item_media_state(db: Session, item: InfoItem) -> None:

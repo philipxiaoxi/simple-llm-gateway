@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -863,7 +863,7 @@ def test_batch_update_interval_endpoint(
         for row in client.get("/api/admin/info/sources", headers=auth_headers).json()["sources"]
     }
     assert listed[first]["poll_interval_seconds"] == 0
-    assert listed[second]["poll_interval_seconds"] == 86400
+    assert listed[second]["poll_interval_seconds"] == 0
 
     # 不传 ids = 全部渠道
     response = client.post(
@@ -877,3 +877,144 @@ def test_batch_update_interval_endpoint(
         for row in client.get("/api/admin/info/sources", headers=auth_headers).json()["sources"]
     }
     assert all(row["poll_interval_seconds"] == 3600 for row in listed.values())
+
+
+def test_manual_source_is_immutable(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    from app.db import get_session_factory
+    from app.info.sources import ensure_manual_source
+
+    monkeypatch.setattr("app.info.collector.adapter_for", lambda db, kind: FakeAdapter([]))
+
+    session = get_session_factory()()
+    try:
+        manual = ensure_manual_source(session)
+        session.commit()
+        manual_id = manual.id
+    finally:
+        session.close()
+
+    # 内置「其他」渠道不可编辑
+    response = client.patch(
+        f"/api/admin/info/sources/{manual_id}", headers=auth_headers, json={"title": "改名"}
+    )
+    assert response.status_code == 403
+
+    # 不可删除
+    response = client.delete(f"/api/admin/info/sources/{manual_id}", headers=auth_headers)
+    assert response.status_code == 403
+
+    # 批量设置间隔时跳过内置渠道
+    normal_id = _create_source(client, auth_headers, "@ch1")
+    response = client.post(
+        "/api/admin/info/sources/batch-interval",
+        headers=auth_headers,
+        json={"ids": [normal_id, manual_id], "poll_interval_seconds": 3600},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["updated"] == 1
+
+    listed = {
+        row["id"]: row
+        for row in client.get("/api/admin/info/sources", headers=auth_headers).json()["sources"]
+    }
+    assert listed[manual_id]["poll_interval_seconds"] == 0
+    assert listed[manual_id]["title"] == "其他"
+    assert listed[normal_id]["poll_interval_seconds"] == 3600
+    # 内置「其他」渠道固定排在最后
+    assert list(listed)[-1] == manual_id
+
+
+def test_batch_collect_by_ids_and_kinds(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    # 每次取适配器都给一份新页，避免多个渠道共用一份被 pop 掉的队列
+    monkeypatch.setattr(
+        "app.info.collector.adapter_for", lambda db, kind: FakeAdapter([_demo_page()])
+    )
+    first = _create_source(client, auth_headers, "@ch1")
+    second = _create_source(client, auth_headers, "@ch2")
+
+    # ids 子集
+    response = client.post(
+        "/api/admin/info/sources/collect-batch", headers=auth_headers, json={"ids": [first]}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total"] == 1
+    assert body["succeeded"] == 1
+    assert body["failed"] == 0
+    assert body["created"] == 3
+    assert body["results"][0]["source_id"] == first
+
+    # kinds 过滤：两个 Telegram 渠道都采，幂等不重复入库
+    response = client.post(
+        "/api/admin/info/sources/collect-batch", headers=auth_headers, json={"kinds": ["telegram"]}
+    )
+    body = response.json()
+    assert body["total"] == 2
+    assert body["succeeded"] == 2
+    assert body["failed"] == 0
+
+    # 不传任何过滤 = 全部渠道（内置「其他」不在其中）
+    response = client.post("/api/admin/info/sources/collect-batch", headers=auth_headers, json={})
+    assert response.json()["total"] == 2
+
+
+def test_items_sort_scored_orders_by_scored_at(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    from app.db import get_session_factory
+    from app.models import InfoItem
+
+    base = utcnow()
+    session = get_session_factory()()
+    try:
+        for offset, item_id in ((0, "s1"), (5, "s2"), (10, "s3")):
+            session.add(
+                InfoItem(
+                    id=item_id,
+                    source_id=None,
+                    external_id=item_id,
+                    kind="text",
+                    text=f"条目 {item_id}",
+                    excerpt=f"条目 {item_id}",
+                    media_count=0,
+                    cover_seed=1,
+                    status="ready",
+                    ai_status="done",
+                    ai_scored_at=base + timedelta(minutes=offset),
+                    collected_at=base,
+                    created_at=base,
+                )
+            )
+        session.add(
+            InfoItem(
+                id="pending-item",
+                source_id=None,
+                external_id="pending-item",
+                kind="text",
+                text="还没判定",
+                excerpt="还没判定",
+                media_count=0,
+                cover_seed=1,
+                status="ready",
+                ai_status="pending",
+                ai_scored_at=None,
+                collected_at=base,
+                created_at=base,
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    response = client.get(
+        "/api/admin/info/items", headers=auth_headers, params={"sort": "scored", "limit": 50}
+    )
+    assert response.status_code == 200, response.text
+    ids = [row["id"] for row in response.json()["items"]]
+    # 最近完成的在前，未判定的排最后
+    assert ids[:3] == ["s3", "s2", "s1"]
+    assert ids[-1] == "pending-item"

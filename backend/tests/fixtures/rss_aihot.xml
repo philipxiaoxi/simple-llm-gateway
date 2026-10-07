@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>AIHOT — 精选</title>
+    <link>https://aihot.news/</link>
+    <description>最新 AIHOT 精选摘要</description>
+    <image>
+      <url>https://aihot.news/logo.png</url>
+    </image>
+    <item>
+      <title><![CDATA[Mistral Large 4 进入 Code Arena]]></title>
+      <link>https://aihot.news/items/aaa</link>
+      <description><![CDATA[<p>Arena 宣布 Mistral Large 4 登陆 Code Arena。</p><p>🔗 <a href="https://x.com/arena/1">阅读原文</a></p>]]></description>
+      <category>AI 模型</category>
+      <pubDate>Wed, 07 Oct 2026 06:18:23 GMT</pubDate>
+      <guid isPermaLink="false">aaa</guid>
+      <author>noreply@aihot.news (Arena)</author>
+    </item>
+    <item>
+      <title>OpenAI 发布数学研究成果</title>
+      <link>https://aihot.news/items/bbb</link>
+      <content:encoded><![CDATA[<p>正文 <strong>加粗</strong> <img src="https://evil.example/x.png"/></p>]]></content:encoded>
+      <category>AI 行业</category>
+      <pubDate>Wed, 07 Oct 2026 05:00:00 GMT</pubDate>
+      <guid isPermaLink="false">bbb</guid>
+    </item>
+  </channel>
+</rss>

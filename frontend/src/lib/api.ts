@@ -1338,11 +1338,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  infoSourceRebuildContent: (id: string) =>
-    request<{ reset: number }>(
-      `/api/admin/info/sources/${encodeURIComponent(id)}/rebuild-content`,
-      { method: 'POST' },
-    ),
+  infoSourcesCollectBatch: (payload: { ids?: string[]; kinds?: string[] }) =>
+    request<InfoCollectBatchResult>('/api/admin/info/sources/collect-batch', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   infoSaveArticle: (url: string) =>
     request<{ id: string; source_id: string }>('/api/admin/info/articles', {
       method: 'POST',
@@ -1357,6 +1357,42 @@ export const api = {
     return request<InfoItemList>(`/api/admin/info/items${suffix}`)
   },
   infoItem: (id: string) => request<InfoItemDetail>(`/api/admin/info/items/${encodeURIComponent(id)}`),
+  publicInfoItems: (query: InfoItemQuery = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<InfoItemList>(`/api/public/info/items${suffix}`)
+  },
+  publicInfoItem: (id: string) =>
+    request<InfoItemDetail>(`/api/public/info/items/${encodeURIComponent(id)}`),
+  publicInfoStats: () =>
+    request<{ item_count: number; featured_count: number }>('/api/public/info/stats'),
+  publicInfoGate: () => request<InfoPublicGateStatus>('/api/public/info/gate'),
+  publicInfoUnlock: (password: string) =>
+    request<{ ok: boolean; required: boolean; expires_in?: number; watermark?: { code: string } }>(
+      '/api/public/info/unlock',
+      {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      },
+    ),
+  publicInfoLock: () => request<{ ok: boolean }>('/api/public/info/lock', { method: 'POST' }),
+  infoPublicGate: () => request<InfoPublicGate>('/api/admin/info/public-gate'),
+  infoPublicGateUpdate: (payload: { enabled?: boolean; password?: string; clear_password?: boolean }) =>
+    request<InfoPublicGate>('/api/admin/info/public-gate', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  infoPublicSessions: (query: { code?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<{ sessions: InfoPublicSession[] }>(`/api/admin/info/public-sessions${suffix}`)
+  },
   infoItemFavorite: (id: string, favorite: boolean) =>
     request<InfoItem>(`/api/admin/info/items/${encodeURIComponent(id)}/favorite`, {
       method: 'POST',
@@ -2144,6 +2180,20 @@ export type InfoCollectResult = {
   error: string | null
 }
 
+export type InfoCollectBatchResult = {
+  total: number
+  succeeded: number
+  failed: number
+  created: number
+  fetched: number
+  skipped: number
+  results: {
+    source_id: string
+    title: string
+    error: { type: string; message: string } | null
+  }[]
+}
+
 export type InfoSourceRef = {
   id: string
   title: string
@@ -2250,6 +2300,8 @@ export type InfoItemQuery = {
   ai_status?: string
   /** 排序：desc = 最新优先（契约默认），asc = 最早优先 */
   order?: 'desc' | 'asc'
+  /** 排序口径：timeline = 发布/采集时间（默认），scored = 判定时间（最近完成优先） */
+  sort?: 'timeline' | 'scored'
 }
 
 export type InfoAiSettings = {
@@ -2264,6 +2316,36 @@ export type InfoAiSettings = {
   max_attempts: number
   prompt_template: string
   updated_at: string | null
+}
+
+export type InfoPublicGate = {
+  enabled: boolean
+  has_password: boolean
+  required: boolean
+  ttl_days: number
+  password_fingerprint: string
+  updated_at: string | null
+}
+
+export type InfoGateWatermark = {
+  code: string
+  issued_at: string | null
+}
+
+export type InfoPublicGateStatus = {
+  required: boolean
+  unlocked: boolean
+  watermark: InfoGateWatermark | null
+}
+
+export type InfoPublicSession = {
+  code: string
+  ip: string
+  user_agent: string
+  gate_version: number
+  password_fingerprint: string
+  created_at: string | null
+  expires_at: string | null
 }
 
 export type InfoStats = {

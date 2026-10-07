@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import case, select, update
 from sqlalchemy.orm import Session
 
 from app.clock import utcnow
@@ -35,7 +35,14 @@ def clamp_interval(value: int | None) -> int:
 
 
 def list_sources(db: Session) -> list[InfoSource]:
-    return list(db.scalars(select(InfoSource).order_by(InfoSource.created_at)).all())
+    # 内置「其他」渠道固定排最后（不可编辑/删除，放末尾不干扰正常渠道）
+    return list(
+        db.scalars(
+            select(InfoSource).order_by(
+                case((InfoSource.kind == MANUAL_KIND, 1), else_=0), InfoSource.created_at
+            )
+        ).all()
+    )
 
 
 def get_source(db: Session, source_id: str) -> InfoSource:
@@ -99,6 +106,12 @@ def create_source(
     return source
 
 
+def _ensure_mutable(source: InfoSource) -> None:
+    # 内置「其他」渠道固定存在，不允许修改配置或删除
+    if source.kind == MANUAL_KIND:
+        raise InfoError("内置「其他」分类不可修改", status_code=403, error_type="source_immutable")
+
+
 def update_source(
     db: Session,
     source: InfoSource,
@@ -107,6 +120,7 @@ def update_source(
     poll_interval_seconds: int | None = None,
     enabled: bool | None = None,
 ) -> InfoSource:
+    _ensure_mutable(source)
     if title is not None:
         cleaned = title.strip()
         if cleaned:
@@ -160,6 +174,8 @@ def batch_update_interval(
     )
     if source_ids:
         statement = statement.where(InfoSource.id.in_(list(source_ids)))
+    # 内置「其他」渠道不参与定时采集，跳过其配置
+    statement = statement.where(InfoSource.kind != MANUAL_KIND)
     result = db.execute(statement)
     db.flush()
     return int(result.rowcount or 0)
@@ -167,6 +183,7 @@ def batch_update_interval(
 
 def delete_source(db: Session, source: InfoSource, *, purge_items: bool = False) -> None:
     """删除渠道。`purge_items=False` 默认保留已采集内容与媒体文件。"""
+    _ensure_mutable(source)
     collector.delete_source(db, source, purge_items=purge_items)
 
 

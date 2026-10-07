@@ -43,6 +43,7 @@ from app.routers import (
     diagrams_public,
     douyin_public,
     health,
+    info_public,
     local_agent,
     oauth,
     proxy,
@@ -202,6 +203,7 @@ app.include_router(sites_public.router)
 app.include_router(sites_public.hosting_router)
 app.include_router(douyin_public.router)
 app.include_router(diagrams_public.router)
+app.include_router(info_public.router)
 app.include_router(voice_rooms.admin_router)
 app.include_router(voice_rooms.public_router)
 app.include_router(voice_rooms.router)

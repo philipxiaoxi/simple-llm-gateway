@@ -24,6 +24,7 @@ from app.info.errors import InfoError
 from app.info.sanitize import sanitize_wechat_html
 from app.models import InfoItem, InfoMedia, InfoSource, UpstreamAccount
 from app.services import info_ai
+from app.services import info_public_gate as public_gate
 from app.services.tikhub_config import tikhub_status
 
 router = APIRouter(
@@ -52,7 +53,8 @@ class CreateBody(BaseModel):
     raw: str
     kind: str = "telegram"
     title: str | None = None
-    poll_interval_seconds: int | None = None
+    # 新增渠道默认「手动触发」（0），不参与定时采集，需要时再显式设置间隔
+    poll_interval_seconds: int | None = 0
     enabled: bool = True
 
 
@@ -70,6 +72,12 @@ class BatchIntervalBody(BaseModel):
     # ids 为空 / 不传表示全部渠道；poll_interval_seconds = 0 表示「手动触发」
     ids: list[str] | None = None
     poll_interval_seconds: int = 86400
+
+
+class CollectBatchBody(BaseModel):
+    # ids 优先（已勾选的渠道）；否则按 kinds 过滤；都不传 = 全部渠道
+    ids: list[str] | None = None
+    kinds: list[str] | None = None
 
 
 class StateBody(BaseModel):
@@ -96,6 +104,12 @@ class RescoreBody(BaseModel):
     # pending（默认，含已失败的）/ failed / all；也可只对指定 ids 重新判定
     scope: str = "pending"
     ids: list[str] | None = None
+
+
+class PublicGateBody(BaseModel):
+    enabled: bool | None = None
+    password: str | None = None
+    clear_password: bool | None = None
 
 
 @router.get("/sources")
@@ -166,6 +180,19 @@ def batch_interval(payload: BatchIntervalBody, db: Session = Depends(get_db)):
     return {"updated": changed}
 
 
+@router.post("/sources/collect-batch")
+def collect_batch(payload: CollectBatchBody, db: Session = Depends(get_db)):
+    """批量立即采集：`ids` 优先，否则按 `kinds` 过滤，都不传则全部（不含内置「其他」）。"""
+    rows = [s for s in sources.list_sources(db) if s.kind != sources.MANUAL_KIND]
+    if payload.ids:
+        wanted = set(payload.ids)
+        rows = [s for s in rows if s.id in wanted]
+    elif payload.kinds:
+        wanted_kinds = set(payload.kinds)
+        rows = [s for s in rows if s.kind in wanted_kinds]
+    return collector.collect_many(db, rows)
+
+
 @router.delete("/sources/{source_id}", status_code=204)
 def delete_source(
     source_id: str, purge_items: bool = Query(default=False), db: Session = Depends(get_db)
@@ -202,20 +229,6 @@ def collect_source(source_id: str, db: Session = Depends(get_db)):
         }
     db.commit()
     return result
-
-
-@router.post("/sources/{source_id}/rebuild-content")
-def rebuild_source_content(source_id: str, db: Session = Depends(get_db)):
-    """重新补全该公众号条目的正文（含 HTML 排版）并重新判定。"""
-    try:
-        source = sources.get_source(db, source_id)
-    except InfoError as error:
-        raise _http(error) from error
-    if source.kind != "wechat":
-        raise HTTPException(status_code=400, detail="只有微信公众号渠道支持重新补全正文")
-    reset = collector.reset_wechat_content(db, source)
-    db.commit()
-    return {"reset": reset}
 
 
 @router.post("/articles", status_code=201)
@@ -267,6 +280,7 @@ def list_items(
     min_score: int | None = None,
     ai_status: str | None = None,
     order: str = "desc",
+    sort: str = "timeline",
     db: Session = Depends(get_db),
 ):
     rows, next_cursor, total = items.list_items(
@@ -283,6 +297,7 @@ def list_items(
         min_score=min_score,
         ai_status=ai_status,
         order=order,
+        sort=sort,
     )
     return {
         "items": [items.serialize_item(row) for row in rows],
@@ -422,6 +437,45 @@ def rescore_items(payload: RescoreBody, db: Session = Depends(get_db)):
 @router.get("/stats")
 def get_stats(db: Session = Depends(get_db)):
     return items.stats(db)
+
+
+@router.get("/public-gate")
+def get_public_gate(db: Session = Depends(get_db)):
+    row = public_gate.get_public_gate_settings(db)
+    db.commit()
+    return public_gate.serialize(row)
+
+
+@router.put("/public-gate")
+def update_public_gate(payload: PublicGateBody, db: Session = Depends(get_db)):
+    row = public_gate.get_public_gate_settings(db)
+    provided = payload.model_fields_set
+
+    if "clear_password" in provided and payload.clear_password:
+        public_gate.clear_password(row)
+    if "password" in provided and payload.password:
+        try:
+            public_gate.set_password(row, payload.password)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": {"type": "invalid_request", "message": str(error)}},
+            ) from error
+    if "enabled" in provided:
+        public_gate.set_enabled(row, bool(payload.enabled))
+    row.updated_at = utcnow()
+    db.commit()
+    return public_gate.serialize(row)
+
+
+@router.get("/public-sessions")
+def list_public_sessions(
+    code: str | None = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    rows = public_gate.list_sessions(db, code=code, limit=limit)
+    return {"sessions": [public_gate.serialize_session(row) for row in rows]}
 
 
 @media_router.get("/media/{media_id}")

@@ -1,10 +1,11 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Heart, ImageOff, ListChecks, Play, Search, Send, Settings, SlidersHorizontal, Sparkles, Star } from 'lucide-react'
+import { ExternalLink, Heart, ImageOff, Link2, ListChecks, Lock, Play, Search, Send, Settings, SlidersHorizontal, Sparkles, Star } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SyntheticEvent } from 'react'
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { InfoAiProgressDialog } from '../components/InfoAiProgressDialog'
 import { InfoAiSettingsDialog } from '../components/InfoAiSettingsDialog'
+import { InfoPublicGateDialog } from '../components/InfoPublicGateDialog'
 import { InfoMasonry } from '../components/InfoMasonry'
 import { InfoTextCover } from '../components/InfoTextCover'
 import { Button, Input, Select } from '../components/ui'
@@ -18,7 +19,10 @@ import {
   removeInfoItemFromCaches,
 } from '../lib/info'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { cn, errorMessage } from '../lib/utils'
+import { cn, copyText, errorMessage } from '../lib/utils'
+
+/** 公开只读页路径（无需登录，可分享给他人） */
+const PUBLIC_INFO_PATH = '/share/info'
 
 const PAGE_SIZE = 24
 /** 卡片预估高度里的固定部分：标题两行 + 页脚一行 */
@@ -43,31 +47,6 @@ type FeedEntry =
   | { kind: 'item'; key: string; item: InfoItem; ratio: number }
   | { kind: 'skeleton'; key: string; item: null; ratio: number }
 
-/** 向下滚动隐藏筛选栏，向上滚动或回到顶部时显示，形成沉浸式瀑布流。 */
-function useHideOnScroll(threshold = 96) {
-  const [hidden, setHidden] = useState(false)
-  useEffect(() => {
-    let lastY = window.scrollY
-    let ticking = false
-    function onScroll() {
-      if (ticking) return
-      ticking = true
-      window.requestAnimationFrame(() => {
-        const y = window.scrollY
-        const delta = y - lastY
-        if (y <= threshold) setHidden(false)
-        else if (delta > 8) setHidden(true)
-        else if (delta < -8) setHidden(false)
-        lastY = y
-        ticking = false
-      })
-    }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [threshold])
-  return hidden
-}
-
 export function InfoFeedPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -88,8 +67,8 @@ export function InfoFeedPage() {
   const [search, setSearch] = useState(keyword)
   const [aiOpen, setAiOpen] = useState(false)
   const [progressOpen, setProgressOpen] = useState(false)
+  const [gateOpen, setGateOpen] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const hideBar = useHideOnScroll()
   const [measured, setMeasured] = useState<Record<string, number>>({})
   const sentinel = useRef<HTMLDivElement>(null)
 
@@ -233,8 +212,19 @@ export function InfoFeedPage() {
   const filteredTotal = feed.data?.pages[0]?.total ?? 0
   const noSources = !sources.isLoading && sourceList.length === 0
   const showEmpty = !feed.isLoading && items.length === 0 && !feed.isError
-  // 筛选面板展开时视为正在交互，不收起；仅在滚动向下且面板关闭时折叠
-  const barCollapsed = hideBar && !filtersOpen
+
+  function publicInfoUrl() {
+    return `${window.location.origin}${PUBLIC_INFO_PATH}`
+  }
+
+  async function copyPublicLink() {
+    try {
+      await copyText(publicInfoUrl())
+      notifyOk('公开链接已复制')
+    } catch {
+      notifyBad('复制失败，请手动复制地址')
+    }
+  }
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1280px] space-y-3">
@@ -265,19 +255,27 @@ export function InfoFeedPage() {
           <Button type="button" variant="line" onClick={() => setAiOpen(true)}>
             <Sparkles size={15} /> AI 判定
           </Button>
+          <Button
+            type="button"
+            variant="line"
+            onClick={() => window.open(publicInfoUrl(), '_blank', 'noopener,noreferrer')}
+          >
+            <ExternalLink size={15} /> 公开页
+          </Button>
+          <Button type="button" variant="line" onClick={copyPublicLink}>
+            <Link2 size={15} /> 复制链接
+          </Button>
+          <Button type="button" variant="line" onClick={() => setGateOpen(true)}>
+            <Lock size={15} /> 门禁设置
+          </Button>
           <Button type="button" onClick={() => navigate('/info/sources')}>
             <Settings size={15} /> 渠道管理
           </Button>
         </div>
       </div>
 
-      <div
-        className={cn(
-          'sticky top-[calc(var(--app-header)+env(safe-area-inset-top))] z-20 -mx-4 grid transition-all duration-300 ease-out lg:top-0 lg:mx-0',
-          barCollapsed ? 'pointer-events-none grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100',
-        )}
-      >
-        <div className="min-h-0 overflow-hidden border-b border-line bg-ink/95 backdrop-blur-md lg:rounded-lg lg:border">
+      <div className="-mx-4 lg:mx-0">
+        <div className="border-b border-line bg-ink/95 lg:rounded-lg lg:border">
           <div className="px-4 py-2 lg:px-3 lg:py-2.5">
         {/* 移动端：搜索 + 可开合筛选，避免单行挤压显示不全 */}
         <div className="flex items-center gap-2 lg:hidden">
@@ -339,21 +337,21 @@ export function InfoFeedPage() {
           </div>
         ) : null}
 
-        {/* 桌面端：单行筛选 */}
-        <div className="hidden items-center gap-2 lg:flex">
+        {/* 桌面端：单行筛选（放不下时换行，避免控件互相叠加） */}
+        <div className="hidden flex-wrap items-center gap-2 lg:flex">
           <SourceSelect
             value={sourceId}
             onChange={(value) => setParam('source_id', value)}
             sources={sourceList}
             className="w-40 shrink-0"
           />
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <KindChips kind={kind} onPick={(value) => setParam('kind', value === 'all' ? '' : value)} />
           </div>
           <FavoriteChip active={favoriteOnly} onToggle={() => setParam('favorite', favoriteOnly ? '' : '1')} />
           <FeaturedChip active={featuredOnly} onToggle={() => setParam('featured', featuredOnly ? '' : '1')} />
-          <LabelSelect value={label} onChange={(value) => setParam('label', value)} className="w-24 shrink-0" />
-          <ScoreSelect value={minScore} onChange={(value) => setParam('min_score', value)} className="w-24 shrink-0" />
+          <LabelSelect value={label} onChange={(value) => setParam('label', value)} className="w-32 shrink-0" />
+          <ScoreSelect value={minScore} onChange={(value) => setParam('min_score', value)} className="w-32 shrink-0" />
           <SearchBox value={search} onChange={setSearch} className="w-52 shrink-0" />
           <OrderSelect
             value={order}
@@ -452,6 +450,7 @@ export function InfoFeedPage() {
 
       {aiOpen ? <InfoAiSettingsDialog open onClose={() => setAiOpen(false)} /> : null}
       {progressOpen ? <InfoAiProgressDialog open onClose={() => setProgressOpen(false)} /> : null}
+      {gateOpen ? <InfoPublicGateDialog open onClose={() => setGateOpen(false)} /> : null}
     </div>
   )
 }

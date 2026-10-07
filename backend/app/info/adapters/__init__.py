@@ -18,12 +18,14 @@ from .base import (
     parse_duration_ms,
     reactions_total,
 )
+from .rss import RssAdapter
 from .telegram import TelegramAdapter
 from .wechat import WeChatMpAdapter
 
 _ADAPTERS: dict[str, type] = {
     TelegramAdapter.kind: TelegramAdapter,
     WeChatMpAdapter.kind: WeChatMpAdapter,
+    RssAdapter.kind: RssAdapter,
 }
 
 
@@ -48,6 +50,7 @@ __all__ = [
     "FetchedMedia",
     "FetchedPage",
     "FetchedPost",
+    "RssAdapter",
     "SourceAdapter",
     "SourcePreview",
     "TelegramAdapter",
