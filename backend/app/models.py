@@ -1012,3 +1012,32 @@ class InfoAiSettings(Base):
     max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
     prompt_template: Mapped[str] = mapped_column(Text, default="", nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class InfoPublicSettings(Base):
+    """资讯公开页门禁的全局单例设置。"""
+
+    __tablename__ = "info_public_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    # 改口令时自增，旧会话令牌立即失效
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class InfoPublicSession(Base):
+    """公开页门禁的解锁会话：水印短码与访问指纹，用于溯源。"""
+
+    __tablename__ = "info_public_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(16), unique=True, nullable=False, index=True)
+    ip: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    user_agent: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    gate_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # 解锁所用口令的指纹（不存明文），用于定位泄露对应的是哪个密钥
+    password_fingerprint: Mapped[str] = mapped_column(String(16), default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

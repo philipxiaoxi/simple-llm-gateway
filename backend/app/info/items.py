@@ -236,7 +236,7 @@ def _parse_json(raw: str | None) -> Any:
         return None
 
 
-def serialize_item(item: InfoItem, *, include_media: bool = False) -> dict[str, Any]:
+def serialize_item(item: InfoItem, *, include_media: bool = False, public: bool = False) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "id": item.id,
         "source": _serialize_source(item.source),
@@ -279,6 +279,12 @@ def serialize_item(item: InfoItem, *, include_media: bool = False) -> dict[str, 
             )
         else:
             payload["content_html"] = None
+    if public:
+        # 公开页只展示内容本身，不暴露渠道来源与后台管理字段
+        payload["source"] = None
+        payload["author_name"] = ""
+        for key in ("permalink", "is_hidden", "is_favorite", "ai_status", "ai_model", "ai_error", "ai_scored_at"):
+            payload.pop(key, None)
     return payload
 
 

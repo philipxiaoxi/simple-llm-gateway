@@ -24,6 +24,7 @@ from app.info.errors import InfoError
 from app.info.sanitize import sanitize_wechat_html
 from app.models import InfoItem, InfoMedia, InfoSource, UpstreamAccount
 from app.services import info_ai
+from app.services import info_public_gate as public_gate
 from app.services.tikhub_config import tikhub_status
 
 router = APIRouter(
@@ -103,6 +104,12 @@ class RescoreBody(BaseModel):
     # pending（默认，含已失败的）/ failed / all；也可只对指定 ids 重新判定
     scope: str = "pending"
     ids: list[str] | None = None
+
+
+class PublicGateBody(BaseModel):
+    enabled: bool | None = None
+    password: str | None = None
+    clear_password: bool | None = None
 
 
 @router.get("/sources")
@@ -430,6 +437,45 @@ def rescore_items(payload: RescoreBody, db: Session = Depends(get_db)):
 @router.get("/stats")
 def get_stats(db: Session = Depends(get_db)):
     return items.stats(db)
+
+
+@router.get("/public-gate")
+def get_public_gate(db: Session = Depends(get_db)):
+    row = public_gate.get_public_gate_settings(db)
+    db.commit()
+    return public_gate.serialize(row)
+
+
+@router.put("/public-gate")
+def update_public_gate(payload: PublicGateBody, db: Session = Depends(get_db)):
+    row = public_gate.get_public_gate_settings(db)
+    provided = payload.model_fields_set
+
+    if "clear_password" in provided and payload.clear_password:
+        public_gate.clear_password(row)
+    if "password" in provided and payload.password:
+        try:
+            public_gate.set_password(row, payload.password)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": {"type": "invalid_request", "message": str(error)}},
+            ) from error
+    if "enabled" in provided:
+        public_gate.set_enabled(row, bool(payload.enabled))
+    row.updated_at = utcnow()
+    db.commit()
+    return public_gate.serialize(row)
+
+
+@router.get("/public-sessions")
+def list_public_sessions(
+    code: str | None = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    rows = public_gate.list_sessions(db, code=code, limit=limit)
+    return {"sessions": [public_gate.serialize_session(row) for row in rows]}
 
 
 @media_router.get("/media/{media_id}")

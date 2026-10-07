@@ -1,10 +1,11 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Heart, ImageOff, ListChecks, Play, Search, Send, Settings, SlidersHorizontal, Sparkles, Star } from 'lucide-react'
+import { ExternalLink, Heart, ImageOff, Link2, ListChecks, Lock, Play, Search, Send, Settings, SlidersHorizontal, Sparkles, Star } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SyntheticEvent } from 'react'
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { InfoAiProgressDialog } from '../components/InfoAiProgressDialog'
 import { InfoAiSettingsDialog } from '../components/InfoAiSettingsDialog'
+import { InfoPublicGateDialog } from '../components/InfoPublicGateDialog'
 import { InfoMasonry } from '../components/InfoMasonry'
 import { InfoTextCover } from '../components/InfoTextCover'
 import { Button, Input, Select } from '../components/ui'
@@ -18,7 +19,10 @@ import {
   removeInfoItemFromCaches,
 } from '../lib/info'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { cn, errorMessage } from '../lib/utils'
+import { cn, copyText, errorMessage } from '../lib/utils'
+
+/** 公开只读页路径（无需登录，可分享给他人） */
+const PUBLIC_INFO_PATH = '/share/info'
 
 const PAGE_SIZE = 24
 /** 卡片预估高度里的固定部分：标题两行 + 页脚一行 */
@@ -63,6 +67,7 @@ export function InfoFeedPage() {
   const [search, setSearch] = useState(keyword)
   const [aiOpen, setAiOpen] = useState(false)
   const [progressOpen, setProgressOpen] = useState(false)
+  const [gateOpen, setGateOpen] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [measured, setMeasured] = useState<Record<string, number>>({})
   const sentinel = useRef<HTMLDivElement>(null)
@@ -208,6 +213,19 @@ export function InfoFeedPage() {
   const noSources = !sources.isLoading && sourceList.length === 0
   const showEmpty = !feed.isLoading && items.length === 0 && !feed.isError
 
+  function publicInfoUrl() {
+    return `${window.location.origin}${PUBLIC_INFO_PATH}`
+  }
+
+  async function copyPublicLink() {
+    try {
+      await copyText(publicInfoUrl())
+      notifyOk('公开链接已复制')
+    } catch {
+      notifyBad('复制失败，请手动复制地址')
+    }
+  }
+
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1280px] space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -236,6 +254,19 @@ export function InfoFeedPage() {
           </Button>
           <Button type="button" variant="line" onClick={() => setAiOpen(true)}>
             <Sparkles size={15} /> AI 判定
+          </Button>
+          <Button
+            type="button"
+            variant="line"
+            onClick={() => window.open(publicInfoUrl(), '_blank', 'noopener,noreferrer')}
+          >
+            <ExternalLink size={15} /> 公开页
+          </Button>
+          <Button type="button" variant="line" onClick={copyPublicLink}>
+            <Link2 size={15} /> 复制链接
+          </Button>
+          <Button type="button" variant="line" onClick={() => setGateOpen(true)}>
+            <Lock size={15} /> 门禁设置
           </Button>
           <Button type="button" onClick={() => navigate('/info/sources')}>
             <Settings size={15} /> 渠道管理
@@ -419,6 +450,7 @@ export function InfoFeedPage() {
 
       {aiOpen ? <InfoAiSettingsDialog open onClose={() => setAiOpen(false)} /> : null}
       {progressOpen ? <InfoAiProgressDialog open onClose={() => setProgressOpen(false)} /> : null}
+      {gateOpen ? <InfoPublicGateDialog open onClose={() => setGateOpen(false)} /> : null}
     </div>
   )
 }

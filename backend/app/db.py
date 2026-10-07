@@ -263,6 +263,7 @@ def _ensure_columns(engine: Engine) -> None:
         _ensure_douyin_columns(connection)
         _ensure_douyin_job_columns(connection)
         _ensure_info_item_ai_columns(connection)
+        _ensure_info_public_session_columns(connection)
         _ensure_api_key_accounts(connection)
         _backfill_account_model_prefixes(connection)
 
@@ -423,6 +424,20 @@ def _ensure_info_item_ai_columns(connection) -> None:  # type: ignore[no-untyped
     connection.execute(
         text("CREATE INDEX IF NOT EXISTS ix_info_items_is_featured ON info_items (is_featured)")
     )
+
+
+def _ensure_info_public_session_columns(connection) -> None:  # type: ignore[no-untyped-def]
+    """info_public_sessions 增量列：解锁口令指纹。"""
+    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(info_public_sessions)"))}
+    if not columns:
+        return
+    if "password_fingerprint" not in columns:
+        connection.execute(
+            text(
+                "ALTER TABLE info_public_sessions "
+                "ADD COLUMN password_fingerprint VARCHAR(16) DEFAULT '' NOT NULL"
+            )
+        )
 
 
 def _ensure_api_key_accounts(connection) -> None:  # type: ignore[no-untyped-def]

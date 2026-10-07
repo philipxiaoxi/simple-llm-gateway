@@ -148,12 +148,97 @@ body {
   animation: douyin-splash-sweep 1.05s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
+/* 公开页门禁：氛围背景的缓慢动效 */
+@keyframes gate-drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(46px, -34px, 0) scale(1.14);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.gate-blob {
+  animation: gate-drift 17s ease-in-out infinite;
+}
+
+@keyframes gate-spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.gate-ring {
+  animation: gate-spin-slow 24s linear infinite;
+}
+
+@keyframes gate-scan {
+  0% {
+    transform: translateY(-12%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(115%);
+    opacity: 0;
+  }
+}
+
+.gate-scan {
+  animation: gate-scan 7.5s ease-in-out infinite;
+}
+
+@keyframes gate-float {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translateY(-26px);
+    opacity: 0.85;
+  }
+}
+
+.gate-float {
+  animation: gate-float 9s ease-in-out infinite;
+}
+
+@keyframes gate-grid {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 80px 80px;
+  }
+}
+
+.gate-grid {
+  animation: gate-grid 22s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page-enter {
     animation: none;
   }
 
   .douyin-splash-sweep {
+    animation: none;
+  }
+
+  .gate-blob,
+  .gate-ring,
+  .gate-scan,
+  .gate-float,
+  .gate-grid {
     animation: none;
   }
 }

@@ -29,6 +29,12 @@ const LogsPage = lazy(() => import('./pages/Logs').then((m) => ({ default: m.Log
 const PublicLeaderboardPage = lazy(() =>
   import('./pages/PublicLeaderboard').then((m) => ({ default: m.PublicLeaderboardPage })),
 )
+const PublicInfoPage = lazy(() =>
+  import('./pages/PublicInfo').then((m) => ({ default: m.PublicInfoPage })),
+)
+const PublicInfoItemPage = lazy(() =>
+  import('./pages/PublicInfo').then((m) => ({ default: m.PublicInfoItemPage })),
+)
 const SharePage = lazy(() => import('./pages/Share').then((m) => ({ default: m.SharePage })))
 const SkillBundleDetailPage = lazy(() =>
   import('./pages/SkillBundleDetail').then((m) => ({ default: m.SkillBundleDetailPage })),
@@ -112,6 +118,9 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/share" element={<SharePage />} />
             <Route path="/share/leaderboard" element={<PublicLeaderboardPage />} />
+            <Route path="/share/info" element={<PublicInfoPage />}>
+              <Route path=":itemId" element={<PublicInfoItemPage />} />
+            </Route>
             <Route path="/share/douyin" element={<McpDouyinSharePage />} />
             <Route path="/voice/join" element={<VoiceJoinPage />} />
             <Route path="/voice/send/:roomId" element={<VoiceSendPage />} />

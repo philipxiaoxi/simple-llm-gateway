@@ -1357,6 +1357,42 @@ export const api = {
     return request<InfoItemList>(`/api/admin/info/items${suffix}`)
   },
   infoItem: (id: string) => request<InfoItemDetail>(`/api/admin/info/items/${encodeURIComponent(id)}`),
+  publicInfoItems: (query: InfoItemQuery = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<InfoItemList>(`/api/public/info/items${suffix}`)
+  },
+  publicInfoItem: (id: string) =>
+    request<InfoItemDetail>(`/api/public/info/items/${encodeURIComponent(id)}`),
+  publicInfoStats: () =>
+    request<{ item_count: number; featured_count: number }>('/api/public/info/stats'),
+  publicInfoGate: () => request<InfoPublicGateStatus>('/api/public/info/gate'),
+  publicInfoUnlock: (password: string) =>
+    request<{ ok: boolean; required: boolean; expires_in?: number; watermark?: { code: string } }>(
+      '/api/public/info/unlock',
+      {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      },
+    ),
+  publicInfoLock: () => request<{ ok: boolean }>('/api/public/info/lock', { method: 'POST' }),
+  infoPublicGate: () => request<InfoPublicGate>('/api/admin/info/public-gate'),
+  infoPublicGateUpdate: (payload: { enabled?: boolean; password?: string; clear_password?: boolean }) =>
+    request<InfoPublicGate>('/api/admin/info/public-gate', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  infoPublicSessions: (query: { code?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<{ sessions: InfoPublicSession[] }>(`/api/admin/info/public-sessions${suffix}`)
+  },
   infoItemFavorite: (id: string, favorite: boolean) =>
     request<InfoItem>(`/api/admin/info/items/${encodeURIComponent(id)}/favorite`, {
       method: 'POST',
@@ -2280,6 +2316,36 @@ export type InfoAiSettings = {
   max_attempts: number
   prompt_template: string
   updated_at: string | null
+}
+
+export type InfoPublicGate = {
+  enabled: boolean
+  has_password: boolean
+  required: boolean
+  ttl_days: number
+  password_fingerprint: string
+  updated_at: string | null
+}
+
+export type InfoGateWatermark = {
+  code: string
+  issued_at: string | null
+}
+
+export type InfoPublicGateStatus = {
+  required: boolean
+  unlocked: boolean
+  watermark: InfoGateWatermark | null
+}
+
+export type InfoPublicSession = {
+  code: string
+  ip: string
+  user_agent: string
+  gate_version: number
+  password_fingerprint: string
+  created_at: string | null
+  expires_at: string | null
 }
 
 export type InfoStats = {
