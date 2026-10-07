@@ -204,20 +204,6 @@ def collect_source(source_id: str, db: Session = Depends(get_db)):
     return result
 
 
-@router.post("/sources/{source_id}/rebuild-content")
-def rebuild_source_content(source_id: str, db: Session = Depends(get_db)):
-    """重新补全该公众号条目的正文（含 HTML 排版）并重新判定。"""
-    try:
-        source = sources.get_source(db, source_id)
-    except InfoError as error:
-        raise _http(error) from error
-    if source.kind != "wechat":
-        raise HTTPException(status_code=400, detail="只有微信公众号渠道支持重新补全正文")
-    reset = collector.reset_wechat_content(db, source)
-    db.commit()
-    return {"reset": reset}
-
-
 @router.post("/articles", status_code=201)
 def save_article(payload: SaveArticleBody, db: Session = Depends(get_db)):
     """手动保存单篇公众号文章，归到内置「其他」渠道（只调用一次详情接口）。"""

@@ -474,39 +474,3 @@ def test_save_article_rejects_non_wechat_url(
         json={"url": "https://example.com/foo"},
     )
     assert response.status_code == 400
-
-
-def test_rebuild_content_resets_wechat_items(
-    client: TestClient, auth_headers: dict[str, str], monkeypatch
-) -> None:
-    fake = FakeWechatAdapter([_wechat_page()])
-    monkeypatch.setattr("app.info.collector.adapter_for", lambda db, kind: fake)
-
-    created = client.post(
-        "/api/admin/info/sources",
-        headers=auth_headers,
-        json={"raw": "gh_363b924965e9", "kind": "wechat"},
-    )
-    source_id = created.json()["id"]
-    client.post(f"/api/admin/info/sources/{source_id}/collect", headers=auth_headers)
-
-    from app.db import get_session_factory
-    from app.models import InfoItem
-    from app.services import info_loop
-
-    assert info_loop.enrich_wechat_content_once()["done"] == 1
-
-    response = client.post(
-        f"/api/admin/info/sources/{source_id}/rebuild-content", headers=auth_headers
-    )
-    assert response.status_code == 200, response.text
-    assert response.json()["reset"] == 1
-
-    session = get_session_factory()()
-    try:
-        item = session.scalars(select(InfoItem)).one()
-        assert item.content_status == "pending"
-        assert item.content_html is None
-        assert item.ai_status == "pending"
-    finally:
-        session.close()
