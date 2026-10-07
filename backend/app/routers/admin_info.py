@@ -52,7 +52,8 @@ class CreateBody(BaseModel):
     raw: str
     kind: str = "telegram"
     title: str | None = None
-    poll_interval_seconds: int | None = None
+    # 新增渠道默认「手动触发」（0），不参与定时采集，需要时再显式设置间隔
+    poll_interval_seconds: int | None = 0
     enabled: bool = True
 
 
@@ -70,6 +71,12 @@ class BatchIntervalBody(BaseModel):
     # ids 为空 / 不传表示全部渠道；poll_interval_seconds = 0 表示「手动触发」
     ids: list[str] | None = None
     poll_interval_seconds: int = 86400
+
+
+class CollectBatchBody(BaseModel):
+    # ids 优先（已勾选的渠道）；否则按 kinds 过滤；都不传 = 全部渠道
+    ids: list[str] | None = None
+    kinds: list[str] | None = None
 
 
 class StateBody(BaseModel):
@@ -164,6 +171,19 @@ def batch_interval(payload: BatchIntervalBody, db: Session = Depends(get_db)):
     )
     db.commit()
     return {"updated": changed}
+
+
+@router.post("/sources/collect-batch")
+def collect_batch(payload: CollectBatchBody, db: Session = Depends(get_db)):
+    """批量立即采集：`ids` 优先，否则按 `kinds` 过滤，都不传则全部（不含内置「其他」）。"""
+    rows = [s for s in sources.list_sources(db) if s.kind != sources.MANUAL_KIND]
+    if payload.ids:
+        wanted = set(payload.ids)
+        rows = [s for s in rows if s.id in wanted]
+    elif payload.kinds:
+        wanted_kinds = set(payload.kinds)
+        rows = [s for s in rows if s.kind in wanted_kinds]
+    return collector.collect_many(db, rows)
 
 
 @router.delete("/sources/{source_id}", status_code=204)

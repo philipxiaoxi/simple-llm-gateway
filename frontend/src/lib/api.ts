@@ -1338,11 +1338,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  infoSourceRebuildContent: (id: string) =>
-    request<{ reset: number }>(
-      `/api/admin/info/sources/${encodeURIComponent(id)}/rebuild-content`,
-      { method: 'POST' },
-    ),
+  infoSourcesCollectBatch: (payload: { ids?: string[]; kinds?: string[] }) =>
+    request<InfoCollectBatchResult>('/api/admin/info/sources/collect-batch', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   infoSaveArticle: (url: string) =>
     request<{ id: string; source_id: string }>('/api/admin/info/articles', {
       method: 'POST',
@@ -2142,6 +2142,20 @@ export type InfoCollectResult = {
   created: number
   skipped: number
   error: string | null
+}
+
+export type InfoCollectBatchResult = {
+  total: number
+  succeeded: number
+  failed: number
+  created: number
+  fetched: number
+  skipped: number
+  results: {
+    source_id: string
+    title: string
+    error: { type: string; message: string } | null
+  }[]
 }
 
 export type InfoSourceRef = {
