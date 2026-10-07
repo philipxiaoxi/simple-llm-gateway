@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, CircleAlert, FilePlus, FileText, Pencil, Plus, RefreshCw, Send, Trash2 } from 'lucide-react'
+import { ArrowLeft, CircleAlert, FilePlus, Pencil, Plus, RefreshCw, Send, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { TikHubConfigDialog, TIKHUB_QUERY_KEY } from '../components/TikHubConfigDialog'
@@ -12,12 +12,38 @@ import { errorMessage, formatTime } from '../lib/utils'
 const KIND_OPTIONS = [
   { value: 'telegram', label: 'Telegram 频道' },
   { value: 'wechat', label: '微信公众号' },
+  { value: 'rss', label: 'RSS 订阅' },
 ]
 
 const KIND_LABELS: Record<string, string> = {
   telegram: 'Telegram',
   wechat: '微信公众号',
+  rss: 'RSS',
   manual: '其他',
+}
+
+const KIND_ADD_TITLES: Record<string, string> = {
+  telegram: 'Telegram 频道',
+  wechat: '微信公众号',
+  rss: 'RSS 订阅',
+}
+
+const KIND_INPUT_LABELS: Record<string, string> = {
+  telegram: '频道标识',
+  wechat: '公众号 / 文章链接',
+  rss: 'RSS 地址',
+}
+
+const KIND_INPUT_PLACEHOLDERS: Record<string, string> = {
+  telegram: 'https://t.me/telegram 或 @telegram',
+  wechat: 'gh_xxx、微信号 或 mp.weixin.qq.com 文章链接',
+  rss: 'https://example.com/feed.xml',
+}
+
+const KIND_INPUT_HINTS: Record<string, string> = {
+  telegram: '只能采集公开频道（需要有 username）。可以粘贴 `https://t.me/xxx`、`t.me/xxx` 或 `@xxx`。',
+  wechat: '支持 gh_ 开头的 username、自定义微信号，或粘贴公众号文章链接（会自动识别公众号）。',
+  rss: '支持 RSS 2.0 与 Atom。填订阅地址即可，例如 AIHOT 的 `https://aihot.news/feed.xml`。',
 }
 
 const INTERVAL_OPTIONS = [
@@ -44,17 +70,17 @@ export function InfoSourcesPage() {
   const queryClient = useQueryClient()
   const query = useQuery({ queryKey: ['info-sources'], queryFn: api.infoSources })
   const sources = query.data?.sources ?? []
+  const selectable = sources.filter((source) => source.kind !== 'manual')
   const provider = useQuery({ queryKey: TIKHUB_QUERY_KEY, queryFn: api.tikhubStatus })
 
   const [addOpen, setAddOpen] = useState(false)
   const [saveArticleOpen, setSaveArticleOpen] = useState(false)
+  const [batchOpsOpen, setBatchOpsOpen] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
   const [editing, setEditing] = useState<InfoSource | null>(null)
   const [removing, setRemoving] = useState<InfoSource | null>(null)
   const [collectingId, setCollectingId] = useState('')
-  const [rebuildingId, setRebuildingId] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [batchInterval, setBatchInterval] = useState(86400)
 
   function toggleSelect(id: string) {
     setSelected((prev) => {
@@ -66,7 +92,9 @@ export function InfoSourcesPage() {
   }
 
   function toggleSelectAll() {
-    setSelected((prev) => (prev.size === sources.length ? new Set() : new Set(sources.map((s) => s.id))))
+    setSelected((prev) =>
+      prev.size === selectable.length ? new Set() : new Set(selectable.map((source) => source.id)),
+    )
   }
 
   const collect = useMutation({
@@ -79,52 +107,9 @@ export function InfoSourcesPage() {
     onError: (caught) => notifyBad(errorMessage(caught, '采集失败')),
   })
 
-  const toggle = useMutation({
-    mutationFn: (payload: { id: string; enabled: boolean }) =>
-      api.infoSourceUpdate(payload.id, { enabled: payload.enabled }),
-    onSuccess: async () => {
-      await invalidateSources(queryClient)
-    },
-    onError: (caught) => notifyBad(errorMessage(caught, '更新失败')),
-  })
-
-  const batchIntervalMutation = useMutation({
-    mutationFn: () =>
-      api.infoSourcesBatchInterval({
-        ids: [...selected],
-        poll_interval_seconds: batchInterval,
-      }),
-    onSuccess: async (result) => {
-      notifyOk(`已更新 ${result.updated} 个渠道的采集间隔`)
-      setSelected(new Set())
-      await invalidateSources(queryClient)
-    },
-    onError: (caught) => notifyBad(errorMessage(caught, '批量更新失败')),
-  })
-
-  const rebuildContent = useMutation({
-    mutationFn: (id: string) => api.infoSourceRebuildContent(id),
-    onSuccess: async (result) => {
-      notifyOk(`已重置 ${result.reset} 条，后台会自动重新补全正文与排版`)
-      await invalidateSources(queryClient)
-    },
-    onError: (caught) => notifyBad(errorMessage(caught, '重置失败')),
-  })
-
   function collectNow(source: InfoSource) {
     setCollectingId(source.id)
     collect.mutate(source.id, { onSettled: () => setCollectingId('') })
-  }
-
-  function rebuildContentNow(source: InfoSource) {
-    if (
-      !window.confirm(
-        '重新补全该公众号全部条目的正文？会重新调用上游逐篇拉取（按篇计费），并重新做 AI 判定。',
-      )
-    )
-      return
-    setRebuildingId(source.id)
-    rebuildContent.mutate(source.id, { onSettled: () => setRebuildingId('') })
   }
 
   return (
@@ -136,22 +121,44 @@ export function InfoSourcesPage() {
         <ArrowLeft size={15} /> 返回瀑布流
       </Link>
 
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-xl font-semibold">渠道管理</h2>
           <p className="mt-1 text-xs text-mist">
-            采集公开 Telegram 频道与微信公众号的内容，媒体会转存到平台本地，前端不直连上游。
+            采集公开 Telegram 频道、微信公众号与 RSS 订阅的内容，媒体会转存到平台本地，前端不直连上游。
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="line" onClick={() => setConfigOpen(true)}>
-            TikHub 凭据
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <Button
+            type="button"
+            className="w-full sm:w-auto"
+            onClick={() => setAddOpen(true)}
+          >
+            <Plus size={15} /> 添加渠道
           </Button>
-          <Button type="button" variant="line" onClick={() => setSaveArticleOpen(true)}>
+          <Button
+            type="button"
+            variant="line"
+            className="w-full sm:w-auto"
+            onClick={() => setBatchOpsOpen(true)}
+          >
+            <RefreshCw size={15} /> 批量操作
+          </Button>
+          <Button
+            type="button"
+            variant="line"
+            className="w-full sm:w-auto"
+            onClick={() => setSaveArticleOpen(true)}
+          >
             <FilePlus size={15} /> 保存单篇文章
           </Button>
-          <Button type="button" variant="line" onClick={() => setAddOpen(true)}>
-            <Plus size={15} /> 添加渠道
+          <Button
+            type="button"
+            variant="line"
+            className="w-full sm:w-auto"
+            onClick={() => setConfigOpen(true)}
+          >
+            TikHub 凭据
           </Button>
         </div>
       </div>
@@ -189,41 +196,18 @@ export function InfoSourcesPage() {
         </div>
       ) : null}
 
-      {sources.length > 0 ? (
+      {selectable.length > 0 ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line bg-panel-2 px-3 py-2 text-xs">
           <label className="inline-flex cursor-pointer items-center gap-2 text-mist">
             <input
               type="checkbox"
               className="h-3.5 w-3.5 accent-current"
-              checked={selected.size > 0 && selected.size === sources.length}
+              checked={selected.size > 0 && selected.size === selectable.length}
               onChange={toggleSelectAll}
             />
             全选
           </label>
           <span className="text-mist">已选 {selected.size} 个</span>
-          <div className="flex items-center gap-2">
-            <Select
-              className="w-36"
-              value={String(batchInterval)}
-              disabled={batchIntervalMutation.isPending}
-              onChange={(event) => setBatchInterval(Number(event.target.value))}
-            >
-              {INTERVAL_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-            <Button
-              type="button"
-              variant="line"
-              className="min-h-9 px-2.5 py-1.5 text-xs md:min-h-8"
-              disabled={selected.size === 0 || batchIntervalMutation.isPending}
-              onClick={() => batchIntervalMutation.mutate()}
-            >
-              {batchIntervalMutation.isPending ? '应用中…' : '应用到已选'}
-            </Button>
-          </div>
           {selected.size > 0 ? (
             <button
               type="button"
@@ -241,12 +225,16 @@ export function InfoSourcesPage() {
           <Card key={source.id} className="p-3.5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex min-w-0 flex-1 items-start gap-3">
-                <input
-                  type="checkbox"
-                  className="mt-1 h-3.5 w-3.5 shrink-0 accent-current"
-                  checked={selected.has(source.id)}
-                  onChange={() => toggleSelect(source.id)}
-                />
+                {source.kind === 'manual' ? (
+                  <span aria-hidden="true" className="mt-1 h-3.5 w-3.5 shrink-0" />
+                ) : (
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-3.5 w-3.5 shrink-0 accent-current"
+                    checked={selected.has(source.id)}
+                    onChange={() => toggleSelect(source.id)}
+                  />
+                )}
                 <SourceAvatar name={source.title} url={source.avatar_url} />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -291,23 +279,19 @@ export function InfoSourcesPage() {
                 </div>
               </div>
 
-              <div className="flex shrink-0 items-center gap-2">
-                <Switch
-                  checked={source.enabled}
-                  disabled={toggle.isPending}
-                  onCheckedChange={(next) => toggle.mutate({ id: source.id, enabled: next })}
-                  onLabel="已启用"
-                  offLabel="已停用"
-                />
-              </div>
+              {source.kind === 'manual' ? (
+                <Badge tone="info" className="shrink-0">
+                  内置
+                </Badge>
+              ) : null}
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              {source.kind !== 'manual' ? (
+            {source.kind !== 'manual' ? (
+              <div className="mt-3 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
                 <Button
                   type="button"
                   variant="line"
-                  className="min-h-9 px-2.5 py-1.5 text-xs md:min-h-8"
+                  className="w-full px-2 text-xs sm:w-auto"
                   disabled={collect.isPending && collectingId === source.id}
                   onClick={() => collectNow(source)}
                 >
@@ -317,42 +301,38 @@ export function InfoSourcesPage() {
                   />
                   {collect.isPending && collectingId === source.id ? '采集中…' : '立即采集'}
                 </Button>
-              ) : null}
-              {source.kind === 'wechat' ? (
                 <Button
                   type="button"
                   variant="line"
-                  className="min-h-9 px-2.5 py-1.5 text-xs md:min-h-8"
-                  disabled={rebuildContent.isPending && rebuildingId === source.id}
-                  onClick={() => rebuildContentNow(source)}
+                  className="w-full px-2 text-xs sm:w-auto"
+                  onClick={() => setEditing(source)}
                 >
-                  <FileText size={14} />
-                  {rebuildContent.isPending && rebuildingId === source.id ? '重置中…' : '重新补全正文'}
+                  <Pencil size={14} /> 编辑
                 </Button>
-              ) : null}
-              <Button
-                type="button"
-                variant="line"
-                className="min-h-9 px-2.5 py-1.5 text-xs md:min-h-8"
-                onClick={() => setEditing(source)}
-              >
-                <Pencil size={14} /> 编辑
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                className="min-h-9 px-2.5 py-1.5 text-xs md:min-h-8"
-                onClick={() => setRemoving(source)}
-              >
-                <Trash2 size={14} /> 删除
-              </Button>
-            </div>
+                <Button
+                  type="button"
+                  variant="danger"
+                  className="w-full px-2 text-xs sm:w-auto"
+                  onClick={() => setRemoving(source)}
+                >
+                  <Trash2 size={14} /> 删除
+                </Button>
+              </div>
+            ) : null}
           </Card>
         ))}
       </div>
 
       {addOpen ? <AddSourceDialog onClose={() => setAddOpen(false)} /> : null}
       {saveArticleOpen ? <SaveArticleDialog onClose={() => setSaveArticleOpen(false)} /> : null}
+      {batchOpsOpen ? (
+        <BatchOpsDialog
+          sources={sources}
+          selected={selected}
+          onApplied={() => setSelected(new Set())}
+          onClose={() => setBatchOpsOpen(false)}
+        />
+      ) : null}
       {editing ? <EditSourceDialog source={editing} onClose={() => setEditing(null)} /> : null}
       {removing ? <DeleteSourceDialog source={removing} onClose={() => setRemoving(null)} /> : null}
       {configOpen ? <TikHubConfigDialog open onClose={() => setConfigOpen(false)} /> : null}
@@ -396,7 +376,7 @@ function AddSourceDialog({ onClose }: { onClose: () => void }) {
   const [kind, setKind] = useState('telegram')
   const [raw, setRaw] = useState('')
   const [title, setTitle] = useState('')
-  const [interval, setInterval] = useState(86400)
+  const [interval, setInterval] = useState(0)
   const [preview, setPreview] = useState<InfoSourcePreview | null>(null)
 
   const previewMutation = useMutation({
@@ -436,7 +416,7 @@ function AddSourceDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog
-      title={`添加${kind === 'wechat' ? '微信公众号' : ' Telegram 频道'}`}
+      title={`添加${KIND_ADD_TITLES[kind] ?? kind}`}
       onClose={() => (pending ? undefined : onClose())}
     >
       <div className="space-y-3">
@@ -456,7 +436,7 @@ function AddSourceDialog({ onClose }: { onClose: () => void }) {
             ))}
           </Select>
         </Field>
-        <Field label={kind === 'wechat' ? '公众号 / 文章链接' : '频道标识'}>
+        <Field label={KIND_INPUT_LABELS[kind] ?? '渠道标识'}>
           <Input
             value={raw}
             disabled={pending}
@@ -464,20 +444,12 @@ function AddSourceDialog({ onClose }: { onClose: () => void }) {
               setRaw(event.target.value)
               setPreview(null)
             }}
-            placeholder={
-              kind === 'wechat'
-                ? 'gh_xxx、微信号 或 mp.weixin.qq.com 文章链接'
-                : 'https://t.me/telegram 或 @telegram'
-            }
+            placeholder={KIND_INPUT_PLACEHOLDERS[kind] ?? ''}
           />
         </Field>
 
         {!preview ? (
-          <p className="text-xs text-mist">
-            {kind === 'wechat'
-              ? '支持 gh_ 开头的 username、自定义微信号，或粘贴公众号文章链接（会自动识别公众号）。'
-              : '只能采集公开频道（需要有 username）。可以粘贴 `https://t.me/xxx`、`t.me/xxx` 或 `@xxx`。'}
-          </p>
+          <p className="text-xs text-mist">{KIND_INPUT_HINTS[kind] ?? ''}</p>
         ) : (
           <div className="rounded-lg border border-line bg-panel-2 p-3">
             <div className="flex items-start gap-3">
@@ -490,12 +462,12 @@ function AddSourceDialog({ onClose }: { onClose: () => void }) {
                   {preview.subscriber_count_text ? (
                     <span className="text-[11px] text-mist">
                       {preview.subscriber_count_text}
-                      {kind === 'wechat' ? '' : ' 订阅'}
+                      {kind === 'telegram' ? ' 订阅' : ''}
                     </span>
                   ) : null}
                 </div>
                 <div className="truncate text-[11px] text-mist">
-                  {kind === 'wechat' ? '' : '@'}
+                  {kind === 'telegram' ? '@' : ''}
                   {preview.username || preview.identifier}
                 </div>
                 {preview.description ? (
@@ -524,7 +496,7 @@ function AddSourceDialog({ onClose }: { onClose: () => void }) {
               >
                 {INTERVAL_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
-                    每 {option.label}
+                    {option.value > 0 ? `每 ${option.label}` : option.label}
                   </option>
                 ))}
               </Select>
@@ -563,15 +535,13 @@ function AddSourceDialog({ onClose }: { onClose: () => void }) {
 function EditSourceDialog({ source, onClose }: { source: InfoSource; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [title, setTitle] = useState(source.title || '')
-  const [interval, setIntervalValue] = useState(source.poll_interval_seconds ?? 86400)
-  const [enabled, setEnabled] = useState(source.enabled)
+  const [interval, setIntervalValue] = useState(source.poll_interval_seconds ?? 0)
 
   const save = useMutation({
     mutationFn: () =>
       api.infoSourceUpdate(source.id, {
         title: title.trim(),
         poll_interval_seconds: interval,
-        enabled,
       }),
     onSuccess: async () => {
       notifyOk('渠道已更新')
@@ -600,10 +570,6 @@ function EditSourceDialog({ source, onClose }: { source: InfoSource; onClose: ()
             ))}
           </Select>
         </Field>
-        <div className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2">
-          <div className="text-sm text-paper">参与定时采集</div>
-          <Switch checked={enabled} onCheckedChange={setEnabled} disabled={save.isPending} />
-        </div>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" disabled={save.isPending} onClick={onClose}>
             取消
@@ -655,6 +621,176 @@ function SaveArticleDialog({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </Dialog>
+  )
+}
+
+
+function BatchOpsDialog({
+  sources,
+  selected,
+  onApplied,
+  onClose,
+}: {
+  sources: InfoSource[]
+  selected: Set<string>
+  onApplied: () => void
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+
+  const active = sources.filter((source) => source.kind !== 'manual')
+  const telegramCount = active.filter((source) => source.kind === 'telegram').length
+  const wechatCount = active.filter((source) => source.kind === 'wechat').length
+  const selectedIds = active.filter((source) => selected.has(source.id)).map((source) => source.id)
+
+  const [interval, setIntervalValue] = useState(86400)
+
+  const saveInterval = useMutation({
+    mutationFn: () =>
+      api.infoSourcesBatchInterval({ ids: selectedIds, poll_interval_seconds: interval }),
+    onSuccess: async (result) => {
+      notifyOk(`已更新 ${result.updated} 个渠道的采集间隔`)
+      await invalidateSources(queryClient)
+      onApplied()
+    },
+    onError: (caught) => notifyBad(errorMessage(caught, '批量更新失败')),
+  })
+
+  const [running, setRunning] = useState('')
+
+  const collectBatch = useMutation({
+    mutationFn: (payload: { ids?: string[]; kinds?: string[] }) =>
+      api.infoSourcesCollectBatch(payload),
+    onSuccess: async (result) => {
+      if (result.failed > 0)
+        notifyBad(
+          `采集完成：成功 ${result.succeeded} 个，失败 ${result.failed} 个，新增 ${result.created} 条`,
+        )
+      else notifyOk(`采集完成：${result.succeeded} 个渠道，新增 ${result.created} 条`)
+      await invalidateSources(queryClient)
+    },
+    onError: (caught) => notifyBad(errorMessage(caught, '批量采集失败')),
+  })
+
+  const busy = saveInterval.isPending || collectBatch.isPending
+
+  function startCollect(label: string, payload: { ids?: string[]; kinds?: string[] }) {
+    if (busy) return
+    setRunning(label)
+    collectBatch.mutate(payload, { onSettled: () => setRunning('') })
+  }
+
+  return (
+    <Dialog title="批量操作" onClose={() => (busy ? undefined : onClose())}>
+      <div className="space-y-4">
+        <section className="space-y-2">
+          <div className="text-sm font-medium text-paper">采集间隔</div>
+          <p className="text-xs text-mist">
+            {selectedIds.length > 0
+              ? `已选 ${selectedIds.length} 个渠道`
+              : '先在列表里勾选要修改的渠道'}
+          </p>
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <Select
+                value={String(interval)}
+                disabled={busy}
+                onChange={(event) => setIntervalValue(Number(event.target.value))}
+              >
+                {INTERVAL_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.value > 0 ? `每 ${option.label}` : option.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <Button
+              type="button"
+              className="shrink-0"
+              disabled={busy || selectedIds.length === 0}
+              onClick={() => saveInterval.mutate()}
+            >
+              {saveInterval.isPending ? '应用中…' : `应用到已选（${selectedIds.length}）`}
+            </Button>
+          </div>
+        </section>
+
+        <div className="border-t border-line" />
+
+        <section className="space-y-2">
+          <div className="text-sm font-medium text-paper">立即采集</div>
+          <p className="text-xs text-mist">
+            Telegram 与微信公众号都是逐渠道拉取（上游没有批量拉消息的接口），渠道较多时会比较慢。
+          </p>
+          <div className="space-y-2">
+            <BatchCollectRow
+              title="已选渠道"
+              hint={selectedIds.length > 0 ? `${selectedIds.length} 个` : '未勾选'}
+              disabled={selectedIds.length === 0 || busy}
+              loading={collectBatch.isPending && running === '已选'}
+              onClick={() => startCollect('已选', { ids: selectedIds })}
+            />
+            <BatchCollectRow
+              title="全部 Telegram"
+              hint={`${telegramCount} 个`}
+              disabled={telegramCount === 0 || busy}
+              loading={collectBatch.isPending && running === 'Telegram'}
+              onClick={() => startCollect('Telegram', { kinds: ['telegram'] })}
+            />
+            <BatchCollectRow
+              title="全部微信公众号"
+              hint={`${wechatCount} 个`}
+              disabled={wechatCount === 0 || busy}
+              loading={collectBatch.isPending && running === '微信'}
+              onClick={() => startCollect('微信', { kinds: ['wechat'] })}
+            />
+            <BatchCollectRow
+              title="全部渠道"
+              hint={`${active.length} 个`}
+              disabled={active.length === 0 || busy}
+              loading={collectBatch.isPending && running === '全部'}
+              onClick={() => startCollect('全部', {})}
+            />
+          </div>
+        </section>
+
+        <div className="flex justify-end">
+          <Button type="button" variant="ghost" disabled={busy} onClick={onClose}>
+            关闭
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
+
+function BatchCollectRow({
+  title,
+  hint,
+  disabled,
+  loading,
+  onClick,
+}: {
+  title: string
+  hint: string
+  disabled: boolean
+  loading: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-full items-center justify-between gap-3 rounded-md border border-line px-3 py-2 text-left text-sm transition hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <span className="flex items-center gap-2 text-paper">
+        {loading ? <RefreshCw size={14} className="animate-spin" /> : null}
+        {title}
+      </span>
+      <span className="text-xs text-mist">{loading ? '采集中…' : hint}</span>
+    </button>
   )
 }
 
