@@ -2264,6 +2264,8 @@ export type InfoItemQuery = {
   ai_status?: string
   /** 排序：desc = 最新优先（契约默认），asc = 最早优先 */
   order?: 'desc' | 'asc'
+  /** 排序口径：timeline = 发布/采集时间（默认），scored = 判定时间（最近完成优先） */
+  sort?: 'timeline' | 'scored'
 }
 
 export type InfoAiSettings = {

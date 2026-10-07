@@ -273,6 +273,7 @@ def list_items(
     min_score: int | None = None,
     ai_status: str | None = None,
     order: str = "desc",
+    sort: str = "timeline",
     db: Session = Depends(get_db),
 ):
     rows, next_cursor, total = items.list_items(
@@ -289,6 +290,7 @@ def list_items(
         min_score=min_score,
         ai_status=ai_status,
         order=order,
+        sort=sort,
     )
     return {
         "items": [items.serialize_item(row) for row in rows],

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, RefreshCw, Sparkles } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { api, type InfoItem } from '../lib/api'
 import { relativeTime } from '../lib/info'
@@ -57,6 +57,7 @@ export function InfoAiProgressDialog({ open, onClose }: { open: boolean; onClose
         include_hidden: 1,
         limit: 50,
         order: 'desc',
+        sort: 'scored',
       }),
     enabled: open,
     refetchInterval: (query) => {
@@ -83,9 +84,19 @@ export function InfoAiProgressDialog({ open, onClose }: { open: boolean; onClose
     skipped: stats.data?.ai_skipped ?? 0,
     all: stats.data?.item_count ?? 0,
   }
-  const total = stats.data?.item_count ?? 0
+  // 以打开弹窗时的「已完成」数为基线：进度条只反映本次处理，历史已完成不计入，
+  // 避免每次打开都从（历史已完成 / 全量）≈90% 起跳。
+  const [baseline, setBaseline] = useState<number | null>(null)
+  useEffect(() => {
+    if (baseline === null && stats.data) {
+      setBaseline((stats.data.ai_done ?? 0) + (stats.data.ai_skipped ?? 0))
+    }
+  }, [baseline, stats.data])
   const finished = (stats.data?.ai_done ?? 0) + (stats.data?.ai_skipped ?? 0)
-  const percent = total ? Math.round((finished / total) * 100) : 0
+  const processed = Math.max(0, finished - (baseline ?? finished))
+  const remaining = (stats.data?.ai_queued ?? 0) + (stats.data?.ai_processing ?? 0)
+  const scopeTotal = processed + remaining
+  const percent = scopeTotal > 0 ? Math.round((processed / scopeTotal) * 100) : 100
   const list = items.data?.items ?? []
   const canRetry = counts.failed + counts.skipped > 0
 
@@ -109,8 +120,8 @@ export function InfoAiProgressDialog({ open, onClose }: { open: boolean; onClose
             />
           </div>
           <div className="mt-1 flex justify-between text-[11px] text-mist">
-            <span>整体进度 {percent}%</span>
-            <span>{finished} / {total}</span>
+            <span>本次进度 {percent}%</span>
+            <span>已处理 {processed} · 待处理 {remaining}</span>
           </div>
         </div>
 

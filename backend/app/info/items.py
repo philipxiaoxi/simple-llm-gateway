@@ -117,6 +117,7 @@ def list_items(
     min_score: int | None = None,
     ai_status: str | None = None,
     order: str = "desc",
+    sort: str = "timeline",
 ) -> tuple[list[InfoItem], str | None, int]:
     size = max(1, min(MAX_LIMIT, int(limit or DEFAULT_LIMIT)))
     ascending = (order or "desc").strip().lower() == "asc"
@@ -135,6 +136,21 @@ def list_items(
     total = int(
         db.scalar(select(func.count()).select_from(InfoItem).where(*clauses)) or 0
     )
+
+    # 「最近完成」排序：按判定时间倒序，未判定的排最后。判定进度弹窗用，不做游标翻页。
+    if (sort or "").strip().lower() == "scored":
+        stmt = (
+            select(InfoItem)
+            .options(selectinload(InfoItem.media), selectinload(InfoItem.source))
+            .where(*clauses)
+            .order_by(
+                InfoItem.ai_scored_at.is_(None).asc(),
+                InfoItem.ai_scored_at.desc(),
+                InfoItem.id.desc(),
+            )
+            .limit(size)
+        )
+        return list(db.scalars(stmt).all()), None, total
 
     sort_key = _sort_key()
     # 列表要渲染封面（media）与频道信息（source），预加载避免每条各查一次（N+1）
