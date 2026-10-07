@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import re
 from html.parser import HTMLParser
 
 _ALLOWED_TAGS = {
@@ -35,6 +36,7 @@ _ALLOWED_ATTRS = {
     "colspan", "rowspan", "align", "valign", "href", "title", "data-src",
 }
 _BAD_URL_PREFIXES = ("javascript:", "vbscript:", "data:text/html")
+_IMG_TAG = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
 
 
 def _clean_attrs(attrs: list[tuple[str, str | None]]) -> str:
@@ -108,3 +110,15 @@ def sanitize_wechat_html(html: str) -> str:
     except Exception:  # noqa: BLE001 - 解析异常时退回空串，详情页展示纯文本
         return ""
     return cleaner.html
+
+
+def sanitize_feed_html(html: str) -> str:
+    """通用正文 HTML 清洗（RSS/Atom 等）。
+
+    与公众号共用同一套白名单。RSS 正文里的外链图片不会被转存（媒体只允许
+    Telegram/微信图床），直连上游又会泄漏访问，这里把 `<img>` 一并去掉。
+    """
+    cleaned = sanitize_wechat_html(html)
+    if not cleaned:
+        return ""
+    return _IMG_TAG.sub("", cleaned)

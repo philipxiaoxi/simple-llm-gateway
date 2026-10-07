@@ -110,6 +110,8 @@ class FetchedPost:
     is_forwarded: bool
     link_preview: dict | None
     media: list[FetchedMedia]
+    # 正文 HTML（原文，未清洗）。RSS 等一次性拿到正文的渠道用；详情页渲染前会清洗
+    html: str = ""
 
 
 @dataclass(frozen=True)

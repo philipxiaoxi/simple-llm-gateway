@@ -34,6 +34,7 @@ from app.info.adapters import (
     reactions_total,
 )
 from app.info.errors import InfoError
+from app.info.sanitize import sanitize_feed_html
 from app.models import InfoItem, InfoMedia, InfoSource
 from app.services.tikhub_config import get_tikhub_credentials
 
@@ -91,6 +92,9 @@ def _insert_item(
                 return False
 
             media_items = list(post.media)[: max(0, settings.info_max_media_per_item)]
+            # RSS 等一次性拿到正文的渠道：把 post.html 清洗后作为正文 HTML 入库
+            if content_html is None and post.html:
+                content_html = sanitize_feed_html(post.html) or None
             item = InfoItem(
                 id=str(uuid.uuid4()),
                 source_id=source.id,

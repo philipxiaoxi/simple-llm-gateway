@@ -140,3 +140,20 @@ def normalize_wechat(raw: str) -> str:
         status_code=400,
         error_type="invalid_channel",
     )
+
+
+def normalize_feed_url(raw: str) -> str:
+    """归一化 RSS/Atom 订阅地址：必须是 http(s) 且指向公网。
+
+    RSS 是用户自定义的任意主机，服务端会主动请求，因此在这里做一次 SSRF 校验，
+    拒绝私网/回环/保留地址。
+    """
+    text = (raw or "").strip()
+    if not text:
+        raise InfoError("请填写 RSS 地址", status_code=400, error_type="invalid_channel")
+    if not text.lower().startswith(("http://", "https://")):
+        raise InfoError(
+            "RSS 地址需以 http:// 或 https:// 开头", status_code=400, error_type="invalid_channel"
+        )
+    assert_safe_url(text)
+    return text
