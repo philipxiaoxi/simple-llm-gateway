@@ -9,6 +9,7 @@ Telegram 的媒体直链（`cdn4.telesco.pe`）带签名且会过期，官方也
 from __future__ import annotations
 
 import hashlib
+import io
 import mimetypes
 from dataclasses import dataclass
 from pathlib import Path
@@ -178,6 +179,120 @@ def fetch_media(
         content_type=content_type,
         size_bytes=total,
         sha256=digest.hexdigest(),
+        width=width,
+        height=height,
+    )
+
+
+# ---- 上报媒体的直存（Agent 上传字节，不联网）----
+# 严格白名单：只接受栅格图片与常见视频容器；显式排除 image/svg+xml——它能携带脚本，
+# 经同源媒体路由回吐会形成存储型 XSS，与是否信任上传者无关。
+UPLOAD_IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif")
+UPLOAD_VIDEO_TYPES = ("video/mp4", "video/webm", "video/quicktime")
+UPLOAD_MEDIA_TYPES = (*UPLOAD_IMAGE_TYPES, *UPLOAD_VIDEO_TYPES)
+
+_PILLOW_FORMAT_TO_TYPE = {
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+    "gif": "image/gif",
+}
+
+
+def _image_type_from_magic(data: bytes) -> str | None:
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def _detect_image_type(data: bytes) -> str | None:
+    """优先用 Pillow 解码校验（确认是真实栅格图），Pillow 缺失时退回魔数。"""
+    magic = _image_type_from_magic(data)
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(data)) as image:
+            image.verify()
+            fmt = (image.format or "").lower()
+        detected = _PILLOW_FORMAT_TO_TYPE.get(fmt)
+        if detected is not None:
+            return detected
+    except ImportError:
+        return magic
+    except Exception:
+        return None
+    return magic
+
+
+def _detect_video_type(data: bytes) -> str | None:
+    if len(data) < 12:
+        return None
+    if data[4:8] == b"ftyp":
+        brand = data[8:12]
+        if brand[:2] == b"qt":
+            return "video/quicktime"
+        return "video/mp4"
+    if data[:4] == b"\x1a\x45\xdf\xa3":
+        return "video/webm"
+    return None
+
+
+def detect_upload_type(data: bytes, *, as_video: bool = False) -> str | None:
+    """判定上传字节的真实媒体类型；不支持时返回 None。"""
+    if as_video:
+        return _detect_video_type(data) or _detect_image_type(data)
+    return _detect_image_type(data) or _detect_video_type(data)
+
+
+def store_uploaded_media(
+    item_id: str,
+    *,
+    index_no: int,
+    content_type: str,
+    data: bytes,
+    kind: str = "",
+) -> FetchedFile:
+    """把 Agent 上传的媒体字节直写条目目录；全程不发任何网络请求。
+
+    与 `fetch_media` 的差异：无重定向与 `MEDIA_HOSTS` 校验（没有远程请求），改为严格
+    类型白名单 + 字节解码校验；入库 `content_type` 采用检测结果而非客户端提交值。
+    """
+    if not data:
+        raise InfoError("媒体内容为空", status_code=400, error_type="invalid_request")
+    declared = (content_type or "").split(";")[0].strip().lower()
+    as_video = declared.startswith("video/") or kind == "video"
+    detected = detect_upload_type(data, as_video=as_video)
+    if detected is None:
+        raise InfoError(
+            "不支持的媒体类型（仅支持 jpg/png/webp/gif 图片与 mp4/webm/mov 视频）",
+            status_code=400,
+            error_type="unsupported_content_type",
+        )
+    resolved_kind = "video" if detected.startswith("video/") else "image"
+    dest_name = final_filename(index_no, detected, resolved_kind)
+
+    tmp = media_path(item_id, f"{index_no:03d}.part")
+    dest = media_path(item_id, dest_name)
+    try:
+        with tmp.open("wb") as handle:
+            handle.write(data)
+        tmp.replace(dest)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
+
+    width, height = probe_image_size(dest) if resolved_kind == "image" else (None, None)
+    return FetchedFile(
+        filename=dest_name,
+        content_type=detected,
+        size_bytes=len(data),
+        sha256=hashlib.sha256(data).hexdigest(),
         width=width,
         height=height,
     )

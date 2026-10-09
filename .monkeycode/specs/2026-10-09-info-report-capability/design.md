@@ -22,13 +22,13 @@ Updated: 2026-10-09
 
 | 风险 | 影响 | 缓解 |
 |------|------|------|
-| R1 公开写入口被滥用 | 违规内容即时公开、存储被塞满 | 能力白名单是主闸（仅管理员签发的 Key 可调用）；按 Key 限流；`INFO_REPORT_ENABLED` 总开关；可选内容扫描 `INFO_REPORT_SCAN_ENABLED`（默认关闭）；保留现有手动隐藏下架 |
+| R1 公开写入口被滥用 | 违规内容即时公开、存储被塞满 | 能力白名单是主闸，**持签发 Key 者视为可信来源**，不引入内容审查；按 Key 限流；`INFO_REPORT_ENABLED` 总开关；保留现有手动隐藏下架 |
 | R2 上传字节导致存储型 XSS | 同源媒体路由回吐可执行内容（`image/svg+xml` 等） | 媒体类型严格白名单并排除 SVG；图片用 Pillow 解码校验、视频嗅探魔数；入库 `content_type` 用检测结果而非客户端头；媒体路由已带 `X-Content-Type-Options: nosniff` |
 | R3 重复/失败写入产生孤儿文件 | 磁盘泄漏 | 先查去重键再落盘；插入撞唯一约束或媒体写入失败时调用 `storage.purge_item(item_id)` |
 | R4 内存限流仅单进程 | 多 worker 下限流失效 | 沿用 `login_gate` 约定：文档标注，建议在反代再限一次 |
 | R5 共享「其他」渠道跨 Agent 去重冲突 | 同一文本被不同 Agent 上报时命中同一条 | 用户已选择共享渠道，接受该行为 |
 
-关于 R1 的「更好办法」：项目已有 `services/content_audit.py`，但其敏感词检测 `detect_sensitive` → `load_lexicon` → `_ensure_cached_lexicon` 可能触发词典下载与编译，不适合放在写请求热路径。因此内容扫描设计为**可选且默认关闭**，启用时只调用无网络的 `content_audit.detect_pii` 与 `detect_secrets`（纯正则），命中高危即拒收。
+关于 R1：能力白名单即信任边界，签发 Key 的管理员为内容负责，本能力**不做内容审查**。项目 `services/content_audit.py` 的敏感词检测会经 `load_lexicon` → `_ensure_cached_lexicon` 触发词典下载/编译，也不适合放在写请求热路径。若后续需要审核，作为独立需求另议。
 
 ## Architecture
 
@@ -295,7 +295,7 @@ router = APIRouter(prefix="/v1/info", tags=["info-report"])
 **复用现有表，无新增表。**
 
 - `info_sources`：使用内置「其他」渠道（`kind=manual`、`identifier=other`），由 `sources.ensure_manual_source` 幂等创建。
-- `info_items`：新增字段全部为既有列——`external_id`（去重键）、`text`、`excerpt`、`permalink`、`author_name`、`published_at`、`kind`、`media_count`、`cover_media_id`、`cover_seed`、`status`、`is_featured`、`is_hidden`、`ai_status`、`ai_featured_manual`、`ai_hidden_manual`、`collected_at`。
+- `info_items`：新增字段全部为既有列——`external_id`（去重键）、`text`、`excerpt`、`permalink`、`author_name`、`published_at`、`kind`、`media_count`、`cover_media_id`、`cover_seed`、`status`、`is_featured`、`is_hidden`、`ai_status`、`ai_featured_manual`、`ai_hidden_manual`、`collected_at`。`InfoItem` 无独立 title 列，`title` 入参折进正文首行（`"标题\n\n正文"`），瀑布流摘要随之带上。
 - `info_media`：`status="ready"` 直写，`filename`/`content_type`/`size_bytes`/`sha256`/`width`/`height`/`duration_ms` 由 `store_uploaded_media` 填充。
 
 **新增配置（`config.py`）：**
@@ -311,7 +311,6 @@ router = APIRouter(prefix="/v1/info", tags=["info-report"])
 | `INFO_REPORT_MAX_ITEM_BYTES` | `62914560` (60MB) | 单条媒体总字节上限 |
 | `INFO_REPORT_BATCH_MAX_ITEMS` | `20` | 单次批量条数上限 |
 | `INFO_REPORT_RATE_PER_MINUTE` | `30` | 每 MCP Key 每分钟上报次数上限 |
-| `INFO_REPORT_SCAN_ENABLED` | `false` | 是否对上报文本做正则内容扫描（PII/密钥），命中高危拒收 |
 
 ## Correctness Properties
 
@@ -338,7 +337,6 @@ router = APIRouter(prefix="/v1/info", tags=["info-report"])
 | 文本/标题超上限 | 400 或截断 | `invalid_request` | 按配置决定拒绝或截断 |
 | 媒体类型非图片/视频 | 400 | `unsupported_content_type` | 仅支持 image/* 与 video/* |
 | 单文件/单条超上限 | 413 | `too_large` | 超出大小上限 |
-| 启用扫描且命中高危 PII/密钥 | 400 | `content_rejected` | 内容包含敏感信息，被拒收 |
 | 批量条目数超上限 | 400 | `invalid_request` | 减少单次条数 |
 | base64 非法 | 400 | `invalid_request` | 媒体编码不合法 |
 | 重复去重键 | 200 | 无（`duplicate=true`） | 幂等命中，返回已存在 id |

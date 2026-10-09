@@ -152,3 +152,11 @@ Entries discovered by the Agent during task execution should follow this format:
   - 后果：`tempfile.gettempdir()` 回退成**当前工作目录**；pip 的解包/构建临时目录会落到仓库根（表现为一堆 `pip-metadata-*` / `pip-unpack-*` 目录，需清理）
   - 本机跑 pytest 会在 `backend/` 下留 `pytest-of-philip/`，属正常回退产物，可直接删
   - 绕过：给需要临时目录的命令显式指定一个**工作区内**的可写目录（`$env:TEMP` 指向工作区子目录），POSIX 侧无此问题
+
+[MCP 能力写入口以 Key 白名单为信任边界，不默认加防滥用审查]
+- Date: 2026-10-09
+- Context: 设计资讯上报能力（MCP+REST 写入口）时评估是否加内容审查/防滥用
+- Instructions:
+  - 能调用能力写接口的 Agent 都持有管理员签发的 MCP Key，视为可信来源
+  - 对外能力写入口默认不做内容审查/防滥用校验；护栏用 Key 白名单 + 限流 + 总开关即可
+  - 同源存储型 XSS 等技术性媒体校验（类型白名单、解码校验）仍需保留，与是否信任上传者无关

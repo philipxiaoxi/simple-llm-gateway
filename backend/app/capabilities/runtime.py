@@ -12,6 +12,7 @@ from app.capabilities.diagram.errors import DiagramError
 from app.capabilities.docparse.errors import DocParseError
 from app.capabilities.douyin.errors import DouyinError
 from app.capabilities.site.errors import SiteError
+from app.info.errors import InfoError
 from app.services.knowledge import KnowledgeError
 from app.services.mcp_auth import allowed_capability_ids
 from app.services.mcp_logs import record_mcp_call
@@ -27,7 +28,7 @@ def _normalize_error(error: Exception) -> CapabilityError:
             error_type=error.error_type,
             diagnostics=error.diagnostics,
         )
-    if isinstance(error, (KnowledgeError, DocParseError, SiteError, DouyinError)):
+    if isinstance(error, (KnowledgeError, DocParseError, SiteError, DouyinError, InfoError)):
         return CapabilityError(error.message, status_code=error.status_code, error_type=error.error_type)
     return CapabilityError(str(error), status_code=500, error_type="internal_error")
 

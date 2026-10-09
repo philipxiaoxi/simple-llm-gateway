@@ -46,6 +46,7 @@ from app.routers import (
     douyin_public,
     health,
     info_public,
+    info_report_public,
     local_agent,
     oauth,
     offline,
@@ -207,6 +208,7 @@ app.include_router(admin_mcp_knowledge.router)
 app.include_router(admin_mcp_knowledge_jobs.router)
 app.include_router(admin_mcp_calls.router)
 app.include_router(capabilities_public.router)
+app.include_router(info_report_public.router)
 app.include_router(oauth.router)
 app.include_router(proxy.router)
 app.include_router(share.router)

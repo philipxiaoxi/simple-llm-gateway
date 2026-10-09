@@ -187,6 +187,18 @@ class Settings(BaseSettings):
     info_wechat_html_max_chars: int = 300_000
     # 单篇公众号正文最多转存多少张图（公众号长图文常超 Telegram 的通用上限）
     info_wechat_max_body_images: int = 80
+    # ---- 资讯上报（Agent 经 MCP/REST 上送资讯，上报即公开）----
+    info_report_enabled: bool = True
+    info_report_max_text_chars: int = 20000
+    info_report_max_title_chars: int = 256
+    # REST multipart 单文件上限
+    info_report_max_file_bytes: int = 20 * 1024 * 1024
+    # MCP base64 单文件解码后上限（比 REST 小，避免 JSON 过大）
+    info_report_max_mcp_file_bytes: int = 5 * 1024 * 1024
+    info_report_max_files_per_item: int = 9
+    info_report_max_item_bytes: int = 60 * 1024 * 1024
+    info_report_batch_max_items: int = 20
+    info_report_rate_per_minute: int = 30
     # ---- 离线下载缓存（下载一次，服务器留一份，之后本机直接命中）----
     # 目录留空时与数据库同级（data/offline）
     offline_cache_path: str = ""
