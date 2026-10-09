@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Copy, Download } from 'lucide-react'
+import { Copy, HardDriveDownload } from 'lucide-react'
 import { Badge, Button, Select } from '../ui'
-import { notifyOk } from '../../lib/toast'
+import { notifyBad, notifyOk } from '../../lib/toast'
 import { copyText, errorMessage } from '../../lib/utils'
 import type {
   DockerManifest,
@@ -13,19 +13,31 @@ import type {
 import { EmptyNote, ErrorNote, HistoryInput, ResultCard } from './shared'
 import { useHistory } from './useHistory'
 
-type PanelProps = { api: OfflineApi; onDownloaded: () => void }
+type PanelProps = { api: OfflineApi; onQueued: () => void }
 
 const CHROME_ID_RE = /[a-z]{32}/
+
+/** 统一的「缓存到服务器」动作：入队后刷新缓存列表并在缓存卡片里看进度。 */
+async function queueToServer(action: Promise<unknown>, onQueued: () => void) {
+  try {
+    await action
+    notifyOk('已加入缓存队列，可在下方「已缓存」查看进度')
+    onQueued()
+  } catch (caught) {
+    notifyBad(errorMessage(caught, '加入缓存失败'))
+  }
+}
 
 function isDockerManifestList(value: DockerManifest | DockerManifestList): value is DockerManifestList {
   return (value as DockerManifestList).type === 'manifest_list'
 }
 
 /* ------------------------------ VSCode ------------------------------ */
-export function VSCodePanel({ api, onDownloaded }: PanelProps) {
+export function VSCodePanel({ api, onQueued }: PanelProps) {
   const { history, remember } = useHistory('vscode')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
+  const [queuing, setQueuing] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<Awaited<ReturnType<OfflineApi['vscodeQuery']>> | null>(null)
   const [version, setVersion] = useState('')
@@ -75,14 +87,22 @@ export function VSCodePanel({ api, onDownloaded }: PanelProps) {
               </Select>
               <Button
                 type="button"
-                disabled={!vsixUrl}
-                onClick={() =>
-                  void api
-                    .download(api.vscodeDownloadUrl(result.publisher, result.extension, version), `${result.extension}-${version}.vsix`)
-                    .then(onDownloaded)
-                }
+                disabled={!version || queuing}
+                onClick={() => {
+                  setQueuing(true)
+                  void queueToServer(
+                    api.vscodeCache({
+                      publisher: result.publisher,
+                      extension: result.extension,
+                      version,
+                      display_name: result.display_name,
+                      filename: `${result.extension}-${version}.vsix`,
+                    }),
+                    onQueued,
+                  ).finally(() => setQueuing(false))
+                }}
               >
-                <Download size={15} /> 下载 .vsix
+                <HardDriveDownload size={15} /> {queuing ? '提交中…' : '缓存到服务器'}
               </Button>
               <Button
                 type="button"
@@ -102,10 +122,11 @@ export function VSCodePanel({ api, onDownloaded }: PanelProps) {
 }
 
 /* ------------------------------ Chrome ------------------------------ */
-export function ChromePanel({ api, onDownloaded }: PanelProps) {
+export function ChromePanel({ api, onQueued }: PanelProps) {
   const { history, remember } = useHistory('chrome')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
+  const [queuing, setQueuing] = useState('')
   const [error, setError] = useState('')
   const [suggestions, setSuggestions] = useState<{ id: string; name: string }[]>([])
   const [detail, setDetail] = useState<{ id: string; name?: string | null; description?: string | null } | null>(null)
@@ -182,23 +203,28 @@ export function ChromePanel({ api, onDownloaded }: PanelProps) {
           subtitle={detail.id}
           actions={
             <>
-              <Button
-                type="button"
-                onClick={() =>
-                  void api.download(api.chromeDownloadUrl(detail.id, 'crx'), `${detail.id}.crx`).then(onDownloaded)
-                }
-              >
-                <Download size={15} /> CRX
-              </Button>
-              <Button
-                type="button"
-                variant="line"
-                onClick={() =>
-                  void api.download(api.chromeDownloadUrl(detail.id, 'zip'), `${detail.id}.zip`).then(onDownloaded)
-                }
-              >
-                <Download size={15} /> ZIP
-              </Button>
+              {(['crx', 'zip'] as const).map((format) => (
+                <Button
+                  key={format}
+                  type="button"
+                  variant={format === 'crx' ? 'primary' : 'line'}
+                  disabled={queuing !== ''}
+                  onClick={() => {
+                    setQueuing(format)
+                    void queueToServer(
+                      api.chromeCache({
+                        id: detail.id,
+                        format,
+                        name: detail.name ?? '',
+                        description: detail.description ?? '',
+                      }),
+                      onQueued,
+                    ).finally(() => setQueuing(''))
+                  }}
+                >
+                  <HardDriveDownload size={15} /> {queuing === format ? '提交中…' : `缓存 ${format.toUpperCase()}`}
+                </Button>
+              ))}
             </>
           }
         >
@@ -210,10 +236,11 @@ export function ChromePanel({ api, onDownloaded }: PanelProps) {
 }
 
 /* ------------------------------ Edge ------------------------------ */
-export function EdgePanel({ api, onDownloaded }: PanelProps) {
+export function EdgePanel({ api, onQueued }: PanelProps) {
   const { history, remember } = useHistory('edge')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
+  const [queuing, setQueuing] = useState('')
   const [error, setError] = useState('')
   const [suggestions, setSuggestions] = useState<{ id: string; name: string; developer?: string }[]>([])
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null)
@@ -292,23 +319,29 @@ export function EdgePanel({ api, onDownloaded }: PanelProps) {
           subtitle={detailId}
           actions={
             <>
-              <Button
-                type="button"
-                onClick={() =>
-                  void api.download(api.edgeDownloadUrl(detailId, 'crx'), `${detailId}.crx`).then(onDownloaded)
-                }
-              >
-                <Download size={15} /> CRX
-              </Button>
-              <Button
-                type="button"
-                variant="line"
-                onClick={() =>
-                  void api.download(api.edgeDownloadUrl(detailId, 'zip'), `${detailId}.zip`).then(onDownloaded)
-                }
-              >
-                <Download size={15} /> ZIP
-              </Button>
+              {(['crx', 'zip'] as const).map((format) => (
+                <Button
+                  key={format}
+                  type="button"
+                  variant={format === 'crx' ? 'primary' : 'line'}
+                  disabled={queuing !== ''}
+                  onClick={() => {
+                    setQueuing(format)
+                    void queueToServer(
+                      api.edgeCache({
+                        id: detailId,
+                        format,
+                        name: detailName,
+                        description: typeof detail.shortDescription === 'string' ? detail.shortDescription : '',
+                        icon_url: typeof detail.logoUrl === 'string' ? detail.logoUrl : typeof detail.iconUrl === 'string' ? detail.iconUrl : '',
+                      }),
+                      onQueued,
+                    ).finally(() => setQueuing(''))
+                  }}
+                >
+                  <HardDriveDownload size={15} /> {queuing === format ? '提交中…' : `缓存 ${format.toUpperCase()}`}
+                </Button>
+              ))}
             </>
           }
         >
@@ -337,10 +370,11 @@ function withTag(reference: string, tag: string) {
   return `${base}:${tag}`
 }
 
-export function DockerPanel({ api, onDownloaded }: PanelProps) {
+export function DockerPanel({ api, onQueued }: PanelProps) {
   const { history, remember } = useHistory('docker')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
+  const [queuing, setQueuing] = useState(false)
   const [error, setError] = useState('')
   const [tags, setTags] = useState<string[]>([])
   const [tag, setTag] = useState('')
@@ -423,7 +457,6 @@ export function DockerPanel({ api, onDownloaded }: PanelProps) {
     }
   }
 
-  const packageUrl = ready ? api.dockerPackageUrl(withTag(query.trim(), tag), platform || undefined) : ''
   const packageFilename = `${withTag(query.trim(), tag).replace(/[/:]/g, '_')}.tar`
 
   return (
@@ -467,12 +500,26 @@ export function DockerPanel({ api, onDownloaded }: PanelProps) {
           title={withTag(query.trim(), tag)}
           subtitle={platform ? `目标架构 ${platform}` : '单一架构'}
           actions={
-            <Button type="button" onClick={() => void api.download(packageUrl, packageFilename).then(onDownloaded)}>
-              <Download size={15} /> 打包 .tar
+            <Button
+              type="button"
+              disabled={queuing}
+              onClick={() => {
+                setQueuing(true)
+                void queueToServer(
+                  api.dockerCache({
+                    query: withTag(query.trim(), tag),
+                    platform: platform || undefined,
+                    filename: packageFilename,
+                  }),
+                  onQueued,
+                ).finally(() => setQueuing(false))
+              }}
+            >
+              <HardDriveDownload size={15} /> {queuing ? '提交中…' : '缓存到服务器'}
             </Button>
           }
         >
-          <p className="text-xs leading-5 text-mist">服务器拉取各层并在本地打包为 docker load 兼容的 .tar。</p>
+          <p className="text-xs leading-5 text-mist">服务器在后台拉取各层并打包为 docker load 兼容的 .tar，完成后可在「已缓存」下载。</p>
         </ResultCard>
       ) : null}
     </div>
@@ -489,10 +536,11 @@ function detectMsStoreType(query: string): string {
   return 'url'
 }
 
-export function MsStorePanel({ api, onDownloaded }: PanelProps) {
+export function MsStorePanel({ api, onQueued }: PanelProps) {
   const { history, remember } = useHistory('msstore')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
+  const [queuing, setQueuing] = useState('')
   const [error, setError] = useState('')
   const [result, setResult] = useState<Awaited<ReturnType<OfflineApi['msstoreResolve']>> | null>(null)
 
@@ -516,8 +564,12 @@ export function MsStorePanel({ api, onDownloaded }: PanelProps) {
     }
   }
 
-  function downloadFile(file: MsStoreFile) {
-    void api.download(api.msstoreDownloadUrl(file.url, file.name), file.name).then(onDownloaded)
+  function cacheFile(file: MsStoreFile) {
+    setQueuing(file.url)
+    void queueToServer(
+      api.msstoreCache({ url: file.url, filename: file.name, title: result?.title ?? file.name }),
+      onQueued,
+    ).finally(() => setQueuing(''))
   }
 
   return (
@@ -553,8 +605,8 @@ export function MsStorePanel({ api, onDownloaded }: PanelProps) {
                     >
                       <Copy size={14} /> 复制
                     </Button>
-                    <Button type="button" onClick={() => downloadFile(file)}>
-                      <Download size={14} /> 下载
+                    <Button type="button" disabled={queuing !== ''} onClick={() => cacheFile(file)}>
+                      <HardDriveDownload size={14} /> {queuing === file.url ? '提交中…' : '缓存到服务器'}
                     </Button>
                   </div>
                 </div>

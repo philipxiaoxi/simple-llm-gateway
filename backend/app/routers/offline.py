@@ -4,14 +4,16 @@
 - `/api/admin/offline`：管理后台使用，管理员 JWT 鉴权；
 - `/api/public/offline`：对外公开页使用，公共口令门禁鉴权。
 
-下载类接口会先把文件留一份到服务器缓存（`offline/cache.py`），命中缓存后直接返回，
-不再回源；`/cache` 暴露已缓存列表供前端展示。
+解析（search/detail/resolve）只返回元信息，不再直接触发同步下载。
+用户点击「缓存到服务器」后走 `*/cache` 入队，后台异步缓存到本地
+（`app/offline/jobs.py`），进度写回 `offline_downloads`，`/cache` 暴露列表；
+只有 `status=ready` 的记录才提供 `/cache/{id}/download`。
 """
 
 from __future__ import annotations
 
 import hashlib
-import re
+import json
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,7 +25,6 @@ from app.db import get_db
 from app.models import OfflineDownload
 from app.offline import cache, chrome, docker, edge, msstore, vscode
 from app.offline.errors import OfflineError
-from app.offline.http import fetch_bytes
 from app.offline.registry import serialize_providers
 
 router = APIRouter(tags=["offline"])
@@ -31,18 +32,27 @@ admin_router = APIRouter(tags=["offline-admin"])
 # 图标是非敏感小文件，单独挂一个免鉴权路由，方便 <img> 直接引用
 icon_router = APIRouter(tags=["offline-icon"])
 
-_SLUG_RE = re.compile(r"[^a-z0-9]+")
-
-
-def _slug(text: str) -> str:
-    return _SLUG_RE.sub("-", (text or "").lower()).strip("-")[:80]
-
 
 def _http(error: OfflineError) -> HTTPException:
     return HTTPException(
         status_code=error.status_code,
         detail={"error": {"type": error.error_type, "message": error.message}},
     )
+
+
+def _cache_key_from_ref(provider: str, normalized: str, fmt: str) -> str:
+    return f"{provider}:{normalized}:{fmt}"
+
+
+def _reuse(db: Session, key: str) -> dict | None:
+    """已就绪或进行中的记录直接复用，返回序列化结果；失败/不存在返回 None。"""
+    row = cache.get_by_key(db, key)
+    if row is None or cache.status_of(row) == "failed":
+        return None
+    if cache.status_of(row) == "ready":
+        cache.touch(db, row)
+        db.commit()
+    return cache.serialize(row)
 
 
 # ---- 元信息 ----
@@ -69,6 +79,7 @@ def download_cache(item_id: int, db: Session = Depends(get_db)) -> FileResponse:
     except OfflineError as error:
         raise _http(error) from error
     cache.touch(db, row)
+    db.commit()
     return cache.file_response(row)
 
 
@@ -82,6 +93,7 @@ def cache_icon(item_id: int, db: Session = Depends(get_db)) -> FileResponse:
     except OfflineError as error:
         raise _http(error) from error
 
+
 @admin_router.delete("/cache/{item_id}")
 def delete_cache(item_id: int, db: Session = Depends(get_db)) -> dict:
     if not cache.delete_cached(db, item_id):
@@ -94,30 +106,12 @@ class VscodeQueryBody(BaseModel):
     query: str = ""
 
 
-async def _fetch_vscode(
-    db: Session, publisher: str, extension: str, version: str, *, refresh: bool = False
-) -> OfflineDownload:
-    key = f"vscode:{publisher}.{extension}:{version}"
-    if not refresh:
-        cached = cache.get_cached(db, key)
-        if cached is not None:
-            cache.touch(db, cached)
-            return cached
-    # 先回源取文件，成功后再覆盖旧缓存，避免失败把已有缓存删掉
-    src_path, filename = await vscode.download_vsix(publisher, extension, version)
-    if refresh:
-        cache.delete_by_key(db, key)
-    return cache.store_file(
-        db,
-        provider="vscode",
-        key=key,
-        src_path=src_path,
-        filename=filename,
-        content_type="application/octet-stream",
-        title=f"{publisher}.{extension}",
-        subtitle=version,
-        source=vscode.vsix_url(publisher, extension, version),
-    )
+class VscodeCacheBody(BaseModel):
+    publisher: str = ""
+    extension: str = ""
+    version: str = ""
+    display_name: str = ""
+    filename: str = ""
 
 
 @router.post("/vscode/query")
@@ -128,56 +122,74 @@ async def vscode_query(payload: VscodeQueryBody) -> dict:
         raise _http(error) from error
 
 
-@router.get("/vscode/download")
-async def vscode_download(
-    publisher: str = "",
-    extension: str = "",
-    version: str = "",
-    db: Session = Depends(get_db),
-) -> FileResponse:
-    if not publisher or not extension or not version:
+@router.post("/vscode/cache")
+def vscode_cache(payload: VscodeCacheBody, db: Session = Depends(get_db)) -> dict:
+    publisher = payload.publisher.strip()
+    extension = payload.extension.strip()
+    version = payload.version.strip()
+    if not (publisher and extension and version):
         raise HTTPException(status_code=400, detail={"error": {"type": "invalid_request", "message": "缺少 publisher/extension/version"}})
-    try:
-        row = await _fetch_vscode(db, publisher, extension, version)
-    except OfflineError as error:
-        raise _http(error) from error
-    return cache.file_response(row)
-
-
-# ---- Chrome ----
-async def _fetch_chrome(db: Session, normalized: str, fmt: str, *, refresh: bool = False) -> OfflineDownload:
-    key = f"chrome:{normalized}:{fmt}"
-    if not refresh:
-        cached = cache.get_cached(db, key)
-        if cached is not None:
-            cache.touch(db, cached)
-            return cached
-    meta: dict = {}
-    try:
-        meta = await chrome.detail(normalized)
-    except OfflineError:
-        meta = {}
-    data, _filename, content_type = await chrome.download(normalized, fmt)
-    slug = _slug(str(meta.get("name") or ""))
-    filename = f"{slug or normalized}.{fmt}"
-    icon_url = str(meta.get("icon") or "")
-    icon_bytes = await fetch_bytes(icon_url)
-    if refresh:
-        cache.delete_by_key(db, key)
-    return cache.store_bytes(
+    key = f"vscode:{publisher}.{extension}:{version}"
+    existing = _reuse(db, key)
+    if existing is not None:
+        return {"item": existing}
+    row = cache.enqueue(
         db,
-        provider="chrome",
+        provider="vscode",
         key=key,
-        data=data,
-        filename=filename,
-        content_type=content_type,
-        title=str(meta.get("name") or filename),
-        subtitle=normalized,
-        description=str(meta.get("description") or ""),
-        icon_url=icon_url,
-        icon_bytes=icon_bytes,
-        source=f"https://chromewebstore.google.com/detail/{normalized}",
+        title=payload.display_name or f"{publisher}.{extension}",
+        subtitle=version,
+        filename=payload.filename or f"{extension}-{version}.vsix",
+        content_type="application/octet-stream",
+        source=vscode.vsix_url(publisher, extension, version),
+        request={"publisher": publisher, "extension": extension, "version": version},
     )
+    db.commit()
+    return {"item": cache.serialize(row)}
+
+
+# ---- Chrome / Edge ----
+class ExtensionCacheBody(BaseModel):
+    id: str = ""
+    format: str = "crx"
+    name: str = ""
+    description: str = ""
+    icon_url: str = ""
+
+
+def _enqueue_extension(db: Session, payload: ExtensionCacheBody, provider: str) -> dict:
+    fmt = payload.format if payload.format in ("crx", "zip") else "crx"
+    if provider == "chrome":
+        try:
+            normalized = chrome.normalize_id(payload.id)
+        except OfflineError as error:
+            raise _http(error) from error
+        source = f"https://chromewebstore.google.com/detail/{normalized}"
+    else:
+        normalized = (payload.id or "").strip().lower()
+        if not (len(normalized) == 32 and normalized.isalnum()):
+            raise HTTPException(status_code=400, detail={"error": {"type": "invalid_request", "message": "无效的 Edge 扩展 ID"}})
+        source = f"https://microsoftedge.microsoft.com/addons/detail/{normalized}"
+    key = _cache_key_from_ref(provider, normalized, fmt)
+    existing = _reuse(db, key)
+    if existing is not None:
+        return {"item": existing}
+    content_type = "application/zip" if fmt == "zip" else "application/x-chrome-extension"
+    row = cache.enqueue(
+        db,
+        provider=provider,
+        key=key,
+        title=payload.name or normalized,
+        subtitle=normalized,
+        description=payload.description,
+        icon_url=payload.icon_url,
+        filename=f"{normalized}.{fmt}",
+        content_type=content_type,
+        source=source,
+        request={"id": normalized, "format": fmt},
+    )
+    db.commit()
+    return {"item": cache.serialize(row)}
 
 
 @router.get("/chrome/search")
@@ -196,54 +208,9 @@ async def chrome_detail(id: str = "") -> dict:
         raise _http(error) from error
 
 
-@router.get("/chrome/download")
-async def chrome_download(id: str = "", format: str = "crx", db: Session = Depends(get_db)) -> FileResponse:
-    fmt = format if format in ("crx", "zip") else "crx"
-    try:
-        normalized = chrome.normalize_id(id)
-    except OfflineError as error:
-        raise _http(error) from error
-    try:
-        row = await _fetch_chrome(db, normalized, fmt)
-    except OfflineError as error:
-        raise _http(error) from error
-    return cache.file_response(row)
-
-
-# ---- Edge ----
-async def _fetch_edge(db: Session, normalized: str, fmt: str, *, refresh: bool = False) -> OfflineDownload:
-    key = f"edge:{normalized}:{fmt}"
-    if not refresh:
-        cached = cache.get_cached(db, key)
-        if cached is not None:
-            cache.touch(db, cached)
-            return cached
-    meta: dict = {}
-    try:
-        meta = await edge.detail(normalized)
-    except OfflineError:
-        meta = {}
-    data, _filename, content_type = await edge.download(normalized, fmt)
-    slug = _slug(str(meta.get("name") or ""))
-    filename = f"{slug or normalized}.{fmt}"
-    icon_url = str(meta.get("logoUrl") or meta.get("iconUrl") or "")
-    icon_bytes = await fetch_bytes(icon_url)
-    if refresh:
-        cache.delete_by_key(db, key)
-    return cache.store_bytes(
-        db,
-        provider="edge",
-        key=key,
-        data=data,
-        filename=filename,
-        content_type=content_type,
-        title=str(meta.get("name") or filename),
-        subtitle=normalized,
-        description=str(meta.get("description") or meta.get("shortDescription") or ""),
-        icon_url=icon_url,
-        icon_bytes=icon_bytes,
-        source=f"https://microsoftedge.microsoft.com/addons/detail/{normalized}",
-    )
+@router.post("/chrome/cache")
+def chrome_cache(payload: ExtensionCacheBody, db: Session = Depends(get_db)) -> dict:
+    return _enqueue_extension(db, payload, "chrome")
 
 
 @router.get("/edge/search")
@@ -262,15 +229,9 @@ async def edge_detail(query: str = "") -> dict:
         raise _http(error) from error
 
 
-@router.get("/edge/download")
-async def edge_download(id: str = "", format: str = "crx", db: Session = Depends(get_db)) -> FileResponse:
-    fmt = format if format in ("crx", "zip") else "crx"
-    normalized = (id or "").strip().lower()
-    try:
-        row = await _fetch_edge(db, normalized, fmt)
-    except OfflineError as error:
-        raise _http(error) from error
-    return cache.file_response(row)
+@router.post("/edge/cache")
+def edge_cache(payload: ExtensionCacheBody, db: Session = Depends(get_db)) -> dict:
+    return _enqueue_extension(db, payload, "edge")
 
 
 # ---- Docker ----
@@ -351,65 +312,40 @@ async def docker_layer(
     return StreamingResponse(stream(), media_type="application/octet-stream")
 
 
-async def _fetch_docker(
-    db: Session, namespace: str, repository: str, tag: str, platform: str | None, *, refresh: bool = False
-) -> OfflineDownload:
+class DockerCacheBody(BaseModel):
+    query: str = ""
+    platform: str | None = None
+    filename: str = ""
+
+
+@router.post("/docker/cache")
+def docker_cache(payload: DockerCacheBody, db: Session = Depends(get_db)) -> dict:
+    try:
+        ref = docker.parse_reference(payload.query)
+    except OfflineError as error:
+        raise _http(error) from error
+    platform = payload.platform or None
+    namespace, repository, tag = ref["namespace"], ref["repository"], ref["tag"]
     key = f"docker:{namespace}/{repository}:{tag}:{platform or 'default'}"
-    if not refresh:
-        cached = cache.get_cached(db, key)
-        if cached is not None:
-            cache.touch(db, cached)
-            return cached
-    path, filename = await docker.build_image_tar(namespace, repository, tag, platform)
-    if refresh:
-        cache.delete_by_key(db, key)
-    return cache.store_file(
+    existing = _reuse(db, key)
+    if existing is not None:
+        return {"item": existing}
+    row = cache.enqueue(
         db,
         provider="docker",
         key=key,
-        src_path=path,
-        filename=filename,
-        content_type="application/x-tar",
         title=f"{namespace}/{repository}:{tag}",
         subtitle=platform or "linux/amd64",
+        filename=payload.filename or f"{namespace}-{repository}-{tag}.tar",
+        content_type="application/x-tar",
         source=f"https://hub.docker.com/r/{namespace}/{repository}",
+        request={"query": payload.query.strip(), "platform": platform},
     )
-
-
-@router.get("/docker/package")
-async def docker_package(query: str = "", platform: str | None = None, db: Session = Depends(get_db)) -> FileResponse:
-    try:
-        ref = docker.parse_reference(query)
-        row = await _fetch_docker(db, ref["namespace"], ref["repository"], ref["tag"], platform)
-    except OfflineError as error:
-        raise _http(error) from error
-    return cache.file_response(row)
+    db.commit()
+    return {"item": cache.serialize(row)}
 
 
 # ---- Microsoft Store ----
-async def _fetch_msstore(db: Session, url: str, filename: str, *, refresh: bool = False) -> OfflineDownload:
-    key = f"msstore:{hashlib.sha1((url or '').encode('utf-8')).hexdigest()}:{filename or ''}"
-    if not refresh:
-        cached = cache.get_cached(db, key)
-        if cached is not None:
-            cache.touch(db, cached)
-            return cached
-    src_path, name, content_type = await msstore.fetch_to_file(url, filename)
-    if refresh:
-        cache.delete_by_key(db, key)
-    return cache.store_file(
-        db,
-        provider="msstore",
-        key=key,
-        src_path=src_path,
-        filename=name,
-        content_type=content_type,
-        title=name,
-        subtitle="Microsoft Store",
-        source=url,
-    )
-
-
 @router.get("/msstore/resolve")
 async def msstore_resolve(
     type: str = "url",
@@ -424,13 +360,35 @@ async def msstore_resolve(
         raise _http(error) from error
 
 
-@router.get("/msstore/download")
-async def msstore_download(url: str = "", filename: str = "", db: Session = Depends(get_db)) -> FileResponse:
-    try:
-        row = await _fetch_msstore(db, url, filename)
-    except OfflineError as error:
-        raise _http(error) from error
-    return cache.file_response(row)
+class MsStoreCacheBody(BaseModel):
+    url: str = ""
+    filename: str = ""
+    title: str = ""
+
+
+@router.post("/msstore/cache")
+def msstore_cache(payload: MsStoreCacheBody, db: Session = Depends(get_db)) -> dict:
+    url = payload.url.strip()
+    if not url:
+        raise HTTPException(status_code=400, detail={"error": {"type": "invalid_request", "message": "缺少下载地址"}})
+    filename = payload.filename.strip()
+    key = f"msstore:{hashlib.sha1(url.encode('utf-8')).hexdigest()}:{filename}"
+    existing = _reuse(db, key)
+    if existing is not None:
+        return {"item": existing}
+    row = cache.enqueue(
+        db,
+        provider="msstore",
+        key=key,
+        title=payload.title or filename or "Microsoft Store 安装包",
+        subtitle="Microsoft Store",
+        filename=filename or "download.bin",
+        content_type="application/octet-stream",
+        source=url,
+        request={"url": url, "filename": filename},
+    )
+    db.commit()
+    return {"item": cache.serialize(row)}
 
 
 # ---- 缓存更新（回源重取，覆盖旧缓存）----
@@ -441,50 +399,52 @@ def _parse_vscode_key(key: str) -> tuple[str, str, str]:
 
 
 def _parse_id_fmt_key(key: str, prefix: str, default_fmt: str = "crx") -> tuple[str, str]:
-    normalized, _, fmt = key[len(prefix) :].rpartition(":")
+    normalized, _, fmt = key[len(prefix):].rpartition(":")
     return normalized, (fmt if fmt in ("crx", "zip") else default_fmt)
 
 
-async def _refetch(db: Session, row: OfflineDownload) -> OfflineDownload:
+def _parse_docker_key(key: str) -> tuple[str, str, str, str]:
+    body = key[len("docker:"):]
+    ref_tag, _, platform = body.rpartition(":")
+    ref, _, tag = ref_tag.rpartition(":")
+    namespace, _, repository = ref.partition("/")
+    return namespace, repository, tag, platform
+
+
+def _request_from_row(row: OfflineDownload) -> dict | None:
+    try:
+        request = json.loads(row.request_json or "{}")
+    except ValueError:
+        request = {}
+    if isinstance(request, dict) and request:
+        return request
     provider = row.provider
     key = row.cache_key
     if provider == "vscode":
         publisher, extension, version = _parse_vscode_key(key)
-        if not (publisher and extension and version):
-            raise OfflineError("缓存信息不完整，无法更新", status_code=409)
-        return await _fetch_vscode(db, publisher, extension, version, refresh=True)
-    if provider == "chrome":
-        normalized, fmt = _parse_id_fmt_key(key, "chrome:")
-        if not normalized:
-            raise OfflineError("缓存信息不完整，无法更新", status_code=409)
-        return await _fetch_chrome(db, normalized, fmt, refresh=True)
-    if provider == "edge":
-        normalized, fmt = _parse_id_fmt_key(key, "edge:")
-        if not normalized:
-            raise OfflineError("缓存信息不完整，无法更新", status_code=409)
-        return await _fetch_edge(db, normalized, fmt, refresh=True)
-    if provider == "docker":
-        body = key[len("docker:") :]
-        ref_tag, _, platform = body.rpartition(":")
-        ref, _, tag = ref_tag.rpartition(":")
-        namespace, _, repository = ref.partition("/")
-        if not (namespace and repository and tag):
-            raise OfflineError("缓存信息不完整，无法更新", status_code=409)
-        return await _fetch_docker(db, namespace, repository, tag, None if platform == "default" else platform, refresh=True)
-    if provider == "msstore":
-        if not row.source:
-            raise OfflineError("缓存信息不完整，无法更新", status_code=409)
-        return await _fetch_msstore(db, row.source, row.filename, refresh=True)
-    raise OfflineError("该来源暂不支持更新缓存", status_code=400)
+        if publisher and extension and version:
+            return {"publisher": publisher, "extension": extension, "version": version}
+    elif provider in ("chrome", "edge"):
+        normalized, fmt = _parse_id_fmt_key(key, f"{provider}:")
+        if normalized:
+            return {"id": normalized, "format": fmt}
+    elif provider == "docker":
+        namespace, repository, tag, platform = _parse_docker_key(key)
+        if namespace and repository and tag:
+            return {"query": f"{namespace}/{repository}:{tag}", "platform": None if platform == "default" else platform}
+    elif provider == "msstore" and row.source:
+        return {"url": row.source, "filename": row.filename}
+    return None
 
 
 @admin_router.post("/cache/{item_id}/refresh")
-async def refresh_cache(item_id: int, db: Session = Depends(get_db)) -> dict:
+def refresh_cache(item_id: int, db: Session = Depends(get_db)) -> dict:
     row = db.get(OfflineDownload, item_id)
     if row is None:
         raise HTTPException(status_code=404, detail="缓存不存在")
-    try:
-        updated = await _refetch(db, row)
-    except OfflineError as error:
-        raise _http(error) from error
-    return {"item": cache.serialize(updated)}
+    request = _request_from_row(row)
+    if request is None:
+        raise HTTPException(status_code=409, detail="缓存信息不完整，无法更新")
+    cache.requeue(db, row, request=request)
+    db.commit()
+    return {"item": cache.serialize(row)}

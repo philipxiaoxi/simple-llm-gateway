@@ -165,9 +165,13 @@ def test_offline_cache_list_download_delete(client: TestClient, auth_headers: di
 def test_offline_cache_refresh_refetches(
     client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
+    import asyncio
+
+    from app.offline import jobs as offline_jobs
+
     item_id = _store_cache(key="vscode:pub.ext:1.0.0", provider="vscode", data=b"old-bytes", filename="ext-1.0.0.vsix")
 
-    async def fake_download(publisher: str, extension: str, version: str) -> tuple[str, str]:
+    async def fake_download(publisher: str, extension: str, version: str, on_progress=None) -> tuple[str, str]:
         path = tmp_path / "new.vsix"
         path.write_bytes(b"new-bytes")
         return str(path), f"{publisher}.{extension}-{version}.vsix"
@@ -181,21 +185,32 @@ def test_offline_cache_refresh_refetches(
 
     refreshed = client.post(f"/api/admin/offline/cache/{item_id}/refresh", headers=auth_headers)
     assert refreshed.status_code == 200, refreshed.text
-    item = refreshed.json()["item"]
+    assert refreshed.json()["item"]["status"] == "queued"
+
+    # refresh 只入队，手动驱动后台 worker 完成一次
+    asyncio.run(offline_jobs.process_job_now(item_id))
+
+    listed = client.get("/api/admin/offline/cache", headers=auth_headers).json()["items"]
+    item = next(row for row in listed if row["id"] == item_id)
+    assert item["status"] == "ready"
     assert item["size_bytes"] == len(b"new-bytes")
 
-    download = client.get(f"/api/public/offline/cache/{item['id']}/download")
+    download = client.get(f"/api/public/offline/cache/{item_id}/download")
     assert download.status_code == 200 and download.content == b"new-bytes"
 
 
 def test_offline_cache_refresh_docker_key_parsing(
     client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
+    import asyncio
+
+    from app.offline import jobs as offline_jobs
+
     item_id = _store_cache(key="docker:library/nginx:latest:default", provider="docker", data=b"old", filename="nginx-latest.tar")
 
     calls: dict[str, object] = {}
 
-    async def fake_build(namespace: str, repository: str, tag: str, platform: str | None) -> tuple[str, str]:
+    async def fake_build(namespace: str, repository: str, tag: str, platform: str | None, on_progress=None) -> tuple[str, str]:
         calls.update(namespace=namespace, repository=repository, tag=tag, platform=platform)
         path = tmp_path / "image.tar"
         path.write_bytes(b"new-image")
@@ -204,8 +219,97 @@ def test_offline_cache_refresh_docker_key_parsing(
     monkeypatch.setattr(docker, "build_image_tar", fake_build)
     resp = client.post(f"/api/admin/offline/cache/{item_id}/refresh", headers=auth_headers)
     assert resp.status_code == 200, resp.text
+    assert resp.json()["item"]["status"] == "queued"
+
+    asyncio.run(offline_jobs.process_job_now(item_id))
+
     assert calls == {"namespace": "library", "repository": "nginx", "tag": "latest", "platform": None}
-    assert resp.json()["item"]["size_bytes"] == len(b"new-image")
+    listed = client.get("/api/admin/offline/cache", headers=auth_headers).json()["items"]
+    item = next(row for row in listed if row["id"] == item_id)
+    assert item["status"] == "ready"
+    assert item["size_bytes"] == len(b"new-image")
+
+
+def test_offline_enqueue_then_download(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    import asyncio
+
+    from app.offline import jobs as offline_jobs
+
+    async def fake_download(publisher: str, extension: str, version: str, on_progress=None) -> tuple[str, str]:
+        if on_progress:
+            on_progress(5, 10)
+            on_progress(10, 10)
+        path = tmp_path / "ext.vsix"
+        path.write_bytes(b"vsix-bytes")
+        return str(path), f"{publisher}.{extension}-{version}.vsix"
+
+    monkeypatch.setattr(vscode, "download_vsix", fake_download)
+    monkeypatch.setattr(vscode, "vsix_url", lambda p, e, v: f"https://example.com/{p}.{e}/{v}")
+
+    created = client.post(
+        "/api/admin/offline/vscode/cache",
+        headers=auth_headers,
+        json={"publisher": "pub", "extension": "ext", "version": "1.0.0", "display_name": "示例插件"},
+    )
+    assert created.status_code == 200, created.text
+    item = created.json()["item"]
+    assert item["status"] == "queued"
+    assert item["downloadable"] is False
+
+    # 未完成前不提供下载
+    assert client.get(f"/api/admin/offline/cache/{item['id']}/download", headers=auth_headers).status_code == 404
+
+    asyncio.run(offline_jobs.process_job_now(item["id"]))
+
+    listed = client.get("/api/admin/offline/cache", headers=auth_headers).json()["items"]
+    row = next(entry for entry in listed if entry["id"] == item["id"])
+    assert row["status"] == "ready"
+    assert row["downloadable"] is True
+    assert row["size_bytes"] == len(b"vsix-bytes")
+
+    download = client.get(f"/api/admin/offline/cache/{item['id']}/download", headers=auth_headers)
+    assert download.status_code == 200 and download.content == b"vsix-bytes"
+
+
+def test_offline_worker_claim_and_reconcile(client: TestClient) -> None:
+    from app.clock import utcnow
+    from app.models import OfflineDownload
+    from app.offline import jobs as offline_jobs
+
+    session = get_session_factory()()
+    try:
+        row = OfflineDownload(
+            provider="vscode",
+            cache_key="vscode:worker.claim:1.0.0",
+            title="worker",
+            status="queued",
+            stage="queued",
+            percent=0,
+            message="排队中",
+            created_at=utcnow(),
+            updated_at=utcnow(),
+        )
+        session.add(row)
+        session.commit()
+        row_id = int(row.id)
+    finally:
+        session.close()
+
+    assert offline_jobs._claim_next() == row_id
+
+    session = get_session_factory()()
+    try:
+        current = session.get(OfflineDownload, row_id)
+        assert current is not None
+        assert current.status == "caching"
+        assert current.attempts == 1
+        # 进程重启：中断的 caching 任务会被重新排队
+        assert offline_jobs.reconcile_stuck_jobs(session) == 1
+        assert session.get(OfflineDownload, row_id).status == "queued"
+    finally:
+        session.close()
 
 
 def test_offline_cache_hit_avoids_refetch(client: TestClient, auth_headers: dict[str, str]) -> None:

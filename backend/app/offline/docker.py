@@ -188,16 +188,24 @@ def _decompress_layer(data: bytes) -> bytes:
     return data
 
 
-async def _download_blob(namespace: str, repository: str, digest: str, token: str) -> bytes:
+async def _download_blob(namespace: str, repository: str, digest: str, token: str, on_progress=None) -> bytes:
     url = _blob_url(namespace, repository, digest)
-    async with make_client(timeout=LAYER_TIMEOUT) as client:
-        response = await client.get(url, headers={"Authorization": f"Bearer {token}"})
-    if response.status_code >= 400:
-        raise UpstreamError(f"下载层失败: {response.status_code}", status_code=response.status_code)
-    return response.content
+    async with make_client(timeout=LAYER_TIMEOUT) as client, client.stream(
+        "GET", url, headers={"Authorization": f"Bearer {token}"}
+    ) as response:
+        if response.status_code >= 400:
+            raise UpstreamError(f"下载层失败: {response.status_code}", status_code=response.status_code)
+        buffer = bytearray()
+        downloaded = 0
+        async for chunk in response.aiter_bytes():
+            buffer.extend(chunk)
+            downloaded += len(chunk)
+            if on_progress:
+                on_progress(downloaded)
+        return bytes(buffer)
 
 
-async def build_image_tar(namespace: str, repository: str, tag: str, platform: str | None) -> tuple[str, str]:
+async def build_image_tar(namespace: str, repository: str, tag: str, platform: str | None, on_progress=None) -> tuple[str, str]:
     """构建 docker load 兼容的 tar，返回 (临时文件路径, 下载文件名)。"""
     namespace = namespace or DEFAULT_NAMESPACE
     tag = tag or DEFAULT_TAG
@@ -225,7 +233,15 @@ async def build_image_tar(namespace: str, repository: str, tag: str, platform: s
     if not config_digest or not layers:
         raise UpstreamError("镜像 manifest 缺少 config 或 layers")
 
-    config_blob = await _download_blob(namespace, repository, config_digest, token)
+    total_bytes = int(config_descriptor.get("size") or 0) + sum(int(layer.get("size") or 0) for layer in layers)
+    state = {"done": 0}
+
+    def report(downloaded: int) -> None:
+        if on_progress:
+            on_progress(state["done"] + int(downloaded), total_bytes)
+
+    config_blob = await _download_blob(namespace, repository, config_digest, token, on_progress=report)
+    state["done"] += len(config_blob)
 
     config_name = f"{config_digest.replace(':', '_')}.json"
     repo_tag = f"{namespace}/{repository}:{tag}"
@@ -258,7 +274,8 @@ async def build_image_tar(namespace: str, repository: str, tag: str, platform: s
             add_bytes(config_name, config_blob)
 
             for dir_name, digest in layer_dirs:
-                raw = await _download_blob(namespace, repository, digest, token)
+                raw = await _download_blob(namespace, repository, digest, token, on_progress=report)
+                state["done"] += len(raw)
                 layer_tar = _decompress_layer(raw)
                 add_bytes(f"{dir_name}/layer.tar", layer_tar)
                 add_bytes(f"{dir_name}/VERSION", b"1.0")

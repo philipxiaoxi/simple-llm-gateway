@@ -192,6 +192,8 @@ class Settings(BaseSettings):
     offline_cache_path: str = ""
     # 缓存总字节上限，超出后按最久未访问淘汰
     offline_cache_max_bytes: int = 5 * 1024 * 1024 * 1024
+    # 后台缓存并发数（大包下载不影响请求，串行/少量并发即可）
+    offline_cache_concurrency: int = 2
 
     @property
     def database_url(self) -> str:

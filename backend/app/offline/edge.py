@@ -142,9 +142,11 @@ async def fetch_crx(extension_id: str) -> bytes:
     return data
 
 
-async def download(extension_id: str, fmt: str = "crx") -> tuple[bytes, str, str]:
+async def download(extension_id: str, fmt: str = "crx", on_progress=None) -> tuple[bytes, str, str]:
     normalized = (extension_id or "").strip().lower()
     data = await fetch_crx(normalized)
+    if on_progress:
+        on_progress(len(data), len(data))
     if (fmt or "crx").lower() == "zip":
         data = crx_to_zip(data)
         return data, f"{normalized}.zip", "application/zip"

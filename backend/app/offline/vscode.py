@@ -100,7 +100,7 @@ async def query(raw: str) -> dict:
     }
 
 
-async def download_vsix(publisher: str, extension: str, version: str) -> tuple[str, str]:
+async def download_vsix(publisher: str, extension: str, version: str, on_progress=None) -> tuple[str, str]:
     """下载 .vsix 到临时文件，返回 (临时路径, 文件名)。"""
     if not version.strip():
         raise OfflineError("缺少版本号")
@@ -111,9 +111,14 @@ async def download_vsix(publisher: str, extension: str, version: str) -> tuple[s
         async with make_client(timeout=LAYER_TIMEOUT) as client, client.stream("GET", url) as response:
             if response.status_code >= 400:
                 raise UpstreamError(f"Marketplace 下载失败: {response.status_code}", status_code=response.status_code)
+            expected = int(response.headers.get("Content-Length") or 0)
+            downloaded = 0
             with open(path, "wb") as handle:
                 async for chunk in response.aiter_bytes():
                     handle.write(chunk)
+                    downloaded += len(chunk)
+                    if on_progress:
+                        on_progress(downloaded, expected)
     except Exception:
         if os.path.exists(path):
             os.unlink(path)

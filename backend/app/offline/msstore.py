@@ -290,7 +290,7 @@ def _infer_filename(url: str) -> str:
     return _sanitize_filename(last) or "download.bin"
 
 
-async def fetch_to_file(raw_url: str, filename: str = "") -> tuple[str, str, str]:
+async def fetch_to_file(raw_url: str, filename: str = "", on_progress=None) -> tuple[str, str, str]:
     """把允许的微软下载链接流式存到临时文件，返回 (临时路径, 文件名, content-type)。"""
     parsed = urlparse((raw_url or "").strip())
     if parsed.scheme not in ("http", "https"):
@@ -306,9 +306,14 @@ async def fetch_to_file(raw_url: str, filename: str = "") -> tuple[str, str, str
             if response.status_code >= 400:
                 raise UpstreamError(f"上游下载失败: {response.status_code}", status_code=response.status_code)
             content_type = response.headers.get("Content-Type") or content_type
+            expected = int(response.headers.get("Content-Length") or 0)
+            downloaded = 0
             with open(path, "wb") as handle:
                 async for chunk in response.aiter_bytes():
                     handle.write(chunk)
+                    downloaded += len(chunk)
+                    if on_progress:
+                        on_progress(downloaded, expected)
     except Exception:
         if os.path.exists(path):
             os.unlink(path)

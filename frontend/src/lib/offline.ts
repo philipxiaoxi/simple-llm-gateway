@@ -58,6 +58,8 @@ export type MsStoreResult = {
   skus?: unknown[]
 }
 
+export type OfflineCacheStatus = 'queued' | 'caching' | 'ready' | 'failed'
+
 export type OfflineCacheItem = {
   id: number
   provider: string
@@ -70,8 +72,45 @@ export type OfflineCacheItem = {
   size_bytes: number
   source: string
   hit_count: number
+  status: OfflineCacheStatus
+  stage: string
+  percent: number
+  message: string
+  error_message: string | null
+  bytes_downloaded: number
+  expected_bytes: number
+  downloadable: boolean
   created_at: string | null
+  updated_at: string | null
   last_accessed_at: string | null
+}
+
+export type VscodeCacheInput = {
+  publisher: string
+  extension: string
+  version: string
+  display_name?: string
+  filename?: string
+}
+
+export type ExtensionCacheInput = {
+  id: string
+  format: 'crx' | 'zip'
+  name?: string
+  description?: string
+  icon_url?: string
+}
+
+export type DockerCacheInput = {
+  query: string
+  platform?: string
+  filename?: string
+}
+
+export type MsStoreCacheInput = {
+  url: string
+  filename?: string
+  title?: string
 }
 
 export function formatBytes(bytes: number): string {
@@ -129,15 +168,21 @@ export function createOfflineApi(base: string) {
       requestJson<{ results: ChromeSearchItem[] }>(`${url('/chrome/search')}?q=${enc(q)}`),
     chromeDetail: (id: string) =>
       requestJson<ChromeDetail>(`${url('/chrome/detail')}?id=${enc(id)}`),
-    chromeDownloadUrl: (id: string, format: 'crx' | 'zip') =>
-      `${url('/chrome/download')}?id=${enc(id)}&format=${format}`,
+    chromeCache: (input: ExtensionCacheInput) =>
+      requestJson<{ item: OfflineCacheItem }>(url('/chrome/cache'), {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
 
     edgeSearch: (q: string) =>
       requestJson<{ results: EdgeSearchItem[] }>(`${url('/edge/search')}?q=${enc(q)}`),
     edgeDetail: (query: string) =>
       requestJson<Record<string, unknown>>(`${url('/edge/detail')}?query=${enc(query)}`),
-    edgeDownloadUrl: (id: string, format: 'crx' | 'zip') =>
-      `${url('/edge/download')}?id=${enc(id)}&format=${format}`,
+    edgeCache: (input: ExtensionCacheInput) =>
+      requestJson<{ item: OfflineCacheItem }>(url('/edge/cache'), {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
 
     dockerTags: (query: string) => requestJson<{ results?: { name: string }[] }>(`${url('/docker/tags')}?query=${enc(query)}`),
     dockerSearch: (q: string) =>
@@ -149,21 +194,30 @@ export function createOfflineApi(base: string) {
       requestJson<DockerManifest | DockerManifestList>(
         `${url('/docker/manifest')}?query=${enc(query)}&token=${enc(token)}${platform ? `&platform=${enc(platform)}` : ''}`,
       ),
-    dockerPackageUrl: (query: string, platform?: string) =>
-      `${url('/docker/package')}?query=${enc(query)}${platform ? `&platform=${enc(platform)}` : ''}`,
+    dockerCache: (input: DockerCacheInput) =>
+      requestJson<{ item: OfflineCacheItem }>(url('/docker/cache'), {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
 
     msstoreResolve: (type: string, query: string) =>
       requestJson<MsStoreResult>(
-        `${url('/msstore/resolve')}?type=${enc(type)}&query=${enc(query)}&market=US&language=en-us`,
+        `${url('/msstore/resolve')}?type=${type}&query=${enc(query)}&market=US&language=en-us`,
       ),
-    msstoreDownloadUrl: (upstreamUrl: string, filename: string) =>
-      `${url('/msstore/download')}?url=${enc(upstreamUrl)}&filename=${enc(filename)}`,
+    msstoreCache: (input: MsStoreCacheInput) =>
+      requestJson<{ item: OfflineCacheItem }>(url('/msstore/cache'), {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
 
-    vscodeDownloadUrl: (publisher: string, extension: string, version: string) =>
-      `${url('/vscode/download')}?publisher=${enc(publisher)}&extension=${enc(extension)}&version=${enc(version)}`,
+    vscodeCache: (input: VscodeCacheInput) =>
+      requestJson<{ item: OfflineCacheItem }>(url('/vscode/cache'), {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
 
-    cache: () =>
-      requestJson<{ items: OfflineCacheItem[]; total_bytes: number }>(url('/cache')),
+    cache: (limit = 100) =>
+      requestJson<{ items: OfflineCacheItem[]; total_bytes: number }>(`${url('/cache')}?limit=${limit}`),
     cacheDownloadUrl: (id: number) => `${url(`/cache/${id}/download`)}`,
     // 图标走免鉴权公开路由，<img> 无需携带令牌
     cacheIconUrl: (id: number) => `/api/public/offline/cache/${id}/icon`,
