@@ -5,13 +5,13 @@ import { Pagination } from '../components/Pagination'
 import { Button, Card, Dialog } from '../components/ui'
 import { api, type BenchmarkRun } from '../lib/api'
 import { notifyBad } from '../lib/toast'
-import { errorMessage, formatTime } from '../lib/utils'
+import { errorMessage, formatTime, shanghaiDateStamp } from '../lib/utils'
 
 function downloadBlob(blob: Blob) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `benchmark-history-${new Date().toISOString().slice(0, 10)}.csv`
+  link.download = `benchmark-history-${shanghaiDateStamp()}.csv`
   link.click()
   URL.revokeObjectURL(url)
 }

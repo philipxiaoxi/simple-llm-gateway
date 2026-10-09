@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.clock import shanghai_day_start_utc
 from app.config import get_settings
 from app.db import get_db, get_session_factory
 from app.deps import get_current_admin
@@ -252,7 +253,7 @@ def list_rooms(db: Session = Depends(get_db)) -> dict[str, Any]:
     for room in rooms:
         state = voice_hub.room_state(room.room_id)
         counts = room_client_counts(room.id)
-        today = _now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = shanghai_day_start_utc()
         today_segments = db.scalar(
             select(func.count(VoiceSegment.id)).where(
                 VoiceSegment.room_pk == room.id, VoiceSegment.created_at >= today

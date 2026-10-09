@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.clock import utcnow
+from app.clock import now_shanghai, to_shanghai, utcnow
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import Admin, BenchmarkResult, BenchmarkRun
@@ -165,7 +164,7 @@ def export_benchmark_runs(db: Session = Depends(get_db)) -> StreamingResponse:
     writer.writerow(["测试时间", "会话 ID", "账号", "供应商", "模型", "状态", "首 token(ms)", "总耗时(ms)", "输出速度(tok/s)", "响应预览", "错误"])
     for result, created_at in rows:
         writer.writerow([
-            created_at.isoformat(), result.run_id, result.account_name, result.provider, result.model,
+            to_shanghai(created_at).isoformat(), result.run_id, result.account_name, result.provider, result.model,
             "超时" if result.timeout else "成功" if result.ok else "失败", result.first_token_ms, result.total_ms,
             result.output_tokens_per_second, result.preview or "", result.error or "",
         ])
@@ -173,7 +172,7 @@ def export_benchmark_runs(db: Session = Depends(get_db)) -> StreamingResponse:
     return StreamingResponse(
         iter([content]),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="benchmark-history-{datetime.now().strftime("%Y%m%d-%H%M%S")}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="benchmark-history-{now_shanghai().strftime("%Y%m%d-%H%M%S")}.csv"'},
     )
 
 
