@@ -134,7 +134,10 @@ async def report_batch(request: Request, db: Session = Depends(get_db), mcp_key=
 
     rec = begin_mcp_call(db, mcp_key, CAPABILITY_ID, "report_batch")
     try:
-        body = await request.json()
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 - 非法 JSON 按参数错误返回
+            raise InfoError("请求体不是合法 JSON", status_code=400, error_type="invalid_request") from None
         if not isinstance(body, dict) or not isinstance(body.get("items"), list):
             raise InfoError("items 必须为数组", status_code=400, error_type="invalid_request")
         limit = get_settings().info_report_max_file_bytes

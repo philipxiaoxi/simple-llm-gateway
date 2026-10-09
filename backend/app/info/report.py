@@ -287,6 +287,10 @@ def save_report(db: Session, *, mcp_key: McpKey, item: ReportInput) -> dict[str,
         if existing is not None:
             return _serialize(existing, source.id, duplicate=True)
         raise InfoError("写入冲突", status_code=409, error_type="conflict") from None
+    except Exception:
+        # 任何写入失败都清理刚落盘的媒体，避免留下孤儿文件
+        storage.purge_item(item_id)
+        raise
 
     source.item_count = int(
         db.scalar(select(func.count()).select_from(InfoItem).where(InfoItem.source_id == source.id)) or 0
