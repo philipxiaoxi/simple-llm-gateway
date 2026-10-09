@@ -1,8 +1,10 @@
 """AIHOT 榜单载荷样例。
 
-`fixtures/aihot_leaderboard_rr.json` 是 2026-09-29 从
+`fixtures/aihot_leaderboard_rr.json` 是 2026-10-09 从
 https://aihot.news/leaderboard.data 真实抓取的响应体（React Router 单次取数序列化），
-是当前线上主用格式，解析回归测试直接用它，不依赖网络。
+是当前线上主用格式，解析回归测试直接用它，不依赖网络。该版结构为
+`leaderboard-boards/data/{run,models,boards}`，取 `board.key=overall` 的 entries，
+再按 slug 关联 models 目录补 name/provider/releasedAt/price。
 `fixtures/aihot_leaderboard_flight.rsc` 是 2026-09-14 从
 https://aihot.news/leaderboard 带 RSC 头抓取的旧版 Next.js 飞行载荷，保留用于兼容回归。
 上游改版后如果解析挂了，先对照这些文件确认结构变化，再更新解析与样例。

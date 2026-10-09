@@ -98,7 +98,7 @@ Entries discovered by the Agent during task execution should follow this format:
   - embedding 配置变更后旧向量不可复用：若集合签名与新配置不一致，写入前会自动清空集合并按新签名重建
 
 [AIHOT 模型榜改走 React Router .data 端点]
-- Date: 2026-09-14（2026-09-29 更新）
+- Date: 2026-09-14（2026-09-29、2026-10-09 更新）
 - Context: 线上模型榜再次无数据并提示“结构可能已改版”，旧 RSC/HTML 选择器全部失配
 - Category: Troubleshooting & Debugging
 - Instructions:
@@ -109,6 +109,7 @@ Entries discovered by the Agent during task execution should follow this format:
   - entries 字段：rank、score、model{slug,name,provider,releasedAt}、sourceCount、coverage、confidence、stability{from,to}、price{input,output,cached,inputCny,outputCny,cachedCny,officialUrl}；上下文/输出上限仍由 models.dev 目录补
   - 真实抓取样例固定 `backend/tests/fixtures/aihot_leaderboard_rr.json`（30 条）；旧飞行载荷 `aihot_leaderboard_flight.rsc` 保留兼容回归；解析仍要求全行可解析，缺 slug/name/score 或行数对不上即整体报错、保留旧缓存
   - 手动排查：`curl -sS -H 'Accept: application/json, text/x-script, */*' https://aihot.news/leaderboard.data | python3 -m json.tool | head`
+  - 2026-10-09 再次改版：entries 从 `leaderboard/data/entries` 挪到 `leaderboard-boards/data/boards[].entries`（取 `board.key=overall`）；name/provider/releasedAt/price 拆到同级 `models`（按 slug 索引），entry 只剩 `slug/rank/score/sourceCount/coverage`；confidence/排名区间字段消失。抓取必须带非浏览器 UA（如 `simple-llm-gateway/...`），裸 curl 会被 403
   - 站点条款：个人/公益/组织内部使用免费；对外商用、数据转售需书面授权
 
 [站点部署 API：更新同一地址需传 slug]

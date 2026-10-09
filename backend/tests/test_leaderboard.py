@@ -101,17 +101,17 @@ def test_parse_react_router_leaderboard_payload() -> None:
     assert top["slug"] == "claude-opus-5-5"
     assert top["name"] == "Claude Opus 5.5"
     assert top["provider"] == "Anthropic"
-    assert top["released_at"] == "2026-09-17"
-    assert top["score"] == 95.0
-    assert top["confidence"] == "MEDIUM"
-    assert top["coverage"] == 0.35
-    assert top["metric_count"] == 10
-    assert top["cache_input_price_per_million_cny"] == pytest.approx(1.3421)
-    assert top["input_price_per_million_cny"] == pytest.approx(26.842)
-    assert top["output_price_per_million_cny"] == pytest.approx(134.21)
+    assert top["released_at"] == "2026-09-22"
+    assert top["score"] == 73.9
+    assert top["coverage"] == 0.964
+    assert top["metric_count"] == 33
+    assert top["cache_input_price_per_million_cny"] == pytest.approx(1.34046)
+    assert top["input_price_per_million_cny"] == pytest.approx(26.8092)
+    assert top["output_price_per_million_cny"] == pytest.approx(134.046)
     assert top["input_price_per_million_usd"] == pytest.approx(4)
     assert top["pricing_source_url"] == "https://platform.claude.com/docs/en/models/opus-5-5/overview"
-    # 新版载荷不带上下文/输出上限，交给 models.dev 目录补齐
+    # 2026-10 载荷不再自带置信度/排名区间/上下文上限，交给 models.dev 目录补齐
+    assert top["confidence"] is None
     assert top["context_window_tokens"] is None
     assert top["components"] == {}
 
@@ -242,12 +242,11 @@ def test_admin_leaderboard_reflects_react_router_payload(client: TestClient, aut
     item = _find_item(response, "claude-opus-5-5")
     assert item["name"] == "Claude Opus 5.5"
     assert item["provider"] == "Anthropic"
-    assert item["released_at"] == "2026-09-17"
-    assert item["score"] == 95.0
-    assert item["confidence"] == "MEDIUM"
-    assert item["coverage"] == 0.35
-    assert item["input_price_per_million_cny"] == pytest.approx(26.842)
-    assert item["output_price_per_million_cny"] == pytest.approx(134.21)
+    assert item["released_at"] == "2026-09-22"
+    assert item["score"] == 73.9
+    assert item["coverage"] == 0.964
+    assert item["input_price_per_million_cny"] == pytest.approx(26.8092)
+    assert item["output_price_per_million_cny"] == pytest.approx(134.046)
 
 
 def test_admin_leaderboard_ignores_refresh_query(client: TestClient, auth_headers: dict[str, str]) -> None:
