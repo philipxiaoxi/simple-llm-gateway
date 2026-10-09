@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ComponentType } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AppWindow, Archive, Code2, Compass, Container, Download, Globe, RefreshCw, Trash2 } from 'lucide-react'
+import { AppWindow, Archive, Code2, Compass, Container, Download, Globe, RefreshCw, RotateCcw, Trash2, TriangleAlert } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '../ui'
 import { notifyBad, notifyOk } from '../../lib/toast'
@@ -11,7 +11,7 @@ import { createOfflineApi, formatBytes, type OfflineApi, type OfflineCacheItem, 
 import { ChromePanel, DockerPanel, EdgePanel, MsStorePanel, VSCodePanel } from './panels'
 import { EmptyNote } from './shared'
 
-const PANELS: Record<string, ComponentType<{ api: OfflineApi; onDownloaded: () => void }>> = {
+const PANELS: Record<string, ComponentType<{ api: OfflineApi; onQueued: () => void }>> = {
   vscode: VSCodePanel,
   chrome: ChromePanel,
   edge: EdgePanel,
@@ -56,6 +56,8 @@ function CacheCard({
   const showFilename = Boolean(row.filename) && row.filename !== row.title
   const showDescription = Boolean(row.description)
   const showIcon = row.has_icon && !imgFailed
+  const active = row.status === 'queued' || row.status === 'caching'
+  const failed = row.status === 'failed'
 
   function update() {
     if (refreshing) return
@@ -63,12 +65,16 @@ function CacheCard({
     api
       .refreshCache(row.id)
       .then(() => {
-        notifyOk('已更新缓存')
+        notifyOk(failed ? '已重新加入缓存队列' : '已开始更新缓存')
         onChanged()
       })
-      .catch((caught) => notifyBad(errorMessage(caught, '更新失败')))
+      .catch((caught) => notifyBad(errorMessage(caught, failed ? '重试失败' : '更新失败')))
       .finally(() => setRefreshing(false))
   }
+
+  const sizeLine = active
+    ? `${formatBytes(row.bytes_downloaded)}${row.expected_bytes ? ` / ${formatBytes(row.expected_bytes)}` : ''}`
+    : formatBytes(row.size_bytes)
 
   return (
     <div className="flex flex-col gap-2.5 rounded-xl border border-line bg-panel-2/60 p-3">
@@ -105,22 +111,59 @@ function CacheCard({
 
       {showDescription ? <p className="line-clamp-2 text-xs leading-5 text-mist">{row.description}</p> : null}
 
+      {active ? (
+        <div className="space-y-1.5">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+            <div
+              className="h-full rounded-full bg-signal transition-all"
+              style={{ width: `${Math.max(4, row.percent)}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-mist">
+            <span>{row.message || (row.status === 'queued' ? '排队中' : '缓存中')} · {row.percent}%</span>
+            <span className="font-mono tabular-nums">{sizeLine}</span>
+          </div>
+        </div>
+      ) : failed ? (
+        <div className="flex items-start gap-1.5 rounded-lg border border-danger/30 bg-danger/10 px-2.5 py-2 text-[11px] text-danger">
+          <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+          <span className="line-clamp-2">{row.error_message || '缓存失败'}</span>
+        </div>
+      ) : null}
+
       <div className="flex items-center justify-between text-[11px] text-mist">
         <span>{meta?.label ?? row.provider}</span>
-        <span>
-          {formatBytes(row.size_bytes)} · {relativeTime(row.created_at)}
-        </span>
+        <span>{failed || active ? sizeLine : `${sizeLine} · ${relativeTime(row.created_at)}`}</span>
       </div>
 
       <div className="mt-auto flex gap-2">
-        <Button
-          type="button"
-          className="flex-1"
-          onClick={() => void api.download(api.cacheDownloadUrl(row.id), row.filename)}
-        >
-          <Download size={14} /> 下载
-        </Button>
-        {canManage ? (
+        {row.downloadable ? (
+          <Button
+            type="button"
+            className="flex-1"
+            onClick={() => void api.download(api.cacheDownloadUrl(row.id), row.filename)}
+          >
+            <Download size={14} /> 下载
+          </Button>
+        ) : (
+          <Button type="button" className="flex-1" disabled>
+            {active ? (
+              <>
+                <RefreshCw size={14} className="animate-spin" /> 缓存中 {row.percent}%
+              </>
+            ) : (
+              <>
+                <TriangleAlert size={14} /> 缓存失败
+              </>
+            )}
+          </Button>
+        )}
+        {canManage && failed ? (
+          <Button type="button" variant="line" aria-label="重新缓存" disabled={refreshing} onClick={update}>
+            <RotateCcw size={14} className={refreshing ? 'animate-spin' : undefined} />
+          </Button>
+        ) : null}
+        {canManage && row.downloadable ? (
           <Button
             type="button"
             variant="line"
@@ -159,7 +202,7 @@ export function OfflineTool({ base }: { base: string }) {
   const queryClient = useQueryClient()
   const api = useMemo(() => createOfflineApi(base), [base])
   const providers = useQuery({ queryKey: ['offline-providers', base], queryFn: api.providers })
-  const cacheQuery = useQuery({ queryKey: ['offline-cache', base], queryFn: api.cache })
+  const cacheQuery = useQuery({ queryKey: ['offline-cache', base], queryFn: () => api.cache() })
   const list = providers.data?.providers?.length ? providers.data.providers : FALLBACK
   const [active, setActive] = useState('')
 
@@ -177,6 +220,19 @@ export function OfflineTool({ base }: { base: string }) {
   const Panel = current ? PANELS[current.slug] : undefined
   const items = useMemo(() => cacheQuery.data?.items ?? [], [cacheQuery.data])
   const canManage = base.startsWith('/api/admin')
+  const hasActive = useMemo(
+    () => items.some((row) => row.status === 'queued' || row.status === 'caching'),
+    [items],
+  )
+
+  // 有任务在后台缓存时，轮询缓存列表实时刷新进度
+  useEffect(() => {
+    if (!hasActive) return
+    const timer = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: ['offline-cache', base] })
+    }, 1500)
+    return () => window.clearInterval(timer)
+  }, [hasActive, queryClient, base])
 
   const [providerFilter, setProviderFilter] = useState('all')
   const [keyword, setKeyword] = useState('')
@@ -230,7 +286,7 @@ export function OfflineTool({ base }: { base: string }) {
       {current ? (
         <div className="rounded-2xl border border-line bg-panel/60 p-4 sm:p-5">
           <p className="mb-3 text-xs text-mist">{current.description}</p>
-          {Panel ? <Panel api={api} onDownloaded={refreshCache} /> : <div className="text-sm text-mist">该来源暂未实现</div>}
+          {Panel ? <Panel api={api} onQueued={refreshCache} /> : <div className="text-sm text-mist">该来源暂未实现</div>}
         </div>
       ) : null}
 

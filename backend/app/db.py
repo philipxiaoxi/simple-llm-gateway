@@ -485,7 +485,7 @@ def _ensure_public_gate_scope(connection) -> None:  # type: ignore[no-untyped-de
 
 
 def _ensure_offline_download_columns(connection) -> None:  # type: ignore[no-untyped-def]
-    """offline_downloads 增量列：扩展描述与图标。"""
+    """offline_downloads 增量列：描述/图标，以及异步缓存进度。"""
     columns = {row[1] for row in connection.execute(text("PRAGMA table_info(offline_downloads)"))}
     if not columns:
         return
@@ -495,6 +495,27 @@ def _ensure_offline_download_columns(connection) -> None:  # type: ignore[no-unt
         connection.execute(text("ALTER TABLE offline_downloads ADD COLUMN icon_url VARCHAR(512) DEFAULT '' NOT NULL"))
     if "icon_file" not in columns:
         connection.execute(text("ALTER TABLE offline_downloads ADD COLUMN icon_file VARCHAR(255) DEFAULT '' NOT NULL"))
+    async_columns = {
+        "status": "ALTER TABLE offline_downloads ADD COLUMN status VARCHAR(16) DEFAULT 'ready' NOT NULL",
+        "stage": "ALTER TABLE offline_downloads ADD COLUMN stage VARCHAR(16) DEFAULT 'done' NOT NULL",
+        "percent": "ALTER TABLE offline_downloads ADD COLUMN percent INTEGER DEFAULT 100 NOT NULL",
+        "message": "ALTER TABLE offline_downloads ADD COLUMN message VARCHAR(256) DEFAULT '' NOT NULL",
+        "error_message": "ALTER TABLE offline_downloads ADD COLUMN error_message TEXT",
+        "bytes_downloaded": "ALTER TABLE offline_downloads ADD COLUMN bytes_downloaded INTEGER DEFAULT 0 NOT NULL",
+        "expected_bytes": "ALTER TABLE offline_downloads ADD COLUMN expected_bytes INTEGER DEFAULT 0 NOT NULL",
+        "attempts": "ALTER TABLE offline_downloads ADD COLUMN attempts INTEGER DEFAULT 0 NOT NULL",
+        "request_json": "ALTER TABLE offline_downloads ADD COLUMN request_json TEXT DEFAULT '{}' NOT NULL",
+        "updated_at": "ALTER TABLE offline_downloads ADD COLUMN updated_at DATETIME",
+    }
+    for column, statement in async_columns.items():
+        if column not in columns:
+            connection.execute(text(statement))
+    connection.execute(
+        text("UPDATE offline_downloads SET updated_at = created_at WHERE updated_at IS NULL")
+    )
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_offline_downloads_status ON offline_downloads (status)")
+    )
 
 
 def _ensure_api_key_accounts(connection) -> None:  # type: ignore[no-untyped-def]

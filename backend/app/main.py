@@ -62,6 +62,8 @@ from app.services.douyin_retention import retention_loop as douyin_retention_loo
 from app.services.grok_oauth import cleanup_expired_oauth_states
 from app.services.info_loop import start_info_workers
 from app.services.info_public_gate import build_gate_dependency
+from app.offline.jobs import reconcile_stuck_jobs as reconcile_stuck_offline_jobs
+from app.offline.jobs import start_offline_job_workers
 from app.services.info_retention import retention_loop as info_retention_loop
 from app.services.jobs import start_job_loops
 from app.services.knowledge_jobs import reconcile_stuck_jobs as reconcile_stuck_knowledge_jobs
@@ -123,6 +125,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         from app.capabilities.douyin.jobs import reconcile_stuck as reconcile_stuck_douyin_jobs
 
         reconcile_stuck_douyin_jobs(session)
+        reconcile_stuck_offline_jobs(session)
         from app.info.collector import reconcile_stuck_media
 
         reconcile_stuck_media(session)
@@ -140,6 +143,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         background_tasks = start_job_loops()
         # 知识库采集任务队列（入库 / 重新向量化）
         background_tasks.extend(start_knowledge_job_workers())
+        # 离线下载的异步缓存队列（解析后后台缓存到服务器）
+        background_tasks.extend(start_offline_job_workers())
         # 语音日志（段落/事件）会持续增长，挂一个每天跑一次的清理任务
         background_tasks.append(asyncio.create_task(voice_cleanup_loop()))
         # 知识库采集任务、调用日志与残留原文的保留期清理

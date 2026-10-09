@@ -53,9 +53,13 @@ def client(tmp_path, monkeypatch) -> TestClient:
     monkeypatch.setattr("app.services.jobs.start_job_loops", lambda: [])
     from app.main import app
     from app.db import init_db
+    from app.offline import jobs as offline_jobs
     from app.seed import seed_admin, seed_skill_categories
 
     monkeypatch.setattr("app.main.start_job_loops", lambda: [])
+    # 离线缓存 worker 不在测试里跑，交由用例显式调用 process_job_now
+    offline_jobs.reset_offline_job_workers()
+    monkeypatch.setattr("app.main.start_offline_job_workers", lambda: [])
 
     init_db()
     seed_admin()

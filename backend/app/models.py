@@ -1047,7 +1047,10 @@ class InfoPublicSession(Base):
 
 
 class OfflineDownload(Base):
-    """离线下载缓存：下载一次后在服务器留一份，后续直接命中本机。"""
+    """离线下载缓存：解析后在后台异步缓存到服务器，成功后供用户下载。
+
+    status: queued（排队） / caching（缓存中） / ready（可下载） / failed（失败）。
+    """
 
     __tablename__ = "offline_downloads"
 
@@ -1065,5 +1068,15 @@ class OfflineDownload(Base):
     source: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     hit_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="ready", nullable=False, index=True)
+    stage: Mapped[str] = mapped_column(String(16), default="done", nullable=False)
+    percent: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    message: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bytes_downloaded: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    expected_bytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    request_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
