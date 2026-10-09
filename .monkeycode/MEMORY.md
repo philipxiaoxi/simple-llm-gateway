@@ -98,7 +98,7 @@ Entries discovered by the Agent during task execution should follow this format:
   - embedding 配置变更后旧向量不可复用：若集合签名与新配置不一致，写入前会自动清空集合并按新签名重建
 
 [AIHOT 模型榜改走 React Router .data 端点]
-- Date: 2026-09-14（2026-09-29 更新）
+- Date: 2026-09-14（2026-09-29、2026-10-09 更新）
 - Context: 线上模型榜再次无数据并提示“结构可能已改版”，旧 RSC/HTML 选择器全部失配
 - Category: Troubleshooting & Debugging
 - Instructions:
@@ -109,6 +109,7 @@ Entries discovered by the Agent during task execution should follow this format:
   - entries 字段：rank、score、model{slug,name,provider,releasedAt}、sourceCount、coverage、confidence、stability{from,to}、price{input,output,cached,inputCny,outputCny,cachedCny,officialUrl}；上下文/输出上限仍由 models.dev 目录补
   - 真实抓取样例固定 `backend/tests/fixtures/aihot_leaderboard_rr.json`（30 条）；旧飞行载荷 `aihot_leaderboard_flight.rsc` 保留兼容回归；解析仍要求全行可解析，缺 slug/name/score 或行数对不上即整体报错、保留旧缓存
   - 手动排查：`curl -sS -H 'Accept: application/json, text/x-script, */*' https://aihot.news/leaderboard.data | python3 -m json.tool | head`
+  - 2026-10-09 再次改版：entries 从 `leaderboard/data/entries` 挪到 `leaderboard-boards/data/boards[].entries`（取 `board.key=overall`）；name/provider/releasedAt/price 拆到同级 `models`（按 slug 索引），entry 只剩 `slug/rank/score/sourceCount/coverage`；confidence/排名区间字段消失。抓取必须带非浏览器 UA（如 `simple-llm-gateway/...`），裸 curl 会被 403
   - 站点条款：个人/公益/组织内部使用免费；对外商用、数据转售需书面授权
 
 [站点部署 API：更新同一地址需传 slug]
@@ -152,3 +153,11 @@ Entries discovered by the Agent during task execution should follow this format:
   - 后果：`tempfile.gettempdir()` 回退成**当前工作目录**；pip 的解包/构建临时目录会落到仓库根（表现为一堆 `pip-metadata-*` / `pip-unpack-*` 目录，需清理）
   - 本机跑 pytest 会在 `backend/` 下留 `pytest-of-philip/`，属正常回退产物，可直接删
   - 绕过：给需要临时目录的命令显式指定一个**工作区内**的可写目录（`$env:TEMP` 指向工作区子目录），POSIX 侧无此问题
+
+[MCP 能力写入口以 Key 白名单为信任边界，不默认加防滥用审查]
+- Date: 2026-10-09
+- Context: 设计资讯上报能力（MCP+REST 写入口）时评估是否加内容审查/防滥用
+- Instructions:
+  - 能调用能力写接口的 Agent 都持有管理员签发的 MCP Key，视为可信来源
+  - 对外能力写入口默认不做内容审查/防滥用校验；护栏用 Key 白名单 + 限流 + 总开关即可
+  - 同源存储型 XSS 等技术性媒体校验（类型白名单、解码校验）仍需保留，与是否信任上传者无关

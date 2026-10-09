@@ -1,4 +1,6 @@
 
+import json
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
@@ -20,10 +22,11 @@ from app.models import (
 from app.providers import get_provider
 from app.schemas import (
     DashboardBenchmarkTopOut,
+    DashboardLeaderboardStatusOut,
     DashboardLeaderboardTopOut,
     DashboardOut,
 )
-from app.services.leaderboard import snapshot_to_payload
+from app.services.leaderboard import latest_snapshot, snapshot_to_payload
 from app.services.local_agent_relay import local_agent_relay
 
 router = APIRouter(prefix="/api/admin", tags=["admin-dashboard"], dependencies=[Depends(get_current_admin)])
@@ -55,6 +58,27 @@ def _leaderboard_top(db: Session, limit: int = 3) -> list[DashboardLeaderboardTo
             )
         )
     return top
+
+
+def _leaderboard_status(db: Session) -> DashboardLeaderboardStatusOut:
+    """榜单同步健康度：有缓存且最近一次拉取无错 → 正常，否则异常。"""
+    snapshot = latest_snapshot(db)
+    if snapshot is None:
+        return DashboardLeaderboardStatusOut(ok=False, error_message="暂无榜单缓存", total=0)
+    try:
+        loaded = json.loads(snapshot.entries_json or "[]")
+        total = len(loaded) if isinstance(loaded, list) else 0
+    except (TypeError, ValueError):
+        total = 0
+    error = (snapshot.error_message or "").strip() or None
+    if total <= 0 and error is None:
+        error = "暂无榜单缓存"
+    return DashboardLeaderboardStatusOut(
+        ok=total > 0 and error is None,
+        error_message=error,
+        fetched_at=snapshot.fetched_at,
+        total=total,
+    )
 
 
 def _benchmark_speed_top(db: Session, limit: int = 3) -> list[DashboardBenchmarkTopOut]:
@@ -135,5 +159,6 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardOut:
         agent_count=agent_count,
         agent_online_count=agent_online_count,
         leaderboard_top=_leaderboard_top(db),
+        leaderboard_status=_leaderboard_status(db),
         benchmark_speed_top=_benchmark_speed_top(db),
     )

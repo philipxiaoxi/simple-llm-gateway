@@ -384,8 +384,9 @@ def _parse_flight_entries(text: str) -> list[dict[str, Any]]:
 # 2026-09 页面从 Next.js RSC 迁到 React Router（Remix）后，渲染用的 class 名全部
 # 换掉了，HTML/RSC 解析直接失配。页面同源的 .data 端点返回 React Router 序列化
 # 载荷：一个扁平 JSON 数组，数组元素之间用下标互相引用（对象键形如 "_<下标>"，
-# 数组元素与对象值都是下标），resolve 后就是 run / board / tabs / entries 结构。
-# entries 里 model.slug / model.name / score 齐全，直接映射进快照。
+# 数组元素与对象值都是下标），resolve 后就是 run / models / boards 结构。
+# 取 key=overall 的 board，用其 entries（{slug,rank,score,sourceCount,coverage}）
+# 关联同级 models 目录（按 slug 取 model.name/provider/releasedAt 与 price），映射进快照。
 _RR_KEY_REF = re.compile(r"^_(\d+)$")
 
 
@@ -416,25 +417,47 @@ def _rr_walk(value: Any, array: list[Any], seen: frozenset[int]) -> Any:
     return value
 
 
-def _rr_find_entries(root: Any) -> list[Any] | None:
-    """在 resolve 后的路由数据里找 entries 列表（综合榜 / 分类榜路由都覆盖）。"""
+def _rr_route_data(root: Any) -> dict[str, Any] | None:
+    """在 resolve 后的路由数据里找带 boards 的 data（综合榜 / 分类榜路由都覆盖）。
+
+    2026-10 上游改版：entries 从 `leaderboard/data/entries` 挪到
+    `leaderboard-boards/data/boards[].entries`，且模型名/厂商/价格拆到同级 `models`
+    目录（按 slug 索引），entries 只剩 `{slug, rank, score, sourceCount, coverage}`。
+    """
     if not isinstance(root, dict):
         return None
     for value in root.values():
         data = value.get("data") if isinstance(value, dict) else None
-        if isinstance(data, dict) and isinstance(data.get("entries"), list):
-            return data["entries"]
+        if isinstance(data, dict) and isinstance(data.get("boards"), list):
+            return data
     return None
 
 
-def _rr_entry(raw: Any) -> dict[str, Any] | None:
+def _rr_overall_board(data: dict[str, Any]) -> dict[str, Any] | None:
+    """综合榜数据：优先 board.key == "overall"，取不到退回第一块。"""
+    boards = data.get("boards")
+    if not isinstance(boards, list) or not boards:
+        return None
+    for board in boards:
+        meta = board.get("board") if isinstance(board, dict) else None
+        if isinstance(meta, dict) and meta.get("key") == "overall":
+            return board
+    first = boards[0]
+    return first if isinstance(first, dict) else None
+
+
+def _rr_entry(raw: Any, models: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
-    model = raw.get("model") if isinstance(raw.get("model"), dict) else {}
-    slug = str(model.get("slug") or "").strip()
-    name = str(model.get("name") or "").strip()
+    slug = str(raw.get("slug") or "").strip()
     score = raw.get("score")
-    if not slug or not name or isinstance(score, bool) or not isinstance(score, int | float):
+    if not slug or isinstance(score, bool) or not isinstance(score, int | float):
+        return None
+    catalog = models.get(slug) if isinstance(models, dict) else None
+    model = catalog.get("model") if isinstance(catalog, dict) and isinstance(catalog.get("model"), dict) else {}
+    name = str(model.get("name") or "").strip()
+    # 目录里拿不到名字说明 model 结构又漂移了：宁可整体报错，也不要把空壳写进缓存
+    if not name:
         return None
     entry = _empty_entry()
     entry["slug"] = slug
@@ -446,17 +469,11 @@ def _rr_entry(raw: Any) -> dict[str, Any] | None:
     entry["rank"] = int(rank) if isinstance(rank, int | float) and not isinstance(rank, bool) else None
     coverage = raw.get("coverage")
     entry["coverage"] = float(coverage) if isinstance(coverage, int | float) and not isinstance(coverage, bool) else None
-    confidence = raw.get("confidence")
-    entry["confidence"] = (str(confidence).strip() or None) if confidence is not None else None
     source_count = raw.get("sourceCount")
     entry["metric_count"] = (
         int(source_count) if isinstance(source_count, int | float) and not isinstance(source_count, bool) else None
     )
-    stability = raw.get("stability") if isinstance(raw.get("stability"), dict) else {}
-    for field, key in (("possible_rank_from", "from"), ("possible_rank_to", "to")):
-        value = stability.get(key)
-        entry[field] = int(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
-    price = raw.get("price") if isinstance(raw.get("price"), dict) else {}
+    price = catalog.get("price") if isinstance(catalog, dict) and isinstance(catalog.get("price"), dict) else {}
     entry["cache_input_price_per_million_cny"] = _rr_number(price.get("cachedCny"))
     entry["input_price_per_million_cny"] = _rr_number(price.get("inputCny"))
     entry["output_price_per_million_cny"] = _rr_number(price.get("outputCny"))
@@ -486,10 +503,13 @@ def _parse_react_router_entries(text: str) -> list[dict[str, Any]] | None:
     ):
         return None
     root = _rr_resolve(0, array, frozenset())
-    raw_entries = _rr_find_entries(root)
-    if raw_entries is None:
+    data = _rr_route_data(root)
+    board = _rr_overall_board(data) if data is not None else None
+    raw_entries = board.get("entries") if isinstance(board, dict) else None
+    if not isinstance(raw_entries, list):
         raise LeaderboardError("榜单载荷中没有 entries（AIHOT 页面结构可能已改版）")
-    entries = [entry for entry in (_rr_entry(raw) for raw in raw_entries) if entry]
+    models = data.get("models") if isinstance(data, dict) and isinstance(data.get("models"), dict) else {}
+    entries = [entry for entry in (_rr_entry(raw, models) for raw in raw_entries) if entry]
     # 有行却对不齐说明字段结构变了，宁可整体报错也不要把空壳写进缓存
     if not raw_entries or len(entries) != len(raw_entries):
         raise LeaderboardError("榜单载荷中没有 entries（AIHOT 页面结构可能已改版）")

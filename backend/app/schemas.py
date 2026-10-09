@@ -422,6 +422,13 @@ class DashboardLeaderboardTopOut(BaseModel):
     max_output_tokens: int | None = None
 
 
+class DashboardLeaderboardStatusOut(BaseModel):
+    ok: bool = False
+    error_message: str | None = None
+    fetched_at: datetime | None = None
+    total: int = 0
+
+
 class DashboardBenchmarkTopOut(BaseModel):
     model: str
     account_name: str
@@ -448,6 +455,7 @@ class DashboardOut(BaseModel):
     agent_count: int = 0
     agent_online_count: int = 0
     leaderboard_top: list[DashboardLeaderboardTopOut] = Field(default_factory=list)
+    leaderboard_status: DashboardLeaderboardStatusOut = Field(default_factory=DashboardLeaderboardStatusOut)
     benchmark_speed_top: list[DashboardBenchmarkTopOut] = Field(default_factory=list)
 
 

@@ -92,6 +92,10 @@ def ensure_defaults() -> None:
         from app.capabilities.douyin.provider import DouyinProvider
 
         register(DouyinProvider())
+    if "info" not in _providers:
+        from app.capabilities.info.provider import InfoReportProvider
+
+        register(InfoReportProvider())
     if "diagram" not in _providers:
         from app.config import get_settings
 

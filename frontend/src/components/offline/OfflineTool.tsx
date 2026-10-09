@@ -77,8 +77,8 @@ function CacheCard({
     : formatBytes(row.size_bytes)
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-xl border border-line bg-panel-2/60 p-3">
-      <div className="flex items-start gap-3">
+    <div className="flex min-w-0 flex-col gap-2.5 rounded-xl border border-line bg-panel-2/60 p-3">
+      <div className="flex min-w-0 items-start gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-line bg-ink/50 text-signal">
           {showIcon ? (
             <img
@@ -93,8 +93,8 @@ function CacheCard({
           )}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-paper" title={row.title}>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate text-sm font-medium text-paper" title={row.title}>
               {row.title}
             </span>
             {badge ? (
@@ -109,7 +109,7 @@ function CacheCard({
         </div>
       </div>
 
-      {showDescription ? <p className="line-clamp-2 text-xs leading-5 text-mist">{row.description}</p> : null}
+      {showDescription ? <p className="line-clamp-2 break-words text-xs leading-5 text-mist">{row.description}</p> : null}
 
       {active ? (
         <div className="space-y-1.5">
@@ -119,21 +119,21 @@ function CacheCard({
               style={{ width: `${Math.max(4, row.percent)}%` }}
             />
           </div>
-          <div className="flex items-center justify-between text-[11px] text-mist">
-            <span>{row.message || (row.status === 'queued' ? '排队中' : '缓存中')} · {row.percent}%</span>
-            <span className="font-mono tabular-nums">{sizeLine}</span>
+          <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-mist">
+            <span className="min-w-0 truncate">{row.message || (row.status === 'queued' ? '排队中' : '缓存中')} · {row.percent}%</span>
+            <span className="shrink-0 font-mono tabular-nums">{sizeLine}</span>
           </div>
         </div>
       ) : failed ? (
         <div className="flex items-start gap-1.5 rounded-lg border border-danger/30 bg-danger/10 px-2.5 py-2 text-[11px] text-danger">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-          <span className="line-clamp-2">{row.error_message || '缓存失败'}</span>
+          <span className="line-clamp-2 min-w-0 break-words">{row.error_message || '缓存失败'}</span>
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between text-[11px] text-mist">
-        <span>{meta?.label ?? row.provider}</span>
-        <span>{failed || active ? sizeLine : `${sizeLine} · ${relativeTime(row.created_at)}`}</span>
+      <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-mist">
+        <span className="min-w-0 truncate">{meta?.label ?? row.provider}</span>
+        <span className="shrink-0 whitespace-nowrap">{failed || active ? sizeLine : `${sizeLine} · ${relativeTime(row.created_at)}`}</span>
       </div>
 
       <div className="mt-auto flex gap-2">

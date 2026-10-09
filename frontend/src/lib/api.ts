@@ -293,6 +293,13 @@ export type DashboardLeaderboardTop = {
   max_output_tokens: number | null
 }
 
+export type DashboardLeaderboardStatus = {
+  ok: boolean
+  error_message: string | null
+  fetched_at: string | null
+  total: number
+}
+
 export type DashboardBenchmarkTop = {
   model: string
   account_name: string
@@ -319,6 +326,7 @@ export type Dashboard = {
   agent_count: number
   agent_online_count: number
   leaderboard_top: DashboardLeaderboardTop[]
+  leaderboard_status: DashboardLeaderboardStatus
   benchmark_speed_top: DashboardBenchmarkTop[]
 }
 
