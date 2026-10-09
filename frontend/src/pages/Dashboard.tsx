@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Card } from '../components/ui'
-import { api, type DashboardBenchmarkTop, type DashboardLeaderboardTop } from '../lib/api'
+import { api, type DashboardBenchmarkTop, type DashboardLeaderboardStatus, type DashboardLeaderboardTop } from '../lib/api'
 import { cn, formatContextWindow, formatTime, formatTokenCount } from '../lib/utils'
 
 type Metric = {
@@ -67,11 +67,34 @@ function rankLabel(rank: number | null | undefined, index: number) {
   return rank ?? index + 1
 }
 
-function LeaderboardTopSection({ items }: { items: DashboardLeaderboardTop[] }) {
+function LeaderboardStatusBadge({ status }: { status?: DashboardLeaderboardStatus }) {
+  const ok = status?.ok ?? false
+  const label = status ? (ok ? '正常' : '同步失败') : '未知'
+  return (
+    <span
+      className={cn('inline-flex items-center gap-1.5 text-xs', ok ? 'text-ok' : 'text-danger')}
+      title={status?.error_message || undefined}
+    >
+      <span className={cn('h-2 w-2 rounded-full', ok ? 'bg-ok' : 'bg-danger')} />
+      {label}
+    </span>
+  )
+}
+
+function LeaderboardTopSection({
+  items,
+  status,
+}: {
+  items: DashboardLeaderboardTop[]
+  status?: DashboardLeaderboardStatus
+}) {
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-xs uppercase tracking-[0.16em] text-mist">排行榜前三</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-xs uppercase tracking-[0.16em] text-mist">排行榜前三</h2>
+          <LeaderboardStatusBadge status={status} />
+        </div>
         <Link to="/leaderboard" className="text-xs text-signal hover:underline">
           查看全部
         </Link>
@@ -187,7 +210,7 @@ export function DashboardPage() {
       <MetricSection title="今日" items={today} className="grid grid-cols-2 gap-3 lg:grid-cols-3" />
       <MetricSection title="累计" items={totals} className="grid grid-cols-2 gap-3 lg:max-w-xl" />
       <MetricSection title="资源" items={resources} className="grid grid-cols-2 gap-3 lg:grid-cols-4" />
-      <LeaderboardTopSection items={data?.leaderboard_top ?? []} />
+      <LeaderboardTopSection items={data?.leaderboard_top ?? []} status={data?.leaderboard_status} />
       <BenchmarkSpeedTopSection items={data?.benchmark_speed_top ?? []} />
     </div>
   )

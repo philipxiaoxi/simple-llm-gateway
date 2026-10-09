@@ -193,6 +193,41 @@ def test_dashboard_includes_leaderboard_top(client: TestClient, auth_headers: di
     assert top[0]["max_output_tokens"] is None
 
 
+def test_dashboard_leaderboard_status_ok(client: TestClient, auth_headers: dict[str, str]) -> None:
+    _seed_leaderboard(client, auth_headers)
+    status = client.get("/api/admin/dashboard", headers=auth_headers).json()["leaderboard_status"]
+    assert status["ok"] is True
+    assert status["total"] == 30
+    assert status["error_message"] is None
+    assert status["fetched_at"] is not None
+
+
+def test_dashboard_leaderboard_status_error(client: TestClient, auth_headers: dict[str, str]) -> None:
+    _seed_leaderboard(client, auth_headers)
+    # 模拟最近一次刷新失败：缓存仍在，但快照被写入 error_message
+    session = get_session_factory()()
+    try:
+        snapshot = session.scalar(
+            select(LeaderboardSnapshot).order_by(LeaderboardSnapshot.id.desc()).limit(1)
+        )
+        assert snapshot is not None
+        snapshot.error_message = "榜单载荷中没有 entries（AIHOT 页面结构可能已改版）"
+        session.commit()
+    finally:
+        session.close()
+    status = client.get("/api/admin/dashboard", headers=auth_headers).json()["leaderboard_status"]
+    assert status["ok"] is False
+    assert status["total"] == 30
+    assert "entries" in status["error_message"]
+
+
+def test_dashboard_leaderboard_status_empty(client: TestClient, auth_headers: dict[str, str]) -> None:
+    status = client.get("/api/admin/dashboard", headers=auth_headers).json()["leaderboard_status"]
+    assert status["ok"] is False
+    assert status["total"] == 0
+    assert status["error_message"]
+
+
 def test_admin_leaderboard_reads_cache_without_fetching(client: TestClient, auth_headers: dict[str, str]) -> None:
     with patch("app.services.leaderboard.fetch_leaderboard_text", new=AsyncMock(return_value=RSC_PAYLOAD)) as fetch:
         empty = client.get("/api/admin/leaderboard", headers=auth_headers)
