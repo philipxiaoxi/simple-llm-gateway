@@ -16,6 +16,20 @@ Updated: 2026-10-09
 
 `backend/app/info/__init__.py` 与 `2026-10-04-info-collection` 设计文档记载「资讯功能不注册进能力平面」。本需求针对「上报」这一条写入路径**有意反转**该约束，读取与浏览链路保持原样；实现时同步更新 `app/info/__init__.py` 的说明。
 
+## 风险与缓解（本轮调整）
+
+能力平面已免费提供 MCP+REST+Key 白名单+调用审计，独立路由规避了通用入口遮蔽，架构层无更优替代。加固集中在安全与资源三个方面：
+
+| 风险 | 影响 | 缓解 |
+|------|------|------|
+| R1 公开写入口被滥用 | 违规内容即时公开、存储被塞满 | 能力白名单是主闸（仅管理员签发的 Key 可调用）；按 Key 限流；`INFO_REPORT_ENABLED` 总开关；可选内容扫描 `INFO_REPORT_SCAN_ENABLED`（默认关闭）；保留现有手动隐藏下架 |
+| R2 上传字节导致存储型 XSS | 同源媒体路由回吐可执行内容（`image/svg+xml` 等） | 媒体类型严格白名单并排除 SVG；图片用 Pillow 解码校验、视频嗅探魔数；入库 `content_type` 用检测结果而非客户端头；媒体路由已带 `X-Content-Type-Options: nosniff` |
+| R3 重复/失败写入产生孤儿文件 | 磁盘泄漏 | 先查去重键再落盘；插入撞唯一约束或媒体写入失败时调用 `storage.purge_item(item_id)` |
+| R4 内存限流仅单进程 | 多 worker 下限流失效 | 沿用 `login_gate` 约定：文档标注，建议在反代再限一次 |
+| R5 共享「其他」渠道跨 Agent 去重冲突 | 同一文本被不同 Agent 上报时命中同一条 | 用户已选择共享渠道，接受该行为 |
+
+关于 R1 的「更好办法」：项目已有 `services/content_audit.py`，但其敏感词检测 `detect_sensitive` → `load_lexicon` → `_ensure_cached_lexicon` 可能触发词典下载与编译，不适合放在写请求热路径。因此内容扫描设计为**可选且默认关闭**，启用时只调用无网络的 `content_audit.detect_pii` 与 `detect_secrets`（纯正则），命中高危即拒收。
+
 ## Architecture
 
 ```mermaid
@@ -182,7 +196,12 @@ def store_uploaded_media(item_id, *, index_no, filename, content_type, data, kin
     # 直接写 {INFO_MEDIA_PATH}/{item_id}/{index:03d}.{ext}，无网络请求、无 urlguard
 ```
 
-与 `fetch_media`（`media.py:116`）的差异：不做逐跳重定向与 `MEDIA_HOSTS` 白名单校验（无远程请求），仅做 `image/*`、`video/*` 类型校验与字节上限校验。文件命名、`sha256`、Pillow 宽高探测与现有一致。
+与 `fetch_media`（`media.py:116`）的差异：不做逐跳重定向与 `MEDIA_HOSTS` 白名单校验（无远程请求），改为**严格类型白名单 + 字节校验**：
+
+- 图片允许 `image/jpeg`、`image/png`、`image/webp`、`image/gif`；用 Pillow `Image.open(BytesIO(data))` 打开并 `verify()`，打不开则 `unsupported_content_type`。**显式排除 `image/svg+xml`**（可携带脚本，是存储型 XSS 载体）。
+- 视频允许 `video/mp4`、`video/webm`、`video/quicktime`；按魔数（MP4/MOV 的 `ftyp` box、WebM 的 EBML `1A45DFA3`）嗅探校验，不匹配则拒绝。
+- 入库 `content_type` 使用检测结果（归一化后的白名单值），**不直接采用客户端提交的 `Content-Type`**，防止伪造头配合媒体路由回吐可执行内容。
+- 文件命名、`sha256`、Pillow 宽高探测与现有一致。
 
 ### 5. REST 路由（`routers/info_report_public.py`）
 
@@ -292,6 +311,7 @@ router = APIRouter(prefix="/v1/info", tags=["info-report"])
 | `INFO_REPORT_MAX_ITEM_BYTES` | `62914560` (60MB) | 单条媒体总字节上限 |
 | `INFO_REPORT_BATCH_MAX_ITEMS` | `20` | 单次批量条数上限 |
 | `INFO_REPORT_RATE_PER_MINUTE` | `30` | 每 MCP Key 每分钟上报次数上限 |
+| `INFO_REPORT_SCAN_ENABLED` | `false` | 是否对上报文本做正则内容扫描（PII/密钥），命中高危拒收 |
 
 ## Correctness Properties
 
@@ -299,6 +319,8 @@ router = APIRouter(prefix="/v1/info", tags=["info-report"])
 - `(source_id, external_id)` 唯一：同去重键重复上报返回 `duplicate=true` 且不新增行、不落盘；并发上报由唯一约束兜底。
 - 去重键在 `external_id` 缺省时由 `url` 与 `text` 唯一决定，同一内容多次上报稳定命中。
 - 媒体项要么完整落盘并置 `ready`，要么该条上报整体失败；不产生半成品文件（先写临时名再改名）。
+- 媒体类型严格落在白名单内，`image/svg+xml` 一律拒绝；入库 `content_type` 恒为检测结果，与客户端提交头无关。
+- 重复上报或写入失败时，该次尝试落盘的媒体目录被清理，磁盘不残留孤儿文件。
 - 落盘路径始终位于 `{INFO_MEDIA_PATH}/{item_id}/` 内，文件名由系统生成，Agent 提供的 `filename` 不参与路径拼接。
 - 上报条目 `is_featured=true` 且 `is_hidden=false`，并同时置 `ai_featured_manual=true`、`ai_hidden_manual=true`、`ai_status="skipped"`；AI 判定 worker 不处理该条，不改写其可见性。
 - 上报条目立即出现在管理端 `/api/admin/info/items` 与公开页 `/api/public/info/items`（默认 `featured=true`、`is_hidden=false`）。
@@ -316,6 +338,7 @@ router = APIRouter(prefix="/v1/info", tags=["info-report"])
 | 文本/标题超上限 | 400 或截断 | `invalid_request` | 按配置决定拒绝或截断 |
 | 媒体类型非图片/视频 | 400 | `unsupported_content_type` | 仅支持 image/* 与 video/* |
 | 单文件/单条超上限 | 413 | `too_large` | 超出大小上限 |
+| 启用扫描且命中高危 PII/密钥 | 400 | `content_rejected` | 内容包含敏感信息，被拒收 |
 | 批量条目数超上限 | 400 | `invalid_request` | 减少单次条数 |
 | base64 非法 | 400 | `invalid_request` | 媒体编码不合法 |
 | 重复去重键 | 200 | 无（`duplicate=true`） | 幂等命中，返回已存在 id |
