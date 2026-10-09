@@ -1,32 +1,36 @@
-"""资讯公开页门禁：单例设置、解锁令牌与会话。
+"""公开页门禁：单例设置、解锁令牌与会话（按 scope 独立）。
 
-公开页面向部分人员开放，用一道口令门禁保护。口令用 bcrypt 存哈希；解锁后签发一个
-自包含的 JWT（HttpOnly Cookie 承载），有效期固定 3 天，过期需重新输入。改口令时
-`token_version` 自增，旧会话立即失效。
+公开页（资讯 `info`、离线下载 `offline`）各自独立配置口令。口令用 bcrypt 存哈希；
+解锁后签发一个自包含 JWT，由 HttpOnly Cookie 承载，有效期固定 3 天，过期需重新输入。
+改口令时 `token_version` 自增，旧会话立即失效。
 """
 
 from __future__ import annotations
 
 import hashlib
 import secrets
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import jwt
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.clock import utcnow
 from app.config import get_settings
 from app.crypto import hash_password, verify_password
+from app.db import get_db
 from app.login_gate import LoginGate
 from app.models import InfoPublicSession, InfoPublicSettings
 
-COOKIE_NAME = "public_info_gate"
 GATE_TTL_SECONDS = 3 * 24 * 3600
 MIN_PASSWORD_LENGTH = 6
 SESSION_RETENTION_DAYS = 30
-_TOKEN_SCOPE = "info-public"
+DEFAULT_SCOPE = "info"
+SCOPES = ("info", "offline")
+_TOKEN_CLAIM = "public-gate"
 # 去掉易混字符（0/O/1/I/L），便于肉眼核对水印短码
 _CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
 _CODE_LENGTH = 8
@@ -35,10 +39,14 @@ _CODE_LENGTH = 8
 unlock_gate = LoginGate()
 
 
-def get_public_gate_settings(db: Session) -> InfoPublicSettings:
-    row = db.scalar(select(InfoPublicSettings).order_by(InfoPublicSettings.id).limit(1))
+def cookie_name(scope: str) -> str:
+    return f"public_{scope}_gate"
+
+
+def get_public_gate_settings(db: Session, scope: str = DEFAULT_SCOPE) -> InfoPublicSettings:
+    row = db.scalar(select(InfoPublicSettings).where(InfoPublicSettings.scope == scope).limit(1))
     if row is None:
-        row = InfoPublicSettings(enabled=False, password_hash="", token_version=0)
+        row = InfoPublicSettings(scope=scope, enabled=False, password_hash="", token_version=0)
         db.add(row)
         db.flush()
     return row
@@ -63,6 +71,7 @@ def is_required(row: InfoPublicSettings) -> bool:
 
 def serialize(row: InfoPublicSettings) -> dict[str, Any]:
     return {
+        "scope": row.scope,
         "enabled": bool(row.enabled),
         "has_password": has_password(row),
         "required": is_required(row),
@@ -101,6 +110,27 @@ def check_password(row: InfoPublicSettings, password: str) -> bool:
     return verify_password(password or "", row.password_hash)
 
 
+def apply_update(
+    db: Session,
+    scope: str,
+    *,
+    enabled: bool | None = None,
+    password: str | None = None,
+    clear: bool = False,
+) -> InfoPublicSettings:
+    """后台更新门禁设置的公共逻辑。"""
+    row = get_public_gate_settings(db, scope)
+    if clear:
+        clear_password(row)
+    if password:
+        set_password(row, password)
+    if enabled is not None:
+        set_enabled(row, enabled)
+    row.updated_at = utcnow()
+    db.commit()
+    return row
+
+
 def _generate_code(db: Session) -> str:
     while True:
         code = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(_CODE_LENGTH))
@@ -114,36 +144,36 @@ def _prune_sessions(db: Session) -> None:
     db.execute(delete(InfoPublicSession).where(InfoPublicSession.created_at < cutoff))
 
 
-def decode_token(token: str | None) -> dict[str, Any] | None:
+def decode_token(token: str | None, scope: str) -> dict[str, Any] | None:
     if not token:
         return None
     try:
         payload = jwt.decode(token, get_settings().app_secret_key, algorithms=["HS256"])
     except jwt.PyJWTError:
         return None
-    if payload.get("scope") != _TOKEN_SCOPE:
+    if payload.get("scope") != _TOKEN_CLAIM or payload.get("gs") != scope:
         return None
     return payload
 
 
-def verify_token(db: Session, token: str | None) -> bool:
-    payload = decode_token(token)
+def verify_token(db: Session, token: str | None, scope: str = DEFAULT_SCOPE) -> bool:
+    payload = decode_token(token, scope)
     if payload is None:
         return False
-    row = get_public_gate_settings(db)
+    row = get_public_gate_settings(db, scope)
     if not is_required(row):
         return True
     return int(payload.get("ver") or -1) == int(row.token_version or 0)
 
 
-def watermark_from_token(token: str | None) -> dict[str, Any] | None:
+def watermark_from_token(token: str | None, scope: str = DEFAULT_SCOPE) -> dict[str, Any] | None:
     """解锁会话的水印信息：短码 + 签发时间。"""
-    payload = decode_token(token)
+    payload = decode_token(token, scope)
     if payload is None or not payload.get("code"):
         return None
     issued_raw = payload.get("iat")
     issued_at = None
-    if isinstance(issued_raw, (int, float)):
+    if isinstance(issued_raw, int | float):
         issued_at = datetime.fromtimestamp(issued_raw, tz=timezone.utc).isoformat()
     return {"code": str(payload["code"]), "issued_at": issued_at}
 
@@ -153,11 +183,13 @@ def issue_session(
 ) -> tuple[str, int, str]:
     """签发解锁令牌，并登记一条可溯源的会话记录。"""
     _prune_sessions(db)
+    scope = row.scope
     code = _generate_code(db)
     now = datetime.now(timezone.utc)
     expires = now + timedelta(seconds=GATE_TTL_SECONDS)
     db.add(
         InfoPublicSession(
+            scope=scope,
             code=code,
             ip=(ip or "")[:64],
             user_agent=(user_agent or "")[:256],
@@ -168,7 +200,8 @@ def issue_session(
         )
     )
     payload = {
-        "scope": _TOKEN_SCOPE,
+        "scope": _TOKEN_CLAIM,
+        "gs": scope,
         "ver": int(row.token_version or 0),
         "code": code,
         "iat": int(now.timestamp()),
@@ -178,9 +211,11 @@ def issue_session(
     return token, GATE_TTL_SECONDS, code
 
 
-def list_sessions(db: Session, *, code: str | None = None, limit: int = 50) -> list[InfoPublicSession]:
+def list_sessions(
+    db: Session, scope: str = DEFAULT_SCOPE, *, code: str | None = None, limit: int = 50
+) -> list[InfoPublicSession]:
     size = max(1, min(200, int(limit or 50)))
-    stmt = select(InfoPublicSession)
+    stmt = select(InfoPublicSession).where(InfoPublicSession.scope == scope)
     if code:
         stmt = stmt.where(InfoPublicSession.code == code.strip().upper())
     stmt = stmt.order_by(InfoPublicSession.id.desc()).limit(size)
@@ -197,3 +232,25 @@ def serialize_session(row: InfoPublicSession) -> dict[str, Any]:
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "expires_at": row.expires_at.isoformat() if row.expires_at else None,
     }
+
+
+def build_gate_dependency(scope: str) -> Callable[..., None]:
+    """构造某个 scope 的门禁依赖；未开启门禁时直接放行。"""
+    name = cookie_name(scope)
+
+    def dependency(request: Request, db: Session = Depends(get_db)) -> None:
+        row = get_public_gate_settings(db, scope)
+        if not is_required(row):
+            return
+        token = request.cookies.get(name)
+        if not verify_token(db, token, scope):
+            raise HTTPException(
+                status_code=401,
+                detail={"error": {"type": "gate_required", "message": "需要访问口令"}},
+            )
+
+    return dependency
+
+
+# 兼容旧引用：资讯公开页门禁依赖
+require_public_gate = build_gate_dependency(DEFAULT_SCOPE)

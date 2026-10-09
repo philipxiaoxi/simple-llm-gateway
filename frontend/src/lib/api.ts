@@ -1369,29 +1369,34 @@ export const api = {
     request<InfoItemDetail>(`/api/public/info/items/${encodeURIComponent(id)}`),
   publicInfoStats: () =>
     request<{ item_count: number; featured_count: number }>('/api/public/info/stats'),
-  publicInfoGate: () => request<InfoPublicGateStatus>('/api/public/info/gate'),
-  publicInfoUnlock: (password: string) =>
+  publicGate: (scope: PublicGateScope) =>
+    request<InfoPublicGateStatus>(`/api/public/access/${scope}/gate`),
+  publicGateUnlock: (scope: PublicGateScope, password: string) =>
     request<{ ok: boolean; required: boolean; expires_in?: number; watermark?: { code: string } }>(
-      '/api/public/info/unlock',
+      `/api/public/access/${scope}/unlock`,
       {
         method: 'POST',
         body: JSON.stringify({ password }),
       },
     ),
-  publicInfoLock: () => request<{ ok: boolean }>('/api/public/info/lock', { method: 'POST' }),
-  infoPublicGate: () => request<InfoPublicGate>('/api/admin/info/public-gate'),
-  infoPublicGateUpdate: (payload: { enabled?: boolean; password?: string; clear_password?: boolean }) =>
-    request<InfoPublicGate>('/api/admin/info/public-gate', {
+  publicGateLock: (scope: PublicGateScope) =>
+    request<{ ok: boolean }>(`/api/public/access/${scope}/lock`, { method: 'POST' }),
+  adminPublicGate: (scope: PublicGateScope) =>
+    request<InfoPublicGate>(`/api/admin/public-gate?scope=${scope}`),
+  adminPublicGateUpdate: (
+    scope: PublicGateScope,
+    payload: { enabled?: boolean; password?: string; clear_password?: boolean },
+  ) =>
+    request<InfoPublicGate>(`/api/admin/public-gate?scope=${scope}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
-  infoPublicSessions: (query: { code?: string; limit?: number } = {}) => {
-    const params = new URLSearchParams()
+  adminPublicSessions: (scope: PublicGateScope, query: { code?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams({ scope })
     Object.entries(query).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') params.set(key, String(value))
     })
-    const suffix = params.toString() ? `?${params}` : ''
-    return request<{ sessions: InfoPublicSession[] }>(`/api/admin/info/public-sessions${suffix}`)
+    return request<{ sessions: InfoPublicSession[] }>(`/api/admin/public-gate/sessions?${params}`)
   },
   infoItemFavorite: (id: string, favorite: boolean) =>
     request<InfoItem>(`/api/admin/info/items/${encodeURIComponent(id)}/favorite`, {
@@ -2317,6 +2322,8 @@ export type InfoAiSettings = {
   prompt_template: string
   updated_at: string | null
 }
+
+export type PublicGateScope = 'info' | 'offline'
 
 export type InfoPublicGate = {
   enabled: boolean

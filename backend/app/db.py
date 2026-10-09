@@ -264,6 +264,8 @@ def _ensure_columns(engine: Engine) -> None:
         _ensure_douyin_job_columns(connection)
         _ensure_info_item_ai_columns(connection)
         _ensure_info_public_session_columns(connection)
+        _ensure_public_gate_scope(connection)
+        _ensure_offline_download_columns(connection)
         _ensure_api_key_accounts(connection)
         _backfill_account_model_prefixes(connection)
 
@@ -438,6 +440,61 @@ def _ensure_info_public_session_columns(connection) -> None:  # type: ignore[no-
                 "ADD COLUMN password_fingerprint VARCHAR(16) DEFAULT '' NOT NULL"
             )
         )
+
+
+def _ensure_public_gate_scope(connection) -> None:  # type: ignore[no-untyped-def]
+    """门禁按 scope 拆分：settings 与 sessions 增量 scope 列，并去重后建唯一索引。"""
+    settings_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(info_public_settings)"))}
+    if settings_columns:
+        if "scope" not in settings_columns:
+            connection.execute(
+                text("ALTER TABLE info_public_settings ADD COLUMN scope VARCHAR(32) DEFAULT 'info' NOT NULL")
+            )
+            connection.execute(
+                text("UPDATE info_public_settings SET scope = 'info' WHERE scope IS NULL OR scope = ''")
+            )
+        # 历史库可能存在重复行（并发首次访问各插一条）：保留「有口令 > 已启用 > 版本高 > id 大」的一条
+        connection.execute(
+            text(
+                """
+                DELETE FROM info_public_settings WHERE id IN (
+                    SELECT id FROM (
+                        SELECT id,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY scope
+                                   ORDER BY (password_hash != '') DESC, enabled DESC, token_version DESC, id DESC
+                               ) AS rn
+                        FROM info_public_settings
+                    ) WHERE rn > 1
+                )
+                """
+            )
+        )
+        connection.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS ix_info_public_settings_scope ON info_public_settings (scope)")
+        )
+    session_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(info_public_sessions)"))}
+    if session_columns:
+        if "scope" not in session_columns:
+            connection.execute(
+                text("ALTER TABLE info_public_sessions ADD COLUMN scope VARCHAR(32) DEFAULT 'info' NOT NULL")
+            )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_info_public_sessions_scope ON info_public_sessions (scope)")
+        )
+
+
+def _ensure_offline_download_columns(connection) -> None:  # type: ignore[no-untyped-def]
+    """offline_downloads 增量列：扩展描述与图标。"""
+    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(offline_downloads)"))}
+    if not columns:
+        return
+    if "description" not in columns:
+        connection.execute(text("ALTER TABLE offline_downloads ADD COLUMN description TEXT DEFAULT '' NOT NULL"))
+    if "icon_url" not in columns:
+        connection.execute(text("ALTER TABLE offline_downloads ADD COLUMN icon_url VARCHAR(512) DEFAULT '' NOT NULL"))
+    if "icon_file" not in columns:
+        connection.execute(text("ALTER TABLE offline_downloads ADD COLUMN icon_file VARCHAR(255) DEFAULT '' NOT NULL"))
 
 
 def _ensure_api_key_accounts(connection) -> None:  # type: ignore[no-untyped-def]

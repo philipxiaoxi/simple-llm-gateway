@@ -450,7 +450,7 @@ export function InfoFeedPage() {
 
       {aiOpen ? <InfoAiSettingsDialog open onClose={() => setAiOpen(false)} /> : null}
       {progressOpen ? <InfoAiProgressDialog open onClose={() => setProgressOpen(false)} /> : null}
-      {gateOpen ? <InfoPublicGateDialog open onClose={() => setGateOpen(false)} /> : null}
+      {gateOpen ? <InfoPublicGateDialog open scope="info" onClose={() => setGateOpen(false)} /> : null}
     </div>
   )
 }

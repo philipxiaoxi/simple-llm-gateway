@@ -3,12 +3,10 @@ import { Fingerprint, Globe, History, Search, ShieldCheck, X } from 'lucide-reac
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { api, type InfoPublicSession } from '../lib/api'
+import { api, type InfoPublicSession, type PublicGateScope } from '../lib/api'
 import { relativeTime } from '../lib/info'
 import { errorMessage, formatTime } from '../lib/utils'
 import { Badge, Input } from './ui'
-
-export const INFO_PUBLIC_SESSIONS_QUERY_KEY = ['info-public-sessions'] as const
 
 function deviceLabel(userAgent: string) {
   if (!userAgent) return '未知设备'
@@ -80,10 +78,18 @@ function SessionRow({ row }: { row: InfoPublicSession }) {
   )
 }
 
-export function InfoPublicSessionsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function InfoPublicSessionsDialog({
+  open,
+  scope,
+  onClose,
+}: {
+  open: boolean
+  scope: PublicGateScope
+  onClose: () => void
+}) {
   const sessions = useQuery({
-    queryKey: INFO_PUBLIC_SESSIONS_QUERY_KEY,
-    queryFn: () => api.infoPublicSessions({ limit: 100 }),
+    queryKey: ['public-gate-sessions', scope],
+    queryFn: () => api.adminPublicSessions(scope, { limit: 100 }),
     enabled: open,
   })
   const [query, setQuery] = useState('')

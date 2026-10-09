@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, Mic, Newspaper, RadioTower, ServerCog, ShieldAlert, Sparkles, Store, Timer, Trophy, UserRoundPen, X } from 'lucide-react'
+import { Activity, Download, Gauge, KeyRound, LogOut, Menu, MessageSquareText, Mic, Newspaper, PackageOpen, RadioTower, ServerCog, ShieldAlert, Sparkles, Store, Timer, Trophy, UserRoundPen, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
@@ -17,6 +17,7 @@ const links = [
   { to: '/mcp-plaza', label: 'MCP 广场', icon: Store },
   { to: '/tools', label: '工具中心', icon: Download },
   { to: '/info', label: '资讯收集', icon: Newspaper },
+  { to: '/offline', label: '离线下载', icon: PackageOpen },
   { to: '/benchmark', label: '模型测速', icon: Gauge },
   { to: '/benchmark/history', label: '测速历史', icon: Activity },
   { to: '/leaderboard', label: '模型榜', icon: Trophy },

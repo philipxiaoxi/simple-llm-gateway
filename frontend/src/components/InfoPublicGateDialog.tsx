@@ -1,19 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { History, Lock } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { api } from '../lib/api'
+import { api, type PublicGateScope } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
 import { InfoPublicSessionsDialog } from './InfoPublicSessionsDialog'
 import { Button, Dialog, Field, Input, Switch } from './ui'
 
-export const INFO_PUBLIC_GATE_QUERY_KEY = ['info-public-gate'] as const
+const settingsKey = (scope: PublicGateScope) => ['public-gate-settings', scope] as const
 
-export function InfoPublicGateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function InfoPublicGateDialog({
+  open,
+  onClose,
+  scope,
+}: {
+  open: boolean
+  onClose: () => void
+  scope: PublicGateScope
+}) {
   const queryClient = useQueryClient()
   const status = useQuery({
-    queryKey: INFO_PUBLIC_GATE_QUERY_KEY,
-    queryFn: api.infoPublicGate,
+    queryKey: settingsKey(scope),
+    queryFn: () => api.adminPublicGate(scope),
     enabled: open,
   })
   const [enabled, setEnabled] = useState(false)
@@ -25,7 +33,7 @@ export function InfoPublicGateDialog({ open, onClose }: { open: boolean; onClose
   }, [open, status.data])
 
   async function invalidate() {
-    await queryClient.invalidateQueries({ queryKey: INFO_PUBLIC_GATE_QUERY_KEY })
+    await queryClient.invalidateQueries({ queryKey: settingsKey(scope) })
   }
 
   const save = useMutation({
@@ -35,7 +43,7 @@ export function InfoPublicGateDialog({ open, onClose }: { open: boolean; onClose
         enabled: enabled || Boolean(password.trim()),
       }
       if (password.trim()) payload.password = password.trim()
-      return api.infoPublicGateUpdate(payload)
+      return api.adminPublicGateUpdate(scope, payload)
     },
     onSuccess: async (data) => {
       setPassword('')
@@ -46,7 +54,7 @@ export function InfoPublicGateDialog({ open, onClose }: { open: boolean; onClose
   })
 
   const clear = useMutation({
-    mutationFn: () => api.infoPublicGateUpdate({ clear_password: true }),
+    mutationFn: () => api.adminPublicGateUpdate(scope, { clear_password: true }),
     onSuccess: async () => {
       setPassword('')
       setEnabled(false)
@@ -62,7 +70,10 @@ export function InfoPublicGateDialog({ open, onClose }: { open: boolean; onClose
   const ttlDays = status.data?.ttl_days ?? 3
 
   return (
-    <Dialog title="公开页门禁" onClose={() => (pending ? undefined : onClose())}>
+    <Dialog
+      title={scope === 'offline' ? '离线下载门禁' : '资讯公开页门禁'}
+      onClose={() => (pending ? undefined : onClose())}
+    >
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-sm font-medium text-paper">
           <Lock size={16} className="text-signal" /> 口令访问控制
@@ -154,7 +165,7 @@ export function InfoPublicGateDialog({ open, onClose }: { open: boolean; onClose
       </div>
 
       {sessionsOpen ? (
-        <InfoPublicSessionsDialog open onClose={() => setSessionsOpen(false)} />
+        <InfoPublicSessionsDialog open scope={scope} onClose={() => setSessionsOpen(false)} />
       ) : null}
     </Dialog>
   )
