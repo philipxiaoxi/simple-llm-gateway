@@ -11,7 +11,7 @@ Updated: 2026-10-09
 
 - **媒体字节上送**：Agent 上传图片/视频字节，平台直写本地媒体目录并置 `ready`，全程不发上游网络请求。这样绕开现有 `MEDIA_HOSTS` 白名单对任意远程 URL 的限制，交付地址由平台签名令牌稳定提供。
 - **归属内置「其他」渠道**：复用 `sources.ensure_manual_source()`，不按 Key 分渠道；来源写进 `author_name`。
-- **上报即公开**：入库即 `is_featured = true`、`is_hidden = false`，并置 `ai_featured_manual = true`、`ai_hidden_manual = true`、`ai_status = "skipped"`，使现有 AI 判定 worker（只处理 `pending`/`failed`，见 `services/info_ai.py:288`）不改写可见性。
+- **可见性走常规 AI 判定**：入库 `is_featured = false`、`is_hidden = false`、`ai_status = "pending"`，不写 `ai_featured_manual` / `ai_hidden_manual`，交由现有 AI 判定 worker（`services/info_ai.py`，只处理 `pending`/`failed`）按分数决定精选与隐藏，与自动采集同一条逻辑。
 - **护栏**：全局总开关 `info_report_enabled` + 按 Key 限流 + 单文件/单条/批量/文本上限。
 
 `backend/app/info/__init__.py` 与 `2026-10-04-info-collection` 设计文档记载「资讯功能不注册进能力平面」。本需求针对「上报」这一条写入路径**有意反转**该约束，读取与浏览链路保持原样；实现时同步更新 `app/info/__init__.py` 的说明。
@@ -109,7 +109,7 @@ class InfoReportProvider:
     spec = CapabilitySpec(
         capability_id="info",
         name="资讯上报",
-        description="外部 Agent 上送资讯（文本 + 图片/视频字节），入库后立即公开可见",
+        description="外部 Agent 上送资讯（文本 + 图片/视频字节），入库后由 AI 判定可见性",
         version="1.0.0",
         category="content",
         status="enabled",
@@ -129,7 +129,7 @@ class InfoReportProvider:
                 "text 与媒体至少其一；单文件 ≤ INFO_REPORT_MAX_FILE_BYTES",
                 "MCP 工具的 media 用 base64，单文件解码后 ≤ INFO_REPORT_MAX_MCP_FILE_BYTES",
                 "external_id 缺省时按 url+text 内容摘要去重",
-                "入库即精选公开；重复去重键返回 duplicate=true",
+                "入库后由 AI 判定精选/隐藏；重复去重键返回 duplicate=true",
             ],
         },
     )
@@ -182,7 +182,7 @@ def limits() -> dict          # 供 config 操作与 REST 展示
 6. 取内置「其他」渠道：`sources.ensure_manual_source(db)`。
 7. 先在渠道内查去重键；命中则返回 `{id, duplicate: True, ...}`，不写库、不落盘。
 8. 生成 `item_id = uuid4()`，逐个媒体调用 `media.store_uploaded_media(...)` 落盘并得到 `FetchedFile`；写 `InfoItem` 与 `InfoMedia(status="ready")`，计算 `cover_media_id`（首图，其次视频）与 `media_count`（`image`/`video` 计数），`status` 置 `ready`。
-9. 可见性字段：`is_featured=True`、`is_hidden=False`、`ai_featured_manual=True`、`ai_hidden_manual=True`、`ai_status="skipped"`、`cover_seed = cover_seed_for(source.id, external_id)`。
+9. 可见性字段：`is_featured=False`、`is_hidden=False`、`ai_status="pending"`，不写 `ai_featured_manual` / `ai_hidden_manual`；`cover_seed = cover_seed_for(source.id, external_id)`。
 10. 唯一约束兜底：写入撞 `UNIQUE(source_id, external_id)` 时回滚并返回 `duplicate=True`（含已存在 id）。
 11. 更新渠道 `item_count` / `updated_at`，返回 `{id, source_id, status, duplicate, media_count, is_featured}`。
 
@@ -259,7 +259,7 @@ router = APIRouter(prefix="/v1/info", tags=["info-report"])
   "status": "ready",
   "duplicate": false,
   "media_count": 2,
-  "is_featured": true
+  "is_featured": false
 }
 ```
 
@@ -321,8 +321,8 @@ router = APIRouter(prefix="/v1/info", tags=["info-report"])
 - 媒体类型严格落在白名单内，`image/svg+xml` 一律拒绝；入库 `content_type` 恒为检测结果，与客户端提交头无关。
 - 重复上报或写入失败时，该次尝试落盘的媒体目录被清理，磁盘不残留孤儿文件。
 - 落盘路径始终位于 `{INFO_MEDIA_PATH}/{item_id}/` 内，文件名由系统生成，Agent 提供的 `filename` 不参与路径拼接。
-- 上报条目 `is_featured=true` 且 `is_hidden=false`，并同时置 `ai_featured_manual=true`、`ai_hidden_manual=true`、`ai_status="skipped"`；AI 判定 worker 不处理该条，不改写其可见性。
-- 上报条目立即出现在管理端 `/api/admin/info/items` 与公开页 `/api/public/info/items`（默认 `featured=true`、`is_hidden=false`）。
+- 上报条目录入为 `ai_status="pending"`、`is_featured=false`、`is_hidden=false`，且不写人工覆盖标记；精选与隐藏完全由 AI 判定按分数决定。
+- 上报条目立即出现在管理端 `/api/admin/info/items`；在 AI 判定为精选前不出现在公开页 `/api/public/info/items`（公开页默认只取精选）。
 - 总开关关闭时任何上报被拒（503），既有数据不受影响。
 - 同一 MCP Key 在窗口内超过 `INFO_REPORT_RATE_PER_MINUTE` 次上报被拒（429）。
 - 媒体上送过程不发起任何上游网络请求（`store_uploaded_media` 不含 httpx 调用）。
@@ -352,7 +352,7 @@ router = APIRouter(prefix="/v1/info", tags=["info-report"])
 
 - **能力注册**：`ensure_defaults()` 后目录含 `info`；`/api/admin/mcp/catalog` 返回该能力与两台 REST 端点；MCP `tools/list` 在该 Key 授权时含 `info_report`。
 - **鉴权**：无 Key 401；有 Key 但白名单不含 `info` 403；有效 Key 200。
-- **单条上报**：multipart 带 1 图 + 文本，断言 200、`info_items` 落一条、`info_media` 一条 `ready`、文件在 `{item_id}/000.jpg`、`cover_media_id`/`media_count` 正确、`is_featured=true`。
+- **单条上报**：multipart 带 1 图 + 文本，断言 200、`info_items` 落一条、`info_media` 一条 `ready`、文件在 `{item_id}/000.png`、`cover_media_id`/`media_count` 正确、`is_featured=false`、`ai_status="pending"`。
 - **纯文本**：无媒体上报成功，`status=ready`、`cover=None`。
 - **内容约束**：`text` 与媒体皆空 400。
 - **媒体校验**：非法类型（`application/pdf`）400；超单文件上限 413；超条数上限 400。
@@ -360,7 +360,7 @@ router = APIRouter(prefix="/v1/info", tags=["info-report"])
 - **批量**：3 条中 1 条重复、1 条非法，断言 `created/duplicates/failed` 与逐条明细，且合法条目已入库。
 - **总开关**：`INFO_REPORT_ENABLED=false` 时 503。
 - **限流**：把 `INFO_REPORT_RATE_PER_MINUTE` 调小，连续调用断言 429；重置 `info_report_gate`。
-- **可见性**：新增条目出现在 `/api/public/info/items`（默认 featured）与 `/api/admin/info/items`。
+- **可见性**：新增条目出现在 `/api/admin/info/items`；未精选时不出现在 `/api/public/info/items`（公开页默认只取精选）。
 - **审计**：`mcp_call_logs` 出现 `capability_id="info"` 的成败记录。
 - **MCP 路径**：经 MCP `_run_registered_tool` 调 `info_report`（base64 媒体）成功；超过 MCP 上限报错并提示走 REST。
 - **SSRF 无回归**：`store_uploaded_media` 不触发任何 httpx 调用（monkeypatch 断言）。
@@ -368,7 +368,7 @@ router = APIRouter(prefix="/v1/info", tags=["info-report"])
 
 ## Open Questions
 
-1. **AI 判定是否参与**：当前设计对上报条目置 `ai_status="skipped"`。若希望上报内容也走 AI 打标（但不改可见性），可在保留 `ai_featured_manual`/`ai_hidden_manual` 的前提下去掉 `skipped`。
+1. **AI 关闭时的可见性**：AI 判定未启用时上报条目停留在 `pending`、不会进入公开页，需要管理员手动精选；确认这是期望行为。
 2. **限流维度**：当前按 MCP Key。是否需要叠加按 IP 或全局总量限流。
 3. **手动下架入口**：沿用现有 `/info` 的隐藏按钮即可，是否需要为上报内容单独加「批量下架/清理」。
 
@@ -389,7 +389,7 @@ router = APIRouter(prefix="/v1/info", tags=["info-report"])
 [^13]: (backend/app/services/mcp_auth.py) - allowed_capability_ids 与 Key 校验
 [^14]: (backend/app/services/mcp_logs.py) - begin_mcp_call 调用审计
 [^15]: (backend/app/login_gate.py) - 内存滑窗限流样板（限流复用）
-[^16]: (backend/app/services/info_ai.py#L288) - AI worker 只处理 pending/failed（skipped 的依据）
+[^16]: (backend/app/services/info_ai.py#L288) - AI worker 只处理 pending/failed（上报条目走 pending 的依据）
 [^17]: (frontend/src/pages/McpPlaza.tsx#L14) - 广场卡片 iconMap
 [^18]: (frontend/src/lib/mcpIntegration.ts) - 接入中心按 integration 生成说明
 [^19]: (.monkeycode/specs/2026-10-04-info-collection/design.md) - 资讯收集既有设计（本需求反转其「不进能力平面」约束）

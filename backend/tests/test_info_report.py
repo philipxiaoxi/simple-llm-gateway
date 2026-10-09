@@ -55,7 +55,7 @@ def test_report_requires_authorization(client: TestClient, auth_headers: dict[st
     assert response.json()["error"]["type"] == "permission_error"
 
 
-def test_report_text_creates_public_featured_item(
+def test_report_text_uses_normal_ai_visibility(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:
     key = _create_key(client, auth_headers)
@@ -67,17 +67,21 @@ def test_report_text_creates_public_featured_item(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["duplicate"] is False
-    assert body["is_featured"] is True
+    assert body["is_featured"] is False
     assert body["media_count"] == 0
     item_id = body["id"]
 
     admin = client.get(f"/api/admin/info/items/{item_id}", headers=auth_headers)
     assert admin.status_code == 200, admin.text
-    assert admin.json()["author_name"]
+    detail = admin.json()
+    assert detail["author_name"]
+    assert detail["ai_status"] == "pending"
+    assert detail["is_featured"] is False
 
+    # 未精选：公开页默认不展示，等 AI 判定后按常规上精选
     public = client.get("/api/public/info/items")
     assert public.status_code == 200
-    assert any(row["id"] == item_id for row in public.json()["items"])
+    assert all(row["id"] != item_id for row in public.json()["items"])
 
 
 def test_report_media_multipart_stores_and_serves(

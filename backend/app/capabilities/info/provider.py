@@ -12,7 +12,7 @@ class InfoReportProvider:
     spec = CapabilitySpec(
         capability_id="info",
         name="资讯上报",
-        description="外部 Agent 上送资讯（文本 + 图片/视频字节），入库即精选公开",
+        description="外部 Agent 上送资讯（文本 + 图片/视频字节），入库后由 AI 判定可见性",
         version="1.0.0",
         category="content",
         status="enabled",
@@ -62,7 +62,7 @@ class InfoReportProvider:
                 "text 与媒体至少其一；REST multipart 与 MCP base64 单文件各有上限",
                 "媒体仅支持 jpg/png/webp/gif 图片与 mp4/webm/mov 视频（不接受 svg）",
                 "external_id 缺省时按 url+text+媒体摘要去重，重复上报返回 duplicate=true",
-                "入库即精选公开；上报内容归属内置「其他」渠道",
+                "入库后由 AI 判定精选/隐藏；上报内容归属内置「其他」渠道",
             ],
         },
     )
@@ -72,7 +72,7 @@ class InfoReportProvider:
         return [
             McpToolDef(
                 name="info_report",
-                description="上报一条资讯，可带图片/视频（base64）。入库即精选公开。",
+                description="上报一条资讯，可带图片/视频（base64）。入库后由 AI 判定精选。",
                 input_schema={
                     "type": "object",
                     "properties": {

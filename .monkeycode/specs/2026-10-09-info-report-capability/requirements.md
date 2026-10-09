@@ -2,13 +2,13 @@
 
 ## Introduction
 
-资讯收集目前只支持服务端主动采集（Telegram / RSS / 微信公众号），缺一条「外部 Agent 主动把资讯推进来」的写入通道。本需求在 MCP 广场新增资讯上报能力：Agent 用一把 MCP Key，通过 MCP 或 REST 把一条或多条资讯（文本 + 可选媒体字节）上报进平台，落进现有资讯库并直接公开可见。
+资讯收集目前只支持服务端主动采集（Telegram / RSS / 微信公众号），缺一条「外部 Agent 主动把资讯推进来」的写入通道。本需求在 MCP 广场新增资讯上报能力：Agent 用一把 MCP Key，通过 MCP 或 REST 把一条或多条资讯（文本 + 可选媒体字节）上报进平台，落进现有资讯库并按常规 AI 判定决定可见性。
 
 已确认的范围决策：
 
 - **媒体用字节上送**：Agent 上传图片/视频字节，平台直存本地，不抓取 Agent 给的远程 URL（绕过 SSRF 白名单限制，交付地址稳定）。
 - **归属内置「其他」渠道**：上报内容统一进 `kind=manual / identifier=other` 的现有渠道，不按 Key 分渠道。
-- **上报即公开**：上报成功即标记为精选并对公开页可见。
+- **可见性走常规 AI 判定**：入库默认未精选、未隐藏，由 AI 判定精选与隐藏，不写人工覆盖标记，与自动采集同一条逻辑。
 
 明确不做：不做远程 URL 转存、不做按 Key 独立渠道、不做人工审核队列（以总开关 + 限流 + 手动隐藏作为护栏）。
 
@@ -90,17 +90,18 @@
 3. IF 去重键在内置「其他」渠道已存在, THEN THE 系统 SHALL 返回 duplicate = true 与已存在条目的 id。
 4. THE 系统 SHALL 在并发重复上报时通过渠道内唯一约束保证只落一条。
 
-### Requirement 6: 公开可见性
+### Requirement 6: 可见性走常规 AI 判定
 
-**User Story:** AS 调用方, I WANT 上报的内容立即公开可见, SO THAT 内容能立刻被浏览方看到。
+**User Story:** AS 平台维护者, I WANT 上报内容与自动采集走同一套可见性逻辑, SO THAT 精选由 AI 判定而不是上报即公开。
 
 #### Acceptance Criteria
 
-1. WHEN 上报成功, THE 系统 SHALL 把条目置为精选 `is_featured = true`。
-2. WHEN 上报成功, THE 系统 SHALL 把条目置为公开可见 `is_hidden = false`。
-3. WHEN 上报成功, THE 系统 SHALL 标记该精选为人工设定，使 AI 判定不改写精选状态。
-4. THE 系统 SHALL 使上报条目同时出现在管理端瀑布流与公开页。
-5. THE 系统 SHALL 允许管理员沿用现有隐藏操作把上报条目下架。
+1. WHEN 上报成功, THE 系统 SHALL 把条目录入为待判定状态 `ai_status = "pending"`。
+2. WHEN 上报成功, THE 系统 SHALL 保持条目默认未精选 `is_featured = false` 与未隐藏 `is_hidden = false`。
+3. WHEN 上报成功, THE 系统 SHALL 不写入人工覆盖标记，使 AI 判定按分数决定精选与隐藏。
+4. WHILE AI 未把条目标记为精选, THE 公开页 SHALL 不展示该条目。
+5. WHEN AI 判定分数达到精选阈值, THE 系统 SHALL 把条目标记为精选并按常规在公开页展示。
+6. THE 系统 SHALL 使上报条目出现在管理端瀑布流。
 
 ### Requirement 7: 护栏与限额
 
