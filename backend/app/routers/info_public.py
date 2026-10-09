@@ -9,96 +9,43 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.info import items
-from app.login_gate import LoginLocked
 from app.models import InfoItem
-from app.services import info_public_gate as gate
+from app.routers import public_gate
+from app.services.info_public_gate import require_public_gate
 
 router = APIRouter(prefix="/api/public/info", tags=["info-public"])
-
-
-def require_public_gate(
-    token: str | None = Cookie(default=None, alias=gate.COOKIE_NAME),
-    db: Session = Depends(get_db),
-) -> None:
-    row = gate.get_public_gate_settings(db)
-    if not gate.is_required(row):
-        return
-    if not gate.verify_token(db, token):
-        raise HTTPException(
-            status_code=401,
-            detail={"error": {"type": "gate_required", "message": "需要访问口令"}},
-        )
 
 
 class UnlockBody(BaseModel):
     password: str = ""
 
 
-def _is_secure(request: Request) -> bool:
-    forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
-    scheme = forwarded or request.url.scheme
-    return scheme == "https"
-
-
+# 兼容旧路径：门禁接口也挂在 /api/public/info 下（scope=info）
 @router.get("/gate")
-def public_gate_status(
-    token: str | None = Cookie(default=None, alias=gate.COOKIE_NAME),
-    db: Session = Depends(get_db),
-):
-    row = gate.get_public_gate_settings(db)
-    required = gate.is_required(row)
-    unlocked = (not required) or gate.verify_token(db, token)
-    watermark = gate.watermark_from_token(token) if (required and unlocked) else None
-    return {"required": required, "unlocked": unlocked, "watermark": watermark}
+def info_gate(request: Request, db: Session = Depends(get_db)) -> dict:
+    return public_gate.gate_status("info", request, db)
 
 
 @router.post("/unlock")
-def unlock(
+def info_unlock(
     payload: UnlockBody,
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-):
-    row = gate.get_public_gate_settings(db)
-    if not gate.is_required(row):
-        return {"ok": True, "required": False}
-
-    client = request.client.host if request.client else "unknown"
-    try:
-        gate.unlock_gate.check(client)
-    except LoginLocked as error:
-        raise HTTPException(status_code=429, detail="尝试次数过多，请稍后再试") from error
-
-    if not gate.check_password(row, payload.password):
-        gate.unlock_gate.fail(client)
-        raise HTTPException(status_code=401, detail="口令错误")
-
-    gate.unlock_gate.succeed(client)
-    user_agent = request.headers.get("user-agent", "")
-    token, ttl, code = gate.issue_session(db, row, ip=client, user_agent=user_agent)
-    response.set_cookie(
-        key=gate.COOKIE_NAME,
-        value=token,
-        max_age=ttl,
-        httponly=True,
-        samesite="lax",
-        secure=_is_secure(request),
-        path="/",
-    )
-    return {"ok": True, "required": True, "expires_in": ttl, "watermark": {"code": code}}
+) -> dict:
+    return public_gate.unlock_access("info", payload, request, response, db)
 
 
 @router.post("/lock")
-def lock(response: Response):
-    response.delete_cookie(gate.COOKIE_NAME, path="/")
-    return {"ok": True}
+def info_lock(response: Response) -> dict:
+    return public_gate.lock_access("info", response)
 
 
 @router.get("/items", dependencies=[Depends(require_public_gate)])

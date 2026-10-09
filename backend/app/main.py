@@ -6,13 +6,14 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy import text
 
 from app.capabilities import ensure_defaults
 from app.config import get_settings, validate_app_secret_key
 from app.db import get_engine, get_session_factory, init_db
+from app.deps import get_current_admin
 from app.mcp_server import McpRootEntrypoint, build_mcp_app, start_mcp_session
 from app.routers import (
     admin_accounts,
@@ -36,6 +37,7 @@ from app.routers import (
     admin_mcp_knowledge,
     admin_mcp_knowledge_jobs,
     admin_mcp_sites,
+    admin_public_gate,
     admin_skill_bundles,
     admin_skills,
     admin_tools,
@@ -46,7 +48,9 @@ from app.routers import (
     info_public,
     local_agent,
     oauth,
+    offline,
     proxy,
+    public_gate,
     share,
     sites_public,
     voice_rooms,
@@ -57,6 +61,7 @@ from app.services.docparse_retention import retention_loop as docparse_retention
 from app.services.douyin_retention import retention_loop as douyin_retention_loop
 from app.services.grok_oauth import cleanup_expired_oauth_states
 from app.services.info_loop import start_info_workers
+from app.services.info_public_gate import build_gate_dependency
 from app.services.info_retention import retention_loop as info_retention_loop
 from app.services.jobs import start_job_loops
 from app.services.knowledge_jobs import reconcile_stuck_jobs as reconcile_stuck_knowledge_jobs
@@ -177,6 +182,7 @@ app.include_router(admin_content_audit.router)
 app.include_router(admin_logs.router)
 app.include_router(admin_dashboard.router)
 app.include_router(admin_info.router)
+app.include_router(admin_public_gate.router, dependencies=[Depends(get_current_admin)])
 app.include_router(admin_info.media_router)
 app.include_router(admin_integrations.router)
 app.include_router(admin_skills.router)
@@ -204,6 +210,23 @@ app.include_router(sites_public.hosting_router)
 app.include_router(douyin_public.router)
 app.include_router(diagrams_public.router)
 app.include_router(info_public.router)
+app.include_router(public_gate.router)
+app.include_router(
+    offline.router,
+    prefix="/api/admin/offline",
+    dependencies=[Depends(get_current_admin)],
+)
+app.include_router(
+    offline.admin_router,
+    prefix="/api/admin/offline",
+    dependencies=[Depends(get_current_admin)],
+)
+app.include_router(
+    offline.router,
+    prefix="/api/public/offline",
+    dependencies=[Depends(build_gate_dependency("offline"))],
+)
+app.include_router(offline.icon_router, prefix="/api/public/offline")
 app.include_router(voice_rooms.admin_router)
 app.include_router(voice_rooms.public_router)
 app.include_router(voice_rooms.router)

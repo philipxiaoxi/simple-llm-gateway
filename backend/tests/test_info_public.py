@@ -112,7 +112,7 @@ def test_public_items_default_featured_and_strips_source(client: TestClient) -> 
 def _enable_gate(client: TestClient, auth_headers: dict[str, str], password: str = "secret123") -> dict:
     gate.unlock_gate.reset()
     response = client.put(
-        "/api/admin/info/public-gate", json={"password": password}, headers=auth_headers
+        "/api/admin/public-gate?scope=info", json={"password": password}, headers=auth_headers
     )
     assert response.status_code == 200, response.text
     return response.json()
@@ -158,11 +158,11 @@ def test_public_gate_requires_password(client: TestClient, auth_headers: dict[st
     assert status["unlocked"] is True
     assert status["watermark"]["code"] == code
     sessions = client.get(
-        "/api/admin/info/public-sessions", headers=auth_headers
+        "/api/admin/public-gate/sessions?scope=info", headers=auth_headers
     ).json()["sessions"]
     match = next(row for row in sessions if row["code"] == code)
     assert match["gate_version"] >= 1
-    settings = client.get("/api/admin/info/public-gate", headers=auth_headers).json()
+    settings = client.get("/api/admin/public-gate?scope=info", headers=auth_headers).json()
     assert len(match["password_fingerprint"]) == 8
     assert match["password_fingerprint"] == settings["password_fingerprint"]
 
@@ -180,7 +180,7 @@ def test_public_gate_password_rotation_invalidates_session(
     assert client.get("/api/public/info/items").status_code == 200
 
     client.put(
-        "/api/admin/info/public-gate", json={"password": "newsecret1"}, headers=auth_headers
+        "/api/admin/public-gate?scope=info", json={"password": "newsecret1"}, headers=auth_headers
     )
     assert client.get("/api/public/info/items").status_code == 401
 
@@ -196,7 +196,7 @@ def test_public_gate_clear_reopens(client: TestClient, auth_headers: dict[str, s
     assert client.get("/api/public/info/items").status_code == 401
 
     response = client.put(
-        "/api/admin/info/public-gate", json={"clear_password": True}, headers=auth_headers
+        "/api/admin/public-gate?scope=info", json={"clear_password": True}, headers=auth_headers
     )
     assert response.status_code == 200, response.text
     assert response.json()["required"] is False
@@ -208,8 +208,8 @@ def test_public_gate_clear_reopens(client: TestClient, auth_headers: dict[str, s
 def test_public_gate_rejects_short_password(client: TestClient, auth_headers: dict[str, str]) -> None:
     _seed()
     response = client.put(
-        "/api/admin/info/public-gate", json={"password": "123"}, headers=auth_headers
+        "/api/admin/public-gate?scope=info", json={"password": "123"}, headers=auth_headers
     )
     assert response.status_code == 400
     # 后台接口需要管理员鉴权
-    assert client.get("/api/admin/info/public-gate").status_code == 401
+    assert client.get("/api/admin/public-gate?scope=info").status_code == 401

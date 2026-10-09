@@ -187,6 +187,11 @@ class Settings(BaseSettings):
     info_wechat_html_max_chars: int = 300_000
     # 单篇公众号正文最多转存多少张图（公众号长图文常超 Telegram 的通用上限）
     info_wechat_max_body_images: int = 80
+    # ---- 离线下载缓存（下载一次，服务器留一份，之后本机直接命中）----
+    # 目录留空时与数据库同级（data/offline）
+    offline_cache_path: str = ""
+    # 缓存总字节上限，超出后按最久未访问淘汰
+    offline_cache_max_bytes: int = 5 * 1024 * 1024 * 1024
 
     @property
     def database_url(self) -> str:
@@ -256,6 +261,10 @@ class Settings(BaseSettings):
     @property
     def resolved_info_media_path(self) -> Path:
         return self._resolve_data_path(self.info_media_path, "info")
+
+    @property
+    def resolved_offline_cache_path(self) -> Path:
+        return self._resolve_data_path(self.offline_cache_path, "offline")
 
     @property
     def resolved_archify_home(self) -> Path:

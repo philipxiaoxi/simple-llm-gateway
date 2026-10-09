@@ -22,7 +22,7 @@ import { Link, Outlet, useLocation, useNavigate, useParams, useSearchParams } fr
 import { InfoMasonry } from '../components/InfoMasonry'
 import { InfoTextCover } from '../components/InfoTextCover'
 import { Badge, Button } from '../components/ui'
-import { ApiError, api, type InfoItem, type InfoMedia, type InfoPublicGateStatus } from '../lib/api'
+import { ApiError, api, type InfoItem, type InfoMedia, type InfoPublicGateStatus, type PublicGateScope } from '../lib/api'
 import {
   formatCount,
   formatDuration,
@@ -133,8 +133,8 @@ function GateBackdrop() {
 }
 
 /** 全页水印：解锁会话的溯源短码，斜向平铺，不可选中、不拦截交互。 */
-function PublicInfoWatermark() {
-  const gate = useQuery({ queryKey: ['public-info-gate'], queryFn: api.publicInfoGate, retry: false })
+export function PublicInfoWatermark({ scope = 'info' }: { scope?: PublicGateScope }) {
+  const gate = useQuery({ queryKey: ['public-gate', scope], queryFn: () => api.publicGate(scope), retry: false })
   const watermark = gate.data?.watermark
   if (!watermark) return null
 
@@ -159,14 +159,33 @@ function PublicInfoWatermark() {
   )
 }
 
-/** 口令门禁：公开页开启门禁且未解锁时展示。内部资料，仅授权人员可进。 */
+const GATE_COPY: Record<PublicGateScope, { eyebrow: string; title: string; subtitle: string; notice: string }> = {
+  info: {
+    eyebrow: 'RESTRICTED · INTERNAL',
+    title: '内部资讯精选',
+    subtitle: 'Internal Intelligence Feed',
+    notice: '本页内容为内部资料，仅供内部人员使用，请勿截图、转发或对外传播。',
+  },
+  offline: {
+    eyebrow: 'RESTRICTED · INTERNAL',
+    title: '内部离线下载',
+    subtitle: 'Offline Download Toolkit',
+    notice: '本页为内部离线下载工具，仅供内部人员使用，请勿对外分享下载链接。',
+  },
+}
+
+/** 口令门禁：公开页开启门禁且未解锁时展示。按 scope 定制文案（资讯 / 离线下载）。 */
 export function PublicInfoGate({
   onUnlocked,
-  title = '内部资讯精选',
+  scope = 'info',
+  title,
 }: {
   onUnlocked: () => void
+  scope?: PublicGateScope
   title?: string
 }) {
+  const copy = GATE_COPY[scope]
+  const heading = title || copy.title
   const queryClient = useQueryClient()
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -179,10 +198,10 @@ export function PublicInfoGate({
     setBusy(true)
     setError('')
     try {
-      const result = await api.publicInfoUnlock(password)
+      const result = await api.publicGateUnlock(scope, password)
       const code = result.watermark?.code ?? null
       // 立即写入门禁缓存，水印无需刷新即可显示
-      queryClient.setQueryData<InfoPublicGateStatus>(['public-info-gate'], (prev) => ({
+      queryClient.setQueryData<InfoPublicGateStatus>(['public-gate', scope], (prev) => ({
         required: true,
         unlocked: true,
         watermark: code ? { code, issued_at: null } : (prev?.watermark ?? null),
@@ -204,7 +223,7 @@ export function PublicInfoGate({
         <div className="h-px w-full bg-gradient-to-r from-transparent via-signal/70 to-transparent" />
         <div className="space-y-6 p-7 sm:p-9">
           <div className="flex items-center gap-2 font-mono text-[11px] tracking-[0.34em] text-signal/90">
-            <Lock size={13} /> RESTRICTED · INTERNAL
+            <Lock size={13} /> {copy.eyebrow}
           </div>
 
           <div className="flex items-center gap-4">
@@ -212,18 +231,16 @@ export function PublicInfoGate({
               <ShieldCheck size={27} />
             </div>
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold tracking-wide text-paper">{title}</h1>
+              <h1 className="text-xl font-semibold tracking-wide text-paper">{heading}</h1>
               <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.2em] text-mist">
-                Internal Intelligence Feed
+                {copy.subtitle}
               </p>
             </div>
           </div>
 
           <div className="flex items-start gap-3 rounded-xl border border-warn/25 bg-warn/[0.06] px-3.5 py-3">
             <ShieldAlert size={16} className="mt-0.5 shrink-0 text-warn" />
-            <p className="text-xs leading-5 text-warn/90">
-              本页内容为内部资料，仅供内部人员使用，请勿截图、转发或对外传播。
-            </p>
+            <p className="text-xs leading-5 text-warn/90">{copy.notice}</p>
           </div>
 
           <form onSubmit={submit} className="space-y-3">
@@ -285,7 +302,7 @@ export function PublicInfoPage() {
   const showAll = params.get('all') === '1'
   const detailSearch = location.search
 
-  const gate = useQuery({ queryKey: ['public-info-gate'], queryFn: api.publicInfoGate, retry: false })
+  const gate = useQuery({ queryKey: ['public-gate', 'info'], queryFn: () => api.publicGate('info'), retry: false })
   const gateOpen = Boolean(gate.data && (!gate.data.required || gate.data.unlocked))
 
   const stats = useQuery({
@@ -346,11 +363,11 @@ export function PublicInfoPage() {
 
   async function lockNow() {
     try {
-      await api.publicInfoLock()
+      await api.publicGateLock('info')
     } catch {
       /* 忽略：本地状态照常清空 */
     }
-    queryClient.setQueryData<InfoPublicGateStatus>(['public-info-gate'], {
+    queryClient.setQueryData<InfoPublicGateStatus>(['public-gate', 'info'], {
       required: true,
       unlocked: false,
       watermark: null,

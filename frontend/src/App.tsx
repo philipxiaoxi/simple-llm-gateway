@@ -35,6 +35,10 @@ const PublicInfoPage = lazy(() =>
 const PublicInfoItemPage = lazy(() =>
   import('./pages/PublicInfo').then((m) => ({ default: m.PublicInfoItemPage })),
 )
+const OfflinePage = lazy(() => import('./pages/Offline').then((m) => ({ default: m.OfflinePage })))
+const PublicOfflinePage = lazy(() =>
+  import('./pages/PublicOffline').then((m) => ({ default: m.PublicOfflinePage })),
+)
 const SharePage = lazy(() => import('./pages/Share').then((m) => ({ default: m.SharePage })))
 const SkillBundleDetailPage = lazy(() =>
   import('./pages/SkillBundleDetail').then((m) => ({ default: m.SkillBundleDetailPage })),
@@ -121,6 +125,7 @@ export default function App() {
             <Route path="/share/info" element={<PublicInfoPage />}>
               <Route path=":itemId" element={<PublicInfoItemPage />} />
             </Route>
+            <Route path="/share/offline" element={<PublicOfflinePage />} />
             <Route path="/share/douyin" element={<McpDouyinSharePage />} />
             <Route path="/voice/join" element={<VoiceJoinPage />} />
             <Route path="/voice/send/:roomId" element={<VoiceSendPage />} />
@@ -162,6 +167,7 @@ export default function App() {
                 <Route path=":itemId" element={<InfoItemPage />} />
               </Route>
               <Route path="/info/sources" element={<InfoSourcesPage />} />
+              <Route path="/offline" element={<OfflinePage />} />
               <Route path="/benchmark" element={<BenchmarkPage />} />
               <Route path="/benchmark/history" element={<BenchmarkHistoryPage />} />
               <Route path="/leaderboard" element={<LeaderboardPage />} />

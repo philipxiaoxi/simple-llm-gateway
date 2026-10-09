@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from app.clock import utcnow
@@ -1015,11 +1015,13 @@ class InfoAiSettings(Base):
 
 
 class InfoPublicSettings(Base):
-    """资讯公开页门禁的全局单例设置。"""
+    """公开页门禁的全局设置（按 scope 区分：info / offline 各自独立）。"""
 
     __tablename__ = "info_public_settings"
+    __table_args__ = (UniqueConstraint("scope", name="uq_info_public_settings_scope"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scope: Mapped[str] = mapped_column(String(32), default="info", nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(128), default="", nullable=False)
     # 改口令时自增，旧会话令牌立即失效
@@ -1033,6 +1035,7 @@ class InfoPublicSession(Base):
     __tablename__ = "info_public_sessions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scope: Mapped[str] = mapped_column(String(32), default="info", nullable=False, index=True)
     code: Mapped[str] = mapped_column(String(16), unique=True, nullable=False, index=True)
     ip: Mapped[str] = mapped_column(String(64), default="", nullable=False)
     user_agent: Mapped[str] = mapped_column(String(256), default="", nullable=False)
@@ -1041,3 +1044,26 @@ class InfoPublicSession(Base):
     password_fingerprint: Mapped[str] = mapped_column(String(16), default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class OfflineDownload(Base):
+    """离线下载缓存：下载一次后在服务器留一份，后续直接命中本机。"""
+
+    __tablename__ = "offline_downloads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), default="", nullable=False, index=True)
+    cache_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    subtitle: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    icon_url: Mapped[str] = mapped_column(String(512), default="", nullable=False)
+    icon_file: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    content_type: Mapped[str] = mapped_column(String(128), default="application/octet-stream", nullable=False)
+    stored_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    source: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    hit_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
