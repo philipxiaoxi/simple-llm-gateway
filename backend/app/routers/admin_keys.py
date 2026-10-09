@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.clock import utcnow
+from app.clock import shanghai_day_start_utc, utcnow
 from app.config import get_settings
 from app.crypto import decrypt_secret, encrypt_secret, generate_api_key, hash_api_key, key_prefix
 from app.db import get_db
@@ -257,7 +257,7 @@ def _display_name(item: ApiKey) -> str:
 def _token_usage_by_key(db: Session, key_ids: list[int]) -> dict[int, tuple[int, int]]:
     if not key_ids:
         return {}
-    today = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = shanghai_day_start_utc()
     rows = db.execute(
         select(
             RequestLog.api_key_id,

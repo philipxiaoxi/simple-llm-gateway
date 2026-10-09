@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from 'react'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type Account, type BenchmarkResult } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { cn, errorMessage } from '../lib/utils'
+import { cn, errorMessage, shanghaiDateStamp } from '../lib/utils'
 
 type Target = { account: Account; model: string; enabled: boolean }
 
@@ -187,7 +187,7 @@ export function BenchmarkPage() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `benchmark-history-${new Date().toISOString().slice(0, 10)}.csv`
+      link.download = `benchmark-history-${shanghaiDateStamp()}.csv`
       link.click()
       URL.revokeObjectURL(url)
     } catch (error) { notifyBad(errorMessage(error, '导出测速结果失败')) }

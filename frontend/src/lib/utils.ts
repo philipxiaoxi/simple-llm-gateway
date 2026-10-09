@@ -53,11 +53,18 @@ export const ALIAS_INPUT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/
 
 const ISO_TIME = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?/g
 
+// 全站统一按上海时区（UTC+8）展示时间
+const SHANGHAI_UTC_OFFSET_HOURS = 8
+
 export function formatTime(value: string | null | undefined) {
   if (!value) return '—'
   const parsed = /[zZ]|[+-]\d{2}:\d{2}$/.test(value) ? dayjs(value) : dayjs.utc(value)
   if (!parsed.isValid()) return value
-  return parsed.local().format('YYYY-MM-DD HH:mm:ss')
+  return parsed.utcOffset(SHANGHAI_UTC_OFFSET_HOURS).format('YYYY-MM-DD HH:mm:ss')
+}
+
+export function shanghaiDateStamp(date: Date = new Date()) {
+  return dayjs(date).utcOffset(SHANGHAI_UTC_OFFSET_HOURS).format('YYYY-MM-DD')
 }
 
 export function elapsedSeconds(value: string | null | undefined, now = Date.now()) {
