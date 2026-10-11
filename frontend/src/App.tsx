@@ -22,6 +22,8 @@ const JobsPage = lazy(() => import('./pages/Jobs').then((m) => ({ default: m.Job
 const InfoFeedPage = lazy(() => import('./pages/InfoFeed').then((m) => ({ default: m.InfoFeedPage })))
 const InfoItemPage = lazy(() => import('./pages/InfoItem').then((m) => ({ default: m.InfoItemPage })))
 const InfoSourcesPage = lazy(() => import('./pages/InfoSources').then((m) => ({ default: m.InfoSourcesPage })))
+const ImageGenPage = lazy(() => import('./pages/ImageGen').then((m) => ({ default: m.ImageGenPage })))
+const VideoGenPage = lazy(() => import('./pages/VideoGen').then((m) => ({ default: m.VideoGenPage })))
 const KeysPage = lazy(() => import('./pages/Keys').then((m) => ({ default: m.KeysPage })))
 const LeaderboardPage = lazy(() => import('./pages/Leaderboard').then((m) => ({ default: m.LeaderboardPage })))
 const LogDetailPage = lazy(() => import('./pages/LogDetail').then((m) => ({ default: m.LogDetailPage })))
@@ -167,6 +169,8 @@ export default function App() {
                 <Route path=":itemId" element={<InfoItemPage />} />
               </Route>
               <Route path="/info/sources" element={<InfoSourcesPage />} />
+              <Route path="/image-gen" element={<ImageGenPage />} />
+              <Route path="/video-gen" element={<VideoGenPage />} />
               <Route path="/offline" element={<OfflinePage />} />
               <Route path="/benchmark" element={<BenchmarkPage />} />
               <Route path="/benchmark/history" element={<BenchmarkHistoryPage />} />

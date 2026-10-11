@@ -1458,6 +1458,52 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   infoStats: () => request<InfoStats>('/api/admin/info/stats'),
+  generationSettings: () => request<GenerationSettings>('/api/admin/generation/settings'),
+  generationSettingsUpdate: (payload: {
+    providers?: Array<{ provider: string; base_url?: string; api_key?: string; enabled?: boolean }>
+    default_image_model?: string
+    default_video_model?: string
+  }) =>
+    request<GenerationSettings>('/api/admin/generation/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  generationClearKey: (provider: string) =>
+    request<GenerationSettings>(`/api/admin/generation/providers/${encodeURIComponent(provider)}/key`, {
+      method: 'POST',
+    }),
+  generationTasks: (query: { kind?: string; status?: string; page?: number; page_size?: number } = {}) => {
+    const params = new URLSearchParams()
+    if (query.kind) params.set('kind', query.kind)
+    if (query.status) params.set('status', query.status)
+    params.set('page', String(query.page ?? 1))
+    params.set('page_size', String(query.page_size ?? 24))
+    return request<GenerationTaskList>(`/api/admin/generation/tasks?${params.toString()}`)
+  },
+  generationTask: (id: string) =>
+    request<GenerationTask>(`/api/admin/generation/tasks/${encodeURIComponent(id)}`),
+  generationCreate: (payload: {
+    kind: string
+    model: string
+    prompt: string
+    params: Record<string, unknown>
+    input_asset_ids: string[]
+  }) =>
+    request<GenerationTask>('/api/admin/generation/tasks', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  generationDelete: (id: string) =>
+    request<void>(`/api/admin/generation/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  generationRetry: (id: string) =>
+    request<GenerationTask>(`/api/admin/generation/tasks/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
+  generationUpload: (file: File) => {
+    const form = new FormData()
+    form.set('file', file)
+    return request<GenerationAsset>('/api/admin/generation/uploads', { method: 'POST', body: form })
+  },
+  generationDeleteUpload: (assetId: string) =>
+    request<void>(`/api/admin/generation/uploads/${encodeURIComponent(assetId)}`, { method: 'DELETE' }),
 }
 
 export type DocParseJob = {
@@ -2441,4 +2487,90 @@ export type InfoStats = {
   ai_failed: number
   ai_skipped: number
   featured_count: number
+}
+
+export type GenerationOption = { value: string; label: string }
+
+export type GenerationParam = {
+  key: string
+  label: string
+  // select | combo | number
+  type: string
+  options: GenerationOption[]
+  default: string | number | null
+  min: number | null
+  max: number | null
+  required: boolean
+  help: string
+}
+
+export type GenerationModel = {
+  id: string
+  label: string
+  kind: string
+  params: GenerationParam[]
+  supports_images: boolean
+  max_images: number
+  supports_audios: boolean
+  max_audios: number
+}
+
+export type GenerationProviderSetting = {
+  provider: string
+  label: string
+  default_base_url: string
+  base_url: string
+  has_key: boolean
+  enabled: boolean
+  configured: boolean
+  updated_at: string | null
+}
+
+export type GenerationSettings = {
+  providers: GenerationProviderSetting[]
+  default_image_model: string
+  default_video_model: string
+  catalog: { image: GenerationModel[]; video: GenerationModel[] }
+}
+
+export type GenerationAsset = {
+  id: string
+  role: 'input' | 'result'
+  // image | video | audio
+  kind: string
+  content_type: string
+  size_bytes: number
+  width: number | null
+  height: number | null
+  // pending / ready / failed
+  status: string
+  error_message: string | null
+  url?: string
+}
+
+export type GenerationTask = {
+  id: string
+  kind: string
+  provider: string
+  model: string
+  prompt: string
+  params: Record<string, unknown>
+  // queued / submitting / running / succeeded / failed / violation
+  status: string
+  progress: number
+  error: string
+  attempts: number
+  inputs: GenerationAsset[]
+  results: GenerationAsset[]
+  created_at: string | null
+  updated_at: string | null
+  finished_at: string | null
+}
+
+export type GenerationTaskList = {
+  items: GenerationTask[]
+  total: number
+  page: number
+  page_size: number
+  counts: Record<string, number>
 }

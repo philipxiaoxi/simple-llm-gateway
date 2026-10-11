@@ -206,6 +206,21 @@ class Settings(BaseSettings):
     offline_cache_max_bytes: int = 5 * 1024 * 1024 * 1024
     # 后台缓存并发数（大包下载不影响请求，串行/少量并发即可）
     offline_cache_concurrency: int = 2
+    # ---- 图片 / 视频生成（gsai 等供应商）----
+    # 作品与参考文件落盘目录，留空时与数据库同级（data/generation）
+    generation_media_path: str = ""
+    # 后台轮询/转存循环间隔
+    generation_tick_seconds: int = 5
+    # 单个参考文件大小上限
+    generation_max_input_bytes: int = 30 * 1024 * 1024
+    # 单个生成结果文件大小上限
+    generation_result_max_bytes: int = 512 * 1024 * 1024
+    # 生成任务提交/轮询失败的最大重试次数
+    generation_max_attempts: int = 3
+    # 调用供应商接口的超时
+    generation_http_timeout_seconds: int = 60
+    # 作品与参考文件地址的签名令牌有效期
+    generation_token_ttl_seconds: int = 43200
 
     @property
     def database_url(self) -> str:
@@ -279,6 +294,10 @@ class Settings(BaseSettings):
     @property
     def resolved_offline_cache_path(self) -> Path:
         return self._resolve_data_path(self.offline_cache_path, "offline")
+
+    @property
+    def resolved_generation_path(self) -> Path:
+        return self._resolve_data_path(self.generation_media_path, "generation")
 
     @property
     def resolved_archify_home(self) -> Path:

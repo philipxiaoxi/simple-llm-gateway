@@ -1108,3 +1108,101 @@ class OfflineDownload(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class GenerationProvider(Base):
+    """图片 / 视频生成供应商的接入配置。
+
+    目前只有 gsai，做成「一行一个供应商」的表结构是为了未来接入其它供应商时
+    只需新增一行，而不用改表结构。api_key 使用与其它凭据一致的 Fernet 加密存储。
+    """
+
+    __tablename__ = "generation_providers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # 供应商代码：gsai / ...
+    provider: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
+    base_url: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class GenerationSettings(Base):
+    """生成功能的全局单例设置：图片 / 视频默认使用的模型。"""
+
+    __tablename__ = "generation_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    default_image_model: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    default_video_model: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class GenerationTask(Base):
+    """一次图片 / 视频生成任务，也是「作品」记录。
+
+    status: queued（待提交） / submitting（提交中） / running（生成中） /
+    succeeded（成功） / failed（失败） / violation（违规拦截）。
+    """
+
+    __tablename__ = "generation_tasks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    model: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # 生成参数（比例 / 分辨率 / 时长等），原样透传供应商
+    params_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True, nullable=False)
+    progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # 供应商返回的任务 id，用于查询结果
+    upstream_id: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    error: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    assets: Mapped[list[GenerationAsset]] = relationship(
+        back_populates="task", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class GenerationAsset(Base):
+    """生成任务的参考文件（input）与生成结果（result）。
+
+    参考文件在上传时落盘（role=input，task_id 可空，提交任务时回填）；结果是
+    供应商返回的远程地址（role=result，status=pending），由后台转存到本地后
+    才置为 ready，避免上游地址过期导致作品丢失。
+    """
+
+    __tablename__ = "generation_assets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    task_id: Mapped[str | None] = mapped_column(
+        ForeignKey("generation_tasks.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    # input / result
+    role: Mapped[str] = mapped_column(String(16), default="input", nullable=False)
+    index_no: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # image / video / audio
+    kind: Mapped[str] = mapped_column(String(16), default="image", nullable=False)
+    remote_url: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
+    filename: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    content_type: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # pending / ready / failed
+    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    purged: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    task: Mapped[GenerationTask | None] = relationship(back_populates="assets")

@@ -14,7 +14,11 @@ from app.capabilities import ensure_defaults
 from app.config import get_settings, validate_app_secret_key
 from app.db import get_engine, get_session_factory, init_db
 from app.deps import get_current_admin
+from app.generation.service import generation_loop
+from app.generation.service import reconcile_stuck as reconcile_stuck_generation
 from app.mcp_server import McpRootEntrypoint, build_mcp_app, start_mcp_session
+from app.offline.jobs import reconcile_stuck_jobs as reconcile_stuck_offline_jobs
+from app.offline.jobs import start_offline_job_workers
 from app.routers import (
     admin_accounts,
     admin_auth,
@@ -23,6 +27,7 @@ from app.routers import (
     admin_benchmark_history,
     admin_content_audit,
     admin_dashboard,
+    admin_generation,
     admin_info,
     admin_integrations,
     admin_jobs,
@@ -64,8 +69,6 @@ from app.services.douyin_retention import retention_loop as douyin_retention_loo
 from app.services.grok_oauth import cleanup_expired_oauth_states
 from app.services.info_loop import start_info_workers
 from app.services.info_public_gate import build_gate_dependency
-from app.offline.jobs import reconcile_stuck_jobs as reconcile_stuck_offline_jobs
-from app.offline.jobs import start_offline_job_workers
 from app.services.info_retention import retention_loop as info_retention_loop
 from app.services.jobs import start_job_loops
 from app.services.knowledge_jobs import reconcile_stuck_jobs as reconcile_stuck_knowledge_jobs
@@ -128,6 +131,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
         reconcile_stuck_douyin_jobs(session)
         reconcile_stuck_offline_jobs(session)
+        reconcile_stuck_generation(session)
         from app.info.collector import reconcile_stuck_media
 
         reconcile_stuck_media(session)
@@ -157,6 +161,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         # 资讯收集：定时采集 + 媒体转存 worker + 保留清理
         background_tasks.extend(start_info_workers())
         background_tasks.append(asyncio.create_task(info_retention_loop()))
+        # 图片 / 视频生成：提交、轮询、结果转存
+        background_tasks.append(asyncio.create_task(generation_loop()))
         try:
             yield
         finally:
@@ -193,6 +199,8 @@ app.include_router(admin_info.router)
 app.include_router(admin_public_gate.router, dependencies=[Depends(get_current_admin)])
 app.include_router(admin_info.media_router)
 app.include_router(admin_integrations.router)
+app.include_router(admin_generation.router)
+app.include_router(admin_generation.asset_router)
 app.include_router(admin_skills.router)
 app.include_router(admin_skills.download_router)
 app.include_router(admin_skill_bundles.router)
