@@ -93,10 +93,15 @@ def replace_mcp_key_capabilities(db: Session, mcp_key: McpKey, capability_ids: l
             status_code=400,
             detail={"error": {"type": "invalid_request", "message": "白名单不能为空"}},
         )
+    # 保留仍在白名单内的能力配置，避免重新授权时丢失（如生成能力的模型选择）
+    kept = {item.capability_id: item.config_json for item in mcp_key.capabilities if item.capability_id in seen}
     for item in list(mcp_key.capabilities):
         db.delete(item)
     db.flush()
-    replacements = [McpKeyCapability(mcp_key_id=mcp_key.id, capability_id=cid) for cid in unique_ids]
+    replacements = [
+        McpKeyCapability(mcp_key_id=mcp_key.id, capability_id=cid, config_json=kept.get(cid, "{}"))
+        for cid in unique_ids
+    ]
     db.add_all(replacements)
     mcp_key.capabilities = replacements
     db.flush()

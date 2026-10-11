@@ -21,6 +21,8 @@ class McpToolDef:
     description: str
     input_schema: dict[str, Any]
     operation: str = ""
+    # 返回结构说明（写入接入文档与 AI 提示词，帮助调用方理解返回值）
+    returns: str = ""
 
     def resolved_operation(self) -> str:
         return self.operation or self.name

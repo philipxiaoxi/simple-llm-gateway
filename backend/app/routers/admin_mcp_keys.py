@@ -5,13 +5,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.capabilities import catalog_payload, ensure_defaults
-from app.crypto import decrypt_secret
 from app.config import get_settings
+from app.crypto import decrypt_secret
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import McpKey
-from app.schemas import McpKeyCapabilitiesUpdate, McpKeyCreate, McpKeyOut, McpKeyUpdate
+from app.schemas import McpCapabilityConfigUpdate, McpKeyCapabilitiesUpdate, McpKeyCreate, McpKeyOut, McpKeyUpdate
 from app.services.mcp_auth import allowed_capability_ids, create_mcp_key_record, replace_mcp_key_capabilities
+from app.services.mcp_key_config import all_capability_configs, set_capability_config
 
 router = APIRouter(prefix="/api/admin/mcp/keys", tags=["admin-mcp-keys"], dependencies=[Depends(get_current_admin)])
 
@@ -23,6 +24,7 @@ def _out(item: McpKey, key: str | None = None) -> McpKeyOut:
         key_prefix=item.key_prefix,
         status=item.status,
         capability_ids=[cap.capability_id for cap in item.capabilities],
+        capability_configs=all_capability_configs(item),
         created_at=item.created_at,
         last_used_at=item.last_used_at,
         key=key,
@@ -67,6 +69,23 @@ def put_capabilities(key_id: int, payload: McpKeyCapabilitiesUpdate, db: Session
     if item is None:
         raise HTTPException(404, "MCP Key 不存在")
     replace_mcp_key_capabilities(db, item, payload.capability_ids)
+    item = db.scalar(select(McpKey).where(McpKey.id == key_id).options(selectinload(McpKey.capabilities)))
+    assert item is not None
+    return _out(item)
+
+
+@router.put("/{key_id}/capabilities/{capability_id}/config", response_model=McpKeyOut)
+def put_capability_config(
+    key_id: int,
+    capability_id: str,
+    payload: McpCapabilityConfigUpdate,
+    db: Session = Depends(get_db),
+):
+    """写入某 Key 在某能力下的专属配置（如生成能力选用的模型）。"""
+    try:
+        set_capability_config(db, key_id, capability_id, payload.config)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
     item = db.scalar(select(McpKey).where(McpKey.id == key_id).options(selectinload(McpKey.capabilities)))
     assert item is not None
     return _out(item)

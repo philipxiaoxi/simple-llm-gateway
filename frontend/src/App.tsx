@@ -74,6 +74,7 @@ const McpSiteDetailPage = lazy(() =>
   import('./pages/McpSiteDetail').then((m) => ({ default: m.McpSiteDetailPage })),
 )
 const McpDouyinPage = lazy(() => import('./pages/McpDouyin').then((m) => ({ default: m.McpDouyinPage })))
+const McpGenerationPage = lazy(() => import('./pages/McpGeneration').then((m) => ({ default: m.McpGenerationPage })))
 const McpDouyinDetailPage = lazy(() =>
   import('./pages/McpDouyinDetail').then((m) => ({ default: m.McpDouyinDetailPage })),
 )
@@ -159,6 +160,7 @@ export default function App() {
                 <Route path="douyin/:jobId" element={<McpDouyinDetailPage />} />
                 <Route path="diagrams" element={<McpDiagramsPage />} />
                 <Route path="diagrams/:siteId" element={<McpDiagramDetailPage />} />
+                <Route path="generation" element={<McpGenerationPage />} />
                 <Route path="keys" element={<McpKeysPage />} />
                 <Route path="calls" element={<McpCallsPage />} />
                 <Route path="docs" element={<McpDocsPage />} />
