@@ -56,19 +56,31 @@ def _fetch_remote(url: str, max_bytes: int) -> tuple[bytes, str]:
         except InfoError as error:
             raise CapabilityError(error.message, status_code=400, error_type=error.error_type) from error
         try:
-            with httpx.Client(timeout=timeout, follow_redirects=False) as client:
-                response = client.get(current)
+            with (
+                httpx.Client(timeout=timeout, follow_redirects=False) as client,
+                client.stream("GET", current) as response,
+            ):
+                if response.is_redirect and response.headers.get("location"):
+                    current = urljoin(current, response.headers["location"])
+                    continue
+                if response.status_code >= 400:
+                    raise CapabilityError(
+                        f"下载参考素材失败：HTTP {response.status_code}",
+                        status_code=400,
+                        error_type="invalid_request",
+                    )
+                content_type = (response.headers.get("content-type") or "").split(";")[0].strip()
+                chunks: list[bytes] = []
+                size = 0
+                for chunk in response.iter_bytes():
+                    size += len(chunk)
+                    # 边下边校验，避免恶意大响应在体积检查前就撑爆内存
+                    if size > max_bytes:
+                        raise CapabilityError("参考素材超过大小上限", status_code=400, error_type="invalid_request")
+                    chunks.append(chunk)
+                return b"".join(chunks), content_type
         except httpx.HTTPError as error:
             raise CapabilityError(f"下载参考素材失败：{error}", status_code=400, error_type="invalid_request") from error
-        if response.is_redirect and response.headers.get("location"):
-            current = urljoin(current, response.headers["location"])
-            continue
-        if response.status_code >= 400:
-            raise CapabilityError(f"下载参考素材失败：HTTP {response.status_code}", status_code=400, error_type="invalid_request")
-        if len(response.content) > max_bytes:
-            raise CapabilityError("参考素材超过大小上限", status_code=400, error_type="invalid_request")
-        content_type = (response.headers.get("content-type") or "").split(";")[0].strip()
-        return response.content, content_type
     raise CapabilityError("参考素材重定向次数过多", status_code=400, error_type="invalid_request")
 
 

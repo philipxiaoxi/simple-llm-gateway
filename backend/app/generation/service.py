@@ -19,6 +19,7 @@ import time
 import uuid
 from contextlib import suppress
 from typing import Any
+from urllib.parse import urljoin
 
 import httpx
 from sqlalchemy import select
@@ -40,11 +41,14 @@ from app.generation.base import (
     ProviderAdapter,
     ProviderError,
 )
+from app.info.errors import InfoError
 from app.info.media import probe_image_size
 from app.info.tokens import make_token
+from app.info.urlguard import assert_safe_url
 from app.models import GenerationAsset, GenerationProvider, GenerationSettings, GenerationTask
 
 _TERMINAL = {STATUS_SUCCEEDED, STATUS_FAILED, STATUS_VIOLATION}
+_MAX_RESULT_REDIRECTS = 3
 
 
 class GenerationError(Exception):
@@ -800,34 +804,49 @@ def _download_result(
     task_id: str, asset_id: str, remote_url: str, max_bytes: int
 ) -> dict[str, Any]:
     settings = get_settings()
-    if not remote_url.startswith(("http://", "https://")):
-        raise ProviderError("结果地址无效")
     timeout = httpx.Timeout(max(30, int(settings.generation_http_timeout_seconds)), connect=10)
-    with (
-        httpx.Client(timeout=timeout, follow_redirects=True) as client,
-        client.stream("GET", remote_url) as response,
-    ):
-        response.raise_for_status()
-        content_type = (response.headers.get("content-type") or "").split(";")[0].strip()
-        kind = "video" if content_type.startswith("video/") else "image"
-        ext = storage.guess_extension(content_type, kind)
-        stored_name = f"{asset_id}{ext}"
-        target = storage.task_dir(task_id) / stored_name
-        tmp = target.with_suffix(target.suffix + ".part")
-        size = 0
-        with tmp.open("wb") as handle:
-            for chunk in response.iter_bytes():
-                size += len(chunk)
-                if size > max_bytes:
-                    handle.close()
-                    tmp.unlink(missing_ok=True)
-                    raise ProviderError("结果文件超过大小上限")
-                handle.write(chunk)
-        tmp.replace(target)
+    stored_name = ""
+    content_type = ""
+    size = 0
+    current = remote_url
+    with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+        for _ in range(_MAX_RESULT_REDIRECTS + 1):
+            if not current.startswith(("http://", "https://")):
+                raise ProviderError("结果地址无效")
+            try:
+                # 上游返回的结果地址也逐跳校验，避免被重定向到内网
+                assert_safe_url(current)
+            except InfoError as error:
+                raise ProviderError(f"结果地址不安全：{error.message}") from error
+            with client.stream("GET", current) as response:
+                if response.is_redirect and response.headers.get("location"):
+                    current = urljoin(current, response.headers["location"])
+                    continue
+                if response.status_code >= 400:
+                    raise ProviderError(f"下载结果失败：HTTP {response.status_code}")
+                content_type = (response.headers.get("content-type") or "").split(";")[0].strip()
+                kind = "video" if content_type.startswith("video/") else "image"
+                ext = storage.guess_extension(content_type, kind)
+                stored_name = f"{asset_id}{ext}"
+                target = storage.task_dir(task_id) / stored_name
+                tmp = target.with_suffix(target.suffix + ".part")
+                with tmp.open("wb") as handle:
+                    for chunk in response.iter_bytes():
+                        size += len(chunk)
+                        if size > max_bytes:
+                            handle.close()
+                            tmp.unlink(missing_ok=True)
+                            raise ProviderError("结果文件超过大小上限")
+                        handle.write(chunk)
+                tmp.replace(target)
+                break
+        else:
+            raise ProviderError("结果地址重定向次数过多")
 
     width = height = None
     thumb_filename: str | None = None
-    if kind == "image":
+    if not content_type.startswith("video/"):
+        target = storage.task_dir(task_id) / stored_name
         width, height = probe_image_size(target)
         thumb_name = f"{asset_id}-thumb.jpg"
         if storage.make_thumbnail(target, storage.task_dir(task_id) / thumb_name):
