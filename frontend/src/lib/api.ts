@@ -1199,6 +1199,11 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ capability_ids }),
     }),
+  updateMcpKeyCapabilityConfig: (id: number, capabilityId: string, config: Record<string, unknown>) =>
+    request<McpKeyItem>(`/api/admin/mcp/keys/${id}/capabilities/${encodeURIComponent(capabilityId)}/config`, {
+      method: 'PUT',
+      body: JSON.stringify({ config }),
+    }),
   deleteMcpKey: (id: number) => request<void>(`/api/admin/mcp/keys/${id}`, { method: 'DELETE' }),
   mcpKnowledgeBases: () => request<McpKnowledgeBase[]>('/api/admin/mcp/knowledge/bases'),
   mcpKnowledgeEmbeddingAccounts: () =>
@@ -1762,6 +1767,18 @@ function uploadSite(
   })
 }
 
+export type McpKeyItem = {
+  id: number
+  name: string
+  key_prefix: string
+  status: string
+  capability_ids: string[]
+  capability_configs?: Record<string, Record<string, unknown>>
+  created_at: string
+  last_used_at: string | null
+  key?: string | null
+}
+
 export type McpCatalogItem = {
   capability_id: string
   name: string
@@ -1772,18 +1789,7 @@ export type McpCatalogItem = {
   admin_path: string
   icon: string
   input_schema: Record<string, unknown>
-  tools: { name: string; description: string; operation: string; input_schema: Record<string, unknown> }[]
-}
-
-export type McpKeyItem = {
-  id: number
-  name: string
-  key_prefix: string
-  status: string
-  capability_ids: string[]
-  created_at: string
-  last_used_at: string | null
-  key?: string | null
+  tools: { name: string; description: string; operation: string; input_schema: Record<string, unknown>; returns?: string }[]
 }
 
 export type McpCapabilityIntegration = {
@@ -1803,7 +1809,7 @@ export type McpIntegrationCapability = {
   input_schema: Record<string, unknown>
   integration: McpCapabilityIntegration
   authorized: boolean
-  tools: { name: string; description: string; operation: string; input_schema: Record<string, unknown> }[]
+  tools: { name: string; description: string; operation: string; input_schema: Record<string, unknown>; returns?: string }[]
 }
 
 export type McpKeyIntegration = {
@@ -2546,6 +2552,8 @@ export type GenerationAsset = {
   status: string
   error_message: string | null
   url?: string
+  // 图片缩略图（列表页用）；无缩略图时前端回退到 url
+  thumb_url?: string
 }
 
 export type GenerationTask = {

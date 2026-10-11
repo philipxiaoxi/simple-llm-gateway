@@ -89,3 +89,40 @@ export function formatTime(value: string | null) {
 export function resultThumb(task: GenerationTask) {
   return task.results.find((asset) => asset.status === 'ready' && asset.url)
 }
+
+export const GENERATION_EXAMPLES: Record<string, string[]> = {
+  image: [
+    '一只边牧与古牧在直播间直播带货，桌面摆满零食，暖色灯光，写实摄影，高细节',
+    '赛博朋克风格的雨夜街道，霓虹倒影，电影感构图，冷色调，高细节',
+    '极简北欧风产品海报，纯色背景，柔和自然光，大量留白，高级质感',
+  ],
+  video: [
+    '深夜未来都市街头，暴雨倾盆，霓虹映在湿漉漉的地面，镜头缓慢推进，电影级写实',
+    '海边日落，海浪拍打礁石，慢镜头，温暖色调，无人机缓慢环绕运镜',
+    '一杯热咖啡放在木桌上，热气升腾，镜头缓慢环绕，清晨窗边柔光',
+  ],
+}
+
+export function pickExample(kind: string) {
+  const list = GENERATION_EXAMPLES[kind] ?? []
+  if (!list.length) return ''
+  return list[Math.floor(Math.random() * list.length)]
+}
+
+export type GenerationPreset = {
+  // 每次复用都换一个 nonce，保证选择同一张作品也能重新填充
+  nonce: number
+  model: string
+  prompt: string
+  params: Record<string, unknown>
+}
+
+export function presetFromTask(task: GenerationTask): GenerationPreset {
+  const params: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(task.params || {})) {
+    if (value === '' || value === null || value === undefined) continue
+    params[key] = value
+  }
+  return { nonce: Date.now() + Math.random(), model: task.model, prompt: task.prompt, params }
+}
+

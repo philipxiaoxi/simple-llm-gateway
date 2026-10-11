@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, RotateCcw, Trash2 } from 'lucide-react'
-import { api } from '../lib/api'
+import { Download, RotateCcw, Trash2, Wand2 } from 'lucide-react'
+import { api, type GenerationTask } from '../lib/api'
 import { formatBytes, formatTime, isTaskActive, statusLabel, statusTone, taskParamSummary } from '../lib/generation'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage } from '../lib/utils'
@@ -10,10 +10,12 @@ export function GenerationTaskDialog({
   taskId,
   onClose,
   onChanged,
+  onReuse,
 }: {
   taskId: string | null
   onClose: () => void
   onChanged: () => void
+  onReuse: (task: GenerationTask) => void
 }) {
   const queryClient = useQueryClient()
   const query = useQuery({
@@ -136,7 +138,18 @@ export function GenerationTaskDialog({
           ) : null}
 
           <div className="flex flex-wrap justify-between gap-2 border-t border-line pt-3">
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="line"
+                disabled={pending}
+                onClick={() => {
+                  onReuse(task)
+                  onClose()
+                }}
+              >
+                <Wand2 size={14} /> 复用参数
+              </Button>
               {task.status === 'failed' || task.status === 'violation' ? (
                 <Button type="button" variant="line" disabled={pending} onClick={() => retry.mutate()}>
                   <RotateCcw size={14} /> 重试
