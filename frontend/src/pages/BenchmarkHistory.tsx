@@ -20,6 +20,10 @@ function speed(value?: number | null) {
   return value === null || value === undefined ? '—' : `${value} tok/s`
 }
 
+function intSpeed(value?: number | null) {
+  return value === null || value === undefined ? '—' : String(Math.round(value))
+}
+
 function ms(value?: number | null) {
   return value === null || value === undefined ? '—' : `${value} ms`
 }
@@ -170,17 +174,20 @@ function Leaderboard({ items, isLoading }: { items: BenchmarkLeaderboardItem[]; 
       </div>
       <div className="grid gap-2 p-3 lg:hidden">
         {items.map((item) => (
-          <div key={`${item.account_id}-${item.model}`} className="flex items-center gap-3 border border-line p-3">
-            <span className="flex w-7 shrink-0 items-center justify-center">
-              <RankBadge rank={item.rank} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-medium" title={item.model}>{item.model}</div>
-              <div className="truncate text-xs text-mist" title={item.account_name}>{item.account_name} · {item.provider}</div>
+          <div key={`${item.account_id}-${item.model}`} className="min-w-0 overflow-hidden border border-line p-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="flex w-6 shrink-0 items-center justify-center">
+                <RankBadge rank={item.rank} />
+              </span>
+              <span className="min-w-0 flex-1 truncate font-medium" title={item.model}>{item.model}</span>
+              <span className="shrink-0 whitespace-nowrap font-mono text-sm text-signal">
+                {intSpeed(item.avg_speed)}
+                <span className="ml-0.5 text-[10px] text-mist">tok/s</span>
+              </span>
             </div>
-            <div className="shrink-0 text-right">
-              <div className="font-mono text-sm text-signal">{speed(item.avg_speed)}</div>
-              <div className="text-[11px] text-mist">{item.samples} 次</div>
+            <div className="mt-1 flex min-w-0 items-center justify-between gap-2 text-xs text-mist">
+              <span className="min-w-0 truncate" title={item.account_name}>{item.account_name} · {item.provider}</span>
+              <span className="shrink-0">{item.samples} 次</span>
             </div>
           </div>
         ))}
@@ -215,7 +222,7 @@ export function BenchmarkHistoryPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0 lg:flex-1">
           <div className="mb-2 font-mono text-xs tracking-[0.28em] text-signal">BENCHMARK ARCHIVE</div>
