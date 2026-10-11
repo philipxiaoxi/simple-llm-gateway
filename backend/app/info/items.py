@@ -15,10 +15,11 @@ import re
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
-from app.info import tokens
+from app.clock import utcnow
+from app.info import storage, tokens
 from app.info.adapters import DISPLAY_MEDIA_KINDS
 from app.info.content_style import adapt_dark_theme
 from app.models import InfoItem, InfoMedia, InfoSource
@@ -195,6 +196,51 @@ def get_item(db: Session, item_id: str) -> InfoItem | None:
     return db.get(
         InfoItem, item_id, options=[selectinload(InfoItem.media), selectinload(InfoItem.source)]
     )
+
+
+def delete_items(db: Session, item_ids: list[str]) -> int:
+    """删除条目（含媒体行与磁盘文件）。返回实际删除的条数。
+
+    媒体行通过关系级联删除；磁盘文件在 flush 之后清理，和 `collector.delete_source`
+    的清理时机保持一致（由调用方 commit）。
+    """
+    ids = list(dict.fromkeys(item_ids))
+    if not ids:
+        return 0
+    rows = list(db.scalars(select(InfoItem).where(InfoItem.id.in_(ids))))
+    if not rows:
+        return 0
+    source_ids = {row.source_id for row in rows if row.source_id}
+    deleted = len(rows)
+    for row in rows:
+        db.delete(row)
+    db.flush()
+    for row in rows:
+        storage.purge_item(row.id)
+    # 同步渠道的条目计数，避免渠道列表显示已删除内容的旧数量
+    for source_id in source_ids:
+        source = db.get(InfoSource, source_id)
+        if source is None:
+            continue
+        source.item_count = int(
+            db.scalar(
+                select(func.count()).select_from(InfoItem).where(InfoItem.source_id == source_id)
+            )
+            or 0
+        )
+        source.updated_at = utcnow()
+    return deleted
+
+
+def skip_items(db: Session, item_ids: list[str]) -> int:
+    """把条目标记为「已跳过」，不再参与后续判定。返回实际更新的条数。"""
+    ids = list(dict.fromkeys(item_ids))
+    if not ids:
+        return 0
+    result = db.execute(
+        update(InfoItem).where(InfoItem.id.in_(ids)).values(ai_status="skipped", ai_error="")
+    )
+    return int(result.rowcount or 0)
 
 
 def _media_url(media: InfoMedia) -> str:

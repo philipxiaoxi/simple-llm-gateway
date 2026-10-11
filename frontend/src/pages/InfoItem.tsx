@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Copy, ExternalLink, Eye, EyeOff, Heart, ImageOff, Sparkles, Star, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Copy, ExternalLink, Eye, EyeOff, Heart, ImageOff, Sparkles, Star, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { InfoTextCover } from '../components/InfoTextCover'
@@ -226,6 +226,16 @@ export function InfoItemPage() {
     onError: (caught) => notifyBad(errorMessage(caught, '操作失败')),
   })
 
+  const remove = useMutation({
+    mutationFn: () => api.infoItemDelete(itemId),
+    onSuccess: () => {
+      removeInfoItemFromCaches(queryClient, itemId)
+      notifyOk('已删除该内容')
+      close()
+    },
+    onError: (caught) => notifyBad(errorMessage(caught, '删除失败')),
+  })
+
   function markBroken(id: string) {
     setBroken((previous) => ({ ...previous, [id]: true }))
   }
@@ -286,6 +296,19 @@ export function InfoItemPage() {
           >
             {item?.is_hidden ? <Eye size={14} /> : <EyeOff size={14} />}
             {item?.is_hidden ? '取消隐藏' : '隐藏'}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label="删除"
+            disabled={!item || remove.isPending}
+            onClick={() => {
+              if (window.confirm('删除该内容？相关媒体文件也会一并删除。')) remove.mutate()
+            }}
+            className="min-h-9 px-2 py-1 text-xs text-danger hover:text-danger"
+          >
+            <Trash2 size={14} />
+            <span className="hidden sm:inline">删除</span>
           </Button>
         </div>
       </div>
