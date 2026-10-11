@@ -6,15 +6,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from typing import Any
+from urllib.parse import urljoin
 
 import httpx
 
 from app.capabilities.base import CallContext, CapabilityError, CapabilitySpec, McpToolDef
 from app.config import get_settings
 from app.db import get_session_factory
-from app.generation import catalog, service
+from app.generation import catalog, service, storage
+from app.info.errors import InfoError
+from app.info.urlguard import assert_safe_url
 from app.services.mcp_key_config import get_capability_config
 
 CAPABILITY_ID = "generation"
@@ -34,9 +38,38 @@ _MEDIA_ITEM = {
 _TASK_RETURN = (
     '{job_id, kind: "image"|"video", model, status: "queued"|"running"|"succeeded"|"failed"|"violation", '
     "progress: 0-100, error, params, inputs: [{id,kind,content_type,width,height,status,url}], "
-    "results: [{id,kind,content_type,width,height,status,error_message,url,thumb_url,download_url}], "
-    "created_at, finished_at}；status=succeeded 且结果 status=ready 时 download_url 可直接下载。"
+    "results: [{id,kind,content_type,width,height,status,error_message,remote_url,url,thumb_url,download_url}], "
+    "created_at, finished_at}；status=succeeded 且结果 status=ready 时 download_url 可直接下载，未转存完时可用 remote_url。"
 )
+
+_MAX_REDIRECTS = 3
+
+
+def _fetch_remote(url: str, max_bytes: int) -> tuple[bytes, str]:
+    """下载远程参考素材：逐跳校验主机（拒绝内网/回环），限制重定向次数与体积，防 SSRF。"""
+    settings = get_settings()
+    timeout = httpx.Timeout(max(10, settings.generation_http_timeout_seconds), connect=10)
+    current = url
+    for _ in range(_MAX_REDIRECTS + 1):
+        try:
+            assert_safe_url(current)
+        except InfoError as error:
+            raise CapabilityError(error.message, status_code=400, error_type=error.error_type) from error
+        try:
+            with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+                response = client.get(current)
+        except httpx.HTTPError as error:
+            raise CapabilityError(f"下载参考素材失败：{error}", status_code=400, error_type="invalid_request") from error
+        if response.is_redirect and response.headers.get("location"):
+            current = urljoin(current, response.headers["location"])
+            continue
+        if response.status_code >= 400:
+            raise CapabilityError(f"下载参考素材失败：HTTP {response.status_code}", status_code=400, error_type="invalid_request")
+        if len(response.content) > max_bytes:
+            raise CapabilityError("参考素材超过大小上限", status_code=400, error_type="invalid_request")
+        content_type = (response.headers.get("content-type") or "").split(";")[0].strip()
+        return response.content, content_type
+    raise CapabilityError("参考素材重定向次数过多", status_code=400, error_type="invalid_request")
 
 
 class GenerationProvider:
@@ -219,11 +252,11 @@ class GenerationProvider:
         key_id = ctx.mcp_key.id
         try:
             if operation in {"image_generate", "image"}:
-                return self._generate(ctx, payload, "image")
+                return await self._generate(ctx, payload, "image")
             if operation in {"video_generate", "video"}:
-                return self._generate(ctx, payload, "video")
+                return await self._generate(ctx, payload, "video")
             if operation in {"generation_job", "job"}:
-                return self._job(ctx, payload)
+                return await self._job(ctx, payload)
             if operation in {"generation_result", "result"}:
                 return self._result(ctx, payload)
             if operation in {"generation_list", "list"}:
@@ -238,7 +271,7 @@ class GenerationProvider:
 
     # ------------------------------------------------------------------ #
 
-    def _generate(self, ctx: CallContext, payload: dict[str, Any], kind: str) -> dict[str, Any]:
+    async def _generate(self, ctx: CallContext, payload: dict[str, Any], kind: str) -> dict[str, Any]:
         assert ctx.mcp_key is not None
         model = self._resolve_model(ctx, kind)
         if not model:
@@ -263,17 +296,23 @@ class GenerationProvider:
             mcp_key_id=ctx.mcp_key.id,
         )
         max_bytes = get_settings().generation_max_input_bytes
-        for item in payload.get("images") or []:
-            raw, ctype = self._load_source(item, max_bytes)
-            service.add_task_input(ctx.db, task, data=raw, content_type=ctype)
-        if spec.supports_audios:
-            for item in payload.get("audios") or []:
-                raw, ctype = self._load_source(item, max_bytes)
+        try:
+            for item in payload.get("images") or []:
+                raw, ctype = await asyncio.to_thread(self._load_source, item, max_bytes)
                 service.add_task_input(ctx.db, task, data=raw, content_type=ctype)
-        ctx.db.commit()
+            if spec.supports_audios:
+                for item in payload.get("audios") or []:
+                    raw, ctype = await asyncio.to_thread(self._load_source, item, max_bytes)
+                    service.add_task_input(ctx.db, task, data=raw, content_type=ctype)
+            ctx.db.commit()
+        except Exception:
+            # 任务尚未落库，清掉已写入的参考文件，避免残留
+            ctx.db.rollback()
+            storage.purge_task(task.id)
+            raise
         wait = self._wait_seconds(payload.get("wait_seconds"))
-        service.run_task_inline(task.id, wait)
-        return self._payload(ctx, task.id)
+        await asyncio.to_thread(service.run_task_inline, task.id, wait)
+        return await asyncio.to_thread(self._payload, ctx, task.id)
 
     def _resolve_model(self, ctx: CallContext, kind: str) -> str:
         """模型来源：Key 级覆盖（如有）→ 服务目录中配置的全局默认模型。"""
@@ -319,23 +358,14 @@ class GenerationProvider:
             except (ValueError, TypeError) as error:
                 raise CapabilityError("data URL 解析失败", status_code=400, error_type="invalid_request") from error
         elif text.startswith(("http://", "https://")):
-            settings = get_settings()
-            timeout = httpx.Timeout(max(10, settings.generation_http_timeout_seconds), connect=10)
-            try:
-                with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-                    response = client.get(text)
-                    response.raise_for_status()
-                    content_type = (response.headers.get("content-type") or "").split(";")[0].strip()
-                    raw = response.content
-            except httpx.HTTPError as error:
-                raise CapabilityError(f"下载参考素材失败：{error}", status_code=400, error_type="invalid_request") from error
+            raw, content_type = _fetch_remote(text, max_bytes)
         else:
             raise CapabilityError("参考素材需为 http(s) 链接或 data URL", status_code=400, error_type="invalid_request")
         if len(raw) > max_bytes:
             raise CapabilityError("参考素材超过大小上限", status_code=400, error_type="invalid_request")
         return raw, content_type
 
-    def _job(self, ctx: CallContext, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _job(self, ctx: CallContext, payload: dict[str, Any]) -> dict[str, Any]:
         assert ctx.mcp_key is not None
         task_id = str(payload.get("job_id") or "").strip()
         task = service.get_task_for_key(ctx.db, task_id, ctx.mcp_key.id)
@@ -344,8 +374,8 @@ class GenerationProvider:
         if task.status not in {"succeeded", "failed", "violation"}:
             wait = self._wait_seconds(payload.get("wait_seconds"))
             ctx.db.commit()
-            service.run_task_inline(task_id, wait)
-        return self._payload(ctx, task_id)
+            await asyncio.to_thread(service.run_task_inline, task_id, wait)
+        return await asyncio.to_thread(self._payload, ctx, task_id)
 
     def _result(self, ctx: CallContext, payload: dict[str, Any]) -> dict[str, Any]:
         assert ctx.mcp_key is not None
