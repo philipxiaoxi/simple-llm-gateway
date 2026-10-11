@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.clock import now_shanghai, to_shanghai, utcnow
 from app.db import get_db
 from app.deps import get_current_admin
-from app.models import Admin, BenchmarkResult, BenchmarkRun
+from app.models import Admin, BenchmarkGroup, BenchmarkResult, BenchmarkRun
 
 router = APIRouter(
     prefix="/api/admin/benchmark/history",
@@ -41,6 +41,7 @@ class BenchmarkResultInput(BaseModel):
 class SaveBenchmarkRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=2000)
     max_tokens: int = Field(ge=1, le=512)
+    group_id: int | None = Field(default=None, ge=1)
     results: list[BenchmarkResultInput] = Field(min_length=1, max_length=1000)
 
 
@@ -68,6 +69,8 @@ def run_to_dict(run: BenchmarkRun, include_results: bool = True) -> dict[str, An
         "id": run.id,
         "prompt": run.prompt,
         "max_tokens": run.max_tokens,
+        "group_id": run.group_id,
+        "group_name": run.group_name,
         "created_at": run.created_at.isoformat(),
         "result_count": len(run.results),
         "success_count": sum(1 for result in run.results if result.ok),
@@ -84,6 +87,8 @@ def run_summary_to_dict(run: BenchmarkRun, counts: tuple[int, int]) -> dict[str,
         "id": run.id,
         "prompt": run.prompt,
         "max_tokens": run.max_tokens,
+        "group_id": run.group_id,
+        "group_name": run.group_name,
         "created_at": run.created_at.isoformat(),
         "result_count": int(result_count or 0),
         "success_count": int(success_count or 0),
@@ -97,6 +102,12 @@ def save_benchmark(
     _: Admin = Depends(get_current_admin),
 ) -> dict[str, Any]:
     run = BenchmarkRun(prompt=payload.prompt, max_tokens=payload.max_tokens, created_at=utcnow())
+    if payload.group_id is not None:
+        group = db.scalar(select(BenchmarkGroup).where(BenchmarkGroup.id == payload.group_id))
+        if group is None:
+            raise HTTPException(status_code=400, detail="分组不存在")
+        run.group_id = group.id
+        run.group_name = group.name
     for item in payload.results:
         run.results.append(
             BenchmarkResult(
@@ -125,12 +136,19 @@ def save_benchmark(
 def list_benchmark_runs(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    group_id: int | None = Query(default=None, ge=1),
+    include_results: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    total = db.scalar(select(func.count()).select_from(BenchmarkRun)) or 0
+    filters = []
+    if group_id is not None:
+        filters.append(BenchmarkRun.group_id == group_id)
+    total = db.scalar(select(func.count()).select_from(BenchmarkRun).where(*filters)) or 0
+    statement = select(BenchmarkRun).where(*filters)
+    if include_results:
+        statement = statement.options(selectinload(BenchmarkRun.results))
     rows = db.scalars(
-        select(BenchmarkRun)
-        .order_by(BenchmarkRun.created_at.desc(), BenchmarkRun.id.desc())
+        statement.order_by(BenchmarkRun.created_at.desc(), BenchmarkRun.id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
@@ -148,7 +166,12 @@ def list_benchmark_runs(
             .group_by(BenchmarkResult.run_id)
         ).all()
     }
-    items = [run_summary_to_dict(row, counts.get(row.id, (0, 0))) for row in rows]
+    items = []
+    for row in rows:
+        item = run_summary_to_dict(row, counts.get(row.id, (0, 0)))
+        if include_results:
+            item["results"] = [result_to_dict(result) for result in row.results]
+        items.append(item)
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
