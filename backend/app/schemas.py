@@ -793,12 +793,17 @@ class McpKeyCapabilitiesUpdate(BaseModel):
     capability_ids: list[str] = Field(min_length=1)
 
 
+class McpCapabilityConfigUpdate(BaseModel):
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
 class McpKeyOut(BaseModel):
     id: int
     name: str
     key_prefix: str
     status: str
     capability_ids: list[str]
+    capability_configs: dict[str, dict[str, Any]] = Field(default_factory=dict)
     created_at: datetime
     last_used_at: datetime | None = None
     key: str | None = None

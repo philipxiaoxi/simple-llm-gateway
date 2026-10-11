@@ -10,6 +10,7 @@ import {
   buildMcpClientConfig,
   buildMcpPrompt,
   buildRestPrompt,
+  describeTool,
   type IntegrationInput,
 } from '../lib/mcpIntegration'
 import { notifyBad, notifyOk } from '../lib/toast'
@@ -47,8 +48,9 @@ function ToolList({ capabilities }: { capabilities: McpIntegrationCapability[] }
     <div className="space-y-1.5">
       {tools.map((tool) => (
         <div key={tool.name} className="rounded-md border border-line bg-ink/50 px-3 py-2">
-          <div className="font-mono text-xs text-paper">{tool.name}</div>
-          <div className="mt-0.5 break-words text-xs text-mist [overflow-wrap:anywhere]">{tool.description}</div>
+          <pre className="min-w-0 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-mist [overflow-wrap:anywhere]">
+            {describeTool(tool)}
+          </pre>
         </div>
       ))}
     </div>
@@ -262,6 +264,11 @@ export function McpDocsPage() {
                           </div>
                         ) : null}
                       </div>
+                      {capability.tools.length ? (
+                        <pre className="mt-2 min-w-0 whitespace-pre-wrap break-words rounded-md border border-line bg-panel/60 p-2 font-mono text-[11px] leading-5 text-mist [overflow-wrap:anywhere]">
+                          {capability.tools.map((tool) => describeTool(tool)).join('\n\n')}
+                        </pre>
+                      ) : null}
                     </div>
                   ))}
                   {!authorized.length ? <div className="text-sm text-mist">该 Key 没有可用能力。</div> : null}

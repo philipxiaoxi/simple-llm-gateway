@@ -66,6 +66,7 @@ def catalog_payload(*, only_enabled: bool = True) -> list[dict]:
                         "description": tool.description,
                         "operation": tool.resolved_operation(),
                         "input_schema": tool.input_schema,
+                        "returns": tool.returns,
                     }
                     for tool in tools
                 ],
@@ -96,6 +97,10 @@ def ensure_defaults() -> None:
         from app.capabilities.info.provider import InfoReportProvider
 
         register(InfoReportProvider())
+    if "generation" not in _providers:
+        from app.capabilities.generation.provider import GenerationProvider
+
+        register(GenerationProvider())
     if "diagram" not in _providers:
         from app.config import get_settings
 
