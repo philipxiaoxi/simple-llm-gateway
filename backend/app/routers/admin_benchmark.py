@@ -26,6 +26,7 @@ from app.services.benchmark import (
 )
 from app.services.bridge import ensure_stream_usage
 from app.services.credentials import CredentialError, require_upstream_credential
+from app.services.model_caps import parse_model_records
 
 router = APIRouter(prefix="/api/admin/benchmark", tags=["admin-benchmark"], dependencies=[Depends(get_current_admin)])
 
@@ -166,6 +167,28 @@ def _leaderboard_rows(db: Session, limit: int) -> list[Any]:
     )
 
 
+def _valid_leaderboard_rows(db: Session, rows: list[Any]) -> list[Any]:
+    """只保留账号仍存在、且模型仍在账号模型清单中的行；已删除/不存在的账号或模型不参与排名。"""
+    account_ids = {row.account_id for row in rows}
+    if not account_ids:
+        return []
+    accounts = {
+        account.id: account
+        for account in db.scalars(select(UpstreamAccount).where(UpstreamAccount.id.in_(account_ids))).all()
+    }
+    catalogs: dict[int, set[str]] = {}
+    valid: list[Any] = []
+    for row in rows:
+        account = accounts.get(row.account_id)
+        if account is None:
+            continue
+        if row.account_id not in catalogs:
+            catalogs[row.account_id] = {record.id for record in parse_model_records(account.models_json)}
+        if row.model in catalogs[row.account_id]:
+            valid.append(row)
+    return valid
+
+
 def _leaderboard_item(index: int, row: Any) -> dict[str, Any]:
     return {
         "rank": index + 1,
@@ -189,7 +212,7 @@ def benchmark_leaderboard(
     _: Admin = Depends(get_current_admin),
 ) -> dict[str, Any]:
     """按「账号 × 模型」聚合已保存测速结果的输出速度，按平均速度排名。"""
-    rows = _leaderboard_rows(db, limit)
+    rows = _valid_leaderboard_rows(db, _leaderboard_rows(db, max(limit, 500)))[:limit]
     return {"items": [_leaderboard_item(index, row) for index, row in enumerate(rows)]}
 
 
@@ -198,7 +221,7 @@ def export_benchmark_leaderboard(
     limit: int = Query(default=500, ge=1, le=2000),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    rows = _leaderboard_rows(db, limit)
+    rows = _valid_leaderboard_rows(db, _leaderboard_rows(db, max(limit, 500)))[:limit]
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["排名", "模型", "账号", "供应商", "平均速度(tok/s)", "最佳速度(tok/s)", "样本", "平均首token(ms)", "平均总耗时(ms)", "最近测试"])

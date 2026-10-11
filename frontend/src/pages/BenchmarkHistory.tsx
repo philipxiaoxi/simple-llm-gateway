@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Download, Gauge, Trophy } from 'lucide-react'
 import { useState } from 'react'
 import { Pagination } from '../components/Pagination'
-import { Button, Card, Select } from '../components/ui'
+import { Button, Card, Dialog, Select } from '../components/ui'
 import { api, type BenchmarkLeaderboardItem, type BenchmarkResult, type BenchmarkRun } from '../lib/api'
 import { notifyBad } from '../lib/toast'
 import { cn, errorMessage, formatTime, shanghaiDateStamp } from '../lib/utils'
@@ -127,12 +127,7 @@ function ExportMenu() {
 
 function Leaderboard({ items, isLoading }: { items: BenchmarkLeaderboardItem[]; isLoading: boolean }) {
   return (
-    <Card className="overflow-hidden p-0">
-      <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
-        <Trophy size={17} className="text-signal" />
-        <h2 className="font-semibold">速度排行榜</h2>
-        <span className="text-xs text-mist">按账号 × 模型的平均输出速度排名</span>
-      </div>
+    <div className="overflow-hidden border border-line">
       <div className="hidden overflow-x-auto lg:block">
         <table className="w-full text-left text-sm">
           <thead className="bg-panel-2 text-mist">
@@ -193,19 +188,21 @@ function Leaderboard({ items, isLoading }: { items: BenchmarkLeaderboardItem[]; 
         ))}
         {!isLoading && !items.length ? <div className="px-3 py-8 text-center text-sm text-mist">还没有可排名的测速数据</div> : null}
       </div>
-    </Card>
+    </div>
   )
 }
 
 export function BenchmarkHistoryPage() {
   const [page, setPage] = useState(1)
   const [groupFilter, setGroupFilter] = useState('')
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false)
   const pageSize = 10
   const { data: groupsData } = useQuery({ queryKey: ['benchmark-groups'], queryFn: api.benchmarkGroups })
   const groups = groupsData?.items ?? []
   const { data: leaderboard, isLoading: leaderboardLoading } = useQuery({
     queryKey: ['benchmark-leaderboard'],
     queryFn: api.benchmarkLeaderboard,
+    enabled: leaderboardOpen,
   })
   const { data, isLoading } = useQuery({
     queryKey: ['benchmark-history', page, groupFilter],
@@ -227,12 +224,16 @@ export function BenchmarkHistoryPage() {
         <div className="min-w-0 lg:flex-1">
           <div className="mb-2 font-mono text-xs tracking-[0.28em] text-signal">BENCHMARK ARCHIVE</div>
           <h1 className="text-2xl font-semibold">测速历史</h1>
-          <p className="mt-1 text-sm text-mist">速度排行榜与全部保存的测速会话，结果直接平铺展示。</p>
+          <p className="mt-1 text-sm text-mist">全部保存的测速会话，结果直接平铺展示；速度排行榜见右上角。</p>
         </div>
-        <ExportMenu />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="line" onClick={() => setLeaderboardOpen(true)}>
+            <Trophy size={16} />
+            速度排行榜
+          </Button>
+          <ExportMenu />
+        </div>
       </div>
-
-      <Leaderboard items={leaderboard?.items ?? []} isLoading={leaderboardLoading} />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-semibold">测速会话</h2>
@@ -288,6 +289,17 @@ export function BenchmarkHistoryPage() {
         <Gauge size={14} />
         每次在模型测速页完成测速后，会自动保存一组会话到这里。
       </div>
+
+      {leaderboardOpen ? (
+        <Dialog
+          title="速度排行榜"
+          className="my-6 max-h-[80vh] max-w-4xl overflow-y-auto lg:my-[10vh]"
+          onClose={() => setLeaderboardOpen(false)}
+        >
+          <p className="mb-3 text-xs text-mist">按账号 × 模型的平均输出速度排名，仅展示仍存在的账号与模型。</p>
+          <Leaderboard items={leaderboard?.items ?? []} isLoading={leaderboardLoading} />
+        </Dialog>
+      ) : null}
     </div>
   )
 }
