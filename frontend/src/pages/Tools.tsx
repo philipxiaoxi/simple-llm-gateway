@@ -28,7 +28,7 @@ import {
   Input,
   Select,
 } from "../components/ui";
-import { cn, errorMessage, formatBytes } from "../lib/utils";
+import { cn, errorMessage, formatBytes, formatTime } from "../lib/utils";
 import { notifyBad, notifyOk } from "../lib/toast";
 
 const statusText: Record<DesktopTool["status"], string> = {
@@ -242,7 +242,7 @@ function ToolHistoryDialog({
               </div>
               <div className="mt-2 flex items-center gap-1 text-xs text-mist">
                 <Clock3 size={13} />
-                {new Date(run.started_at).toLocaleString()}
+                {formatTime(run.started_at)}
               </div>
               {run.error_message ? (
                 <div className="mt-2 line-clamp-2 text-xs text-danger">

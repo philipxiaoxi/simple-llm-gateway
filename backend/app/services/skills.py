@@ -7,7 +7,7 @@ import shutil
 import tarfile
 import zipfile
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 from uuid import uuid4
@@ -15,7 +15,7 @@ from uuid import uuid4
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.clock import utcnow
+from app.clock import SHANGHAI_TZ, utcnow
 from app.config import get_settings
 from app.models import Skill, SkillCategory, SkillClassificationSettings, UpstreamAccount
 from app.services.credentials import require_upstream_credential
@@ -611,7 +611,7 @@ def apply_ai_upload_stamp(
         moment_utc = moment.replace(tzinfo=timezone.utc)
     else:
         moment_utc = moment.astimezone(timezone.utc)
-    local = moment_utc.astimezone(timezone(timedelta(hours=8)))
+    local = moment_utc.astimezone(SHANGHAI_TZ)
     name_ts = (
         f"{local.year}年{local.month}月{local.day}日 "
         f"{local.hour:02d}时{local.minute:02d}分{local.second:02d}秒"

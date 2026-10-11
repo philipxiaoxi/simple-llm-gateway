@@ -5,7 +5,7 @@ import { Pagination } from '../components/Pagination'
 import { Button, Card, Select } from '../components/ui'
 import { api, type BenchmarkLeaderboardItem, type BenchmarkResult, type BenchmarkRun } from '../lib/api'
 import { notifyBad } from '../lib/toast'
-import { cn, errorMessage, formatTime } from '../lib/utils'
+import { cn, errorMessage, formatTime, shanghaiDateStamp } from '../lib/utils'
 
 function downloadBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob)
@@ -85,7 +85,7 @@ function rankedResults(results: BenchmarkResult[]) {
 function ExportMenu() {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-  const stamp = new Date().toISOString().slice(0, 10)
+  const stamp = shanghaiDateStamp()
   async function run(kind: 'history' | 'leaderboard') {
     setOpen(false)
     setBusy(true)

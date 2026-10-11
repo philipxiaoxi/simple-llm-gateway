@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.clock import utcnow
+from app.clock import shanghai_day_start_utc, utcnow
 from app.models import RequestLog, RequestLogMessage
 
 SESSION_HEADER_NAMES = (
@@ -289,6 +289,10 @@ def find_continuation_log(
     # 无 session 时不猜测会话边界，直接按新会话处理，避免加载最近会话做前缀匹配。
     if not session_key:
         return None
+    # 续写只在同一自然日（上海时区）内合并：跨天复用同一 session 时另起一条记录。
+    # 否则新请求的用量会累加到旧记录上（created_at 停留在旧日期），
+    # 导致概览、Key 用量、分享页的「今日请求 / 今日 Token」漏统计。
+    day_start = shanghai_day_start_utc()
     return db.scalar(
         select(RequestLog)
         .where(
@@ -296,6 +300,7 @@ def find_continuation_log(
             RequestLog.api_key_id == api_key_id,
             RequestLog.session_key == session_key,
             RequestLog.protocol == protocol,
+            RequestLog.created_at >= day_start,
         )
         .order_by(RequestLog.id.desc())
         .limit(1)

@@ -91,6 +91,70 @@ def test_continuation_log_is_scoped_to_selected_account(client, auth_headers) ->
         session.close()
 
 
+def test_continuation_log_not_reused_across_days(client) -> None:
+    from datetime import timedelta
+
+    from app.clock import shanghai_day_start_utc, utcnow
+
+    session = get_session_factory()()
+    try:
+        yesterday = shanghai_day_start_utc() - timedelta(days=1)
+        stale = RequestLog(
+            account_id=1,
+            account_source="upstream",
+            api_key_id=1,
+            protocol="openai",
+            stream=False,
+            status="success",
+            http_status=200,
+            latency_ms=0,
+            created_at=yesterday,
+            updated_at=yesterday,
+            session_key="reused",
+        )
+        session.add(stale)
+        session.flush()
+        # 跨天复用同一 session 时不应续写到昨天的记录，否则今日用量会被漏统计
+        assert (
+            find_continuation_log(
+                session,
+                account_id=1,
+                api_key_id=1,
+                protocol="openai",
+                session_key="reused",
+            )
+            is None
+        )
+
+        fresh = RequestLog(
+            account_id=1,
+            account_source="upstream",
+            api_key_id=1,
+            protocol="openai",
+            stream=False,
+            status="success",
+            http_status=200,
+            latency_ms=0,
+            created_at=utcnow(),
+            session_key="fresh",
+        )
+        session.add(fresh)
+        session.flush()
+        # 当天内创建的记录仍可续写
+        found = find_continuation_log(
+            session,
+            account_id=1,
+            api_key_id=1,
+            protocol="openai",
+            session_key="fresh",
+        )
+        assert found is not None
+        assert found.id == fresh.id
+    finally:
+        session.rollback()
+        session.close()
+
+
 def test_reasoning_map_is_scoped_to_selected_account(client, auth_headers) -> None:
     first = client.post(
         "/api/admin/accounts",
