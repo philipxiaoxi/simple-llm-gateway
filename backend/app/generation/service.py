@@ -22,6 +22,7 @@ from typing import Any
 
 import httpx
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
 from app.clock import utcnow
@@ -502,16 +503,20 @@ def submit_pending_once(limit: int = 3) -> dict[str, int]:
 
 
 def submit_task_now(factory, settings, task_id: str) -> str:
-    """提交单个 queued 任务。返回 submitted / retry / failed / skip。"""
+    """提交单个 queued 任务。返回 submitted / retry / failed / skip。
+
+    用条件 UPDATE 原子领取任务，避免后台 worker 与 MCP 内联推进并发重复提交。
+    """
     session = factory()
     try:
-        task = session.get(GenerationTask, task_id)
-        if task is None or task.status != "queued":
+        claimed = session.execute(
+            sa_update(GenerationTask)
+            .where(GenerationTask.id == task_id, GenerationTask.status == "queued")
+            .values(status="submitting", attempts=GenerationTask.attempts + 1, updated_at=utcnow())
+        )
+        if claimed.rowcount == 0:
             session.rollback()
             return "skip"
-        task.status = "submitting"
-        task.attempts = int(task.attempts or 0) + 1
-        task.updated_at = utcnow()
         session.commit()
     finally:
         session.close()
@@ -740,6 +745,16 @@ def _download_one(factory, settings, asset_id: str) -> bool:
             return False
         task_id = asset.task_id
         remote_url = asset.remote_url
+        # 原子领取，避免 worker 与 MCP 内联转存并发下载同一结果
+        claimed = session.execute(
+            sa_update(GenerationAsset)
+            .where(GenerationAsset.id == asset_id, GenerationAsset.status == "pending")
+            .values(status="downloading")
+        )
+        if claimed.rowcount == 0:
+            session.rollback()
+            return False
+        session.commit()
     finally:
         session.close()
 
@@ -769,8 +784,8 @@ def _download_one(factory, settings, asset_id: str) -> bool:
         else:
             asset.attempts = int(asset.attempts or 0) + 1
             asset.error_message = failure[:2000]
-            if int(asset.attempts or 0) >= max(1, settings.generation_max_attempts):
-                asset.status = "failed"
+            # 未达重试上限时退回 pending 以便下次重试
+            asset.status = "failed" if int(asset.attempts or 0) >= max(1, settings.generation_max_attempts) else "pending"
             ok = False
         session.commit()
         return ok
@@ -833,7 +848,13 @@ def reconcile_stuck(db: Session) -> int:
     for task in rows:
         task.status = "queued"
         task.updated_at = utcnow()
-    if rows:
+    # 中断时卡在「下载中」的结果退回 pending，交给转存循环重试
+    stuck_assets = db.scalars(
+        select(GenerationAsset).where(GenerationAsset.status == "downloading")
+    ).all()
+    for asset in stuck_assets:
+        asset.status = "pending"
+    if rows or stuck_assets:
         db.flush()
     return len(rows)
 
@@ -888,10 +909,24 @@ async def generation_loop() -> None:
             cleanup_counter += 1
             if cleanup_counter >= max(1, 3600 // interval):
                 cleanup_counter = 0
-                await asyncio.to_thread(storage.cleanup_orphan_pending)
+                await asyncio.to_thread(_cleanup_inputs_once)
         except Exception as error:  # noqa: BLE001
             print(f"[generation] 循环异常：{error}")
         await asyncio.sleep(interval)
+
+
+def _cleanup_inputs_once() -> int:
+    """清理上传后一直未提交任务的参考文件（连带删除落盘文件与数据库记录）。"""
+    session = get_session_factory()()
+    try:
+        removed = cleanup_orphan_inputs(session)
+        session.commit()
+        return removed
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def _backfill_thumbnails_once() -> int:
@@ -929,6 +964,9 @@ def asset_to_dict(asset: GenerationAsset) -> dict[str, Any]:
         "status": asset.status,
         "error_message": asset.error_message,
     }
+    if asset.remote_url:
+        # 结果尚未转存完成时，调用方可先用上游地址
+        payload["remote_url"] = asset.remote_url
     if asset.status == "ready" and asset.filename:
         payload["url"] = _asset_url(asset)
         if asset.thumb_filename:
