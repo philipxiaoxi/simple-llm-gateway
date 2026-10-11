@@ -619,17 +619,42 @@ export const api = {
   key: (id: number) => request<ApiKeyItem>(`/api/admin/keys/${id}`),
   benchmark: (payload: { account_id: number; model: string; prompt: string; max_tokens: number }) =>
     request<BenchmarkResult>('/api/admin/benchmark', { method: 'POST', body: JSON.stringify(payload) }),
-  saveBenchmarkRun: (payload: { prompt: string; max_tokens: number; results: BenchmarkResult[] }) =>
-    request<BenchmarkRun>('/api/admin/benchmark/history', { method: 'POST', body: JSON.stringify(payload) }),
-  benchmarkHistory: (page = 1, pageSize = 20) =>
-    request<BenchmarkHistory>(`/api/admin/benchmark/history?page=${page}&page_size=${pageSize}`),
+  saveBenchmarkRun: (payload: {
+    prompt: string
+    max_tokens: number
+    group_id?: number
+    results: BenchmarkResult[]
+  }) => request<BenchmarkRun>('/api/admin/benchmark/history', { method: 'POST', body: JSON.stringify(payload) }),
+  benchmarkHistory: (page = 1, pageSize = 20, groupId?: number, includeResults = false) => {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+    if (groupId) params.set('group_id', String(groupId))
+    if (includeResults) params.set('include_results', 'true')
+    return request<BenchmarkHistory>(`/api/admin/benchmark/history?${params.toString()}`)
+  },
   benchmarkRun: (id: number) => request<BenchmarkRun>(`/api/admin/benchmark/history/${id}`),
+  benchmarkLeaderboard: () =>
+    request<{ items: BenchmarkLeaderboardItem[] }>('/api/admin/benchmark/leaderboard'),
+  benchmarkGroups: () => request<{ items: BenchmarkGroup[] }>('/api/admin/benchmark/groups'),
+  createBenchmarkGroup: (payload: { name: string; targets: BenchmarkGroupTarget[] }) =>
+    request<BenchmarkGroup>('/api/admin/benchmark/groups', { method: 'POST', body: JSON.stringify(payload) }),
+  updateBenchmarkGroup: (id: number, payload: { name?: string; targets?: BenchmarkGroupTarget[] }) =>
+    request<BenchmarkGroup>(`/api/admin/benchmark/groups/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteBenchmarkGroup: (id: number) =>
+    request<{ removed: boolean }>(`/api/admin/benchmark/groups/${id}`, { method: 'DELETE' }),
   exportBenchmarkHistory: async () => {
     const headers = new Headers()
     const token = getToken()
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const response = await fetch('/api/admin/benchmark/history/export', { headers })
     if (!response.ok) throw new ApiError(response.status, '导出测速结果失败')
+    return response.blob()
+  },
+  exportBenchmarkLeaderboard: async () => {
+    const headers = new Headers()
+    const token = getToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch('/api/admin/benchmark/leaderboard/export', { headers })
+    if (!response.ok) throw new ApiError(response.status, '导出排行榜失败')
     return response.blob()
   },
   ccSwitch: (id: number) =>
@@ -1944,10 +1969,35 @@ export type BenchmarkRun = {
   id: number
   prompt: string
   max_tokens: number
+  group_id?: number | null
+  group_name?: string | null
   created_at: string
   result_count: number
   success_count: number
   results?: BenchmarkResult[]
+}
+
+export type BenchmarkGroupTarget = {
+  account_id: number
+  model: string
+}
+
+export type BenchmarkGroupMember = BenchmarkGroupTarget & {
+  account_name: string
+  provider: string
+  available: boolean
+  enabled: boolean
+  reason: string
+}
+
+export type BenchmarkGroup = {
+  id: number
+  name: string
+  created_at: string
+  updated_at: string
+  member_count: number
+  available_count: number
+  members: BenchmarkGroupMember[]
 }
 
 export type BenchmarkHistory = {
@@ -1955,6 +2005,20 @@ export type BenchmarkHistory = {
   total: number
   page: number
   page_size: number
+}
+
+export type BenchmarkLeaderboardItem = {
+  rank: number
+  account_id: number
+  account_name: string
+  provider: string
+  model: string
+  avg_speed: number | null
+  best_speed: number | null
+  samples: number
+  avg_first_token_ms: number | null
+  avg_total_ms: number | null
+  last_tested_at: string | null
 }
 
 // ---------------- 语音输入 ----------------
