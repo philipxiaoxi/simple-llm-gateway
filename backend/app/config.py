@@ -221,6 +221,8 @@ class Settings(BaseSettings):
     generation_http_timeout_seconds: int = 60
     # 作品与参考文件地址的签名令牌有效期
     generation_token_ttl_seconds: int = 43200
+    # MCP 生成能力提交后内联等待完成的秒数上限
+    generation_mcp_max_wait_seconds: int = 60
 
     @property
     def database_url(self) -> str:

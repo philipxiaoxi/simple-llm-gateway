@@ -55,6 +55,22 @@ def guess_extension(content_type: str, kind: str) -> str:
     return ext
 
 
+def make_thumbnail(source: Path, dest: Path, max_size: int = 512) -> bool:
+    """生成结果图片的缩略图（JPEG）。失败时返回 False，调用方回退到原图。"""
+    try:
+        from PIL import Image
+    except ImportError:
+        return False
+    try:
+        with Image.open(source) as image:
+            image = image.convert("RGB")
+            image.thumbnail((max_size, max_size))
+            image.save(dest, format="JPEG", quality=80, optimize=True)
+        return True
+    except Exception:
+        return False
+
+
 def purge_task(task_id: str) -> None:
     for base in (root() / task_id, pending_dir() / task_id):
         if base.is_dir():

@@ -75,30 +75,61 @@ IMAGE_RATIOS_EXTENDED = IMAGE_RATIOS + ("1:4", "4:1", "1:8", "8:1")
 GPT_RATIOS = IMAGE_RATIOS + ("9:21", "1:2", "2:1")
 PIXEL_SIZES = (
     "auto",
+    # 1:1
     "1024x1024",
     "2048x2048",
     "2880x2880",
+    # 16:9 / 9:16
     "1280x720",
     "2048x1152",
     "3840x2160",
     "720x1280",
     "1152x2048",
     "2160x3840",
+    # 4:3 / 3:4
     "1152x864",
     "2304x1728",
     "3264x2448",
     "864x1152",
     "1728x2304",
     "2448x3264",
-    "1024x1536",
+    # 3:2 / 2:3
     "1536x1024",
-    "1792x896",
-    "896x1792",
+    "2048x1360",
+    "3504x2336",
+    "1024x1536",
+    "1360x2048",
+    "2336x3504",
+    # 5:4 / 4:5
     "1120x896",
+    "2240x1792",
+    "3200x2560",
     "896x1120",
-    "2912x1248",
+    "1792x2240",
+    "2560x3200",
+    # 21:9 / 9:21
     "1456x624",
+    "2912x1248",
+    "3840x1648",
+    "624x1456",
+    "1248x2912",
+    "1648x3840",
+    # 1:3 / 3:1
+    "688x2048",
+    "1280x3840",
+    "2048x688",
+    "3840x1280",
+    # 2:1 / 1:2
+    "1536x768",
+    "3072x1536",
+    "3840x1920",
+    "768x1536",
+    "1536x3072",
+    "1920x3840",
 )
+# gpt-image-2 / 2.5 仅支持 1K 的固定像素（比例之外的另一种写法）
+GPT_1K_PIXEL = ("1024x1024",)
+GPT_RATIO_SIZES = GPT_RATIOS + GPT_1K_PIXEL
 
 _IMAGE_SIZE = ParamSpec(
     key="imageSize",
@@ -140,7 +171,7 @@ def _nano(model_id: str, ratios: tuple[str, ...]) -> ModelSpec:
         label=model_id,
         kind="image",
         params=(
-            ParamSpec("aspectRatio", "画面比例", "combo", _opts(ratios), "1:1"),
+            ParamSpec("aspectRatio", "画面比例", "select", _opts(ratios), "1:1"),
             _IMAGE_SIZE,
         ),
         supports_images=True,
@@ -150,7 +181,7 @@ def _nano(model_id: str, ratios: tuple[str, ...]) -> ModelSpec:
 
 def _gpt(model_id: str, *, sizes: tuple[str, ...], quality: tuple[str, ...], quality_default: str) -> ModelSpec:
     params: list[ParamSpec] = [
-        ParamSpec("aspectRatio", "画面比例 / 尺寸", "combo", _opts(sizes), sizes[1] if len(sizes) > 1 else "auto", required=True),
+        ParamSpec("aspectRatio", "画面比例 / 尺寸", "select", _opts(sizes), sizes[1] if len(sizes) > 1 else "auto", required=True),
         ParamSpec("quality", "质量", "select", _opts(quality), quality_default),
         _BACKGROUND,
         _MASK,
@@ -169,8 +200,8 @@ _MODELS: tuple[ModelSpec, ...] = (
     # ---- nano-banana 系列 ----
     *(_nano(model_id, ratios) for model_id, ratios in _NANO_MODELS),
     # ---- gpt-image-2 系列（比例）----
-    _gpt("gpt-image-2", sizes=GPT_RATIOS, quality=("auto",), quality_default="auto"),
-    _gpt("gpt-image-2.5", sizes=GPT_RATIOS, quality=("auto",), quality_default="auto"),
+    _gpt("gpt-image-2", sizes=GPT_RATIO_SIZES, quality=("auto",), quality_default="auto"),
+    _gpt("gpt-image-2.5", sizes=GPT_RATIO_SIZES, quality=("auto",), quality_default="auto"),
     # ---- gpt-image-2 系列（像素尺寸）----
     _gpt("gpt-image-2-vip", sizes=PIXEL_SIZES, quality=("medium",), quality_default="medium"),
     _gpt("gpt-image-2.5-flare", sizes=PIXEL_SIZES, quality=("low", "medium", "high"), quality_default="medium"),

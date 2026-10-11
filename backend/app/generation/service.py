@@ -311,6 +311,7 @@ def create_task(
     params: dict[str, Any] | None,
     provider: str = "",
     input_asset_ids: list[str] | None = None,
+    mcp_key_id: int | None = None,
 ) -> GenerationTask:
     if kind not in ("image", "video"):
         raise GenerationError("任务类型只能是 image 或 video")
@@ -335,12 +336,66 @@ def create_task(
         prompt=prompt,
         params_json=json.dumps(cleaned, ensure_ascii=False),
         status="queued",
+        mcp_key_id=mcp_key_id,
     )
     db.add(task)
     db.flush()
     if input_asset_ids:
         _attach_inputs(db, task, input_asset_ids, spec)
     return task
+
+
+def add_task_input(
+    db: Session,
+    task: GenerationTask,
+    *,
+    data: bytes,
+    content_type: str = "",
+    filename: str = "",
+) -> GenerationAsset:
+    """给任务直接追加一个本地参考文件（MCP 传入 URL/base64 时用）。"""
+    spec = catalog.get_model(task.model)
+    detected = _detect_input(data)
+    if detected is None:
+        raise GenerationError("不支持的参考文件类型")
+    kind, resolved_type = detected
+    if kind == "audio" and (spec is None or not spec.supports_audios):
+        raise GenerationError("该模型不支持参考音频")
+    if kind != "audio" and (spec is None or not spec.supports_images):
+        raise GenerationError("该模型不支持参考图片")
+    existing = db.scalars(
+        select(GenerationAsset).where(GenerationAsset.task_id == task.id, GenerationAsset.role == "input")
+    ).all()
+    images = sum(1 for a in existing if a.kind != "audio")
+    audios = sum(1 for a in existing if a.kind == "audio")
+    if kind == "audio" and audios >= max(0, spec.max_audios if spec else 0):
+        raise GenerationError(f"参考音频最多 {spec.max_audios if spec else 0} 个")
+    if kind != "audio" and images >= max(0, spec.max_images if spec else 0):
+        raise GenerationError(f"参考图片最多 {spec.max_images if spec else 0} 张")
+    asset_id = str(uuid.uuid4())
+    ext = storage.guess_extension(resolved_type, kind)
+    stored_name = f"{asset_id}{ext}"
+    path = storage.task_dir(task.id) / stored_name
+    path.write_bytes(data)
+    width = height = None
+    if kind == "image":
+        width, height = probe_image_size(path)
+    asset = GenerationAsset(
+        id=asset_id,
+        task_id=task.id,
+        role="input",
+        index_no=len(existing),
+        kind=kind,
+        filename=stored_name,
+        content_type=resolved_type,
+        size_bytes=len(data),
+        width=width,
+        height=height,
+        status="ready",
+    )
+    db.add(asset)
+    db.flush()
+    return asset
 
 
 # --------------------------------------------------------------------------- #
@@ -423,37 +478,49 @@ def submit_pending_once(limit: int = 3) -> dict[str, int]:
     settings = get_settings()
     session = factory()
     try:
-        tasks = list(
-            session.scalars(
-                select(GenerationTask)
+        task_ids = [
+            row
+            for row in session.scalars(
+                select(GenerationTask.id)
                 .where(GenerationTask.status == "queued")
                 .order_by(GenerationTask.created_at.asc())
                 .limit(max(1, limit))
             ).all()
-        )
+        ]
     finally:
         session.close()
 
     submitted = 0
     failed = 0
-    for task_id in [task.id for task in tasks]:
+    for task_id in task_ids:
+        result = submit_task_now(factory, settings, task_id)
+        if result == "submitted":
+            submitted += 1
+        elif result == "failed":
+            failed += 1
+    return {"submitted": submitted, "failed": failed}
+
+
+def submit_task_now(factory, settings, task_id: str) -> str:
+    """提交单个 queued 任务。返回 submitted / retry / failed / skip。"""
+    session = factory()
+    try:
+        task = session.get(GenerationTask, task_id)
+        if task is None or task.status != "queued":
+            session.rollback()
+            return "skip"
+        task.status = "submitting"
+        task.attempts = int(task.attempts or 0) + 1
+        task.updated_at = utcnow()
+        session.commit()
+    finally:
+        session.close()
+
+    update: GenerationUpdate | None = None
+    error: ProviderError | None = None
+    try:
         session = factory()
         try:
-            task = session.get(GenerationTask, task_id)
-            if task is None or task.status != "queued":
-                session.rollback()
-                continue
-            task.status = "submitting"
-            task.attempts = int(task.attempts or 0) + 1
-            task.updated_at = utcnow()
-            session.commit()
-        finally:
-            session.close()
-
-        update: GenerationUpdate | None = None
-        error: ProviderError | None = None
-        try:
-            session = factory()
             task = session.get(GenerationTask, task_id)
             assert task is not None
             adapter = _adapter_for(session, task.provider)
@@ -468,47 +535,47 @@ def submit_pending_once(limit: int = 3) -> dict[str, int]:
                 images=images,
                 audios=audios,
             )
-            session.close()
-        except (ProviderError, OSError) as caught:
-            error = ProviderError(str(caught))
-        except Exception as caught:  # noqa: BLE001
-            error = ProviderError(str(caught))
-
-        session = factory()
-        try:
-            task = session.get(GenerationTask, task_id)
-            if task is None:
-                session.rollback()
-                continue
-            if error is not None:
-                if int(task.attempts or 0) >= max(1, settings.generation_max_attempts):
-                    task.status = STATUS_FAILED
-                    task.error = error.args[0][:2000] if error.args else "提交失败"
-                    task.finished_at = utcnow()
-                    failed += 1
-                else:
-                    task.status = "queued"
-                task.updated_at = utcnow()
-            else:
-                assert update is not None
-                if not task.upstream_id and update.upstream_id:
-                    task.upstream_id = update.upstream_id[:128]
-                if not task.upstream_id and not update.terminal:
-                    # 上游没给 id，无法轮询，按失败处理
-                    task.status = STATUS_FAILED
-                    task.error = "上游未返回任务 id"
-                    task.finished_at = utcnow()
-                    failed += 1
-                else:
-                    _apply_update(session, task, update)
-                    submitted += 1
-            session.commit()
-        except Exception:  # noqa: BLE001
-            session.rollback()
-            raise
         finally:
             session.close()
-    return {"submitted": submitted, "failed": failed}
+    except Exception as caught:  # noqa: BLE001
+        error = ProviderError(str(caught))
+
+    session = factory()
+    try:
+        task = session.get(GenerationTask, task_id)
+        if task is None:
+            session.rollback()
+            return "skip"
+        if error is not None:
+            if int(task.attempts or 0) >= max(1, settings.generation_max_attempts):
+                task.status = STATUS_FAILED
+                task.error = error.args[0][:2000] if error.args else "提交失败"
+                task.finished_at = utcnow()
+                result = "failed"
+            else:
+                task.status = "queued"
+                result = "retry"
+            task.updated_at = utcnow()
+        else:
+            assert update is not None
+            if not task.upstream_id and update.upstream_id:
+                task.upstream_id = update.upstream_id[:128]
+            if not task.upstream_id and not update.terminal:
+                # 上游没给 id，无法轮询，按失败处理
+                task.status = STATUS_FAILED
+                task.error = "上游未返回任务 id"
+                task.finished_at = utcnow()
+                result = "failed"
+            else:
+                _apply_update(session, task, update)
+                result = "submitted"
+        session.commit()
+        return result
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def poll_running_once(limit: int = 5) -> dict[str, int]:
@@ -516,7 +583,8 @@ def poll_running_once(limit: int = 5) -> dict[str, int]:
     session = factory()
     try:
         task_ids = [
-            row for row in session.scalars(
+            row
+            for row in session.scalars(
                 select(GenerationTask.id)
                 .where(GenerationTask.status == STATUS_RUNNING, GenerationTask.upstream_id != "")
                 .order_by(GenerationTask.created_at.asc())
@@ -529,44 +597,100 @@ def poll_running_once(limit: int = 5) -> dict[str, int]:
     polled = 0
     finished = 0
     for task_id in task_ids:
-        update: GenerationUpdate | None = None
-        error: ProviderError | None = None
-        try:
-            session = factory()
-            task = session.get(GenerationTask, task_id)
-            if task is None:
-                session.close()
-                continue
-            adapter = _adapter_for(session, task.provider)
-            upstream_id = task.upstream_id
-            session.close()
-            update = adapter.poll(upstream_id)
-        except ProviderError as caught:
-            error = caught
-        except Exception as caught:  # noqa: BLE001
-            error = ProviderError(str(caught))
+        result = poll_task_now(factory, task_id)
+        if result == "polled":
+            polled += 1
+        elif result == "finished":
+            polled += 1
+            finished += 1
+    return {"polled": polled, "finished": finished}
 
+
+def poll_task_now(factory, task_id: str) -> str:
+    """轮询单个进行中的任务。返回 polled / finished / error / skip。"""
+    update: GenerationUpdate | None = None
+    error: ProviderError | None = None
+    try:
         session = factory()
         try:
             task = session.get(GenerationTask, task_id)
             if task is None:
-                session.rollback()
-                continue
-            if error is not None or update is None:
-                task.attempts = int(task.attempts or 0) + 1
-                task.updated_at = utcnow()
-            else:
-                _apply_update(session, task, update)
-                polled += 1
-                if update.terminal:
-                    finished += 1
-            session.commit()
-        except Exception:  # noqa: BLE001
-            session.rollback()
-            raise
+                return "skip"
+            adapter = _adapter_for(session, task.provider)
+            upstream_id = task.upstream_id
         finally:
             session.close()
-    return {"polled": polled, "finished": finished}
+        update = adapter.poll(upstream_id)
+    except Exception as caught:  # noqa: BLE001
+        error = ProviderError(str(caught))
+
+    session = factory()
+    try:
+        task = session.get(GenerationTask, task_id)
+        if task is None:
+            session.rollback()
+            return "skip"
+        if error is not None or update is None:
+            task.attempts = int(task.attempts or 0) + 1
+            task.updated_at = utcnow()
+            result = "error"
+        else:
+            _apply_update(session, task, update)
+            result = "finished" if update.terminal else "polled"
+        session.commit()
+        return result
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def run_task_inline(task_id: str, wait_seconds: int = 0) -> None:
+    """把单个任务在等待窗口内推进到终态（提交 + 轮询 + 转存结果）。"""
+    factory = get_session_factory()
+    settings = get_settings()
+    deadline = time.monotonic() + max(0, int(wait_seconds))
+    while True:
+        session = factory()
+        try:
+            task = session.get(GenerationTask, task_id)
+            status = task.status if task is not None else None
+        finally:
+            session.close()
+        if status is None or status in _TERMINAL:
+            break
+        if status == "queued":
+            submit_task_now(factory, settings, task_id)
+        elif status == STATUS_RUNNING:
+            poll_task_now(factory, task_id)
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(min(1.0, max(0.05, deadline - time.monotonic())))
+    # 结果转存：尽量在窗口内把已经生成的图片/视频落到本地
+    download_task_results(factory, settings, task_id)
+
+
+def download_task_results(factory, settings, task_id: str) -> int:
+    session = factory()
+    try:
+        asset_ids = [
+            row
+            for row in session.scalars(
+                select(GenerationAsset.id).where(
+                    GenerationAsset.task_id == task_id,
+                    GenerationAsset.role == "result",
+                    GenerationAsset.status == "pending",
+                )
+            ).all()
+        ]
+    finally:
+        session.close()
+    ready = 0
+    for asset_id in asset_ids:
+        if _download_one(factory, settings, asset_id):
+            ready += 1
+    return ready
 
 
 def download_pending_once(limit: int = 3) -> dict[str, int]:
@@ -599,50 +723,67 @@ def download_pending_once(limit: int = 3) -> dict[str, int]:
             if asset is None or asset.status != "pending":
                 session.rollback()
                 continue
-            task_id = asset.task_id
-            remote_url = asset.remote_url
-            session.close()
-        except Exception:
-            session.close()
-            raise
-
-        processed += 1
-        stored: tuple[str, str, int] | None = None
-        failure: str = ""
-        try:
-            stored = _download_result(task_id, asset_id, remote_url, settings.generation_result_max_bytes)
-        except Exception as caught:  # noqa: BLE001
-            failure = str(caught)
-
-        session = factory()
-        try:
-            asset = session.get(GenerationAsset, asset_id)
-            if asset is None:
-                session.rollback()
-                continue
-            if stored is not None:
-                filename, content_type, size = stored
-                asset.filename = filename
-                asset.content_type = content_type
-                asset.size_bytes = size
-                asset.status = "ready"
-                asset.error_message = None
-                ready += 1
-            else:
-                asset.attempts = int(asset.attempts or 0) + 1
-                asset.error_message = failure[:2000]
-                if int(asset.attempts or 0) >= max(1, settings.generation_max_attempts):
-                    asset.status = "failed"
-            session.commit()
-        except Exception:  # noqa: BLE001
-            session.rollback()
-            raise
         finally:
             session.close()
+        processed += 1
+        if _download_one(factory, settings, asset_id):
+            ready += 1
     return {"processed": processed, "ready": ready}
 
 
-def _download_result(task_id: str, asset_id: str, remote_url: str, max_bytes: int) -> tuple[str, str, int]:
+def _download_one(factory, settings, asset_id: str) -> bool:
+    session = factory()
+    try:
+        asset = session.get(GenerationAsset, asset_id)
+        if asset is None or asset.status != "pending" or not asset.task_id:
+            session.rollback()
+            return False
+        task_id = asset.task_id
+        remote_url = asset.remote_url
+    finally:
+        session.close()
+
+    stored: dict[str, Any] | None = None
+    failure = ""
+    try:
+        stored = _download_result(task_id, asset_id, remote_url, settings.generation_result_max_bytes)
+    except Exception as caught:  # noqa: BLE001
+        failure = str(caught)
+
+    session = factory()
+    try:
+        asset = session.get(GenerationAsset, asset_id)
+        if asset is None:
+            session.rollback()
+            return False
+        if stored is not None:
+            asset.filename = stored["filename"]
+            asset.content_type = stored["content_type"]
+            asset.size_bytes = stored["size"]
+            asset.width = stored.get("width")
+            asset.height = stored.get("height")
+            asset.thumb_filename = stored.get("thumb_filename")
+            asset.status = "ready"
+            asset.error_message = None
+            ok = True
+        else:
+            asset.attempts = int(asset.attempts or 0) + 1
+            asset.error_message = failure[:2000]
+            if int(asset.attempts or 0) >= max(1, settings.generation_max_attempts):
+                asset.status = "failed"
+            ok = False
+        session.commit()
+        return ok
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def _download_result(
+    task_id: str, asset_id: str, remote_url: str, max_bytes: int
+) -> dict[str, Any]:
     settings = get_settings()
     if not remote_url.startswith(("http://", "https://")):
         raise ProviderError("结果地址无效")
@@ -668,7 +809,22 @@ def _download_result(task_id: str, asset_id: str, remote_url: str, max_bytes: in
                     raise ProviderError("结果文件超过大小上限")
                 handle.write(chunk)
         tmp.replace(target)
-    return stored_name, content_type or "application/octet-stream", size
+
+    width = height = None
+    thumb_filename: str | None = None
+    if kind == "image":
+        width, height = probe_image_size(target)
+        thumb_name = f"{asset_id}-thumb.jpg"
+        if storage.make_thumbnail(target, storage.task_dir(task_id) / thumb_name):
+            thumb_filename = thumb_name
+    return {
+        "filename": stored_name,
+        "content_type": content_type or "application/octet-stream",
+        "size": size,
+        "width": width,
+        "height": height,
+        "thumb_filename": thumb_filename,
+    }
 
 
 def reconcile_stuck(db: Session) -> int:
@@ -680,6 +836,37 @@ def reconcile_stuck(db: Session) -> int:
     if rows:
         db.flush()
     return len(rows)
+
+
+def backfill_thumbnails(db: Session, limit: int = 20) -> int:
+    """给历史已转存但缺缩略图的图片结果补生成缩略图。"""
+    rows = db.scalars(
+        select(GenerationAsset)
+        .where(
+            GenerationAsset.role == "result",
+            GenerationAsset.status == "ready",
+            GenerationAsset.kind == "image",
+            GenerationAsset.thumb_filename.is_(None),
+            GenerationAsset.filename != "",
+        )
+        .limit(max(1, limit))
+    ).all()
+    done = 0
+    for asset in rows:
+        if not asset.task_id:
+            continue
+        source = storage.asset_path(asset.task_id, asset.filename)
+        if not source.is_file():
+            continue
+        name = f"{asset.id}-thumb.jpg"
+        if storage.make_thumbnail(source, storage.task_dir(asset.task_id) / name):
+            asset.thumb_filename = name
+            if asset.width is None or asset.height is None:
+                asset.width, asset.height = probe_image_size(source)
+            done += 1
+    if done:
+        db.flush()
+    return done
 
 
 async def generation_loop() -> None:
@@ -696,6 +883,8 @@ async def generation_loop() -> None:
             download = await asyncio.to_thread(download_pending_once)
             if download.get("processed"):
                 print(f"[generation] 转存：处理 {download.get('processed')}，就绪 {download.get('ready')}")
+            # 历史作品补缩略图（有则秒查一次空集）
+            await asyncio.to_thread(_backfill_thumbnails_once)
             cleanup_counter += 1
             if cleanup_counter >= max(1, 3600 // interval):
                 cleanup_counter = 0
@@ -703,6 +892,19 @@ async def generation_loop() -> None:
         except Exception as error:  # noqa: BLE001
             print(f"[generation] 循环异常：{error}")
         await asyncio.sleep(interval)
+
+
+def _backfill_thumbnails_once() -> int:
+    session = get_session_factory()()
+    try:
+        count = backfill_thumbnails(session)
+        session.commit()
+        return count
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 # --------------------------------------------------------------------------- #
@@ -729,6 +931,8 @@ def asset_to_dict(asset: GenerationAsset) -> dict[str, Any]:
     }
     if asset.status == "ready" and asset.filename:
         payload["url"] = _asset_url(asset)
+        if asset.thumb_filename:
+            payload["thumb_url"] = f"{_asset_url(asset)}&thumb=1"
     return payload
 
 
@@ -762,6 +966,14 @@ def get_task(db: Session, task_id: str) -> GenerationTask | None:
     return db.get(GenerationTask, task_id)
 
 
+def get_task_for_key(db: Session, task_id: str, mcp_key_id: int) -> GenerationTask | None:
+    return db.scalar(
+        select(GenerationTask).where(
+            GenerationTask.id == task_id, GenerationTask.mcp_key_id == mcp_key_id
+        )
+    )
+
+
 def task_assets(db: Session, task_id: str) -> list[GenerationAsset]:
     return list(
         db.scalars(
@@ -779,15 +991,17 @@ def list_tasks(
     status: str = "",
     page: int = 1,
     page_size: int = 20,
+    mcp_key_id: int | None = None,
 ) -> dict[str, Any]:
-    query = select(GenerationTask)
-    count_query = select(GenerationTask.id)
+    filters = []
     if kind:
-        query = query.where(GenerationTask.kind == kind)
-        count_query = count_query.where(GenerationTask.kind == kind)
+        filters.append(GenerationTask.kind == kind)
     if status:
-        query = query.where(GenerationTask.status == status)
-        count_query = count_query.where(GenerationTask.status == status)
+        filters.append(GenerationTask.status == status)
+    if mcp_key_id is not None:
+        filters.append(GenerationTask.mcp_key_id == mcp_key_id)
+    query = select(GenerationTask).where(*filters)
+    count_query = select(GenerationTask.id).where(*filters)
     total = len(db.scalars(count_query).all())
     page = max(1, page)
     page_size = max(1, min(100, page_size))
@@ -802,10 +1016,11 @@ def list_tasks(
     for task in rows:
         assets = task_assets(db, task.id)
         items.append(task_to_dict(task, assets))
+    count_filters = [GenerationTask.kind == kind] if kind else []
+    if mcp_key_id is not None:
+        count_filters.append(GenerationTask.mcp_key_id == mcp_key_id)
     counts: dict[str, int] = {}
-    for row in db.execute(
-        select(GenerationTask.status) if not kind else select(GenerationTask.status).where(GenerationTask.kind == kind)
-    ).all():
+    for row in db.execute(select(GenerationTask.status).where(*count_filters)).all():
         counts[row[0]] = counts.get(row[0], 0) + 1
     return {"items": items, "total": total, "page": page, "page_size": page_size, "counts": counts}
 
@@ -864,20 +1079,26 @@ def cleanup_orphan_inputs(db: Session, *, max_age_seconds: int = 24 * 3600) -> i
 
 __all__ = [
     "GenerationError",
+    "add_task_input",
     "asset_to_dict",
     "create_task",
     "create_upload",
     "delete_task",
     "delete_uploaded_input",
     "download_pending_once",
+    "download_task_results",
     "generation_loop",
     "get_task",
+    "get_task_for_key",
     "list_tasks",
     "poll_running_once",
+    "poll_task_now",
     "reconcile_stuck",
     "resolve_credentials",
+    "run_task_inline",
     "settings_payload",
     "submit_pending_once",
+    "submit_task_now",
     "task_assets",
     "task_to_dict",
     "update_settings",

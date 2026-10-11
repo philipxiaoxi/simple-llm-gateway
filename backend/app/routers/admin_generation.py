@@ -131,21 +131,24 @@ def retry_task(task_id: str, db: Session = Depends(get_db)):
 
 
 @asset_router.get("/assets/{asset_id}")
-def get_asset(asset_id: str, token: str = "", db: Session = Depends(get_db)):
+def get_asset(asset_id: str, token: str = "", thumb: bool = False, db: Session = Depends(get_db)):
     if media_id_from_token(token) != asset_id:
         raise HTTPException(status_code=401, detail="需要有效的媒体令牌")
     asset = db.get(GenerationAsset, asset_id)
     if asset is None or asset.purged or asset.status != "ready" or not asset.filename:
         raise HTTPException(status_code=404, detail="文件不存在")
-    if asset.task_id:
-        path: Path = storage.asset_path(asset.task_id, asset.filename)
+    base_dir = storage.task_dir(asset.task_id) if asset.task_id else storage.pending_dir() / asset.id
+    if thumb and asset.thumb_filename:
+        path: Path = base_dir / asset.thumb_filename
+        media_type = "image/jpeg"
     else:
-        path = storage.pending_dir() / asset.id / asset.filename
+        path = base_dir / asset.filename
+        media_type = asset.content_type or "application/octet-stream"
     if not path.is_file():
         raise HTTPException(status_code=410, detail="文件已不可用")
     return FileResponse(
         path,
-        media_type=asset.content_type or "application/octet-stream",
+        media_type=media_type,
         headers={
             "Cache-Control": "private, max-age=86400",
             "X-Content-Type-Options": "nosniff",

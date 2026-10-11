@@ -275,6 +275,8 @@ def _ensure_columns(engine: Engine) -> None:
         _ensure_douyin_columns(connection)
         _ensure_douyin_job_columns(connection)
         _ensure_info_item_ai_columns(connection)
+        _ensure_generation_columns(connection)
+        _ensure_mcp_key_capability_columns(connection)
         _ensure_info_public_session_columns(connection)
         _ensure_public_gate_scope(connection)
         _ensure_offline_download_columns(connection)
@@ -405,6 +407,37 @@ def _ensure_douyin_job_columns(connection) -> None:  # type: ignore[no-untyped-d
         connection.execute(
             text("ALTER TABLE douyin_jobs ADD COLUMN expected_bytes INTEGER DEFAULT 0 NOT NULL")
         )
+
+
+def _ensure_generation_columns(connection) -> None:  # type: ignore[no-untyped-def]
+    """generation_assets 增量列：结果转存的重试计数。
+
+    表由 create_all 首次创建，若早期版本已建表则缺 attempts 列，这里补齐。
+    """
+    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(generation_assets)"))}
+    if not columns:
+        return
+    if "attempts" not in columns:
+        connection.execute(
+            text("ALTER TABLE generation_assets ADD COLUMN attempts INTEGER DEFAULT 0 NOT NULL")
+        )
+    if "thumb_filename" not in columns:
+        connection.execute(text("ALTER TABLE generation_assets ADD COLUMN thumb_filename VARCHAR(256)"))
+    task_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(generation_tasks)"))}
+    if task_columns and "mcp_key_id" not in task_columns:
+        connection.execute(text("ALTER TABLE generation_tasks ADD COLUMN mcp_key_id INTEGER"))
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_generation_tasks_mcp_key_id ON generation_tasks (mcp_key_id)")
+        )
+
+
+def _ensure_mcp_key_capability_columns(connection) -> None:  # type: ignore[no-untyped-def]
+    """mcp_key_capabilities 增量列：按 Key 的能力专属配置。"""
+    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(mcp_key_capabilities)"))}
+    if not columns:
+        return
+    if "config_json" not in columns:
+        connection.execute(text("ALTER TABLE mcp_key_capabilities ADD COLUMN config_json TEXT DEFAULT '{}' NOT NULL"))
 
 
 def _ensure_info_item_ai_columns(connection) -> None:  # type: ignore[no-untyped-def]

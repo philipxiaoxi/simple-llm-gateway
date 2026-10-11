@@ -593,6 +593,8 @@ class McpKeyCapability(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     mcp_key_id: Mapped[int] = mapped_column(ForeignKey("mcp_keys.id", ondelete="CASCADE"), index=True, nullable=False)
     capability_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # 该 Key 下此能力的专属配置（如生成能力用哪个模型），JSON 字符串
+    config_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
 
     mcp_key: Mapped[McpKey] = relationship(back_populates="capabilities")
 
@@ -1152,6 +1154,8 @@ class GenerationTask(Base):
     kind: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
     provider: Mapped[str] = mapped_column(String(32), default="", nullable=False)
     model: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    # 由 MCP 能力创建时归属的 Key（用于按 Key 隔离作品列表）
+    mcp_key_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
     # 生成参数（比例 / 分辨率 / 时长等），原样透传供应商
     params_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
@@ -1192,6 +1196,8 @@ class GenerationAsset(Base):
     kind: Mapped[str] = mapped_column(String(16), default="image", nullable=False)
     remote_url: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
     filename: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    # 图片结果的缩略图文件名（列表页用，避免每次加载原图）
+    thumb_filename: Mapped[str | None] = mapped_column(String(256), nullable=True)
     content_type: Mapped[str] = mapped_column(String(128), default="", nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)

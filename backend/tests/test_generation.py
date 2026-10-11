@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -115,10 +116,20 @@ def test_task_lifecycle(client: TestClient, auth_headers: dict[str, str], monkey
     assert service.submit_pending_once()["submitted"] == 1
     assert service.poll_running_once()["finished"] == 1
 
-    def fake_download(task_id: str, asset_id: str, remote_url: str, max_bytes: int) -> tuple[str, str, int]:
+    def fake_download(task_id: str, asset_id: str, remote_url: str, max_bytes: int) -> dict:
         name = f"{asset_id}.png"
-        (storage.task_dir(task_id) / name).write_bytes(PNG_BYTES)
-        return name, "image/png", len(PNG_BYTES)
+        target = storage.task_dir(task_id) / name
+        target.write_bytes(PNG_BYTES)
+        thumb_name = f"{asset_id}-thumb.jpg"
+        made = storage.make_thumbnail(target, storage.task_dir(task_id) / thumb_name)
+        return {
+            "filename": name,
+            "content_type": "image/png",
+            "size": len(PNG_BYTES),
+            "width": 2,
+            "height": 2,
+            "thumb_filename": thumb_name if made else None,
+        }
 
     monkeypatch.setattr(service, "_download_result", fake_download)
     assert service.download_pending_once()["ready"] == 1
@@ -131,6 +142,11 @@ def test_task_lifecycle(client: TestClient, auth_headers: dict[str, str], monkey
     assert result["status"] == "ready"
     media = client.get(result["url"].split("?")[0], params={"token": result["url"].split("token=")[1]})
     assert media.status_code == 200
+    assert result.get("thumb_url")
+    parsed = urlparse(result["thumb_url"])
+    thumb = client.get(parsed.path, params={"token": parse_qs(parsed.query)["token"][0], "thumb": "1"})
+    assert thumb.status_code == 200
+    assert thumb.headers["content-type"].startswith("image/jpeg")
 
     listing = client.get("/api/admin/generation/tasks?kind=image", headers=auth_headers).json()
     assert listing["total"] == 1
