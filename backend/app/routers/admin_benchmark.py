@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import time
+from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db import get_db
 from app.deps import get_current_admin
-from app.models import Admin, UpstreamAccount
+from app.models import Admin, BenchmarkResult, BenchmarkRun, UpstreamAccount
 from app.providers import get_provider
 from app.services.benchmark import (
     chunk_to_dict,
@@ -130,3 +134,84 @@ async def benchmark(payload: BenchmarkRequest, db: Session = Depends(get_db), _:
             "model": payload.model,
             "error": str(error)[:500],
         }
+
+
+def _leaderboard_rows(db: Session, limit: int) -> list[Any]:
+    avg_speed = func.avg(BenchmarkResult.output_tokens_per_second)
+    return list(
+        db.execute(
+            select(
+                BenchmarkResult.account_id,
+                BenchmarkResult.account_name,
+                BenchmarkResult.provider,
+                BenchmarkResult.model,
+                avg_speed.label("avg_speed"),
+                func.max(BenchmarkResult.output_tokens_per_second).label("best_speed"),
+                func.count().label("samples"),
+                func.avg(BenchmarkResult.first_token_ms).label("avg_first_token_ms"),
+                func.avg(BenchmarkResult.total_ms).label("avg_total_ms"),
+                func.max(BenchmarkRun.created_at).label("last_tested_at"),
+            )
+            .join(BenchmarkRun, BenchmarkResult.run_id == BenchmarkRun.id)
+            .where(BenchmarkResult.ok.is_(True), BenchmarkResult.output_tokens_per_second.is_not(None))
+            .group_by(
+                BenchmarkResult.account_id,
+                BenchmarkResult.account_name,
+                BenchmarkResult.provider,
+                BenchmarkResult.model,
+            )
+            .order_by(avg_speed.desc())
+            .limit(limit)
+        ).all()
+    )
+
+
+def _leaderboard_item(index: int, row: Any) -> dict[str, Any]:
+    return {
+        "rank": index + 1,
+        "account_id": row.account_id,
+        "account_name": row.account_name,
+        "provider": row.provider,
+        "model": row.model,
+        "avg_speed": round(float(row.avg_speed), 2) if row.avg_speed is not None else None,
+        "best_speed": round(float(row.best_speed), 2) if row.best_speed is not None else None,
+        "samples": int(row.samples or 0),
+        "avg_first_token_ms": round(float(row.avg_first_token_ms), 1) if row.avg_first_token_ms is not None else None,
+        "avg_total_ms": round(float(row.avg_total_ms), 1) if row.avg_total_ms is not None else None,
+        "last_tested_at": row.last_tested_at.isoformat() if row.last_tested_at is not None else None,
+    }
+
+
+@router.get("/leaderboard")
+def benchmark_leaderboard(
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _: Admin = Depends(get_current_admin),
+) -> dict[str, Any]:
+    """按「账号 × 模型」聚合已保存测速结果的输出速度，按平均速度排名。"""
+    rows = _leaderboard_rows(db, limit)
+    return {"items": [_leaderboard_item(index, row) for index, row in enumerate(rows)]}
+
+
+@router.get("/leaderboard/export")
+def export_benchmark_leaderboard(
+    limit: int = Query(default=500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    rows = _leaderboard_rows(db, limit)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["排名", "模型", "账号", "供应商", "平均速度(tok/s)", "最佳速度(tok/s)", "样本", "平均首token(ms)", "平均总耗时(ms)", "最近测试"])
+    for index, row in enumerate(rows):
+        item = _leaderboard_item(index, row)
+        writer.writerow([
+            item["rank"], item["model"], item["account_name"], item["provider"],
+            item["avg_speed"], item["best_speed"], item["samples"],
+            item["avg_first_token_ms"], item["avg_total_ms"], item["last_tested_at"] or "",
+        ])
+    content = output.getvalue().encode("utf-8-sig")
+    return StreamingResponse(
+        iter([content]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="benchmark-leaderboard-{datetime.now().strftime("%Y%m%d-%H%M%S")}.csv"'},
+    )

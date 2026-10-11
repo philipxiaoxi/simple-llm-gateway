@@ -228,10 +228,38 @@ class BenchmarkRun(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     max_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    group_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    group_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
     results: Mapped[list[BenchmarkResult]] = relationship(
         back_populates="run", cascade="all, delete-orphan", order_by="BenchmarkResult.id"
     )
+
+
+class BenchmarkGroup(Base):
+    __tablename__ = "benchmark_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    items: Mapped[list[BenchmarkGroupItem]] = relationship(
+        back_populates="group", cascade="all, delete-orphan", order_by="BenchmarkGroupItem.id"
+    )
+
+
+class BenchmarkGroupItem(Base):
+    __tablename__ = "benchmark_group_items"
+    __table_args__ = (UniqueConstraint("group_id", "account_id", "model"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("benchmark_groups.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    account_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    group: Mapped[BenchmarkGroup] = relationship(back_populates="items")
 
 
 class BenchmarkResult(Base):

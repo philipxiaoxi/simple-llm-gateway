@@ -234,6 +234,18 @@ def _ensure_columns(engine: Engine) -> None:
         benchmark_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(benchmark_results)"))}
         if benchmark_columns and "timeout" not in benchmark_columns:
             connection.execute(text("ALTER TABLE benchmark_results ADD COLUMN timeout BOOLEAN DEFAULT 0 NOT NULL"))
+        benchmark_run_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(benchmark_runs)"))}
+        if benchmark_run_columns:
+            if "group_id" not in benchmark_run_columns:
+                connection.execute(text("ALTER TABLE benchmark_runs ADD COLUMN group_id INTEGER"))
+            if "group_name" not in benchmark_run_columns:
+                connection.execute(text("ALTER TABLE benchmark_runs ADD COLUMN group_name VARCHAR(128)"))
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_benchmark_runs_group_id ON benchmark_runs (group_id)")
+            )
+        connection.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS ix_benchmark_groups_name ON benchmark_groups (name COLLATE NOCASE)")
+        )
         admin_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(admins)"))}
         if "token_version" not in admin_columns:
             connection.execute(text("ALTER TABLE admins ADD COLUMN token_version INTEGER DEFAULT 0 NOT NULL"))
