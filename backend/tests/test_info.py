@@ -1018,3 +1018,61 @@ def test_items_sort_scored_orders_by_scored_at(
     # 最近完成的在前，未判定的排最后
     assert ids[:3] == ["s3", "s2", "s1"]
     assert ids[-1] == "pending-item"
+
+
+def test_items_default_sorts_by_import_time_and_switches_to_news_time(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    from app.db import get_session_factory
+    from app.models import InfoItem
+
+    base = utcnow()
+    session = get_session_factory()()
+    try:
+        # 后导入（collected_at 更晚），但资讯时间更早
+        session.add(
+            InfoItem(
+                id="late-import",
+                source_id=None,
+                external_id="late-import",
+                kind="text",
+                text="后导入",
+                excerpt="后导入",
+                media_count=0,
+                cover_seed=1,
+                status="ready",
+                published_at=base - timedelta(days=10),
+                collected_at=base,
+                created_at=base,
+            )
+        )
+        # 先导入（collected_at 更早），但资讯时间更新
+        session.add(
+            InfoItem(
+                id="early-import",
+                source_id=None,
+                external_id="early-import",
+                kind="text",
+                text="先导入",
+                excerpt="先导入",
+                media_count=0,
+                cover_seed=1,
+                status="ready",
+                published_at=base - timedelta(days=1),
+                collected_at=base - timedelta(days=10),
+                created_at=base - timedelta(days=10),
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    # 默认按导入时间：最后导入的在前
+    default_items = client.get("/api/admin/info/items", headers=auth_headers).json()["items"]
+    assert default_items[0]["id"] == "late-import"
+
+    # 切到资讯时间：published_at 更新的在前
+    news_items = client.get(
+        "/api/admin/info/items", headers=auth_headers, params={"sort": "timeline"}
+    ).json()["items"]
+    assert news_items[0]["id"] == "early-import"

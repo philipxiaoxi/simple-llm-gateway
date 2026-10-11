@@ -1,8 +1,9 @@
 """资讯条目的查询、游标分页与序列化。
 
 分页用游标而不是 offset：采集过程中新内容会不断插入，offset 分页会让已翻过的页
-出现重复或漏项。排序键统一取 `coalesce(published_at, collected_at)`，保证没有发布
-时间的条目也有稳定的排序位置。
+出现重复或漏项。默认按导入时间（`collected_at`）倒序，最新导入的在前；切到「资讯
+时间」时用 `coalesce(published_at, collected_at)`，保证没有发布时间的条目也有稳定的
+排序位置。游标值始终取当前排序键，翻页不会重复或漏项。
 """
 
 from __future__ import annotations
@@ -26,8 +27,17 @@ MAX_LIMIT = 60
 DEFAULT_LIMIT = 24
 
 
-def _sort_key():
+def _sort_key(sort_mode: str):
+    # imported：按导入时间；timeline：按资讯时间，缺发布时间时回退到导入时间
+    if sort_mode == "imported":
+        return InfoItem.collected_at
     return func.coalesce(InfoItem.published_at, InfoItem.collected_at)
+
+
+def _cursor_value(item: InfoItem, sort_mode: str) -> datetime:
+    if sort_mode == "imported":
+        return item.collected_at
+    return item.published_at or item.collected_at
 
 
 def encode_cursor(sort_value: datetime, item_id: str) -> str:
@@ -121,6 +131,7 @@ def list_items(
 ) -> tuple[list[InfoItem], str | None, int]:
     size = max(1, min(MAX_LIMIT, int(limit or DEFAULT_LIMIT)))
     ascending = (order or "desc").strip().lower() == "asc"
+    sort_mode = (sort or "").strip().lower() or "timeline"
     clauses = _filters(
         source_id=source_id,
         kind=kind,
@@ -138,7 +149,7 @@ def list_items(
     )
 
     # 「最近完成」排序：按判定时间倒序，未判定的排最后。判定进度弹窗用，不做游标翻页。
-    if (sort or "").strip().lower() == "scored":
+    if sort_mode == "scored":
         stmt = (
             select(InfoItem)
             .options(selectinload(InfoItem.media), selectinload(InfoItem.source))
@@ -152,7 +163,7 @@ def list_items(
         )
         return list(db.scalars(stmt).all()), None, total
 
-    sort_key = _sort_key()
+    sort_key = _sort_key(sort_mode)
     # 列表要渲染封面（media）与频道信息（source），预加载避免每条各查一次（N+1）
     stmt = select(InfoItem).options(selectinload(InfoItem.media), selectinload(InfoItem.source)).where(*clauses)
     decoded = decode_cursor(cursor) if cursor else None
@@ -176,7 +187,7 @@ def list_items(
     next_cursor = None
     if has_more and page:
         last = page[-1]
-        next_cursor = encode_cursor(last.published_at or last.collected_at, last.id)
+        next_cursor = encode_cursor(_cursor_value(last, sort_mode), last.id)
     return page, next_cursor, total
 
 

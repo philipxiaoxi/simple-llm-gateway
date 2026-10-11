@@ -63,6 +63,9 @@ export function InfoFeedPage() {
   const minScore = params.get('min_score') || ''
   const keyword = params.get('q') || ''
   const order = params.get('order') === 'asc' ? 'asc' : 'desc'
+  // 默认按导入时间排序，可切换为资讯时间
+  const sort = params.get('sort') === 'timeline' ? 'timeline' : 'imported'
+  const sortValue = `${sort}:${order}`
 
   const [search, setSearch] = useState(keyword)
   const [aiOpen, setAiOpen] = useState(false)
@@ -77,7 +80,7 @@ export function InfoFeedPage() {
   const sourceList = sources.data?.sources ?? []
 
   const feed = useInfiniteQuery({
-    queryKey: ['info-items', { sourceId, kind, favoriteOnly, featuredOnly, label, minScore, keyword, order }],
+    queryKey: ['info-items', { sourceId, kind, favoriteOnly, featuredOnly, label, minScore, keyword, sort, order }],
     queryFn: ({ pageParam }) =>
       api.infoItems({
         cursor: pageParam || undefined,
@@ -89,6 +92,7 @@ export function InfoFeedPage() {
         featured: featuredOnly ? 1 : undefined,
         label: label || undefined,
         min_score: minScore || undefined,
+        sort,
         order,
       }),
     initialPageParam: '',
@@ -167,6 +171,17 @@ export function InfoFeedPage() {
     const next = new URLSearchParams(params)
     if (value) next.set(key, value)
     else next.delete(key)
+    setParams(next, { replace: true })
+  }
+
+  // 排序维度 + 方向合并成一个下拉：imported:desc / imported:asc / timeline:desc / timeline:asc
+  function setSort(value: string) {
+    const [nextSort, nextOrder] = value.split(':')
+    const next = new URLSearchParams(params)
+    if (nextSort === 'timeline') next.set('sort', 'timeline')
+    else next.delete('sort')
+    if (nextOrder === 'asc') next.set('order', 'asc')
+    else next.delete('order')
     setParams(next, { replace: true })
   }
 
@@ -316,10 +331,7 @@ export function InfoFeedPage() {
             <div className="grid grid-cols-3 gap-2">
               <LabelSelect value={label} onChange={(value) => setParam('label', value)} />
               <ScoreSelect value={minScore} onChange={(value) => setParam('min_score', value)} />
-              <OrderSelect
-                value={order}
-                onChange={(value) => setParam('order', value === 'asc' ? 'asc' : '')}
-              />
+              <SortSelect value={sortValue} onChange={setSort} />
             </div>
             {filtersActive ? (
               <button
@@ -353,11 +365,7 @@ export function InfoFeedPage() {
           <LabelSelect value={label} onChange={(value) => setParam('label', value)} className="w-32 shrink-0" />
           <ScoreSelect value={minScore} onChange={(value) => setParam('min_score', value)} className="w-32 shrink-0" />
           <SearchBox value={search} onChange={setSearch} className="w-52 shrink-0" />
-          <OrderSelect
-            value={order}
-            onChange={(value) => setParam('order', value === 'asc' ? 'asc' : '')}
-            className="w-24 shrink-0"
-          />
+          <SortSelect value={sortValue} onChange={setSort} className="w-28 shrink-0" />
         </div>
           </div>
         </div>
@@ -602,7 +610,7 @@ function ScoreSelect({
   )
 }
 
-function OrderSelect({
+function SortSelect({
   value,
   onChange,
   className,
@@ -618,8 +626,10 @@ function OrderSelect({
       value={value}
       onChange={(event) => onChange(event.target.value)}
     >
-      <option value="desc">最新</option>
-      <option value="asc">最早</option>
+      <option value="imported:desc">最新导入</option>
+      <option value="imported:asc">最早导入</option>
+      <option value="timeline:desc">最新资讯</option>
+      <option value="timeline:asc">最早资讯</option>
     </Select>
   )
 }
