@@ -1076,3 +1076,94 @@ def test_items_default_sorts_by_import_time_and_switches_to_news_time(
         "/api/admin/info/items", headers=auth_headers, params={"sort": "timeline"}
     ).json()["items"]
     assert news_items[0]["id"] == "early-import"
+
+
+def _seed_items(ids: list[str], *, ai_status: str = "failed") -> None:
+    from app.db import get_session_factory
+    from app.models import InfoItem
+
+    base = utcnow()
+    session = get_session_factory()()
+    try:
+        for item_id in ids:
+            session.add(
+                InfoItem(
+                    id=item_id,
+                    source_id=None,
+                    external_id=item_id,
+                    kind="text",
+                    text=f"条目 {item_id}",
+                    excerpt=f"条目 {item_id}",
+                    media_count=0,
+                    cover_seed=1,
+                    status="ready",
+                    ai_status=ai_status,
+                    ai_error="模型返回无法解析为约定 JSON",
+                    collected_at=base,
+                    created_at=base,
+                )
+            )
+        session.commit()
+    finally:
+        session.close()
+
+
+def test_skip_failed_item(client: TestClient, auth_headers: dict[str, str]) -> None:
+    _seed_items(["skip-1"])
+
+    response = client.post("/api/admin/info/items/skip-1/ai-skip", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["ai_status"] == "skipped"
+
+    listed = client.get(
+        "/api/admin/info/items", headers=auth_headers, params={"ai_status": "skipped"}
+    ).json()
+    assert {row["id"] for row in listed["items"]} == {"skip-1"}
+
+
+def test_skip_items_batch(client: TestClient, auth_headers: dict[str, str]) -> None:
+    _seed_items(["skip-a", "skip-b", "keep"])
+
+    response = client.post(
+        "/api/admin/info/ai/skip", headers=auth_headers, json={"ids": ["skip-a", "skip-b"]}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["count"] == 2
+
+    skipped = client.get(
+        "/api/admin/info/items", headers=auth_headers, params={"ai_status": "skipped"}
+    ).json()
+    assert {row["id"] for row in skipped["items"]} == {"skip-a", "skip-b"}
+
+
+def test_delete_items_single_batch_and_media(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    from app.info import storage as info_storage
+
+    _seed_items(["del-1", "del-2", "del-3"])
+    # 给 del-1 造一个媒体目录，验证删除会一并清理磁盘文件
+    media_dir = info_storage.item_dir("del-1")
+    (media_dir / "a.bin").write_bytes(b"x")
+    assert media_dir.is_dir()
+
+    # 单条删除
+    response = client.delete("/api/admin/info/items/del-1", headers=auth_headers)
+    assert response.status_code == 204
+    assert client.get("/api/admin/info/items/del-1", headers=auth_headers).status_code == 404
+    assert not media_dir.exists()
+
+    # 不存在再删返回 404
+    assert client.delete("/api/admin/info/items/del-1", headers=auth_headers).status_code == 404
+
+    # 批量删除
+    batch = client.post(
+        "/api/admin/info/items/delete", headers=auth_headers, json={"ids": ["del-2", "del-3"]}
+    )
+    assert batch.status_code == 200, batch.text
+    assert batch.json()["deleted"] == 2
+
+    remaining = {
+        row["id"] for row in client.get("/api/admin/info/items", headers=auth_headers).json()["items"]
+    }
+    assert remaining.isdisjoint({"del-1", "del-2", "del-3"})

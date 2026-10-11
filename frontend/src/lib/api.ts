@@ -1446,6 +1446,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ featured }),
     }),
+  infoItemAiSkip: (id: string) =>
+    request<InfoItem>(`/api/admin/info/items/${encodeURIComponent(id)}/ai-skip`, {
+      method: 'POST',
+    }),
+  infoItemsAiSkip: (ids: string[]) =>
+    request<{ count: number }>('/api/admin/info/ai/skip', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
+  infoItemDelete: (id: string) =>
+    request<void>(`/api/admin/info/items/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  infoItemsDelete: (ids: string[]) =>
+    request<{ deleted: number }>('/api/admin/info/items/delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
   infoAiSettings: () => request<InfoAiSettings>('/api/admin/info/ai/settings'),
   infoAiSettingsUpdate: (payload: Partial<InfoAiSettings>) =>
     request<InfoAiSettings>('/api/admin/info/ai/settings', {

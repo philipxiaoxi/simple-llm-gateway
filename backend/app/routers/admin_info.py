@@ -87,6 +87,10 @@ class StateBody(BaseModel):
     featured: bool | None = None
 
 
+class ItemIdsBody(BaseModel):
+    ids: list[str]
+
+
 class AiSettingsBody(BaseModel):
     enabled: bool | None = None
     account_id: int | None = None
@@ -353,6 +357,44 @@ def set_featured(item_id: str, payload: StateBody | None = None, db: Session = D
         _resolve_state(payload, "featured"),
         manual_field="ai_featured_manual",
     )
+
+
+@router.post("/items/{item_id}/ai-skip")
+def skip_item(item_id: str, db: Session = Depends(get_db)):
+    """把单条内容标记为「已跳过」，不再参与后续 AI 判定。"""
+    row = items.get_item(db, item_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="内容不存在")
+    row.ai_status = "skipped"
+    row.ai_error = ""
+    db.commit()
+    return items.serialize_item(row)
+
+
+@router.post("/ai/skip")
+def skip_items(payload: ItemIdsBody, db: Session = Depends(get_db)):
+    """批量跳过（常用于跳过判定失败的条目）。"""
+    count = items.skip_items(db, payload.ids)
+    db.commit()
+    return {"count": count}
+
+
+@router.post("/items/delete")
+def delete_items(payload: ItemIdsBody, db: Session = Depends(get_db)):
+    """批量删除内容（含媒体文件）；`ids` 为主键列表。"""
+    deleted = items.delete_items(db, payload.ids)
+    db.commit()
+    return {"deleted": deleted}
+
+
+@router.delete("/items/{item_id}", status_code=204)
+def delete_item(item_id: str, db: Session = Depends(get_db)):
+    """删除单条内容（含媒体文件）。"""
+    deleted = items.delete_items(db, [item_id])
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="内容不存在")
+    db.commit()
+    return None
 
 
 @router.get("/ai/settings")

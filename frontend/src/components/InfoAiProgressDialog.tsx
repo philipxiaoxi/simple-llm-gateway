@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, RefreshCw, Sparkles } from 'lucide-react'
+import { Loader2, RefreshCw, SkipForward, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { api, type InfoItem } from '../lib/api'
@@ -75,6 +75,27 @@ export function InfoAiProgressDialog({ open, onClose }: { open: boolean; onClose
       await queryClient.invalidateQueries({ queryKey: INFO_AI_PROGRESS_KEY })
     },
     onError: (caught) => notifyBad(errorMessage(caught, '重新判定失败')),
+  })
+
+  const skipOne = useMutation({
+    mutationFn: (id: string) => api.infoItemAiSkip(id),
+    onSuccess: async () => {
+      notifyOk('已跳过该内容')
+      await queryClient.invalidateQueries({ queryKey: ['info-stats'] })
+      await queryClient.invalidateQueries({ queryKey: INFO_AI_PROGRESS_KEY })
+    },
+    onError: (caught) => notifyBad(errorMessage(caught, '跳过失败')),
+  })
+
+  const removeOne = useMutation({
+    mutationFn: (id: string) => api.infoItemDelete(id),
+    onSuccess: async () => {
+      notifyOk('已删除该内容')
+      await queryClient.invalidateQueries({ queryKey: ['info-stats'] })
+      await queryClient.invalidateQueries({ queryKey: INFO_AI_PROGRESS_KEY })
+      await queryClient.invalidateQueries({ queryKey: ['info-items'] })
+    },
+    onError: (caught) => notifyBad(errorMessage(caught, '删除失败')),
   })
 
   const counts: Record<TabKey, number> = {
@@ -181,38 +202,91 @@ export function InfoAiProgressDialog({ open, onClose }: { open: boolean; onClose
             <div className="px-3 py-10 text-center text-sm text-mist">该状态下暂无条目</div>
           ) : null}
           {list.map((item) => (
-            <ProgressRow key={item.id} item={item} search={location.search} onOpen={onClose} />
+            <ProgressRow
+              key={item.id}
+              item={item}
+              search={location.search}
+              onOpen={onClose}
+              onSkip={(id) => skipOne.mutate(id)}
+              onDelete={(id) => removeOne.mutate(id)}
+              busy={skipOne.isPending || removeOne.isPending}
+            />
           ))}
         </div>
-        <p className="text-[11px] text-mist/80">判定进行中时列表会自动刷新；点击条目可查看详情。</p>
+        <p className="text-[11px] text-mist/80">
+          判定进行中时列表会自动刷新；点击条目可查看详情，失败/待判定的条目可以跳过或删除。
+        </p>
       </div>
     </Dialog>
   )
 }
 
-function ProgressRow({ item, search, onOpen }: { item: InfoItem; search: string; onOpen: () => void }) {
+function ProgressRow({
+  item,
+  search,
+  onOpen,
+  onSkip,
+  onDelete,
+  busy,
+}: {
+  item: InfoItem
+  search: string
+  onOpen: () => void
+  onSkip: (id: string) => void
+  onDelete: (id: string) => void
+  busy: boolean
+}) {
   const meta = STATUS_META[item.ai_status] ?? { label: item.ai_status, tone: 'mist' as const }
   const text = item.excerpt || item.text || '（无正文）'
+  const canSkip = item.ai_status === 'failed' || item.ai_status === 'pending'
   return (
-    <Link
-      to={`/info/${item.id}${search}`}
-      onClick={onOpen}
-      className="flex items-start gap-3 border-b border-line/70 px-3 py-2.5 transition last:border-0 hover:bg-white/[0.03]"
-    >
-      <div className="mt-0.5 flex w-16 shrink-0 flex-col items-start gap-1">
-        <Badge tone={meta.tone}>{meta.label}</Badge>
-        {item.ai_score != null ? <span className="text-[11px] text-mist">{item.ai_score} 分</span> : null}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="line-clamp-2 text-sm text-paper">{text}</div>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-mist">
-          <span className="truncate">{item.source?.title || item.author_name || '未知来源'}</span>
-          {item.ai_label ? <span>{labelText(item.ai_label)}</span> : null}
-          {item.ai_scored_at ? <span>{relativeTime(item.ai_scored_at)}</span> : null}
+    <div className="flex items-start gap-2 border-b border-line/70 px-3 py-2.5 transition last:border-0 hover:bg-white/[0.03]">
+      <Link
+        to={`/info/${item.id}${search}`}
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-start gap-3"
+      >
+        <div className="mt-0.5 flex w-16 shrink-0 flex-col items-start gap-1">
+          <Badge tone={meta.tone}>{meta.label}</Badge>
+          {item.ai_score != null ? <span className="text-[11px] text-mist">{item.ai_score} 分</span> : null}
         </div>
-        {item.ai_error ? <div className="mt-1 line-clamp-1 text-[11px] text-danger">{item.ai_error}</div> : null}
+        <div className="min-w-0 flex-1">
+          <div className="line-clamp-2 text-sm text-paper">{text}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-mist">
+            <span className="truncate">{item.source?.title || item.author_name || '未知来源'}</span>
+            {item.ai_label ? <span>{labelText(item.ai_label)}</span> : null}
+            {item.ai_scored_at ? <span>{relativeTime(item.ai_scored_at)}</span> : null}
+          </div>
+          {item.ai_error ? <div className="mt-1 line-clamp-1 text-[11px] text-danger">{item.ai_error}</div> : null}
+        </div>
+      </Link>
+      <div className="flex shrink-0 items-center gap-1 pt-0.5">
+        {canSkip ? (
+          <button
+            type="button"
+            aria-label="跳过"
+            title="跳过（不再判定）"
+            disabled={busy}
+            onClick={() => onSkip(item.id)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-mist transition hover:bg-white/5 hover:text-paper disabled:opacity-40"
+          >
+            <SkipForward size={14} />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          aria-label="删除"
+          title="删除该内容"
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm('删除该内容？相关媒体文件也会一并删除。')) onDelete(item.id)
+          }}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-mist transition hover:bg-danger/10 hover:text-danger disabled:opacity-40"
+        >
+          <Trash2 size={14} />
+        </button>
       </div>
-    </Link>
+    </div>
   )
 }
 
