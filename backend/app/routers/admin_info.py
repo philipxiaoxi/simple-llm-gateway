@@ -273,7 +273,8 @@ def list_items(
     min_score: int | None = None,
     ai_status: str | None = None,
     order: str = "desc",
-    sort: str = "timeline",
+    # 列表默认按导入时间排序（最新导入的在前）；sort=timeline 时切到按资讯时间
+    sort: str = "imported",
     db: Session = Depends(get_db),
 ):
     rows, next_cursor, total = items.list_items(
