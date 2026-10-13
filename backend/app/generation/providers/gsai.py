@@ -1,4 +1,4 @@
-"""gsai（Grsai）供应商适配器。
+"""gsai（Grsai）供应商：适配器 + 模型清单。
 
 对接两个接口：
 - 生成：`POST {base}/v1/api/generate`（replyType=async 时立即返回任务 id）
@@ -23,8 +23,27 @@ from app.generation.base import (
     InputMedia,
     ProviderError,
 )
+from app.generation.catalog import (
+    BACKGROUND_PARAM,
+    GPT_RATIO_SIZES,
+    IMAGE_RATIOS,
+    IMAGE_RATIOS_EXTENDED,
+    IMAGE_SIZE_PARAM,
+    MASK_PARAM,
+    PIXEL_SIZES,
+    ModelSpec,
+    ParamSpec,
+    labelled_opts,
+    opts,
+)
 
 PROVIDER = "gsai"
+LABEL = "Grsai（gsai）"
+DEFAULT_BASE_URL = "https://grsaiapi.com"
+KINDS = ("image", "video")
+# 保持 gsai 为默认供应商（ORDER 越小越靠前），避免升级后默认值漂移
+ORDER = 0
+
 _KNOWN_STATUSES = {STATUS_RUNNING, STATUS_SUCCEEDED, STATUS_FAILED, STATUS_VIOLATION}
 
 
@@ -133,3 +152,110 @@ class GsaiAdapter:
         if not isinstance(payload, dict):
             raise ProviderError("gsai 返回结构异常")
         return payload
+
+
+# --------------------------------------------------------------------------- #
+# 模型清单
+# --------------------------------------------------------------------------- #
+
+_NANO_MODELS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("nano-banana", IMAGE_RATIOS),
+    ("nano-banana-fast", IMAGE_RATIOS),
+    ("nano-banana-2", IMAGE_RATIOS_EXTENDED),
+    ("nano-banana-2-cl", IMAGE_RATIOS),
+    ("nano-banana-2-2k-cl", IMAGE_RATIOS),
+    ("nano-banana-2-4k-cl", IMAGE_RATIOS),
+    ("nano-banana-pro", IMAGE_RATIOS),
+    ("nano-banana-pro-vt", IMAGE_RATIOS),
+    ("nano-banana-pro-cl", IMAGE_RATIOS),
+    ("nano-banana-pro-vip", IMAGE_RATIOS),
+    ("nano-banana-pro-4k-vip", IMAGE_RATIOS),
+)
+
+
+def _nano(model_id: str, ratios: tuple[str, ...]) -> ModelSpec:
+    return ModelSpec(
+        id=model_id,
+        label=model_id,
+        kind="image",
+        params=(
+            ParamSpec("aspectRatio", "画面比例", "select", opts(ratios), "1:1"),
+            IMAGE_SIZE_PARAM,
+        ),
+        supports_images=True,
+        max_images=9,
+    )
+
+
+def _gpt(model_id: str, *, sizes: tuple[str, ...], quality: tuple[str, ...], quality_default: str) -> ModelSpec:
+    return ModelSpec(
+        id=model_id,
+        label=model_id,
+        kind="image",
+        params=(
+            ParamSpec(
+                "aspectRatio",
+                "画面比例 / 尺寸",
+                "select",
+                opts(sizes),
+                sizes[1] if len(sizes) > 1 else "auto",
+                required=True,
+            ),
+            ParamSpec("quality", "质量", "select", opts(quality), quality_default),
+            BACKGROUND_PARAM,
+            MASK_PARAM,
+        ),
+        supports_images=True,
+        max_images=9,
+    )
+
+
+MODELS: tuple[ModelSpec, ...] = (
+    # ---- nano-banana 系列 ----
+    *(_nano(model_id, ratios) for model_id, ratios in _NANO_MODELS),
+    # ---- gpt-image-2 系列（比例）----
+    _gpt("gpt-image-2", sizes=GPT_RATIO_SIZES, quality=("auto",), quality_default="auto"),
+    _gpt("gpt-image-2.5", sizes=GPT_RATIO_SIZES, quality=("auto",), quality_default="auto"),
+    # ---- gpt-image-2 系列（像素尺寸）----
+    _gpt("gpt-image-2-vip", sizes=PIXEL_SIZES, quality=("medium",), quality_default="medium"),
+    _gpt("gpt-image-2.5-flare", sizes=PIXEL_SIZES, quality=("low", "medium", "high"), quality_default="medium"),
+    _gpt(
+        "gpt-image-2.5-sunburst",
+        sizes=PIXEL_SIZES,
+        quality=("low", "medium", "high", "xhigh", "max"),
+        quality_default="high",
+    ),
+    # ---- 视频 minimax-h3 ----
+    ModelSpec(
+        id="minimax-h3",
+        label="minimax-h3",
+        kind="video",
+        params=(
+            ParamSpec(
+                "aspectRatio",
+                "画面方向",
+                "select",
+                labelled_opts((("portrait", "竖屏 portrait"), ("landscape", "横屏 landscape"))),
+                "portrait",
+                required=True,
+            ),
+            ParamSpec(
+                "resolution",
+                "分辨率",
+                "select",
+                opts(("480p", "768p", "1080p")),
+                "480p",
+                required=True,
+                help="1080p 最多 10 秒",
+            ),
+            ParamSpec("duration", "时长（秒）", "number", default=5, minimum=1, maximum=15, required=True),
+            ParamSpec("seed", "随机种子", "number", default=None, minimum=0, help="可选，固定后更可复现"),
+        ),
+        supports_images=True,
+        max_images=9,
+        supports_audios=True,
+        max_audios=3,
+    ),
+)
+
+ADAPTER = GsaiAdapter

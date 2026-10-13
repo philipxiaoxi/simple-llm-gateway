@@ -1481,7 +1481,13 @@ export const api = {
   infoStats: () => request<InfoStats>('/api/admin/info/stats'),
   generationSettings: () => request<GenerationSettings>('/api/admin/generation/settings'),
   generationSettingsUpdate: (payload: {
-    providers?: Array<{ provider: string; base_url?: string; api_key?: string; enabled?: boolean }>
+    providers?: Array<{
+      provider: string
+      base_url?: string
+      api_key?: string
+      extra_models?: string
+      enabled?: boolean
+    }>
     default_image_model?: string
     default_video_model?: string
   }) =>
@@ -1506,6 +1512,8 @@ export const api = {
   generationCreate: (payload: {
     kind: string
     model: string
+    // 供应商：模型名可能重名，交给后端时带上归属
+    provider?: string
     prompt: string
     params: Record<string, unknown>
     input_asset_ids: string[]
@@ -2535,6 +2543,9 @@ export type GenerationModel = {
   max_images: number
   supports_audios: boolean
   max_audios: number
+  // 归属供应商：同名模型可能出现在多家，必须带上才不串台
+  provider: string
+  provider_label: string
 }
 
 export type GenerationProviderSetting = {
@@ -2542,6 +2553,10 @@ export type GenerationProviderSetting = {
   label: string
   default_base_url: string
   base_url: string
+  // 该供应商支持的任务类型（RightAPI 只有 image）
+  kinds: string[]
+  // 管理员手填的额外模型名（供应商模型列表未公开时用）
+  extra_models: string
   has_key: boolean
   enabled: boolean
   configured: boolean

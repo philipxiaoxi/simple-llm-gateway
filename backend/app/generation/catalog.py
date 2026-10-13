@@ -1,7 +1,10 @@
-"""生成模型目录：每个模型支持哪些参数，直接驱动前端表单渲染。
+"""生成模型的**公共词汇表**：参数描述、模型描述与共享的取值常量。
 
-新增供应商或模型时，只要在这里补一条 `ModelSpec`，前端表单会自动出现对应字段，
-无需改任何前端代码 —— 这是「未来可扩展」的核心。
+这里只放「所有供应商都能复用」的东西，不放任何具体供应商的模型清单：
+- 具体模型定义在 `app/generation/providers/<provider>.py` 里，与适配器放在一起；
+- 目录聚合与查找在 `app/generation/registry.py`。
+
+这样接入新供应商时不需要改动本文件。
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ class Option:
 class ParamSpec:
     key: str
     label: str
-    type: str  # select | combo | number
+    type: str  # select | combo | number | text
     options: tuple[Option, ...] = ()
     default: str | int | None = None
     minimum: int | None = None
@@ -52,6 +55,25 @@ class ModelSpec:
     max_images: int = 0
     supports_audios: bool = False
     max_audios: int = 0
+    # 归属供应商：由 registry 聚合时填充，前端据此分组
+    provider: str = ""
+    provider_label: str = ""
+
+    def with_provider(self, provider: str, provider_label: str) -> ModelSpec:
+        """登记到某个供应商名下（dataclass 是 frozen 的，返回副本）。"""
+
+        return ModelSpec(
+            id=self.id,
+            label=self.label,
+            kind=self.kind,
+            params=self.params,
+            supports_images=self.supports_images,
+            max_images=self.max_images,
+            supports_audios=self.supports_audios,
+            max_audios=self.max_audios,
+            provider=provider,
+            provider_label=provider_label,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -63,12 +85,32 @@ class ModelSpec:
             "max_images": self.max_images,
             "supports_audios": self.supports_audios,
             "max_audios": self.max_audios,
+            "provider": self.provider,
+            "provider_label": self.provider_label,
         }
 
 
-def _opts(values: tuple[str, ...]) -> tuple[Option, ...]:
+def opts(values: tuple[str, ...]) -> tuple[Option, ...]:
+    """把一串取值变成「值即标签」的下拉项。"""
+
     return tuple(Option(value, value) for value in values)
 
+
+def labelled_opts(pairs: tuple[tuple[str, str], ...]) -> tuple[Option, ...]:
+    """值与人话标签不同的下拉项，例如 (\"portrait\", \"竖屏 portrait\")。"""
+
+    return tuple(Option(value, label) for value, label in pairs)
+
+
+def options_with_blank(values: tuple[str, ...], blank_label: str = "默认") -> tuple[Option, ...]:
+    """首项为「不传该参数」的下拉项。"""
+
+    return (Option("", blank_label),) + opts(values)
+
+
+# --------------------------------------------------------------------------- #
+# 共享取值：聚合类供应商的模型基本都吃这几套比例 / 尺寸
+# --------------------------------------------------------------------------- #
 
 IMAGE_RATIOS = ("auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5", "21:9")
 IMAGE_RATIOS_EXTENDED = IMAGE_RATIOS + ("1:4", "4:1", "1:8", "8:1")
@@ -131,16 +173,16 @@ PIXEL_SIZES = (
 GPT_1K_PIXEL = ("1024x1024",)
 GPT_RATIO_SIZES = GPT_RATIOS + GPT_1K_PIXEL
 
-_IMAGE_SIZE = ParamSpec(
+IMAGE_SIZE_PARAM = ParamSpec(
     key="imageSize",
     label="分辨率",
     type="select",
-    options=_opts(("1K", "2K", "4K")),
+    options=opts(("1K", "2K", "4K")),
     default="1K",
     required=True,
 )
 
-_BACKGROUND = ParamSpec(
+BACKGROUND_PARAM = ParamSpec(
     key="background",
     label="背景",
     type="select",
@@ -148,120 +190,45 @@ _BACKGROUND = ParamSpec(
     default="",
     help="仅部分模型支持透明背景",
 )
-_MASK = ParamSpec(key="mask", label="蒙版图片地址", type="text", default="", help="可选，图片 URL")
 
-_NANO_MODELS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("nano-banana", IMAGE_RATIOS),
-    ("nano-banana-fast", IMAGE_RATIOS),
-    ("nano-banana-2", IMAGE_RATIOS_EXTENDED),
-    ("nano-banana-2-cl", IMAGE_RATIOS),
-    ("nano-banana-2-2k-cl", IMAGE_RATIOS),
-    ("nano-banana-2-4k-cl", IMAGE_RATIOS),
-    ("nano-banana-pro", IMAGE_RATIOS),
-    ("nano-banana-pro-vt", IMAGE_RATIOS),
-    ("nano-banana-pro-cl", IMAGE_RATIOS),
-    ("nano-banana-pro-vip", IMAGE_RATIOS),
-    ("nano-banana-pro-4k-vip", IMAGE_RATIOS),
-)
+MASK_PARAM = ParamSpec(key="mask", label="蒙版图片地址", type="text", default="", help="可选，图片 URL")
 
 
-def _nano(model_id: str, ratios: tuple[str, ...]) -> ModelSpec:
-    return ModelSpec(
-        id=model_id,
-        label=model_id,
-        kind="image",
-        params=(
-            ParamSpec("aspectRatio", "画面比例", "select", _opts(ratios), "1:1"),
-            _IMAGE_SIZE,
-        ),
-        supports_images=True,
-        max_images=9,
-    )
+def custom_model_spec(model_id: str, kind: str = "image") -> ModelSpec:
+    """把管理员手填的模型名包装成可用规格。
 
+    供应商的模型列表未必公开（RightAPI 只在自家后台可见），所以允许在配置里补模型名，
+    用一套通用的比例 / 分辨率参数兜底，不必为了试某个模型先改代码。
+    """
 
-def _gpt(model_id: str, *, sizes: tuple[str, ...], quality: tuple[str, ...], quality_default: str) -> ModelSpec:
-    params: list[ParamSpec] = [
-        ParamSpec("aspectRatio", "画面比例 / 尺寸", "select", _opts(sizes), sizes[1] if len(sizes) > 1 else "auto", required=True),
-        ParamSpec("quality", "质量", "select", _opts(quality), quality_default),
-        _BACKGROUND,
-        _MASK,
-    ]
-    return ModelSpec(
-        id=model_id,
-        label=model_id,
-        kind="image",
-        params=tuple(params),
-        supports_images=True,
-        max_images=9,
-    )
-
-
-_MODELS: tuple[ModelSpec, ...] = (
-    # ---- nano-banana 系列 ----
-    *(_nano(model_id, ratios) for model_id, ratios in _NANO_MODELS),
-    # ---- gpt-image-2 系列（比例）----
-    _gpt("gpt-image-2", sizes=GPT_RATIO_SIZES, quality=("auto",), quality_default="auto"),
-    _gpt("gpt-image-2.5", sizes=GPT_RATIO_SIZES, quality=("auto",), quality_default="auto"),
-    # ---- gpt-image-2 系列（像素尺寸）----
-    _gpt("gpt-image-2-vip", sizes=PIXEL_SIZES, quality=("medium",), quality_default="medium"),
-    _gpt("gpt-image-2.5-flare", sizes=PIXEL_SIZES, quality=("low", "medium", "high"), quality_default="medium"),
-    _gpt(
-        "gpt-image-2.5-sunburst",
-        sizes=PIXEL_SIZES,
-        quality=("low", "medium", "high", "xhigh", "max"),
-        quality_default="high",
-    ),
-    # ---- 视频 minimax-h3 ----
-    ModelSpec(
-        id="minimax-h3",
-        label="minimax-h3",
-        kind="video",
-        params=(
-            ParamSpec(
-                "aspectRatio",
-                "画面方向",
-                "select",
-                (Option("portrait", "竖屏 portrait"), Option("landscape", "横屏 landscape")),
-                "portrait",
-                required=True,
+    if kind == "video":
+        return ModelSpec(
+            id=model_id,
+            label=model_id,
+            kind="video",
+            params=(
+                ParamSpec("aspectRatio", "画面方向", "select", opts(("portrait", "landscape")), "portrait"),
+                ParamSpec("duration", "时长（秒）", "number", default=5, minimum=1, maximum=30),
             ),
+            supports_images=True,
+            max_images=9,
+        )
+    return ModelSpec(
+        id=model_id,
+        label=model_id,
+        kind="image",
+        params=(
+            ParamSpec("aspectRatio", "画面比例", "select", opts(IMAGE_RATIOS), "1:1"),
             ParamSpec(
-                "resolution",
+                "imageSize",
                 "分辨率",
                 "select",
-                _opts(("480p", "768p", "1080p")),
-                "480p",
-                required=True,
-                help="1080p 最多 10 秒",
+                options_with_blank(("1K", "2K", "4K")),
+                "",
+                help="不确定就留默认",
             ),
-            ParamSpec("duration", "时长（秒）", "number", default=5, minimum=1, maximum=15, required=True),
-            ParamSpec("seed", "随机种子", "number", default=None, minimum=0, help="可选，固定后更可复现"),
+            ParamSpec("n", "生成数量", "number", default=1, minimum=1, maximum=4),
         ),
         supports_images=True,
         max_images=9,
-        supports_audios=True,
-        max_audios=3,
-    ),
-)
-
-_BY_ID = {model.id: model for model in _MODELS}
-
-
-def models_for(kind: str) -> list[ModelSpec]:
-    return [model for model in _MODELS if model.kind == kind]
-
-
-def get_model(model_id: str) -> ModelSpec | None:
-    return _BY_ID.get(model_id)
-
-
-def catalog_payload() -> dict[str, list[dict[str, Any]]]:
-    return {
-        "image": [model.to_dict() for model in models_for("image")],
-        "video": [model.to_dict() for model in models_for("video")],
-    }
-
-
-def default_model(kind: str) -> str:
-    models = models_for(kind)
-    return models[0].id if models else ""
+    )

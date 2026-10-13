@@ -3,7 +3,15 @@ import { Dices, ImagePlus, Music, Sparkles, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api, type GenerationAsset, type GenerationModel, type GenerationSettings } from '../lib/api'
 import type { GenerationPreset } from '../lib/generation'
-import { defaultParams, pickExample } from '../lib/generation'
+import {
+  defaultParams,
+  findModel,
+  modelKey,
+  pickExample,
+  resolveModelKey,
+  resolvePresetTarget,
+} from '../lib/generation'
+import { GenerationModelSelect } from './GenerationModelSelect'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage } from '../lib/utils'
 import { Button, Field, Input, Select } from './ui'
@@ -43,26 +51,31 @@ export function GenerationComposer({
 }) {
   const models = settings.catalog[kind]
   const defaultModel = kind === 'image' ? settings.default_image_model : settings.default_video_model
-  const [modelId, setModelId] = useState(defaultModel || models[0]?.id || '')
+  const [targetKey, setTargetKey] = useState(() => resolveModelKey(models, defaultModel))
   const [prompt, setPrompt] = useState('')
-  const [params, setParams] = useState<Record<string, ParamValue>>(() => initialParams(models.find((m) => m.id === (defaultModel || models[0]?.id))))
+  const [params, setParams] = useState<Record<string, ParamValue>>(() =>
+    initialParams(findModel(models, resolveModelKey(models, defaultModel))),
+  )
   const [inputs, setInputs] = useState<GenerationAsset[]>([])
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const model = models.find((item) => item.id === modelId) ?? models[0]
-  const configured = settings.providers.some((item) => item.configured && item.enabled)
+  const model = findModel(models, targetKey) ?? models[0]
+  // 目录里有多家供应商时，只认「当前模型所属那家」是否可用
+  const providerSetting = settings.providers.find((item) => item.provider === model?.provider)
+  const configured = Boolean(providerSetting?.configured && providerSetting.enabled)
 
   // 复用某个作品的参数：一次性填充模型/提示词/参数（不改动已上传的参考素材）
   useEffect(() => {
     if (!preset) return
-    const target = models.find((item) => item.id === preset.model)
+    // 以作品自己的供应商为准，避免同名模型被填成另一家
+    const target = resolvePresetTarget(models, preset, model?.provider)
     if (!target) return
     const merged = initialParams(target)
     for (const param of target.params) {
       if (param.key in preset.params) merged[param.key] = String(preset.params[param.key] ?? '')
     }
-    setModelId(target.id)
+    setTargetKey(modelKey(target))
     setPrompt(preset.prompt)
     setParams(merged)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -72,7 +85,8 @@ export function GenerationComposer({
     mutationFn: () =>
       api.generationCreate({
         kind,
-        model: modelId,
+        provider: model.provider,
+        model: model.id,
         prompt: prompt.trim(),
         params: buildParams(model, params),
         input_asset_ids: inputs.map((asset) => asset.id),
@@ -134,9 +148,9 @@ export function GenerationComposer({
     }
   }
 
-  function changeModel(nextId: string) {
-    setModelId(nextId)
-    setParams(initialParams(models.find((item) => item.id === nextId)))
+  function changeModel(nextKey: string) {
+    setTargetKey(nextKey)
+    setParams(initialParams(findModel(models, nextKey)))
   }
 
   function submit() {
@@ -155,7 +169,9 @@ export function GenerationComposer({
     <div className="flex flex-col gap-4">
       {!configured ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
-          <span>尚未配置生成供应商，提交前请先完成配置。</span>
+          <span>
+            {model.provider_label || model.provider} 尚未配置，提交前请先完成配置。
+          </span>
           <Button type="button" variant="line" className="min-h-8 py-1" onClick={onOpenConfig}>
             去配置
           </Button>
@@ -232,13 +248,7 @@ export function GenerationComposer({
       ) : null}
 
       <Field label="模型">
-        <Select value={modelId} onChange={(event) => changeModel(event.target.value)}>
-          {models.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-            </option>
-          ))}
-        </Select>
+        <GenerationModelSelect models={models} value={targetKey} onChange={changeModel} />
       </Field>
 
       <div className="grid grid-cols-2 gap-2">

@@ -152,6 +152,8 @@ curl -s https://你的站/v1/capabilities/knowledge/search \
 
 抖音下载在 MCP 广场「抖音视频下载」页使用：粘贴分享文案或直链（如 `https://v.douyin.com/xxxx/`），系统解析作品并把视频/图集转存到数据卷，生成 `/v1/douyin/media/{media_id}` 稳定下载地址（带签名令牌，可直接分享）。解析统一走 TikHub 托管解析 API（同页「TikHub 解析 API」区填 Base URL 与 API Key，Key 加密存储；也可用环境变量 `DOUYIN_TIKHUB_BASE_URL` / `DOUYIN_TIKHUB_API_KEY` 兜底）。抖音对服务端请求有 WAF/签名拦截，平台侧反爬由 TikHub 处理，本地不再安装任何解析依赖。MCP Key 勾选 `douyin` 后可用工具 `douyin_parse`、`douyin_job`、`douyin_result`、`douyin_list`，REST 前缀为 `/v1/douyin`。文件落在数据卷 `/data/douyin`，配置项见 `.env` 的 `DOUYIN_*`。仅限个人合规留存，请自行确认作品使用授权。
 
+图片 / 视频生成支持多家供应商，在「图片生成 / 视频生成」页的生成配置里逐家填 Base URL 与 API Key（加密存储），并可设置默认模型与「自定义模型」。已内置 **Grsai（gsai）** 与 **RightAPI（rightapi）**：gsai 支持图片 + 视频，RightAPI 走 `/draw` 异步绘图接口、只有图片。目录里模型按供应商分组，同名模型（如两家都有的 `nano-banana-2`）用 `provider:model` 区分，互不覆盖。要接入新的供应商只需在 `backend/app/generation/providers/` 下新增一个文件（`registry` 自动发现，前端表单由模型目录驱动，无需改前端），完整约定与适配器模板见 [docs/generation-providers.md](docs/generation-providers.md)。
+
 托管会改写 HTML/CSS 里以 `/` 开头的根绝对资源路径（如 Vite 默认产物的 `/assets/index-*.js`），并在 `<head>` 注入 `<base>`，因此 `base: '/'` 的构建产物无需改动即可预览；`base: './'` 同样兼容。平台 Service Worker 的导航兜底已排除 `/sites/`，已安装 PWA 的浏览器不会把预览地址劫持成管理端外壳。
 
 「接入说明」页是按 MCP Key 生成的**接入中心**：选择 Key 后只展示其已授权能力，可一键复制适配 MCP 或「Skill + REST」的 AI 提示词、通用 MCP 客户端 JSON 与密钥。MCP Key 列表每行有「接入」按钮直达对应 Key。

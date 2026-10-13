@@ -23,7 +23,11 @@ from app.services.mcp_key_config import get_capability_config
 
 CAPABILITY_ID = "generation"
 
-_PARAM_NOTE = "参数键随模型而定，可先调用后按错误提示调整；常用键：aspectRatio、imageSize、quality、resolution、duration、seed。"
+_PARAM_NOTE = (
+    "参数键随模型而定，可先调用后按错误提示调整；常用键：aspectRatio、size、imageSize、"
+    "quality、resolution、duration、seed、n。"
+    "比例类模型用 aspectRatio，像素尺寸类模型用 size，两者是不同供应商的写法。"
+)
 
 _MEDIA_NOTE = (
     "images / audios 支持 http(s) 链接或 data URL（data:image/png;base64,...），"
@@ -285,16 +289,14 @@ class GenerationProvider:
 
     async def _generate(self, ctx: CallContext, payload: dict[str, Any], kind: str) -> dict[str, Any]:
         assert ctx.mcp_key is not None
-        model = self._resolve_model(ctx, kind)
-        if not model:
+        target = self._resolve_target(ctx, kind)
+        if target is None:
             raise CapabilityError(
                 f"尚未配置{'图片' if kind == 'image' else '视频'}模型，请在「MCP 广场 → 服务目录 → 图片 / 视频生成」中选择",
                 status_code=400,
                 error_type="invalid_request",
             )
-        spec = catalog.get_model(model)
-        if spec is None or spec.kind != kind:
-            raise CapabilityError("配置的模型不可用", status_code=400, error_type="invalid_request")
+        provider, model, spec = target
         prompt = str(payload.get("prompt") or "").strip()
         if not prompt:
             raise CapabilityError("缺少 prompt", status_code=400, error_type="invalid_request")
@@ -305,6 +307,7 @@ class GenerationProvider:
             model=model,
             prompt=prompt,
             params=params,
+            provider=provider,
             mcp_key_id=ctx.mcp_key.id,
         )
         max_bytes = get_settings().generation_max_input_bytes
@@ -326,14 +329,28 @@ class GenerationProvider:
         await asyncio.to_thread(service.run_task_inline, task.id, wait)
         return await asyncio.to_thread(self._payload, ctx, task.id)
 
-    def _resolve_model(self, ctx: CallContext, kind: str) -> str:
-        """模型来源：Key 级覆盖（如有）→ 服务目录中配置的全局默认模型。"""
+    def _resolve_target(
+        self, ctx: CallContext, kind: str
+    ) -> tuple[str, str, catalog.ModelSpec] | None:
+        """模型来源：Key 级覆盖（如有）→ 服务目录中配置的全局默认模型。
+
+        两种来源都可能是 `provider:model` 或裸模型名，统一交给 service 解析，
+        这样「同名模型分属不同供应商」时也不会串台。
+        """
+
         config = get_capability_config(ctx.mcp_key, CAPABILITY_ID)
-        override = str(config.get(f"{kind}_model") or "").strip()
-        if override:
-            return override
-        payload = service.settings_payload(ctx.db)
-        return str(payload.get(f"default_{kind}_model") or "").strip()
+        raw = str(config.get(f"{kind}_model") or "").strip()
+        if not raw:
+            payload = service.settings_payload(ctx.db)
+            raw = str(payload.get(f"default_{kind}_model") or "").strip()
+        if not raw:
+            # 只有「压根没配」才返回 None，交给上层提示去服务目录选模型
+            return None
+        provider, model = service.parse_model_ref(raw)
+        # 配了但不可用（供应商停用 / 模型下架）时让 GenerationError 冒上去，
+        # 报出真正的失败原因，别一律说成「尚未配置」
+        code, spec = service.resolve_target(ctx.db, kind=kind, model=model, provider=provider)
+        return code, spec.id, spec
 
     def _collect_params(self, spec: catalog.ModelSpec, payload: dict[str, Any]) -> dict[str, Any]:
         allowed = {param.key for param in spec.params}

@@ -2,12 +2,25 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Cog } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, type GenerationSettings } from '../lib/api'
+import { resolveModelKey } from '../lib/generation'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage } from '../lib/utils'
-import { Button, Dialog, Field, Input, Select, Switch } from './ui'
+import { GenerationModelSelect } from './GenerationModelSelect'
+import { Button, Dialog, Field, Input, Switch } from './ui'
 import { GENERATION_SETTINGS_KEY, useGenerationSettings } from './useGenerationSettings'
 
-type ProviderForm = { provider: string; base_url: string; api_key: string; enabled: boolean; has_key: boolean }
+type ProviderForm = {
+  provider: string
+  label: string
+  kinds: string[]
+  base_url: string
+  api_key: string
+  extra_models: string
+  enabled: boolean
+  has_key: boolean
+}
+
+const KIND_LABEL: Record<string, string> = { image: '图片', video: '视频' }
 
 export function GenerationConfigDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient()
@@ -21,14 +34,18 @@ export function GenerationConfigDialog({ open, onClose }: { open: boolean; onClo
     setProviders(
       settings.data.providers.map((item) => ({
         provider: item.provider,
+        label: item.label,
+        kinds: item.kinds,
         base_url: item.base_url,
         api_key: '',
+        extra_models: item.extra_models,
         enabled: item.enabled,
         has_key: item.has_key,
       })),
     )
-    setImageModel(settings.data.default_image_model)
-    setVideoModel(settings.data.default_video_model)
+    // 目录里模型带 provider，默认值统一用 provider:model 的键
+    setImageModel(resolveModelKey(settings.data.catalog.image, settings.data.default_image_model))
+    setVideoModel(resolveModelKey(settings.data.catalog.video, settings.data.default_video_model))
   }, [open, settings.data])
 
   const data: GenerationSettings | undefined = settings.data
@@ -44,6 +61,7 @@ export function GenerationConfigDialog({ open, onClose }: { open: boolean; onClo
           provider: item.provider,
           base_url: item.base_url,
           api_key: item.api_key || undefined,
+          extra_models: item.extra_models,
           enabled: item.enabled,
         })),
         default_image_model: imageModel,
@@ -84,7 +102,12 @@ export function GenerationConfigDialog({ open, onClose }: { open: boolean; onClo
             {providers.map((item, index) => (
               <div key={item.provider} className="space-y-2 rounded-lg border border-line p-3">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm text-paper">{item.provider}</div>
+                  <div className="text-sm text-paper">
+                    {item.label}
+                    <span className="ml-2 text-xs text-mist">
+                      支持 {item.kinds.map((kind) => KIND_LABEL[kind] ?? kind).join(' / ') || '—'}
+                    </span>
+                  </div>
                   <Switch
                     checked={item.enabled}
                     onCheckedChange={(value) => patchProvider(index, { enabled: value })}
@@ -109,6 +132,17 @@ export function GenerationConfigDialog({ open, onClose }: { open: boolean; onClo
                     disabled={pending}
                   />
                 </Field>
+                <Field label="自定义模型（可选）">
+                  <Input
+                    value={item.extra_models}
+                    onChange={(event) => patchProvider(index, { extra_models: event.target.value })}
+                    placeholder="逗号或空格分隔，例如 nano-banana-2, gpt-image-2"
+                    disabled={pending}
+                  />
+                </Field>
+                <p className="text-[11px] text-mist">
+                  供应商未公开模型列表时（如 RightAPI 只在自家后台可见），把模型名填在这里即可直接使用，无需改代码。同时支持图片和视频的供应商（如 gsai），用 模型名:video 指定为视频模型，不写则按图片处理。
+                </p>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-mist">
                     {item.has_key ? '已保存 Key' : '尚未配置 Key'}
@@ -130,22 +164,20 @@ export function GenerationConfigDialog({ open, onClose }: { open: boolean; onClo
 
             <div className="grid gap-2 sm:grid-cols-2">
               <Field label="默认图片模型">
-                <Select value={imageModel} onChange={(event) => setImageModel(event.target.value)} disabled={pending}>
-                  {data.catalog.image.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.label}
-                    </option>
-                  ))}
-                </Select>
+                <GenerationModelSelect
+                  models={data.catalog.image}
+                  value={imageModel}
+                  onChange={setImageModel}
+                  disabled={pending}
+                />
               </Field>
               <Field label="默认视频模型">
-                <Select value={videoModel} onChange={(event) => setVideoModel(event.target.value)} disabled={pending}>
-                  {data.catalog.video.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.label}
-                    </option>
-                  ))}
-                </Select>
+                <GenerationModelSelect
+                  models={data.catalog.video}
+                  value={videoModel}
+                  onChange={setVideoModel}
+                  disabled={pending}
+                />
               </Field>
             </div>
 

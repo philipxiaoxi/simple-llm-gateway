@@ -159,6 +159,13 @@ def _ensure_columns(engine: Engine) -> None:
         for column, statement in skill_statements.items():
             if column not in skill_columns:
                 connection.execute(text(statement))
+        generation_provider_columns = {
+            row[1] for row in connection.execute(text("PRAGMA table_info(generation_providers)"))
+        }
+        if generation_provider_columns and "extra_models" not in generation_provider_columns:
+            connection.execute(
+                text("ALTER TABLE generation_providers ADD COLUMN extra_models TEXT DEFAULT '' NOT NULL")
+            )
         connection.execute(
             text("CREATE UNIQUE INDEX IF NOT EXISTS ix_upstream_accounts_agent_route_id ON upstream_accounts (agent_route_id)")
         )

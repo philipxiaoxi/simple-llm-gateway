@@ -86,6 +86,115 @@ def _adapter_for(db: Session, provider: str) -> ProviderAdapter:
     return registry.build_adapter(provider, base_url=base_url, api_key=api_key)
 
 
+# --------------------------------------------------------------------------- #
+# 模型解析：静态清单（供应商模块声明） + 自定义模型（管理员在配置里手填）
+# --------------------------------------------------------------------------- #
+
+
+def _extra_specs(db: Session, provider: str) -> list[catalog.ModelSpec]:
+    """该供应商在配置里手填的额外模型名。
+
+    双类型供应商（图片 + 视频）可用 `模型名:video` 指定类型，否则按默认类型处理。
+    """
+
+    info = registry.provider_info(provider)
+    if info is None:
+        return []
+    row = _provider_row(db, provider)
+    static_ids = {spec.id for spec in info.models}
+    kind = "image" if info.supports("image") else "video"
+    return registry.extra_model_specs(
+        row.extra_models if row else "",
+        static_ids=static_ids,
+        default_kind=kind,
+        kinds=info.kinds,
+    )
+
+
+def all_extra_specs(db: Session) -> dict[str, list[catalog.ModelSpec]]:
+    return {code: _extra_specs(db, code) for code in registry.provider_codes()}
+
+
+def resolve_spec(db: Session, provider: str, model: str, kind: str = "") -> catalog.ModelSpec | None:
+    """按 provider + 模型名查找，先查静态清单再查自定义模型。"""
+
+    for spec in registry.static_models(provider, kind):
+        if spec.id == model:
+            return spec
+    for spec in _extra_specs(db, provider):
+        if spec.id == model and (not kind or spec.kind == kind):
+            return spec
+    return None
+
+
+def find_provider_in(db: Session, model: str, kind: str = "") -> str:
+    """反查模型归属，含管理员手填的自定义模型；同名时取注册顺序最靠前的。
+
+    每个供应商一次查询。供应商只有个位数时无所谓；将来变多可在这里加缓存。
+    """
+
+    for code in registry.provider_codes():
+        if resolve_spec(db, code, model, kind) is not None:
+            return code
+    return ""
+
+
+def resolve_target(db: Session, *, kind: str, model: str, provider: str = "") -> tuple[str, catalog.ModelSpec]:
+    """把 (kind, model, provider) 归一成可执行目标。
+
+    没给 provider 时按模型名反查归属（这样就兼容了旧前端只传模型的调用），
+    查不到再退回默认供应商；随后校验「供应商支持该类型」且「模型确实属于它」。
+    """
+
+    model = (model or "").strip()
+    if not model:
+        raise GenerationError("请选择模型")
+    provider = (provider or "").strip()
+    if not provider:
+        provider = find_provider_in(db, model, kind) or registry.default_provider(kind)
+    info = registry.provider_info(provider)
+    if info is None:
+        raise GenerationError("供应商不存在")
+    if not info.supports(kind):
+        label = "图片" if kind == "image" else "视频"
+        raise GenerationError(f"{info.label} 不支持{label}生成")
+    spec = resolve_spec(db, provider, model, kind)
+    if spec is None or spec.kind != kind:
+        raise GenerationError("模型不存在或与任务类型不匹配")
+    return provider, spec
+
+
+def _qualified_default(db: Session, stored: str, kind: str) -> str:
+    """默认模型统一以 `provider:model` 返回。
+
+    旧配置里存的是裸模型名，这里反查回供应商，所以升级不用改数据。
+    """
+
+    provider, model = parse_model_ref(stored)
+    if model and not provider:
+        provider = find_provider_in(db, model, kind)
+    if not provider or not model:
+        provider, model = registry.default_provider(kind), registry.default_model(kind)
+    if not provider or not model:
+        return ""
+    return f"{provider}:{model}"
+
+
+def parse_model_ref(value: str) -> tuple[str, str]:
+    """拆 `provider:model`；裸模型名返回 ('', model)。
+
+    公开给 MCP 能力层复用：Key 级模型覆盖也可能是这两种写法。
+    """
+
+    text = (value or "").strip()
+    if not text:
+        return "", ""
+    head, sep, tail = text.partition(":")
+    if sep and head in registry.PROVIDERS:
+        return head, tail.strip()
+    return "", text
+
+
 def settings_payload(db: Session) -> dict[str, Any]:
     providers: list[dict[str, Any]] = []
     for code, info in registry.PROVIDERS.items():
@@ -97,6 +206,11 @@ def settings_payload(db: Session) -> dict[str, Any]:
                 "label": info.label,
                 "default_base_url": info.default_base_url,
                 "base_url": base_url,
+                # 该供应商支持的任务类型：前端拿来显示「支持 图片 / 视频」角标，
+                # 模型过滤在后端做（registry.catalog_payload 按 kind 分好组）
+                "kinds": list(info.kinds),
+                # 管理员手填的额外模型名，回显给配置界面
+                "extra_models": row.extra_models if row else "",
                 "has_key": bool(api_key),
                 "enabled": bool(row.enabled) if row else True,
                 "configured": bool(base_url and api_key),
@@ -106,9 +220,9 @@ def settings_payload(db: Session) -> dict[str, Any]:
     settings = _settings_row(db, create=True)
     return {
         "providers": providers,
-        "default_image_model": settings.default_image_model or catalog.default_model("image"),
-        "default_video_model": settings.default_video_model or catalog.default_model("video"),
-        "catalog": catalog.catalog_payload(),
+        "default_image_model": _qualified_default(db, settings.default_image_model, "image"),
+        "default_video_model": _qualified_default(db, settings.default_video_model, "video"),
+        "catalog": registry.catalog_payload(all_extra_specs(db)),
     }
 
 
@@ -141,17 +255,38 @@ def update_settings(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
             row.base_url = cleaned[:256]
         if entry.get("api_key"):
             row.api_key_encrypted = encrypt_secret(str(entry["api_key"]).strip(), settings.app_secret_key)
+        if "extra_models" in entry:
+            cleaned = str(entry.get("extra_models") or "").strip()
+            if len(cleaned) > 2000:
+                raise GenerationError("自定义模型清单过长")
+            row.extra_models = cleaned
         if "enabled" in entry:
             row.enabled = bool(entry["enabled"])
         row.updated_at = utcnow()
     row = _settings_row(db, create=True)
     if "default_image_model" in payload:
-        row.default_image_model = str(payload.get("default_image_model") or "").strip()[:128]
+        _store_default(db, row, "default_image_model", payload.get("default_image_model"), "image")
     if "default_video_model" in payload:
-        row.default_video_model = str(payload.get("default_video_model") or "").strip()[:128]
+        _store_default(db, row, "default_video_model", payload.get("default_video_model"), "video")
     row.updated_at = utcnow()
     db.flush()
     return settings_payload(db)
+
+
+def _store_default(db: Session, row: GenerationSettings, field: str, value: Any, kind: str) -> None:
+    """把默认模型统一存成 `provider:model`，并顺手挡住写错的模型名。"""
+
+    text = str(value or "").strip()
+    if not text:
+        setattr(row, field, "")
+        return
+    provider, model = parse_model_ref(text)
+    if not provider:
+        provider = find_provider_in(db, model, kind)
+    if not provider or resolve_spec(db, provider, model, kind) is None:
+        label = "图片" if kind == "image" else "视频"
+        raise GenerationError(f"默认{label}模型不可用：{model}")
+    setattr(row, field, f"{provider}:{model}"[:128])
 
 
 def clear_provider_key(db: Session, provider: str) -> None:
@@ -320,15 +455,11 @@ def create_task(
 ) -> GenerationTask:
     if kind not in ("image", "video"):
         raise GenerationError("任务类型只能是 image 或 video")
-    spec = catalog.get_model(model)
-    if spec is None or spec.kind != kind:
-        raise GenerationError("模型不存在或与任务类型不匹配")
+    # 供应商与模型一起校验：既挡住「供应商不支持该类型」，也挡住「模型不属于该供应商」
+    provider, spec = resolve_target(db, kind=kind, model=model, provider=provider)
     prompt = (prompt or "").strip()
     if not prompt:
         raise GenerationError("请输入提示词")
-    provider = (provider or registry.default_provider()).strip()
-    if provider not in registry.PROVIDERS:
-        raise GenerationError("供应商不存在")
     row = _provider_row(db, provider)
     if row is not None and not row.enabled:
         raise GenerationError("该供应商已停用")
@@ -337,7 +468,7 @@ def create_task(
         id=str(uuid.uuid4()),
         kind=kind,
         provider=provider,
-        model=model,
+        model=spec.id,
         prompt=prompt,
         params_json=json.dumps(cleaned, ensure_ascii=False),
         status="queued",
@@ -359,7 +490,7 @@ def add_task_input(
     filename: str = "",
 ) -> GenerationAsset:
     """给任务直接追加一个本地参考文件（MCP 传入 URL/base64 时用）。"""
-    spec = catalog.get_model(task.model)
+    spec = resolve_spec(db, task.provider, task.model, task.kind)
     detected = _detect_input(data)
     if detected is None:
         raise GenerationError("不支持的参考文件类型")
@@ -533,7 +664,7 @@ def submit_task_now(factory, settings, task_id: str) -> str:
             task = session.get(GenerationTask, task_id)
             assert task is not None
             adapter = _adapter_for(session, task.provider)
-            spec = catalog.get_model(task.model)
+            spec = resolve_spec(session, task.provider, task.model, task.kind)
             params = json.loads(task.params_json or "{}")
             images, audios = _load_inputs(session, task)
             update = adapter.submit(
@@ -1148,10 +1279,13 @@ __all__ = [
     "get_task",
     "get_task_for_key",
     "list_tasks",
+    "parse_model_ref",
     "poll_running_once",
     "poll_task_now",
     "reconcile_stuck",
     "resolve_credentials",
+    "resolve_spec",
+    "resolve_target",
     "run_task_inline",
     "settings_payload",
     "submit_pending_once",

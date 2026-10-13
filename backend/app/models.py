@@ -1115,17 +1115,21 @@ class OfflineDownload(Base):
 class GenerationProvider(Base):
     """图片 / 视频生成供应商的接入配置。
 
-    目前只有 gsai，做成「一行一个供应商」的表结构是为了未来接入其它供应商时
-    只需新增一行，而不用改表结构。api_key 使用与其它凭据一致的 Fernet 加密存储。
+    「一行一个供应商」，接入新供应商只需新增一行，不用改表结构。代码侧的供应商定义
+    （适配器 + 模型清单）在 `app/generation/providers/` 下自动发现。
+    api_key 使用与其它凭据一致的 Fernet 加密存储。
     """
 
     __tablename__ = "generation_providers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # 供应商代码：gsai / ...
+    # 供应商代码：gsai / rightapi / ...
     provider: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
     base_url: Mapped[str] = mapped_column(String(256), default="", nullable=False)
     api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 管理员手填的额外模型名（逗号 / 空格 / 换行分隔）。供应商的模型列表未必公开，
+    # 例如 RightAPI 只在自家后台可见，允许在这里补名字而不用改代码。
+    extra_models: Mapped[str] = mapped_column(Text, default="", nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
