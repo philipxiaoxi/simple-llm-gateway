@@ -53,6 +53,16 @@ export function findModel(models: GenerationModel[], key: string): GenerationMod
   return models.find((model) => modelKey(model) === key)
 }
 
+/**
+ * 任务记录里的模型显示文案。
+ *
+ * 带上供应商：两家都有 `nano-banana-2`，只写模型名分不清是哪家生成的
+ * （与下拉框的 `provider · model` 写法保持一致）。
+ */
+export function taskModelLabel(task: Pick<GenerationTask, 'provider' | 'model'>): string {
+  return task.provider ? `${task.provider} · ${task.model}` : task.model
+}
+
 export function statusLabel(status: string) {
   switch (status) {
     case 'queued':

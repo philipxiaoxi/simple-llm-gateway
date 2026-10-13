@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import type { GenerationTask } from '../lib/api'
-import { formatTime, isTaskActive, resultThumb, statusLabel, statusTone, taskParamSummary } from '../lib/generation'
+import { formatTime, isTaskActive, resultThumb, statusLabel, statusTone, taskModelLabel, taskParamSummary } from '../lib/generation'
 import { cn } from '../lib/utils'
 import { Badge, Button } from './ui'
 
@@ -225,7 +225,9 @@ export function GenerationWorks({
                   {task.status === 'failed' || task.status === 'violation' ? task.error || statusLabel(task.status) : task.prompt}
                 </div>
                 <div className="flex items-center justify-between gap-2 text-[11px] text-mist">
-                  <span className="truncate">{task.model}</span>
+                  <span className="truncate" title={taskModelLabel(task)}>
+                    {taskModelLabel(task)}
+                  </span>
                   <span className="shrink-0">{formatTime(task.created_at)}</span>
                 </div>
                 {!active ? <div className="truncate text-[11px] text-mist/80">{taskParamSummary(task)}</div> : null}

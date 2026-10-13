@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, RotateCcw, Trash2, Wand2 } from 'lucide-react'
 import { api, type GenerationTask } from '../lib/api'
-import { formatBytes, formatTime, isTaskActive, statusLabel, statusTone, taskParamSummary } from '../lib/generation'
+import { formatBytes, formatTime, isTaskActive, statusLabel, statusTone, taskModelLabel, taskParamSummary } from '../lib/generation'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage } from '../lib/utils'
 import { Badge, Button, Dialog } from './ui'
@@ -58,7 +58,7 @@ export function GenerationTaskDialog({
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={statusTone(task.status)}>{statusLabel(task.status)}</Badge>
-            <span className="text-xs text-mist">{task.model}</span>
+            <span className="text-xs text-mist">{taskModelLabel(task)}</span>
             <span className="text-xs text-mist">{formatTime(task.created_at)}</span>
           </div>
 
