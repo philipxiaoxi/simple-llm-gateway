@@ -389,6 +389,11 @@ class LogOut(BaseModel):
     updated_at: datetime | None = None
     request_body: Any | None = None
     response_body: Any | None = None
+    # 会话聚合信息：message_count 为消息总数，turn_count 为模型调用轮次（assistant 消息数）
+    message_count: int = 0
+    turn_count: int = 0
+    # 思考内容映射（按 tool_call_id 归档），仅详情接口返回
+    reasoning: dict[str, str] | None = None
 
 
 class LogListOut(BaseModel):

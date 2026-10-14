@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, joinedload, load_only
 
 from app.db import get_db
@@ -43,6 +43,7 @@ def list_logs(
     protocol: str | None = None,
     status: str | None = None,
     model: str | None = None,
+    q: str | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
     page: int = Query(default=1, ge=1),
@@ -60,6 +61,18 @@ def list_logs(
         filters = filters.where(RequestLog.status == status)
     if model:
         filters = filters.where(RequestLog.model == model)
+    if q:
+        keyword = q.strip()
+        if keyword:
+            like = f"%{keyword}%"
+            filters = filters.where(
+                or_(
+                    RequestLog.model.like(like),
+                    RequestLog.api_key_name.like(like),
+                    RequestLog.account_name.like(like),
+                    RequestLog.session_key.like(like),
+                )
+            )
     if since:
         filters = filters.where(RequestLog.created_at >= since)
     if until:
@@ -77,14 +90,36 @@ def list_logs(
         .offset(offset)
         .limit(page_size)
     ).unique().all()
-    return LogListOut(items=[log_to_out(row) for row in rows], total=total, page=page, page_size=page_size)
+    # 会话聚合统计：消息总数与模型调用轮次，按本页 log 一次性聚合，避免 N+1
+    counts: dict[int, tuple[int, int]] = {}
+    ids = [row.id for row in rows]
+    if ids:
+        for log_id, message_count, turn_count in db.execute(
+            select(
+                RequestLogMessage.log_id,
+                func.count(),
+                func.sum(case((RequestLogMessage.role == "assistant", 1), else_=0)),
+            )
+            .where(RequestLogMessage.log_id.in_(ids))
+            .group_by(RequestLogMessage.log_id)
+        ).all():
+            counts[log_id] = (int(message_count or 0), int(turn_count or 0))
+    items = [
+        log_to_out(
+            row,
+            message_count=counts.get(row.id, (0, 0))[0],
+            turn_count=counts.get(row.id, (0, 0))[1],
+        )
+        for row in rows
+    ]
+    return LogListOut(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{log_id}/messages", response_model=LogMessageListOut)
 def list_log_messages(
     log_id: int,
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
+    page_size: int = Query(default=20, ge=1, le=1000),
     around_seq: int | None = None,
     db: Session = Depends(get_db),
 ) -> LogMessageListOut:
@@ -131,4 +166,20 @@ def get_log(
     item = db.get(RequestLog, log_id)
     if item is None:
         raise HTTPException(status_code=404, detail="记录不存在")
-    return log_to_out(item, include_bodies=include_bodies)
+    message_count = db.scalar(select(func.count()).where(RequestLogMessage.log_id == log_id)) or 0
+    turn_count = (
+        db.scalar(
+            select(func.count()).where(
+                RequestLogMessage.log_id == log_id,
+                RequestLogMessage.role == "assistant",
+            )
+        )
+        or 0
+    )
+    return log_to_out(
+        item,
+        include_bodies=include_bodies,
+        include_reasoning=True,
+        message_count=message_count,
+        turn_count=turn_count,
+    )

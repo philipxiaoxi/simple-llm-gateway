@@ -149,7 +149,10 @@ export function Layout() {
     const isOverlayTransition =
       (previousPath === '/info' && location.pathname.startsWith('/info/')) ||
       (Boolean(previousPath?.startsWith('/info/')) && location.pathname === '/info')
-    if (isOverlayTransition) return
+    // 记录详情会一次性消费 ?seq/?hl 定位到某条消息，随后用 replace 清掉这两个参数；
+    // 若把这种同路径的 search 变化也当成导航，会把刚定位好的滚动位置顶回顶部。
+    const isLogDetailReselect = previousPath === location.pathname && location.pathname.startsWith('/logs/')
+    if (isOverlayTransition || isLogDetailReselect) return
 
     // Instant reset; also interrupts any leftover smooth scroll from previous pages.
     const main = mainRef.current

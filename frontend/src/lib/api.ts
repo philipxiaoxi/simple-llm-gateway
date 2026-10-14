@@ -281,6 +281,16 @@ export type LogItem = {
   updated_at?: string | null
   request_body?: unknown
   response_body?: unknown
+  message_count?: number
+  turn_count?: number
+  reasoning?: Record<string, string> | null
+}
+
+export type LogMessageItem = {
+  seq: number
+  role: string
+  content: unknown
+  tool_calls?: unknown
 }
 
 export type DashboardLeaderboardTop = {
@@ -703,7 +713,7 @@ export const api = {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
     if (aroundSeq != null && Number.isFinite(aroundSeq)) params.set('around_seq', String(aroundSeq))
     return request<{
-      items: { seq: number; role: string; content: unknown; tool_calls?: unknown }[]
+      items: LogMessageItem[]
       total: number
       page: number
       page_size: number

@@ -10,6 +10,7 @@ from app.schemas import AccountOut, KeyBoundAccountOut, KeyOut, LogOut
 from app.services.key_models import bound_accounts
 from app.services.model_caps import parse_model_records, serialize_record
 from app.services.proxy import parse_json
+from app.services.reasoning import parse_reasoning_json
 
 
 def account_to_out(account: UpstreamAccount, reveal: bool = False) -> AccountOut:
@@ -98,7 +99,13 @@ def key_to_out(
     )
 
 
-def log_to_out(item: RequestLog, include_bodies: bool = False) -> LogOut:
+def log_to_out(
+    item: RequestLog,
+    include_bodies: bool = False,
+    include_reasoning: bool = False,
+    message_count: int = 0,
+    turn_count: int = 0,
+) -> LogOut:
     return LogOut(
         id=item.id,
         account_id=item.account_id,
@@ -120,4 +127,7 @@ def log_to_out(item: RequestLog, include_bodies: bool = False) -> LogOut:
         updated_at=item.updated_at or item.created_at,
         request_body=parse_json(item.request_body) if include_bodies else None,
         response_body=parse_json(item.response_body) if include_bodies else None,
+        message_count=message_count,
+        turn_count=turn_count,
+        reasoning=parse_reasoning_json(item.reasoning_json) if include_reasoning else None,
     )
