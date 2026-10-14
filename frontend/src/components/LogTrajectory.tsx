@@ -1,0 +1,123 @@
+import type { LogItem, LogMessageItem } from '../lib/api'
+import {
+  buildExecutionSteps,
+  buildTurns,
+  formatLogTime,
+  protocolEntry,
+  protocolLabel,
+  statusMeta,
+  summarizeTurn,
+} from '../lib/logView'
+import { cn } from '../lib/utils'
+import { Badge } from './ui'
+import { MetaItem } from './LogsShared'
+
+const toneDot: Record<string, string> = {
+  ok: 'bg-signal',
+  bad: 'bg-danger',
+  warn: 'bg-warn',
+  info: 'bg-info',
+  mist: 'bg-mist',
+}
+
+export function LogTrajectory({
+  log,
+  messages,
+  onJumpToSeq,
+}: {
+  log: LogItem
+  messages: LogMessageItem[]
+  onJumpToSeq: (seq: number) => void
+}) {
+  const steps = buildExecutionSteps(log)
+  const turns = buildTurns(messages, log.reasoning ?? {})
+  const summaries = turns.map(summarizeTurn)
+  const meta = statusMeta(log.status)
+  const tokens = log.total_tokens ?? (log.prompt_tokens ?? 0) + (log.completion_tokens ?? 0)
+
+  return (
+    <div className="min-w-0 space-y-5">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm lg:grid-cols-4">
+        <MetaItem label="协议">{protocolLabel(log.protocol)}</MetaItem>
+        <MetaItem label="传输">{log.stream ? '流式' : '非流式'}</MetaItem>
+        <MetaItem label="模型">{log.model || '—'}</MetaItem>
+        <MetaItem label="状态">
+          <Badge tone={meta.tone}>{meta.label}</Badge>
+        </MetaItem>
+        <MetaItem label="入口">
+          <span className="font-mono text-xs">{protocolEntry(log.protocol)}</span>
+        </MetaItem>
+        <MetaItem label="开始">{formatLogTime(log.created_at)}</MetaItem>
+        <MetaItem label="最近活动">{formatLogTime(log.updated_at || log.created_at)}</MetaItem>
+        <MetaItem label="累计耗时">{log.latency_ms}ms</MetaItem>
+      </div>
+
+      <div className="rounded-xl border border-line bg-panel/60 p-4">
+        <div className="mb-3 text-xs uppercase tracking-[0.16em] text-mist">执行链路</div>
+        <ol className="space-y-0">
+          {steps.map((step, index) => (
+            <li key={step.key} className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <span className={cn('mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full', toneDot[step.tone])} />
+                {index < steps.length - 1 ? <span className="w-px flex-1 bg-line" /> : null}
+              </div>
+              <div className="min-w-0 flex-1 pb-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">{step.label}</span>
+                  <span className="min-w-0 truncate text-xs text-mist">{step.detail}</span>
+                </div>
+                {step.hint ? <div className="mt-0.5 truncate font-mono text-[11px] text-mist/70">{step.hint}</div> : null}
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="text-xs uppercase tracking-[0.16em] text-mist">轮次明细</div>
+          <div className="text-xs text-mist">
+            {summaries.length} 轮 · 累计 {tokens} Token
+          </div>
+        </div>
+        {summaries.length === 0 ? (
+          <div className="rounded-xl border border-line bg-panel/60 px-4 py-8 text-center text-sm text-mist">
+            没有可展开的轮次明细。
+          </div>
+        ) : (
+          <ol className="space-y-2">
+            {summaries.map((summary) => (
+              <li key={summary.key}>
+                <button
+                  type="button"
+                  onClick={() => onJumpToSeq(summary.anchorSeq)}
+                  className="flex w-full items-start gap-3 rounded-xl border border-line bg-panel/60 p-3 text-left transition hover:border-mist/40 hover:bg-white/[0.03]"
+                >
+                  <Badge tone="mist">{summary.index != null ? `第 ${summary.index} 轮` : '上下文'}</Badge>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm" title={summary.preview}>
+                      {summary.preview}
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-mist">
+                      <span>{summary.textLength} 字</span>
+                      {summary.reasoningCount ? <span>思考 {summary.reasoningCount}</span> : null}
+                      {summary.toolCount ? <span>工具调用 {summary.toolCount}</span> : null}
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-xs text-signal">查看</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+
+      {log.error_message ? (
+        <div className="rounded-xl border border-danger/40 bg-danger/[0.06] p-4 text-sm text-danger">
+          <div className="mb-1 text-xs uppercase tracking-[0.16em] text-danger/80">错误信息</div>
+          <div className="break-words [overflow-wrap:anywhere]">{log.error_message}</div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
