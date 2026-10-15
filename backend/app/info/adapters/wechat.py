@@ -130,7 +130,6 @@ def _body_images(content: dict[str, Any], *, limit: int) -> list[FetchedMedia]:
 class WeChatMpAdapter:
     kind = "wechat"
     # 上游没有「取更新的」参数，after 无意义；增量靠最新页 + before(offset) 向老补缺口
-    supports_after = False
     supports_before = True
 
     def __init__(

@@ -349,10 +349,10 @@ def test_collect_is_idempotent_and_advances_cursor(
     assert source["consecutive_failures"] == 0
 
 
-def test_incremental_drains_new_pages_until_caught_up(
+def test_incremental_backfills_burst_beyond_one_page(
     client: TestClient, auth_headers: dict[str, str], monkeypatch
 ) -> None:
-    """积压超过一页：有正向游标的渠道用 after 连续翻页直到追平，不跳过中间内容。"""
+    """积压超过一页：从最新向更老翻页，翻到已入库内容为止，中间不跳过。"""
     from app.config import get_settings
 
     settings = get_settings()
@@ -365,80 +365,91 @@ def test_incremental_drains_new_pages_until_caught_up(
         before_cursor=9,
         has_more_before=False,
     )
-    page_b = FetchedPage(
-        posts=[_post(11, text="新一"), _post(12, text="新二")],
-        after_cursor=12,
+    page_top = FetchedPage(
+        posts=[_post(13, text="新一"), _post(12, text="新二")],
+        after_cursor=13,
         before_cursor=11,
-    )
-    page_c = FetchedPage(posts=[_post(13, text="新三")], after_cursor=13, before_cursor=13)
-
-    fake = FakeAdapter([initial, page_b, page_c])
-    fake.supports_after = True  # type: ignore[attr-defined]
-    monkeypatch.setattr("app.info.collector.adapter_for", lambda db, kind: fake)
-    source_id = _create_source(client, auth_headers)
-
-    # 首采回填一页，游标推到 10
-    client.post(f"/api/admin/info/sources/{source_id}/collect", headers=auth_headers)
-    # 更新：11、12 一页取满继续翻，13 一页不足即停
-    second = client.post(f"/api/admin/info/sources/{source_id}/collect", headers=auth_headers).json()
-    assert second["created"] == 3
-    assert fake.calls == [(None, None), (10, None), (12, None)]
-
-    source = client.get("/api/admin/info/sources", headers=auth_headers).json()["sources"][0]
-    assert source["cursor_after"] == 13
-    assert source["item_count"] == 5
-
-
-def test_incremental_backfills_gap_for_sources_without_after_cursor(
-    client: TestClient, auth_headers: dict[str, str], monkeypatch
-) -> None:
-    """无正向游标的渠道（微信）：积压超过一页时向更老翻页补缺口，翻到已存内容即停。"""
-    from dataclasses import replace
-
-    from app.config import get_settings
-
-    settings = get_settings()
-    monkeypatch.setattr(settings, "info_poll_limit", 2)
-    monkeypatch.setattr(settings, "info_incremental_max_pages", 5)
-
-    def wpost(mid: int, text: str = "") -> FetchedPost:
-        # 微信 external_id 形如 "msgid-idx"，不可解析为整数
-        return replace(_post(mid, text=text), external_id=f"m{mid}-1")
-
-    first = FetchedPage(
-        posts=[wpost(30, text="已存一"), wpost(29, text="已存二")],
-        after_cursor=None,
-        before_cursor=None,
-        has_more_before=False,
-    )
-    new_top = FetchedPage(
-        posts=[wpost(33, text="新一"), wpost(32, text="新二")],
-        after_cursor=None,
-        before_cursor=102,
         has_more_before=True,
     )
-    new_bottom = FetchedPage(
-        posts=[wpost(31, text="新三"), wpost(30, text="追到旧的")],
-        after_cursor=None,
-        before_cursor=103,
+    page_bottom = FetchedPage(
+        posts=[_post(11, text="新三"), _post(10, text="追到旧的")],
+        after_cursor=11,
+        before_cursor=9,
         has_more_before=True,
     )
 
-    fake = FakeAdapter([first, new_top, new_bottom])
-    fake.supports_after = False  # type: ignore[attr-defined]
+    fake = FakeAdapter([initial, page_top, page_bottom])
     fake.supports_before = True  # type: ignore[attr-defined]
     monkeypatch.setattr("app.info.collector.adapter_for", lambda db, kind: fake)
     source_id = _create_source(client, auth_headers)
 
-    client.post(f"/api/admin/info/sources/{source_id}/collect", headers=auth_headers)  # 首采入库 30、29
+    client.post(f"/api/admin/info/sources/{source_id}/collect", headers=auth_headers)  # 入库 10、9
+    # 更新：13、12 一页取满继续向老翻，第二页碰到已存的 10 即停
     second = client.post(f"/api/admin/info/sources/{source_id}/collect", headers=auth_headers).json()
-    # 最新一页全是新的（33、32）继续向老翻，第二页碰到已存的 m30-1 即停，31 也补上
     assert second["created"] == 3
     assert second["skipped"] == 0
-    assert fake.calls == [(None, None), (None, None), (None, 102)]
 
     source = client.get("/api/admin/info/sources", headers=auth_headers).json()["sources"][0]
     assert source["item_count"] == 5
+
+
+def test_incremental_persists_resume_cursor_across_rounds(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    """单轮翻页到上限仍未追平：存续传游标，下一轮从该处接着补，不丢中间。"""
+    from app.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "info_poll_limit", 2)
+    monkeypatch.setattr(settings, "info_incremental_max_pages", 2)
+
+    initial = FetchedPage(
+        posts=[_post(6, text="旧一"), _post(5, text="旧二")],
+        after_cursor=6,
+        before_cursor=5,
+        has_more_before=False,
+    )
+    def two(hi: int, lo: int, *, bc: int) -> FetchedPage:
+        return FetchedPage(
+            posts=[_post(hi, text=f"第{hi}条"), _post(lo, text=f"第{lo}条")],
+            after_cursor=hi,
+            before_cursor=bc,
+            has_more_before=True,
+        )
+
+    p1 = two(14, 13, bc=12)
+    p2 = two(12, 11, bc=10)
+    p3 = two(10, 9, bc=8)
+    p4 = two(8, 7, bc=6)
+    p5 = two(6, 5, bc=4)
+
+    fake = FakeAdapter([initial, p1, p2, p3, p4, p5])
+    fake.supports_before = True  # type: ignore[attr-defined]
+    monkeypatch.setattr("app.info.collector.adapter_for", lambda db, kind: fake)
+    source_id = _create_source(client, auth_headers)
+
+    client.post(f"/api/admin/info/sources/{source_id}/collect", headers=auth_headers)
+
+    r1 = client.post(f"/api/admin/info/sources/{source_id}/collect", headers=auth_headers).json()
+    assert r1["created"] == 4  # 14、13、12、11，翻到本轮上限
+    src = client.get("/api/admin/info/sources", headers=auth_headers).json()["sources"][0]
+    assert src["item_count"] == 6
+
+    r2 = client.post(f"/api/admin/info/sources/{source_id}/collect", headers=auth_headers).json()
+    assert r2["created"] == 4  # 从续传游标接着补：10、9、8、7，再次到上限
+    r3 = client.post(f"/api/admin/info/sources/{source_id}/collect", headers=auth_headers).json()
+    assert r3["created"] == 0  # 续传后立刻撞到已存的 6，缺口补完
+
+    src = client.get("/api/admin/info/sources", headers=auth_headers).json()["sources"][0]
+    assert src["item_count"] == 10  # 5..14 全部到手
+    assert fake.calls == [
+        (None, None),
+        (None, None),
+        (None, "12"),
+        (None, "10"),
+        (None, "8"),
+        (None, "6"),
+    ]
 
 
 def test_collect_failure_keeps_cursor_and_records_error(
