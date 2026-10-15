@@ -138,6 +138,10 @@ class SourcePreview:
 
 class SourceAdapter(Protocol):
     kind: str
+    # 增量能力：supports_before = 上游支持「取更老的」反向游标，可向历史翻页补积压缺口。
+    # 上游（Telegram/微信）都只能取到「最新一页」，靠它从最新向更老翻页才能补缺口。
+    # 为 False（如 RSS）时增量只能取到当前一页。
+    supports_before: bool
 
     def available(self) -> bool: ...
 

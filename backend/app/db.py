@@ -282,6 +282,7 @@ def _ensure_columns(engine: Engine) -> None:
         _ensure_douyin_columns(connection)
         _ensure_douyin_job_columns(connection)
         _ensure_info_item_ai_columns(connection)
+        _ensure_info_source_columns(connection)
         _ensure_generation_columns(connection)
         _ensure_mcp_key_capability_columns(connection)
         _ensure_info_public_session_columns(connection)
@@ -478,6 +479,17 @@ def _ensure_info_item_ai_columns(connection) -> None:  # type: ignore[no-untyped
     connection.execute(
         text("CREATE INDEX IF NOT EXISTS ix_info_items_is_featured ON info_items (is_featured)")
     )
+
+
+def _ensure_info_source_columns(connection) -> None:  # type: ignore[no-untyped-def]
+    """info_sources 增量列：反向补缺口的中断续传游标。"""
+    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(info_sources)"))}
+    if not columns:
+        return
+    if "sync_cursor" not in columns:
+        connection.execute(
+            text("ALTER TABLE info_sources ADD COLUMN sync_cursor VARCHAR(64)")
+        )
 
 
 def _ensure_info_public_session_columns(connection) -> None:  # type: ignore[no-untyped-def]

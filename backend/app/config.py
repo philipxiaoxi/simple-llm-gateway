@@ -159,6 +159,9 @@ class Settings(BaseSettings):
     info_tick_seconds: int = 60
     info_backfill_limit: int = 30
     info_poll_limit: int = 20
+    # 单轮增量最多翻多少页（每页 info_poll_limit 条）：一轮把积压拉平，
+    # 又给上游限流留余量；拉不完的下一轮接着拉（游标只推进到已处理处）。
+    info_incremental_max_pages: int = 5
     info_max_concurrent_sources: int = 2
     info_max_concurrent_downloads: int = 3
     info_max_item_bytes: int = 200 * 1024 * 1024

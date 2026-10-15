@@ -220,6 +220,68 @@ def _fetch_backfill(
     return collected[:limit], channel
 
 
+def _stored_external_ids(db: Session, source_id: str, candidates: list[str]) -> set[str]:
+    """给定一批 external_id，返回其中已入库的那些（用于判定反向翻页是否追到前沿）。"""
+    if not candidates:
+        return set()
+    rows = db.scalars(
+        select(InfoItem.external_id).where(
+            InfoItem.source_id == source_id, InfoItem.external_id.in_(candidates)
+        )
+    ).all()
+    return set(rows)
+
+
+def _fetch_incremental(
+    db: Session,
+    adapter: SourceAdapter,
+    identifier: str,
+    source_id: str,
+    *,
+    limit: int,
+    max_pages: int,
+    resume: str | None,
+) -> tuple[list[FetchedPost], SourcePreview | None, str | None]:
+    """增量：从最新（或上次中断处）向更老翻页，直到撞上已入库内容。
+
+    上游（Telegram/微信）都是**最新在前**、`after` 只能取到「最新一页」，所以积压
+    超过一页时靠 `after` 追平会漏掉中间。这里改用 `before` 从最新向更老翻，翻到某页
+    出现已入库的 external_id（说明已到已存内容的边界）即停；某页不足一页或没有更老的
+    可翻也停。单轮翻到 max_pages 上限仍未追平时，返回续传游标，下一轮从该处接着翻。
+
+    返回的第三个值非空表示「还有更老的积压没补完」，调用方存下来供下一轮续传。
+    """
+    collected: list[FetchedPost] = []
+    seen: set[str] = set()
+    channel: SourcePreview | None = None
+    before: str | None = resume
+
+    for _ in range(max(1, max_pages)):
+        # 网络请求期间不占数据库锁：先放掉事务再发请求
+        db.rollback()
+        page = adapter.fetch(identifier, after=None, before=before, limit=limit)
+        if channel is None:
+            channel = page.channel
+        if not page.posts:
+            return collected, channel, None
+        fresh = [post for post in page.posts if post.external_id not in seen]
+        stored = _stored_external_ids(db, source_id, [post.external_id for post in fresh])
+        for post in fresh:
+            seen.add(post.external_id)
+            if post.external_id in stored:
+                # 撞到已入库内容：更老的内容此前已采过，缺口补完
+                return collected, channel, None
+            collected.append(post)
+        if len(page.posts) < limit:
+            return collected, channel, None
+        if page.has_more_before is False or not page.before_cursor:
+            return collected, channel, None
+        before = str(page.before_cursor)
+
+    # 到上限还没追到已存内容：记下续传游标
+    return collected, channel, before
+
+
 def collect_source(
     db: Session, source: InfoSource, *, adapter: SourceAdapter | None = None, backfill: bool = False
 ) -> dict[str, object]:
@@ -237,14 +299,29 @@ def collect_source(
     first_run = source.last_success_at is None
     limit = settings.info_backfill_limit if (backfill or first_run) else settings.info_poll_limit
     after = None if (backfill or first_run) else source.cursor_after
+    # 上一轮没补完的积压续传游标（非空表示还有更老的历史没看完）
+    resume_cursor = source.sync_cursor
+    max_pages = max(1, int(settings.info_incremental_max_pages))
     db.rollback()
 
     try:
         if backfill or first_run:
             posts, channel = _fetch_backfill(adapter, identifier, limit)
+            next_sync_cursor: str | None = None
+        elif getattr(adapter, "supports_before", False):
+            posts, channel, next_sync_cursor = _fetch_incremental(
+                db,
+                adapter,
+                identifier,
+                source_id,
+                limit=limit,
+                max_pages=max_pages,
+                resume=resume_cursor,
+            )
         else:
             page = adapter.fetch(identifier, after=after, limit=limit)
             posts, channel = page.posts, page.channel
+            next_sync_cursor = None
     except InfoError as error:
         current = db.get(InfoSource, source_id)
         if current is not None:
@@ -281,6 +358,8 @@ def collect_source(
     # 只有整轮成功才推进游标
     if highest and (source.cursor_after is None or highest > int(source.cursor_after)):
         source.cursor_after = highest
+    # 本轮是否还有没补完的积压：有则记下续传游标，下一轮从该处继续
+    source.sync_cursor = next_sync_cursor
     source.last_success_at = utcnow()
     source.last_error = None
     source.consecutive_failures = 0

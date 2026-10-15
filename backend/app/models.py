@@ -916,6 +916,8 @@ class InfoSource(Base):
     poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=86400, nullable=False)
     # 增量游标：已采到的最大 post_id
     cursor_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 反向补缺口的中断续传游标（上游不透明值，字符串存储）：非空表示还有更老的积压没补完
+    sync_cursor: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_polled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
