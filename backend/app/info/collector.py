@@ -220,6 +220,115 @@ def _fetch_backfill(
     return collected[:limit], channel
 
 
+def _max_int_external_id(posts: list[FetchedPost]) -> int | None:
+    """本页里最大的整数 external_id（Telegram 的 post_id）；都不可解析时返回 None。"""
+    highest: int | None = None
+    for post in posts:
+        try:
+            value = int(post.external_id)
+        except (TypeError, ValueError):
+            continue
+        if highest is None or value > highest:
+            highest = value
+    return highest
+
+
+def _known_external_ids(db: Session, source_id: str, *, limit: int) -> set[str]:
+    """最近已入库的若干 external_id，用于反向翻页时判定「是否追到了已存内容」。"""
+    rows = db.scalars(
+        select(InfoItem.external_id)
+        .where(InfoItem.source_id == source_id)
+        .order_by(InfoItem.created_at.desc())
+        .limit(max(1, limit))
+    ).all()
+    return set(rows)
+
+
+def _fetch_incremental_forward(
+    adapter: SourceAdapter,
+    identifier: str,
+    *,
+    after: int | str | None,
+    limit: int,
+    max_pages: int,
+) -> tuple[list[FetchedPost], SourcePreview | None]:
+    """有正向游标的渠道（Telegram）：用 `after` 连续向新翻页直到追平。
+
+    每页取满 `limit` 说明上游还有更新的内容，用返回的 `after_cursor` 接着取下一页；
+    某页不足一页、游标不再前进或到 max_pages 上限时停止。停止时游标只推进到「已拉到的
+    最大 id」，没拉完的下一轮继续，不会跳过中间内容。
+    """
+    collected: list[FetchedPost] = []
+    seen: set[str] = set()
+    channel: SourcePreview | None = None
+    cursor = after
+
+    for _ in range(max(1, max_pages)):
+        page = adapter.fetch(identifier, after=cursor, limit=limit)
+        if channel is None:
+            channel = page.channel
+        if not page.posts:
+            break
+        for post in page.posts:
+            if post.external_id in seen:
+                continue
+            seen.add(post.external_id)
+            collected.append(post)
+        next_cursor = page.after_cursor if page.after_cursor is not None else _max_int_external_id(page.posts)
+        if next_cursor is None or next_cursor == cursor:
+            break
+        cursor = next_cursor
+        if len(page.posts) < limit:
+            break
+
+    return collected, channel
+
+
+def _fetch_incremental_backward(
+    adapter: SourceAdapter,
+    identifier: str,
+    *,
+    limit: int,
+    max_pages: int,
+    known: set[str],
+) -> tuple[list[FetchedPost], SourcePreview | None]:
+    """无正向游标的渠道（微信）：从最新页用 `before`/offset 向更老翻页补缺口。
+
+    只在「最新一页全是新内容」（说明两次轮询之间新增超过一页）时才需要向老翻，
+    翻到某页出现已入库的 external_id（追上前沿）或没有更老的可翻时停止，因此平时
+    一轮只发一次请求。max_pages 限制单轮翻页数，避免异常时无限回溯。
+    """
+    collected: list[FetchedPost] = []
+    seen: set[str] = set()
+    channel: SourcePreview | None = None
+    before: int | str | None = None
+
+    for _ in range(max(1, max_pages)):
+        page = adapter.fetch(identifier, after=None, before=before, limit=limit)
+        if channel is None:
+            channel = page.channel
+        if not page.posts:
+            break
+        hit_known = False
+        for post in page.posts:
+            if post.external_id in seen:
+                continue
+            seen.add(post.external_id)
+            if post.external_id in known:
+                hit_known = True
+                break
+            collected.append(post)
+        if hit_known:
+            break
+        if len(page.posts) < limit:
+            break
+        if page.has_more_before is False or not page.before_cursor:
+            break
+        before = page.before_cursor
+
+    return collected, channel
+
+
 def collect_source(
     db: Session, source: InfoSource, *, adapter: SourceAdapter | None = None, backfill: bool = False
 ) -> dict[str, object]:
@@ -237,11 +346,23 @@ def collect_source(
     first_run = source.last_success_at is None
     limit = settings.info_backfill_limit if (backfill or first_run) else settings.info_poll_limit
     after = None if (backfill or first_run) else source.cursor_after
+    max_pages = max(1, int(settings.info_incremental_max_pages))
     db.rollback()
 
     try:
         if backfill or first_run:
             posts, channel = _fetch_backfill(adapter, identifier, limit)
+        elif getattr(adapter, "supports_after", False):
+            posts, channel = _fetch_incremental_forward(
+                adapter, identifier, after=after, limit=limit, max_pages=max_pages
+            )
+        elif getattr(adapter, "supports_before", False):
+            # 反向翻页需要知道「已存到哪」，先在事务外读一次已入库 id，再发网络请求
+            known = _known_external_ids(db, source_id, limit=limit * max_pages)
+            db.rollback()
+            posts, channel = _fetch_incremental_backward(
+                adapter, identifier, limit=limit, max_pages=max_pages, known=known
+            )
         else:
             page = adapter.fetch(identifier, after=after, limit=limit)
             posts, channel = page.posts, page.channel

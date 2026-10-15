@@ -226,6 +226,9 @@ def _build_post(
 
 class RssAdapter:
     kind = "rss"
+    # RSS 既无正向也无反向游标，只能拿到 feed 当前一页，增量靠去重幂等
+    supports_after = False
+    supports_before = False
 
     def __init__(
         self, *, base_url: str = "", api_key: str = "", timeout_seconds: int | None = None

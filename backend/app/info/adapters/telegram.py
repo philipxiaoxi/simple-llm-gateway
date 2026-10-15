@@ -125,6 +125,9 @@ def map_message(raw: dict[str, Any], identifier: str) -> FetchedPost | None:
 
 class TelegramAdapter:
     kind = "telegram"
+    # after=取更新（连续向新翻页）；before=取更老（首次回填向历史翻页）
+    supports_after = True
+    supports_before = True
 
     def __init__(
         self, *, base_url: str = "", api_key: str = "", timeout_seconds: int | None = None

@@ -138,6 +138,11 @@ class SourcePreview:
 
 class SourceAdapter(Protocol):
     kind: str
+    # 增量能力：supports_after = 上游支持「取更新的」正向游标（可连续向新翻页）；
+    # supports_before = 上游支持「取更老的」反向游标（可向历史翻页补缺口）。
+    # 两者都无（如 RSS）时增量只能取到当前一页。
+    supports_after: bool
+    supports_before: bool
 
     def available(self) -> bool: ...
 
