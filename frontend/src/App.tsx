@@ -118,7 +118,14 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <PwaUpdater />
-      <Toaster theme="dark" position="top-center" richColors closeButton />
+      <Toaster
+        theme="dark"
+        position="top-center"
+        richColors
+        closeButton
+        // 顶部提示避开 iOS 安全区（灵动岛/刘海），否则会被灵动岛挡住
+        mobileOffset={{ top: 'calc(env(safe-area-inset-top) + 12px)' }}
+      />
       <BrowserRouter>
         <Suspense fallback={<RouteFallback />}>
           <Routes>
