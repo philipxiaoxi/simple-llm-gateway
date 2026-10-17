@@ -85,6 +85,21 @@ export function formatTokenCount(value: number | null | undefined) {
   return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
 }
 
+/** 耗时展示：小于 1 秒用 ms，超过 1 分钟用 min，避免图表/卡片里出现 456039ms */
+export function formatDuration(value: number | null | undefined) {
+  if (value == null || value < 0) return '—'
+  if (value < 1_000) return `${Math.round(value)} ms`
+  if (value < 60_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, '')} s`
+  return `${(value / 60_000).toFixed(1).replace(/\.0$/, '')} min`
+}
+
+/** 计数展示：过万用 K/M 缩写，万以内保留千分位 */
+export function formatCount(value: number | null | undefined) {
+  if (value == null) return '—'
+  if (Math.abs(value) < 10_000) return value.toLocaleString('zh-CN')
+  return formatTokenCount(value)
+}
+
 export function formatContextWindow(value: number | null | undefined) {
   if (value == null || value <= 0) return '—'
   if (value % 1_000_000 === 0) return `${value / 1_000_000}M`

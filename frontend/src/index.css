@@ -178,6 +178,25 @@ body {
   background: #3d4a5e;
 }
 
+/* 图表图例横向滚动：模型多时一行滑动，不换行撑高卡片 */
+.legend-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #2a3342 transparent;
+}
+.legend-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+.legend-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.legend-scroll::-webkit-scrollbar-thumb {
+  background: #2a3342;
+  border-radius: 999px;
+}
+.legend-scroll::-webkit-scrollbar-thumb:hover {
+  background: #3d4a5e;
+}
+
 /* 图标轨（平板 768–1023 与桌面收起态）隐藏滚动条：滚动条会占 6px 内容宽度，
    导致 40px 图标不再与顶部 PD 标识、底部工具按钮垂直对齐。隐藏后仍可滚动。 */
 .nav-rail {

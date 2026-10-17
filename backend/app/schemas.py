@@ -508,6 +508,72 @@ class DashboardBenchmarkTopOut(BaseModel):
     created_at: datetime | None = None
 
 
+class DashboardStatsDayOut(BaseModel):
+    """概览图表的一天（上海自然日）。"""
+
+    date: str  # YYYY-MM-DD
+    requests: int = 0
+    failures: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    tokens: int = 0
+    # 当天各模型调用次数：{上游模型名: 次数}
+    model_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class DashboardStatsModelOut(BaseModel):
+    """区间内按模型聚合的排行项。"""
+
+    model: str
+    requests: int = 0
+    tokens: int = 0
+    # 占区间总请求数的比例（0~1），前端直接画占比条
+    request_share: float = 0.0
+
+
+class DashboardStatsAccountOut(BaseModel):
+    """区间内按上游账号聚合的排行项。"""
+
+    account_name: str
+    requests: int = 0
+    tokens: int = 0
+    request_share: float = 0.0
+
+
+class DashboardStatsHourOut(BaseModel):
+    """上海时区 0~23 点的小时分布。"""
+
+    hour: int
+    requests: int = 0
+
+
+class DashboardStatsSummaryOut(BaseModel):
+    """区间汇总，同时用于与上一个等长区间做环比。"""
+
+    requests: int = 0
+    failures: int = 0
+    success_rate: float = 0.0
+    tokens: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    avg_latency_ms: int | None = None
+    p95_latency_ms: int | None = None
+    active_days: int = 0
+    active_models: int = 0
+
+
+class DashboardStatsOut(BaseModel):
+    days: int
+    start_date: str
+    end_date: str
+    daily: list[DashboardStatsDayOut] = Field(default_factory=list)
+    models: list[DashboardStatsModelOut] = Field(default_factory=list)
+    accounts: list[DashboardStatsAccountOut] = Field(default_factory=list)
+    hourly: list[DashboardStatsHourOut] = Field(default_factory=list)
+    summary: DashboardStatsSummaryOut = Field(default_factory=DashboardStatsSummaryOut)
+    previous: DashboardStatsSummaryOut = Field(default_factory=DashboardStatsSummaryOut)
+
+
 class DashboardOut(BaseModel):
     account_count: int
     unhealthy_count: int

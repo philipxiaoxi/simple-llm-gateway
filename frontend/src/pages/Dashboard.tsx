@@ -1,9 +1,59 @@
-import { useQuery } from '@tanstack/react-query'
+import { Suspense, lazy, useEffect, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Card } from '../components/ui'
 import { api, type DashboardBenchmarkTop, type DashboardLeaderboardStatus, type DashboardLeaderboardTop } from '../lib/api'
 import { cn, formatContextWindow, formatTime, formatTokenCount } from '../lib/utils'
 import { PageHeader } from '../components/layout-primitives'
+import { DashboardSummary } from '../components/dashboard-summary'
+import { ChartSkeleton } from '../components/charts/chart-card'
+
+// 图表区按需加载：echarts 体积不小，别让其它后台路由（和首屏之外的模块）一起买单
+const DashboardCharts = lazy(() =>
+  import('../components/dashboard-charts').then((module) => ({ default: module.DashboardCharts })),
+)
+
+/** 统计区间：默认一周，可切到 14/30/90 天看长一点的趋势 */
+const RANGE_OPTIONS = [7, 14, 30, 90] as const
+type RangeDays = (typeof RANGE_OPTIONS)[number]
+const RANGE_STORAGE_KEY = 'pivot:dashboard-days'
+
+function readStoredRange(): RangeDays {
+  const stored = Number(localStorage.getItem(RANGE_STORAGE_KEY))
+  return (RANGE_OPTIONS as readonly number[]).includes(stored) ? (stored as RangeDays) : 7
+}
+
+function RangeTabs({ days, onChange }: { days: RangeDays; onChange: (days: RangeDays) => void }) {
+  return (
+    <div role="group" aria-label="统计区间" className="inline-flex rounded-lg border border-line bg-panel-2 p-0.5">
+      {RANGE_OPTIONS.map((option) => (
+        <button
+          key={option}
+          type="button"
+          aria-pressed={days === option}
+          onClick={() => onChange(option)}
+          className={cn(
+            'min-h-9 rounded-md px-2.5 text-xs transition-colors',
+            days === option ? 'bg-signal/15 text-signal' : 'text-mist-soft hover:text-paper',
+          )}
+        >
+          {option} 天
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ChartsSkeleton() {
+  return (
+    <div className="grid gap-3 xl:grid-cols-2" aria-hidden="true">
+      <ChartSkeleton />
+      <ChartSkeleton />
+      <ChartSkeleton />
+      <ChartSkeleton />
+    </div>
+  )
+}
 
 type Metric = {
   label: string
@@ -179,6 +229,16 @@ function BenchmarkSpeedTopSection({ items }: { items: DashboardBenchmarkTop[] })
 
 export function DashboardPage() {
   const { data } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard })
+  const [days, setDays] = useState<RangeDays>(readStoredRange)
+  useEffect(() => {
+    localStorage.setItem(RANGE_STORAGE_KEY, String(days))
+  }, [days])
+  const { data: stats } = useQuery({
+    queryKey: ['dashboard-stats', days],
+    queryFn: () => api.dashboardStats(days),
+    // 切区间时先保留上一份数据，避免图表整块闪成骨架
+    placeholderData: keepPreviousData,
+  })
   const today: Metric[] = [
     { label: '今日请求', value: data?.today_requests ?? '—', to: '/logs' },
     { label: '今日失败', value: data?.today_failures ?? '—', to: '/logs', warn: true },
@@ -204,7 +264,19 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="概览" description="当前运行切片，点卡片进入对应列表。" />
+      <PageHeader
+        title="概览"
+        description="调用趋势、消耗结构与资源快照，点卡片进入对应列表。"
+        actions={<RangeTabs days={days} onChange={setDays} />}
+      />
+      <DashboardSummary data={stats} />
+      {stats ? (
+        <Suspense fallback={<ChartsSkeleton />}>
+          <DashboardCharts data={stats} onSelectDays={(value) => setDays(value as RangeDays)} />
+        </Suspense>
+      ) : (
+        <ChartsSkeleton />
+      )}
       <MetricSection title="今日" items={today} className="grid grid-cols-2 gap-3 lg:grid-cols-3" />
       <MetricSection title="累计" items={totals} className="grid grid-cols-2 gap-3 lg:max-w-xl" />
       <MetricSection title="资源" items={resources} className="grid grid-cols-2 gap-3 lg:grid-cols-4" />

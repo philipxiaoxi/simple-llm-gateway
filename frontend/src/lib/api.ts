@@ -389,6 +389,60 @@ export type Dashboard = {
   benchmark_speed_top: DashboardBenchmarkTop[]
 }
 
+export type DashboardStatsDay = {
+  date: string
+  requests: number
+  failures: number
+  prompt_tokens: number
+  completion_tokens: number
+  tokens: number
+  model_counts: Record<string, number>
+}
+
+export type DashboardStatsModel = {
+  model: string
+  requests: number
+  tokens: number
+  request_share: number
+}
+
+export type DashboardStatsAccount = {
+  account_name: string
+  requests: number
+  tokens: number
+  request_share: number
+}
+
+export type DashboardStatsHour = {
+  hour: number
+  requests: number
+}
+
+export type DashboardStatsSummary = {
+  requests: number
+  failures: number
+  success_rate: number
+  tokens: number
+  prompt_tokens: number
+  completion_tokens: number
+  avg_latency_ms: number | null
+  p95_latency_ms: number | null
+  active_days: number
+  active_models: number
+}
+
+export type DashboardStats = {
+  days: number
+  start_date: string
+  end_date: string
+  daily: DashboardStatsDay[]
+  models: DashboardStatsModel[]
+  accounts: DashboardStatsAccount[]
+  hourly: DashboardStatsHour[]
+  summary: DashboardStatsSummary
+  previous: DashboardStatsSummary
+}
+
 export type LeaderboardComponent = {
   score: number | null
   coverage: number | null
@@ -621,6 +675,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   dashboard: () => request<Dashboard>('/api/admin/dashboard'),
+  dashboardStats: (days: number) => request<DashboardStats>(`/api/admin/dashboard/stats?days=${days}`),
   agents: () => request<{ items: GatewayAgent[]; total: number }>('/api/admin/agents'),
   agent: (agentId: string) => request<GatewayAgent>(`/api/admin/agents/${encodeURIComponent(agentId)}`),
   refreshAgentRouteModels: (agentId: string, routeId: string) =>

@@ -39,7 +39,7 @@
 | P1-4 加载/空态 | ✅ 部分实施 | `ListSkeleton` / `EmptyState` 已就绪并被 `DataView` 使用；其余列表页按 S3 渐进迁移 |
 | P1-5 无障碍 | ✅ 部分实施 | 路由切换 `aria-live` 播报、表单错误 `role="alert"`、IconButton 统一 44px 触摸高度；错误摘要与 axe 全站扫描待做 |
 | P1-6 移动交互 | ✅ 已实施 | `FilterBar`（Accounts / Keys / McpCalls 折叠为底部筛选面板）、`ActionSheet`（账号卡片「⋯」更多操作）、长表单 `mobileFull` 全屏 Sheet、`IconButton` |
-| P2 后续 | ⬜ 未做 | 趋势图、批量操作、表格增强、PWA 快捷方式等，见 §5 |
+| P2 后续 | 🟡 部分实施 | 概览页趋势图已落地（ECharts，见 [dashboard-charts.md](./dashboard-charts.md)）；批量操作、表格增强、PWA 快捷方式等仍未做 |
 
 验证：`npm run lint`、`npx tsc -b`、`npm run build` 全部通过；构建产物 CSS 已包含新令牌类。按需求本轮**未做浏览器端自动化回归**（截图/axe/设备矩阵），留待需要时再补。
 
@@ -806,7 +806,7 @@ export function DataView<T>({
 | **S4 移动交互** | `FilterBar`、`ActionSheet`、长表单全屏、`CopyField` | `components/*`、Keys/Accounts/InfoSources | 1 人日 | S1、S3 |
 | **S5 平板与密度** | `md` 断点壳、双列卡片、密度切换 | `Layout.tsx`、`index.css` | 1 人日 | S2 |
 | **S6 无障碍与验收** | alt、aria-live、错误摘要、设备矩阵回归、指标测量 | 全站 | 0.5–1 人日 | S1–S5 |
-| **S7 可选（P2）** | Dashboard 趋势图、批量操作、PWA shortcuts | — | 3–5 人日 | 业务排期 |
+| **S7 可选（P2）** | 批量操作、PWA shortcuts（Dashboard 趋势图已完成，见 [dashboard-charts.md](./dashboard-charts.md)） | — | 3–5 人日 | 业务排期 |
 
 **总投入**：S0–S6 约 **7 人日**，可拆成 3 个 PR：`ui 基础层`（S0/S1/S3 组件）→ `布局与导航`（S2/S5）→ `页面迁移与 a11y`（S4/S6）。每个 PR 互不阻塞，风险最低的是先合 S0。
 

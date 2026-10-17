@@ -78,6 +78,8 @@ export default defineConfig({
           groups: [
             // 播放器只在公开分享/详情页动态加载，单独成块避免混入常驻 vendor
             { name: 'xgplayer', test: /[\\/]node_modules[\\/]xgplayer[\\/]/ },
+            // 图表库只被概览页动态导入，独立成块后不随主导航一起加载
+            { name: 'echarts', test: /[\\/]node_modules[\\/](echarts|zrender)[\\/]/ },
             { name: 'vendor', test: /[\\/]node_modules[\\/]/ },
           ],
         },
