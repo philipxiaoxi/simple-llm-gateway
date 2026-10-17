@@ -52,10 +52,7 @@ function categoryTone(category: string): 'ok' | 'bad' | 'warn' | 'mist' | 'info'
 }
 
 function findingHref(item: ContentAuditFinding) {
-  const params = new URLSearchParams()
-  if (item.message_seq >= 0) params.set('seq', String(item.message_seq))
-  params.set('hl', `${item.start_offset}-${item.end_offset}`)
-  return `/logs/${item.log_id}?${params}`
+  return `/logs/${item.log_id}`
 }
 
 function EmptyState({ filtered }: { filtered: boolean }) {
@@ -72,7 +69,7 @@ export function ContentAuditPage() {
   const { data: summary } = useQuery({
     queryKey: ['content-audit-summary'],
     queryFn: api.contentAuditSummary,
-    refetchInterval: (query) => (query.state.data?.running ? 2000 : 60000),
+    refetchInterval: (query) => (query.state.data?.running ? 5000 : 60000),
   })
   const syncLexicon = useMutation({
     mutationFn: api.syncContentAuditLexicon,

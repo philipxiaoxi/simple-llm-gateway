@@ -46,6 +46,11 @@ API_PATHS = [
     "/api/admin/logs?page=1&page_size=20",
     "/api/admin/logs?page=1&page_size=20&status=error",
     "/api/admin/logs?page=30&page_size=20",
+    # 请求详情页：单条详情、消息分页（首屏 + 深分页）、轮次范围查询
+    "/api/admin/logs/1",
+    "/api/admin/logs/1/messages?page=1&page_size=50",
+    "/api/admin/logs/1/messages?page=20&page_size=50",
+    "/api/admin/logs/1/messages?page=1&page_size=200&from_seq=0&to_seq=99&detail=true",
     "/api/admin/leaderboard",
     "/api/admin/benchmark/history?page=1",
     "/api/admin/content-audit/summary",

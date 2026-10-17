@@ -7,9 +7,26 @@ from sqlalchemy.orm import Session, joinedload, load_only
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import RequestLog, RequestLogMessage
-from app.schemas import LogListOut, LogMessageListOut, LogMessageOut, LogOut
-from app.serializers import log_to_out
-from app.services.conversation import decode_stored_message
+from app.schemas import (
+    LogExportOut,
+    LogListOut,
+    LogMessageDetailOut,
+    LogMessageListOut,
+    LogMessageOut,
+    LogOut,
+    LogReasoningDetailOut,
+    LogTurnListOut,
+    LogTurnOut,
+    ReasoningSummaryItemOut,
+)
+from app.serializers import build_model_chain, log_to_out
+from app.services.conversation import (
+    MAX_LOG_MESSAGES,
+    content_preview,
+    decode_stored_message,
+    tool_calls_summary,
+)
+from app.services.reasoning import parse_reasoning_json, summarize_reasoning
 
 router = APIRouter(prefix="/api/admin/logs", tags=["admin-logs"], dependencies=[Depends(get_current_admin)])
 
@@ -119,42 +136,146 @@ def list_logs(
 def list_log_messages(
     log_id: int,
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=1000),
-    around_seq: int | None = None,
+    page_size: int = Query(default=50, ge=1, le=200),
+    from_seq: int | None = None,
+    to_seq: int | None = None,
+    detail: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> LogMessageListOut:
     item = db.get(RequestLog, log_id)
     if item is None:
         raise HTTPException(status_code=404, detail="记录不存在")
-    total = db.scalar(select(func.count()).where(RequestLogMessage.log_id == log_id)) or 0
-    if around_seq is not None:
-        higher = db.scalar(
-            select(func.count()).where(
-                RequestLogMessage.log_id == log_id,
-                RequestLogMessage.seq > around_seq,
-            )
-        ) or 0
-        page = higher // page_size + 1
+    filters = select(RequestLogMessage).where(RequestLogMessage.log_id == log_id)
+    if from_seq is not None:
+        filters = filters.where(RequestLogMessage.seq >= from_seq)
+    if to_seq is not None:
+        filters = filters.where(RequestLogMessage.seq <= to_seq)
+    total = db.scalar(select(func.count()).select_from(filters.subquery())) or 0
     offset = (page - 1) * page_size
     rows = db.scalars(
-        select(RequestLogMessage)
-        .where(RequestLogMessage.log_id == log_id)
-        .order_by(RequestLogMessage.seq.desc())
-        .offset(offset)
-        .limit(page_size)
+        filters.order_by(RequestLogMessage.seq.desc()).offset(offset).limit(page_size)
     ).all()
     items: list[LogMessageOut] = []
     for row in rows:
         decoded = decode_stored_message(row)
+        preview, truncated, length = content_preview(decoded.get("content"))
         items.append(
             LogMessageOut(
+                seq=row.seq,
+                role=decoded["role"],
+                content_preview=preview,
+                content_truncated=truncated,
+                content_length=length,
+                tool_calls=tool_calls_summary(decoded.get("tool_calls")),
+                # 仅轮次弹窗等范围查询按需携带全文，列表默认不传大正文
+                content=decoded.get("content") if detail else None,
+                tool_calls_full=decoded.get("tool_calls") if detail else None,
+            )
+        )
+    return LogMessageListOut(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.get("/{log_id}/turns", response_model=LogTurnListOut)
+def list_log_turns(log_id: int, db: Session = Depends(get_db)) -> LogTurnListOut:
+    """轮次轮廓：仅按 seq/role 划分轮次边界，不读正文，供折叠列表与弹窗定位使用。"""
+    item = db.get(RequestLog, log_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    rows = db.execute(
+        select(RequestLogMessage.seq, RequestLogMessage.role)
+        .where(RequestLogMessage.log_id == log_id)
+        .order_by(RequestLogMessage.seq)
+    ).all()
+    items: list[LogTurnOut] = []
+    seqs = [seq for seq, _ in rows]
+    anchors: list[int] = []
+    index_by_anchor: dict[int, int] = {}
+    counter = 0
+    for seq, role in rows:
+        if role == "user":
+            counter += 1
+            anchors.append(seq)
+            index_by_anchor[seq] = counter
+    if not rows:
+        return LogTurnListOut(items=items)
+    if not anchors:
+        items.append(LogTurnOut(index=None, anchor_seq=seqs[0], to_seq=seqs[-1], message_count=len(seqs)))
+        return LogTurnListOut(items=items)
+    prefix = [seq for seq in seqs if seq < anchors[0]]
+    if prefix:
+        items.append(
+            LogTurnOut(index=None, anchor_seq=prefix[0], to_seq=prefix[-1], message_count=len(prefix))
+        )
+    for position, anchor in enumerate(anchors):
+        to_seq = anchors[position + 1] - 1 if position + 1 < len(anchors) else seqs[-1]
+        count = sum(1 for seq in seqs if seq >= anchor and seq <= to_seq)
+        items.append(
+            LogTurnOut(
+                index=index_by_anchor[anchor],
+                anchor_seq=anchor,
+                to_seq=to_seq,
+                message_count=count,
+            )
+        )
+    return LogTurnListOut(items=items)
+
+
+@router.get("/{log_id}/messages/{seq}", response_model=LogMessageDetailOut)
+def get_log_message(log_id: int, seq: int, db: Session = Depends(get_db)) -> LogMessageDetailOut:
+    item = db.get(RequestLog, log_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    row = db.scalar(
+        select(RequestLogMessage).where(
+            RequestLogMessage.log_id == log_id, RequestLogMessage.seq == seq
+        )
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    decoded = decode_stored_message(row)
+    return LogMessageDetailOut(
+        seq=row.seq,
+        role=decoded["role"],
+        content=decoded.get("content"),
+        tool_calls=decoded.get("tool_calls"),
+    )
+
+
+@router.get("/{log_id}/reasoning/{call_id}", response_model=LogReasoningDetailOut)
+def get_log_reasoning(log_id: int, call_id: str, db: Session = Depends(get_db)) -> LogReasoningDetailOut:
+    item = db.get(RequestLog, log_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    mapping = parse_reasoning_json(item.reasoning_json)
+    text = mapping.get(call_id)
+    if text is None:
+        raise HTTPException(status_code=404, detail="思考内容不存在")
+    return LogReasoningDetailOut(call_id=call_id, text=text)
+
+
+@router.get("/{log_id}/export", response_model=LogExportOut)
+def export_log_messages(log_id: int, db: Session = Depends(get_db)) -> LogExportOut:
+    """一次性导出会话全部消息与思考内容，供前端下载 JSON（上限受存储保留策略约束）。"""
+    item = db.get(RequestLog, log_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    rows = db.scalars(
+        select(RequestLogMessage)
+        .where(RequestLogMessage.log_id == log_id)
+        .order_by(RequestLogMessage.seq)
+    ).all()
+    messages: list[LogMessageDetailOut] = []
+    for row in rows:
+        decoded = decode_stored_message(row)
+        messages.append(
+            LogMessageDetailOut(
                 seq=row.seq,
                 role=decoded["role"],
                 content=decoded.get("content"),
                 tool_calls=decoded.get("tool_calls"),
             )
         )
-    return LogMessageListOut(items=items, total=total, page=page, page_size=page_size)
+    return LogExportOut(messages=messages, reasoning=parse_reasoning_json(item.reasoning_json))
 
 
 @router.get("/{log_id}", response_model=LogOut)
@@ -176,10 +297,18 @@ def get_log(
         )
         or 0
     )
+    reasoning = summarize_reasoning(parse_reasoning_json(item.reasoning_json))
+    reasoning_summary = (
+        {call_id: ReasoningSummaryItemOut(**payload) for call_id, payload in reasoning.items()}
+        if reasoning
+        else None
+    )
     return log_to_out(
         item,
         include_bodies=include_bodies,
-        include_reasoning=True,
         message_count=message_count,
         turn_count=turn_count,
+        reasoning_summary=reasoning_summary,
+        model_chain=build_model_chain(item),
+        storage_truncated=message_count >= MAX_LOG_MESSAGES,
     )

@@ -1,4 +1,4 @@
-import type { LogItem, LogMessageItem } from './api'
+import type { LogItem, LogMessageItem, ReasoningSummaryItem, ToolCallSummary } from './api'
 import { formatTime } from './utils'
 
 export const PROTOCOL_LABELS: Record<string, string> = {
@@ -88,12 +88,14 @@ export function groupByDate<T extends { created_at: string; updated_at?: string 
 
 export type ToolCall = { id: string; name: string; arguments: string }
 
+export type ReasoningRef = { id: string; length: number; preview: string }
+
 export type ConversationMessage = {
   seq: number
   role: string
   text: string
   toolCalls: ToolCall[]
-  reasoning: { id: string; text: string }[]
+  reasoning: ReasoningRef[]
 }
 
 export type ConversationTurn = {
@@ -135,26 +137,40 @@ export function normalizeToolCalls(raw: unknown): ToolCall[] {
   return calls
 }
 
-function toConversationMessage(message: LogMessageItem, reasoning: Record<string, string>): ConversationMessage {
-  const toolCalls = normalizeToolCalls(message.tool_calls)
-  const reasoningEntries = toolCalls
-    .filter((call) => reasoning[call.id])
-    .map((call) => ({ id: call.id, text: reasoning[call.id] }))
+function summaryToolCalls(raw: ToolCallSummary[] | null | undefined): ToolCall[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((call) => ({ id: call.id, name: call.name, arguments: call.arguments_preview }))
+}
+
+function toConversationMessage(
+  message: LogMessageItem,
+  reasoningSummary: Record<string, ReasoningSummaryItem>,
+): ConversationMessage {
+  const toolCalls = summaryToolCalls(message.tool_calls)
+  const reasoning = toolCalls
+    .filter((call) => reasoningSummary[call.id])
+    .map((call) => {
+      const summary = reasoningSummary[call.id]
+      return { id: call.id, length: summary.length, preview: summary.preview }
+    })
   return {
     seq: message.seq,
     role: message.role || 'user',
-    text: asText(message.content),
+    text: message.content_preview ?? '',
     toolCalls,
-    reasoning: reasoningEntries,
+    reasoning,
   }
 }
 
-export function buildTurns(messages: LogMessageItem[], reasoning: Record<string, string> = {}): ConversationTurn[] {
+export function buildTurns(
+  messages: LogMessageItem[],
+  reasoningSummary: Record<string, ReasoningSummaryItem> = {},
+): ConversationTurn[] {
   const sorted = [...messages].sort((left, right) => left.seq - right.seq)
   const turns: ConversationTurn[] = []
   let current: ConversationTurn | null = null
   for (const message of sorted) {
-    const converted = toConversationMessage(message, reasoning)
+    const converted = toConversationMessage(message, reasoningSummary)
     if (message.role === 'user' || current === null) {
       current = { key: `turn-${converted.seq}`, index: null, messages: [] }
       turns.push(current)
@@ -175,6 +191,7 @@ export type ExecutionStep = { key: string; label: string; detail: string; tone: 
 
 export function buildExecutionSteps(log: LogItem): ExecutionStep[] {
   const meta = statusMeta(log.status)
+  const chain = log.model_chain
   const steps: ExecutionStep[] = [
     {
       key: 'client',
@@ -190,28 +207,67 @@ export function buildExecutionSteps(log: LogItem): ExecutionStep[] {
       tone: 'mist',
       hint: '按 API Key 绑定上游账号',
     },
+  ]
+  if (chain?.resolved) {
+    const parts: string[] = []
+    if (chain.alias) parts.push(`别名“${chain.alias}”`)
+    else if (chain.requested) parts.push(`请求模型 ${chain.requested}`)
+    if (chain.public_id && chain.public_id !== chain.upstream && chain.public_id !== chain.requested) {
+      parts.push(`公开模型 ${chain.public_id}`)
+    }
+    parts.push(`上游模型 ${chain.upstream || log.model || '—'}`)
+    steps.push({
+      key: 'model',
+      label: '模型解析',
+      detail: parts.join(' → '),
+      tone: 'info',
+      hint: '解析结果在请求时记录，不受后续别名修改影响',
+    })
+  } else {
+    steps.push({
+      key: 'model',
+      label: '模型解析',
+      detail: chain?.requested || log.model || '—',
+      tone: 'mist',
+      hint: '历史数据未记录模型解析信息，直接展示上游模型名',
+    })
+  }
+  steps.push(
     {
       key: 'account',
       label: '上游账号',
       detail: accountText(log),
-      tone: log.account_source === 'agent' ? 'info' : 'mist',
+      tone: 'mist',
       hint: log.account_source === 'agent' ? '经网关代理接入' : '直连上游',
     },
     {
       key: 'upstream',
       label: '上游调用',
       detail: `HTTP ${log.http_status} · ${log.latency_ms}ms`,
-      tone: log.http_status >= 400 ? 'bad' : 'mist',
-      hint: log.model || undefined,
+      tone: 'mist',
+      hint: chain?.upstream || log.model || undefined,
     },
     {
       key: 'result',
       label: '返回结果',
       detail: `${meta.label} · ${messageCountText(log)}`,
-      tone: meta.tone,
-      hint: log.error_message || undefined,
+      tone: 'mist',
     },
-  ]
+  )
+  // 链路着色：成功则全绿；失败则失败点标红、之前步骤标绿、之后步骤标灰。
+  // 失败点判定：401/403 属于凭证/鉴权环节（上游账号），其余（502/504 等）属于上游调用。
+  const failed = log.status !== 'success' || log.http_status >= 400
+  if (!failed) {
+    for (const step of steps) step.tone = 'ok'
+    return steps
+  }
+  const failureKey = log.http_status === 401 || log.http_status === 403 ? 'account' : 'upstream'
+  const failureIndex = Math.max(0, steps.findIndex((step) => step.key === failureKey))
+  steps.forEach((step, index) => {
+    step.tone = index < failureIndex ? 'ok' : index === failureIndex ? 'bad' : 'mist'
+  })
+  const failureStep = steps[failureIndex]
+  if (failureStep && log.error_message) failureStep.hint = log.error_message
   return steps
 }
 

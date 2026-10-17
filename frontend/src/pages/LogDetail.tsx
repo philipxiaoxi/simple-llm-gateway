@@ -1,15 +1,17 @@
-import { useQuery } from '@tanstack/react-query'
+import { useCallback, useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { LogContent } from '../components/LogContent'
 import { LogConversation } from '../components/LogConversation'
 import { LogTrajectory } from '../components/LogTrajectory'
+import { LogTurnDialog } from '../components/LogTurnDialog'
 import { MetaItem } from '../components/LogsShared'
 import { Badge, Button, Card } from '../components/ui'
-import { api } from '../lib/api'
+import { api, type LogMessageItem, type LogTurn } from '../lib/api'
 import { accountText, formatLogTime, messageCountText, protocolLabel, statusMeta } from '../lib/logView'
-import { cn, formatTokenCount } from '../lib/utils'
+import { cn, errorMessage, formatTokenCount } from '../lib/utils'
+import { notifyBad } from '../lib/toast'
 
 type TabKey = 'conversation' | 'trajectory' | 'content'
 
@@ -19,60 +21,111 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'content', label: '内容' },
 ]
 
-function parseHighlight(raw: string | null): { start: number; end: number } | null {
-  if (!raw) return null
-  const [left, right] = raw.split('-')
-  const start = Number(left)
-  const end = Number(right)
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null
-  return { start, end }
-}
-
-function parseTargetSeq(raw: string | null): number | null {
-  if (raw == null || raw === '') return null
-  const value = Number(raw)
-  if (!Number.isFinite(value) || value < 0) return null
-  return value
-}
+const MESSAGE_PAGE_SIZE = 50
+// 轮次边界补齐时单次最多拉取的条数（一个轮次通常远小于该值）
+const TURN_ALIGN_PAGE_SIZE = 200
+// 超长轮次补齐的兜底次数上限，避免极端会话拉取过多
+const TURN_ALIGN_MAX_ROUNDS = 3
 
 export function LogDetailPage() {
   const params = useParams()
-  const [searchParams, setSearchParams] = useSearchParams()
   const id = Number(params.id)
   const ready = Number.isFinite(id)
   const [tab, setTab] = useState<TabKey>('conversation')
-  const [pinned, setPinned] = useState<{ seq: number | null; highlight: { start: number; end: number } | null }>({
-    seq: null,
-    highlight: null,
-  })
-
-  useEffect(() => {
-    const seq = parseTargetSeq(searchParams.get('seq'))
-    setPinned({ seq, highlight: parseHighlight(searchParams.get('hl')) })
-    if (seq != null) setTab('conversation')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
+  const [messages, setMessages] = useState<LogMessageItem[] | null>(null)
+  const [total, setTotal] = useState(0)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [previewTurn, setPreviewTurn] = useState<{ anchor: number; to: number | null; index: number | null } | null>(null)
+  const queryClient = useQueryClient()
 
   const { data, isPending, isFetching, refetch } = useQuery({
     queryKey: ['log', id],
     queryFn: () => api.log(id, false),
     enabled: ready,
   })
-  const { data: messageData, isPending: messagesPending } = useQuery({
-    queryKey: ['log-messages-all', id],
-    queryFn: () => api.logMessages(id, 1, 1000),
+
+  const { data: turnsData } = useQuery({
+    queryKey: ['log-turns', id],
+    queryFn: () => api.logTurns(id),
     enabled: ready,
   })
+  const turnsOutline = turnsData?.items ?? []
 
-  const messages = messageData?.items ?? []
+  // 取一批消息（toSeq 为游标：取该 seq 之前最新的 MESSAGE_PAGE_SIZE 条），
+  // 若窗口最旧一条落在轮次中间，用轮次轮廓补齐到该轮次起点，避免出现“上下文片段”
+  const loadWindow = useCallback(
+    async (toSeq?: number): Promise<{ items: LogMessageItem[]; total: number }> => {
+      const first = await api.logMessages(id, 1, MESSAGE_PAGE_SIZE, { toSeq })
+      const items = [...first.items]
+      const oldest = items[items.length - 1]
+      if (oldest && oldest.role !== 'user') {
+        const outline =
+          queryClient.getQueryData<{ items: LogTurn[] }>(['log-turns', id])?.items ??
+          (await api.logTurns(id)).items
+        const parent = outline
+          .filter((turn) => turn.anchor_seq <= oldest.seq && (turn.to_seq == null || oldest.seq <= turn.to_seq))
+          .at(-1)
+        if (parent && parent.anchor_seq < oldest.seq) {
+          let cursorTo = oldest.seq - 1
+          for (let round = 0; round < TURN_ALIGN_MAX_ROUNDS && cursorTo >= parent.anchor_seq; round += 1) {
+            const head = await api.logMessages(id, 1, TURN_ALIGN_PAGE_SIZE, {
+              fromSeq: parent.anchor_seq,
+              toSeq: cursorTo,
+            })
+            items.push(...head.items)
+            const minSeq = head.items.reduce((min, item) => Math.min(min, item.seq), Number.POSITIVE_INFINITY)
+            if (head.items.length < TURN_ALIGN_PAGE_SIZE || minSeq <= parent.anchor_seq) break
+            cursorTo = minSeq - 1
+          }
+        }
+      }
+      return { items, total: first.total }
+    },
+    [id, queryClient],
+  )
 
-  function stripAuditParams() {
-    if (searchParams.has('seq') || searchParams.has('hl')) {
-      const next = new URLSearchParams(searchParams)
-      next.delete('seq')
-      next.delete('hl')
-      setSearchParams(next, { replace: true })
+  const mergeMessages = useCallback((previous: LogMessageItem[] | null, incoming: LogMessageItem[]) => {
+    const merged = new Map<number, LogMessageItem>()
+    for (const item of previous ?? []) merged.set(item.seq, item)
+    for (const item of incoming) merged.set(item.seq, item)
+    return [...merged.values()].sort((left, right) => right.seq - left.seq)
+  }, [])
+
+  useEffect(() => {
+    if (!ready) return
+    let cancelled = false
+    setMessages(null)
+    setTotal(0)
+    setTab('conversation')
+    setPreviewTurn(null)
+    loadWindow()
+      .then((payload) => {
+        if (cancelled) return
+        setMessages(payload.items)
+        setTotal(payload.total)
+      })
+      .catch((caught) => {
+        if (!cancelled) notifyBad(errorMessage(caught, '加载会话消息失败'))
+      })
+    return () => {
+      cancelled = true
     }
+  }, [id, ready, loadWindow])
+
+  const loadOlder = () => {
+    if (loadingOlder || !messages?.length) return
+    const oldestSeq = messages.reduce((min, item) => Math.min(min, item.seq), Number.POSITIVE_INFINITY)
+    setLoadingOlder(true)
+    loadWindow(oldestSeq - 1)
+      .then((payload) => {
+        setMessages((previous) => mergeMessages(previous, payload.items))
+      })
+      .catch((caught) => notifyBad(errorMessage(caught, '加载更早消息失败')))
+      .finally(() => setLoadingOlder(false))
+  }
+
+  const openTurnPreview = (anchor: number, to: number | null, index: number | null) => {
+    setPreviewTurn({ anchor, to, index })
   }
 
   if (isPending || !data || data.id !== id) {
@@ -81,6 +134,9 @@ export function LogDetailPage() {
 
   const meta = statusMeta(data.status)
   const totalTokens = data.total_tokens ?? (data.prompt_tokens ?? 0) + (data.completion_tokens ?? 0)
+  const loaded = messages ?? []
+  const hasOlder = loaded.length > 0 && loaded.length < total
+  const messagesReady = messages !== null
 
   return (
     <div className="min-w-0 max-w-full space-y-5 overflow-x-hidden">
@@ -165,30 +221,46 @@ export function LogDetailPage() {
         ))}
       </div>
 
-      {messagesPending ? (
+      {!messagesReady ? (
         <div className="px-4 py-16 text-center text-sm text-mist">加载会话内容…</div>
       ) : tab === 'conversation' ? (
         <LogConversation
           log={data}
-          messages={messages}
-          targetSeq={pinned.seq}
-          highlight={pinned.highlight}
-          onLocated={stripAuditParams}
+          messages={loaded}
+          turnsOutline={turnsOutline}
+          onPreviewTurn={openTurnPreview}
+          onLoadOlder={loadOlder}
+          loadingOlder={loadingOlder}
+          hasOlder={hasOlder}
         />
       ) : tab === 'trajectory' ? (
         <LogTrajectory
           log={data}
-          messages={messages}
-          onJumpToSeq={(seq) => {
-            setPinned({ seq, highlight: null })
-            setTab('conversation')
-          }}
+          messages={loaded}
+          turnsOutline={turnsOutline}
+          onPreviewTurn={openTurnPreview}
+          onLoadOlder={loadOlder}
+          loadingOlder={loadingOlder}
+          hasOlder={hasOlder}
         />
       ) : (
-        <LogContent log={data} messages={messages} />
+        <LogContent log={data} messages={loaded} />
       )}
 
-      <div className="text-right text-xs text-mist">{messageCountText(data)}</div>
+      <div className="text-right text-xs text-mist">
+        {messageCountText(data)}
+        {loaded.length < total ? ` · 已加载 ${loaded.length} / ${total} 条消息` : null}
+      </div>
+
+      {previewTurn ? (
+        <LogTurnDialog
+          log={data}
+          anchor={previewTurn.anchor}
+          to={previewTurn.to}
+          index={previewTurn.index}
+          onClose={() => setPreviewTurn(null)}
+        />
+      ) : null}
     </div>
   )
 }

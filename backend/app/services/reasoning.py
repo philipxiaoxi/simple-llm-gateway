@@ -133,6 +133,19 @@ def parse_reasoning_json(raw: str | None) -> dict[str, str]:
     return {str(key): value for key, value in data.items() if isinstance(value, str) and value}
 
 
+REASONING_PREVIEW_LIMIT = 200
+
+
+def summarize_reasoning(mapping: dict[str, str]) -> dict[str, dict[str, Any]] | None:
+    """思考摘要：{call_id: {length, preview}}，详情响应不再携带思考全文。"""
+    if not mapping:
+        return None
+    return {
+        call_id: {"length": len(text), "preview": text[:REASONING_PREVIEW_LIMIT]}
+        for call_id, text in mapping.items()
+    }
+
+
 def dump_reasoning_json(mapping: dict[str, str]) -> str | None:
     if not mapping:
         return None

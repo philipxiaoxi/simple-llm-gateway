@@ -91,6 +91,7 @@ class _ScanState:
     scanned: int = 0
     new_findings: int = 0
     total: int = 0
+    remaining: int = 0
     error: str | None = None
 
 
@@ -130,6 +131,7 @@ def start_scan() -> dict[str, Any]:
         _scan_state.scanned = 0
         _scan_state.new_findings = 0
         _scan_state.total = 0
+        _scan_state.remaining = 0
         _scan_state.error = None
     thread = threading.Thread(target=_run_scan_loop, name="content-audit-scan", daemon=True)
     _scan_thread = thread
@@ -667,8 +669,10 @@ def _scan_one_log(
     max_message_seq = db.scalar(
         select(func.max(RequestLogMessage.seq)).where(RequestLogMessage.log_id == log.id)
     )
-    # 超长会话跳过审计，避免一次性全量加载数百 MB 消息
-    if max_message_seq is not None and max_message_seq + 1 > MAX_AUDIT_MESSAGES:
+    # 超长会话跳过审计，避免一次性全量加载数百 MB 消息。
+    # 滚动窗口存储下 seq 会持续增长，必须按实际存留条数判断，不能用 max(seq)
+    message_count = db.scalar(select(func.count()).where(RequestLogMessage.log_id == log.id)) or 0
+    if message_count > MAX_AUDIT_MESSAGES:
         return 0, "skipped", None, max_message_seq
     added = 0
     error: str | None = None
@@ -805,6 +809,7 @@ def _run_scan_loop() -> None:
     try:
         with _scan_lock:
             _scan_state.total = count_remaining(session)
+            _scan_state.remaining = _scan_state.total
         while True:
             with _scan_lock:
                 if _scan_state.stop_requested:
@@ -826,6 +831,7 @@ def _run_scan_loop() -> None:
                 with _scan_lock:
                     _scan_state.scanned += 1
                     _scan_state.new_findings += added
+                    _scan_state.remaining = max(0, _scan_state.remaining - 1)
                 if error and _scan_state.error is None:
                     with _scan_lock:
                         _scan_state.error = error
@@ -853,7 +859,11 @@ def progress_stats(db: Session | None = None) -> dict[str, Any]:
         total_logs = session.scalar(select(func.count()).select_from(RequestLog)) or 0
         scanned_count = session.scalar(select(func.count()).select_from(ContentAuditScan)) or 0
         finding_count = session.scalar(select(func.count()).select_from(ContentAuditFinding)) or 0
-        remaining = count_remaining(session)
+        with _scan_lock:
+            running = _scan_state.running
+            cached_remaining = _scan_state.remaining
+        # 扫描运行期间 remaining 由扫描线程增量维护，避免轮询时反复跑反连接大查询
+        remaining = cached_remaining if running else count_remaining(session)
         counts = dict(
             session.execute(
                 select(ContentAuditFinding.category, func.count()).group_by(ContentAuditFinding.category)

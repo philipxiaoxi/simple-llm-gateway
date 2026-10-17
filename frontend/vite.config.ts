@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// 后端地址可用 VITE_BACKEND_TARGET 覆盖（默认沿用 8000，便于在 8000 被占用时换端口开发）
+const backendTarget = process.env.VITE_BACKEND_TARGET || 'http://127.0.0.1:8000'
+
 export default defineConfig({
   plugins: [
     react(),
@@ -87,16 +90,16 @@ export default defineConfig({
     allowedHosts: ['.monkeycode-ai.online'],
     proxy: {
       // 语音房间走 WebSocket，必须显式打开 ws（字符串简写不会代理 upgrade）
-      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true, ws: true },
-      '/v1': 'http://127.0.0.1:8000',
-      '/sites': 'http://127.0.0.1:8000',
-      '/anthropic': 'http://127.0.0.1:8000',
-      '/health': 'http://127.0.0.1:8000',
-      '/chat': 'http://127.0.0.1:8000',
-      '/responses': 'http://127.0.0.1:8000',
-      '/models': 'http://127.0.0.1:8000',
+      '/api': { target: backendTarget, changeOrigin: true, ws: true },
+      '/v1': backendTarget,
+      '/sites': backendTarget,
+      '/anthropic': backendTarget,
+      '/health': backendTarget,
+      '/chat': backendTarget,
+      '/responses': backendTarget,
+      '/models': backendTarget,
       // MCP 端点挂在 /mcp；用正则避免把前端路由 /mcp-plaza 也代理到后端
-      '^/mcp(/|$)': 'http://127.0.0.1:8000',
+      '^/mcp(/|$)': backendTarget,
     },
   },
 })

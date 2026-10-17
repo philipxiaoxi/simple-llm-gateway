@@ -6,11 +6,17 @@ from typing import Any
 from app.config import get_settings
 from app.crypto import decrypt_secret
 from app.models import ApiKey, RequestLog, UpstreamAccount
-from app.schemas import AccountOut, KeyBoundAccountOut, KeyOut, LogOut
+from app.schemas import (
+    AccountOut,
+    KeyBoundAccountOut,
+    KeyOut,
+    LogOut,
+    ModelChainOut,
+    ReasoningSummaryItemOut,
+)
 from app.services.key_models import bound_accounts
 from app.services.model_caps import parse_model_records, serialize_record
 from app.services.proxy import parse_json
-from app.services.reasoning import parse_reasoning_json
 
 
 def account_to_out(account: UpstreamAccount, reveal: bool = False) -> AccountOut:
@@ -99,12 +105,30 @@ def key_to_out(
     )
 
 
+def build_model_chain(item: RequestLog) -> ModelChainOut | None:
+    """模型解析链：请求时记录在 request_logs 的客户端请求名/别名/公开模型名。
+
+    历史数据没有这些字段，直接展示上游模型名（resolved=False）。
+    """
+    if not item.model and not item.requested_model:
+        return None
+    return ModelChainOut(
+        requested=item.requested_model,
+        alias=item.model_alias,
+        public_id=item.model_public_id,
+        upstream=item.model,
+        resolved=bool(item.model_public_id or item.model_alias),
+    )
+
+
 def log_to_out(
     item: RequestLog,
     include_bodies: bool = False,
-    include_reasoning: bool = False,
     message_count: int = 0,
     turn_count: int = 0,
+    reasoning_summary: dict[str, ReasoningSummaryItemOut] | None = None,
+    model_chain: ModelChainOut | None = None,
+    storage_truncated: bool = False,
 ) -> LogOut:
     return LogOut(
         id=item.id,
@@ -129,5 +153,7 @@ def log_to_out(
         response_body=parse_json(item.response_body) if include_bodies else None,
         message_count=message_count,
         turn_count=turn_count,
-        reasoning=parse_reasoning_json(item.reasoning_json) if include_reasoning else None,
+        reasoning_summary=reasoning_summary,
+        model_chain=model_chain,
+        storage_truncated=storage_truncated,
     )

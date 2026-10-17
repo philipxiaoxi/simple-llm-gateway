@@ -22,7 +22,7 @@ def _messages(client: TestClient, auth_headers: dict[str, str], log_id: int) -> 
     return client.get(
         f"/api/admin/logs/{log_id}/messages",
         headers=auth_headers,
-        params={"page": 1, "page_size": 100},
+        params={"page": 1, "page_size": 100, "detail": True},
     ).json()
 
 

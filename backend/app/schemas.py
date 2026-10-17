@@ -368,6 +368,60 @@ class KeyOut(BaseModel):
     accounts: list[KeyBoundAccountOut] = Field(default_factory=list)
 
 
+class ModelChainOut(BaseModel):
+    """模型解析链路：请求时记录 客户端请求名 →（别名）→ 公开模型名 → 上游真实模型。
+
+    历史数据没有记录，requested/alias/public_id 为空、resolved=False，直接展示上游模型名。
+    """
+
+    requested: str | None = None
+    alias: str | None = None
+    public_id: str | None = None
+    upstream: str | None = None
+    resolved: bool = False
+
+
+class ReasoningSummaryItemOut(BaseModel):
+    length: int
+    preview: str
+
+
+class LogReasoningDetailOut(BaseModel):
+    call_id: str
+    text: str
+
+
+class LogMessageDetailOut(BaseModel):
+    seq: int
+    role: str
+    content: Any = None
+    tool_calls: Any = None
+
+
+class ToolCallSummaryOut(BaseModel):
+    id: str = ""
+    name: str
+    arguments_preview: str = ""
+
+
+class LogExportOut(BaseModel):
+    messages: list[LogMessageDetailOut]
+    reasoning: dict[str, str]
+
+
+class LogTurnOut(BaseModel):
+    """轮次轮廓：仅含序号与 seq 范围，不携带正文，供折叠列表/弹窗定位使用。"""
+
+    index: int | None = None
+    anchor_seq: int
+    to_seq: int | None = None
+    message_count: int = 0
+
+
+class LogTurnListOut(BaseModel):
+    items: list[LogTurnOut]
+
+
 class LogOut(BaseModel):
     id: int
     account_id: int
@@ -392,8 +446,12 @@ class LogOut(BaseModel):
     # 会话聚合信息：message_count 为消息总数，turn_count 为模型调用轮次（assistant 消息数）
     message_count: int = 0
     turn_count: int = 0
-    # 思考内容映射（按 tool_call_id 归档），仅详情接口返回
-    reasoning: dict[str, str] | None = None
+    # 思考内容摘要（按 tool_call_id 归档），仅详情接口返回；全文走 /reasoning/{call_id} 按需取
+    reasoning_summary: dict[str, ReasoningSummaryItemOut] | None = None
+    # 模型解析链路（客户端请求名 → 别名 → 公开模型 → 上游模型），请求时记录；历史数据只有上游模型名
+    model_chain: ModelChainOut | None = None
+    # 会话消息是否达到单会话保留上限（storage 截断，仅详情接口返回）
+    storage_truncated: bool = False
 
 
 class LogListOut(BaseModel):
@@ -406,8 +464,13 @@ class LogListOut(BaseModel):
 class LogMessageOut(BaseModel):
     seq: int
     role: str
+    content_preview: str | None = None
+    content_truncated: bool = False
+    content_length: int = 0
+    tool_calls: list[ToolCallSummaryOut] | None = None
+    # 仅 detail=true（范围查询）时携带全文
     content: Any = None
-    tool_calls: Any = None
+    tool_calls_full: Any = None
 
 
 class LogMessageListOut(BaseModel):

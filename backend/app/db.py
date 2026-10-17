@@ -180,6 +180,13 @@ def _ensure_columns(engine: Engine) -> None:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN updated_at DATETIME"))
         if "session_key" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN session_key VARCHAR(128)"))
+        # 请求时记录的模型解析链；历史数据为空（详情页回退展示上游模型名）
+        if "requested_model" not in log_columns:
+            connection.execute(text("ALTER TABLE request_logs ADD COLUMN requested_model VARCHAR(128)"))
+        if "model_alias" not in log_columns:
+            connection.execute(text("ALTER TABLE request_logs ADD COLUMN model_alias VARCHAR(128)"))
+        if "model_public_id" not in log_columns:
+            connection.execute(text("ALTER TABLE request_logs ADD COLUMN model_public_id VARCHAR(256)"))
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_request_logs_updated_at ON request_logs (updated_at)")
         )

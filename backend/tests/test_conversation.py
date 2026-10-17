@@ -227,7 +227,7 @@ def test_new_messages_to_store_appends_only_new() -> None:
         {"role": "user", "content": "c"},
     ]
     assistant = {"role": "assistant", "content": "c-reply"}
-    assert new_messages_to_store(head, tail, inbound, assistant) == [
+    assert new_messages_to_store(tail, inbound, assistant, head_loader=lambda: head) == [
         {"role": "user", "content": "c"},
         {"role": "assistant", "content": "c-reply"},
     ]
@@ -239,14 +239,16 @@ def test_new_messages_to_store_skips_duplicate_assistant() -> None:
     tail = [{"role": "assistant", "content": "reply"}]
     inbound = [{"role": "user", "content": "a"}]
     assistant = {"role": "assistant", "content": "reply"}
-    assert new_messages_to_store(head, tail, inbound, assistant) == []
+    assert new_messages_to_store(tail, inbound, assistant, head_loader=lambda: head) == []
 
 
 def test_new_messages_to_store_without_assistant() -> None:
     head = [{"role": "user", "content": "a"}]
     tail = [{"role": "assistant", "content": "b"}]
     inbound = [{"role": "user", "content": "a"}, {"role": "user", "content": "c"}]
-    assert new_messages_to_store(head, tail, inbound, None) == [{"role": "user", "content": "c"}]
+    assert new_messages_to_store(tail, inbound, None, head_loader=lambda: head) == [
+        {"role": "user", "content": "c"}
+    ]
 
 
 def test_find_continuation_log_without_session_is_none() -> None:
@@ -274,7 +276,9 @@ def test_load_reasoning_map_without_session_is_empty() -> None:
         session.close()
 
 
-def test_append_log_messages_caps_at_max(client) -> None:
+def test_append_log_messages_rolls_window_at_max(client) -> None:
+    import json
+
     session = get_session_factory()()
     try:
         log = RequestLog(
@@ -294,11 +298,20 @@ def test_append_log_messages_caps_at_max(client) -> None:
             [{"role": "user", "content": f"m{index}"} for index in range(MAX_LOG_MESSAGES)],
         )
         session.flush()
-        # 已达上限，再追加应被忽略
+        # 已达上限，再追加触发滚动：最旧的普通消息被清理，新消息保留
         append_log_messages(session, log.id, [{"role": "user", "content": "extra"}])
         session.flush()
         count = session.scalar(select(func.count()).where(RequestLogMessage.log_id == log.id))
         assert count == MAX_LOG_MESSAGES
+        contents = [
+            json.loads(row.content_json)["content"]
+            for row in session.scalars(
+                select(RequestLogMessage).where(RequestLogMessage.log_id == log.id).order_by(RequestLogMessage.seq)
+            ).all()
+        ]
+        assert contents[-1] == "extra"
+        assert "m0" not in contents
+        assert contents == [f"m{index}" for index in range(1, MAX_LOG_MESSAGES)] + ["extra"]
     finally:
         session.rollback()
         session.close()

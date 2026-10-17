@@ -251,6 +251,30 @@ def test_alias_errors_when_target_model_removed(client: TestClient, auth_headers
     assert response.status_code == 200
 
 
+def test_alias_request_records_model_chain(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """请求时记录解析链：客户端请求名=别名，公开模型名与上游模型名一并落库。"""
+    key = _make_key(client, auth_headers)
+    assert _save_alias(client, key, "fast", "deepseek-chat").status_code == 200
+
+    with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=_fake_upstream_response()())):
+        response = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": "fast", "messages": [{"role": "user", "content": "hi"}]},
+        )
+    assert response.status_code == 200, response.text
+
+    log_id = client.get("/api/admin/logs", headers=auth_headers).json()["items"][0]["id"]
+    chain = client.get(f"/api/admin/logs/{log_id}", headers=auth_headers).json()["model_chain"]
+    assert chain == {
+        "requested": "fast",
+        "alias": "fast",
+        "public_id": "deepseek-chat",
+        "upstream": "deepseek-chat",
+        "resolved": True,
+    }
+
+
 def test_alias_errors_when_all_models_removed(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
     assert _save_alias(client, key, "fast", "deepseek-chat").status_code == 200

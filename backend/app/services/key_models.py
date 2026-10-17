@@ -32,6 +32,19 @@ class CatalogEntry:
     record: ModelRecord | None = None
 
 
+@dataclass(frozen=True)
+class ModelResolution:
+    """请求时的模型解析结果：客户端请求名 →（可选别名）→ 公开模型名。
+
+    与改写后的上游模型名（body["model"] = raw_id）一起落到 request_logs，
+    详情页直接展示，不再依赖当前映射反查。
+    """
+
+    requested: str
+    alias: str | None = None
+    public_id: str | None = None
+
+
 def slug_model_prefix(name: str) -> str:
     slug = re.sub(r"[^A-Za-z0-9]+", "-", (name or "").strip())
     slug = re.sub(r"[-_]{2,}", "-", slug).strip("-_")

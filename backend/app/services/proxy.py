@@ -18,7 +18,7 @@ from app.db import get_session_factory
 from app.errors import protocol_error
 from app.models import ApiKey, RequestLog, UpstreamAccount
 from app.providers import get_provider
-from app.services.key_models import build_model_catalog
+from app.services.key_models import ModelResolution, build_model_catalog
 from app.services.model_caps import serialize_record
 from app.services.bridge import (
     AnthropicStreamTranslator,
@@ -117,6 +117,7 @@ def _finalize_request_log(
     response_body: Any,
     request_headers: dict[str, str] | None,
     reasoning_map: dict[str, str] | None = None,
+    model_resolution: ModelResolution | None = None,
 ) -> None:
     session = get_session_factory()()
     try:
@@ -136,10 +137,15 @@ def _finalize_request_log(
             response_body=response_body,
             request_headers=request_headers,
             reasoning_map=reasoning_map,
+            model_resolution=model_resolution,
         )
         stored_key = session.get(ApiKey, api_key_id)
         if stored_key is not None:
-            stored_key.last_used_at = utcnow()
+            # last_used_at 按分钟节流：高频请求下避免每请求都 UPDATE 一行、放大 SQLite 写锁
+            now = utcnow()
+            last_used = stored_key.last_used_at
+            if last_used is None or (now - last_used).total_seconds() >= 60:
+                stored_key.last_used_at = now
         session.commit()
     finally:
         session.close()
@@ -161,6 +167,7 @@ async def _finalize_request_log_async(
     response_body: Any,
     request_headers: dict[str, str] | None,
     reasoning_map: dict[str, str] | None = None,
+    model_resolution: ModelResolution | None = None,
 ) -> None:
     await asyncio.to_thread(
         _finalize_request_log,
@@ -178,6 +185,7 @@ async def _finalize_request_log_async(
         response_body=response_body,
         request_headers=request_headers,
         reasoning_map=reasoning_map,
+        model_resolution=model_resolution,
     )
 
 
@@ -307,6 +315,7 @@ def save_log(
     response_body: Any,
     request_headers: dict[str, str] | None = None,
     reasoning_map: dict[str, str] | None = None,
+    model_resolution: ModelResolution | None = None,
 ) -> RequestLog:
     prompt, completion, total = usage
     now = utcnow()
@@ -322,6 +331,10 @@ def save_log(
     assistant = extract_assistant_message(protocol, response_body)
     if existing is not None:
         existing.model = model
+        if model_resolution is not None:
+            existing.requested_model = model_resolution.requested
+            existing.model_alias = model_resolution.alias
+            existing.model_public_id = model_resolution.public_id
         existing.stream = stream
         existing.status = status
         existing.http_status = http_status
@@ -338,9 +351,15 @@ def save_log(
             existing.reasoning_json = dump_reasoning_json(
                 merge_reasoning_maps(parse_reasoning_json(existing.reasoning_json), reasoning_map)
             )
-        head = load_log_messages_head(db, existing.id, len(inbound))
+        # 热路径只读最后一条已存消息；头部前缀匹配作为兜底按需加载
         tail = load_log_messages_tail(db, existing.id, 1)
-        append_log_messages(db, existing.id, new_messages_to_store(head, tail, inbound, assistant))
+        to_store = new_messages_to_store(
+            tail,
+            inbound,
+            assistant,
+            head_loader=lambda: load_log_messages_head(db, existing.id, len(inbound)),
+        )
+        append_log_messages(db, existing.id, to_store)
         db.flush()
         return existing
     stored_key = db.get(ApiKey, api_key_id)
@@ -353,6 +372,9 @@ def save_log(
         api_key_name=stored_key.name if stored_key is not None else None,
         protocol=protocol,
         model=model,
+        requested_model=model_resolution.requested if model_resolution is not None else None,
+        model_alias=model_resolution.alias if model_resolution is not None else None,
+        model_public_id=model_resolution.public_id if model_resolution is not None else None,
         stream=stream,
         status=status,
         http_status=http_status,
@@ -383,6 +405,7 @@ async def handle_chat(
     body: dict[str, Any],
     protocol: str,
     request_headers: dict[str, str] | None = None,
+    model_resolution: ModelResolution | None = None,
 ) -> JSONResponse | StreamingResponse:
     started = time.perf_counter()
     stream = body.get("stream") is True
@@ -405,6 +428,7 @@ async def handle_chat(
             request_body=body,
             response_body=None,
             request_headers=request_headers,
+            model_resolution=model_resolution,
         )
         return protocol_error(protocol, status_code, str(error))
 
@@ -418,6 +442,7 @@ async def handle_chat(
             credential,
             started,
             request_headers,
+            model_resolution=model_resolution,
         )
 
     if protocol == "anthropic_messages":
@@ -457,6 +482,7 @@ async def handle_chat(
             request_headers,
             inbound_reasoning,
             responses_input=sanitize_responses_input(body.get("input")),
+            model_resolution=model_resolution,
         )
 
     try:
@@ -467,7 +493,18 @@ async def handle_chat(
         else:
             result = await call_chat(account, messages, model, False, extra, credential)
     except Exception as error:
-        return await _fail(api_key, account, body, protocol, model, stream, started, error, request_headers)
+        return await _fail(
+            api_key,
+            account,
+            body,
+            protocol,
+            model,
+            stream,
+            started,
+            error,
+            request_headers,
+            model_resolution=model_resolution,
+        )
     if hasattr(result, "model_dump"):
         openai_payload = result.model_dump()
     else:
@@ -503,6 +540,7 @@ async def handle_chat(
         response_body=payload,
         request_headers=request_headers,
         reasoning_map=merge_reasoning_maps(inbound_reasoning, reasoning_map),
+        model_resolution=model_resolution,
     )
     return JSONResponse(payload)
 
@@ -521,6 +559,7 @@ async def _stream_response(
     request_headers: dict[str, str] | None = None,
     inbound_reasoning: dict[str, str] | None = None,
     responses_input: Any = None,
+    model_resolution: ModelResolution | None = None,
 ) -> StreamingResponse | JSONResponse:
     try:
         if protocol == "openai_responses":
@@ -528,7 +567,18 @@ async def _stream_response(
         else:
             result = await call_chat(account, messages, model, True, extra, credential)
     except Exception as error:
-        return await _fail(api_key, account, body, protocol, model, True, started, error, request_headers)
+        return await _fail(
+            api_key,
+            account,
+            body,
+            protocol,
+            model,
+            True,
+            started,
+            error,
+            request_headers,
+            model_resolution=model_resolution,
+        )
 
     message_id = f"msg_{uuid.uuid4().hex}"
     account_id = account.id
@@ -628,6 +678,7 @@ async def _stream_response(
                 response_body=response_body,
                 request_headers=request_headers,
                 reasoning_map=merge_reasoning_maps(inbound_reasoning or {}, response_map),
+                model_resolution=model_resolution,
             )
 
     return StreamingResponse(event_source(), media_type="text/event-stream")
@@ -683,6 +734,7 @@ async def _fail(
     started: float,
     error: Exception,
     request_headers: dict[str, str] | None = None,
+    model_resolution: ModelResolution | None = None,
 ) -> JSONResponse:
     message = str(error)
     status_code = 504 if "timeout" in message.lower() else 502
@@ -700,6 +752,7 @@ async def _fail(
         request_body=body,
         response_body=None,
         request_headers=request_headers,
+        model_resolution=model_resolution,
     )
     return protocol_error(protocol, status_code, message)
 
@@ -712,6 +765,7 @@ async def handle_anthropic_passthrough(
     credential: str,
     started: float,
     request_headers: dict[str, str] | None = None,
+    model_resolution: ModelResolution | None = None,
 ) -> JSONResponse | StreamingResponse:
     stream = body.get("stream") is True
     model = str(body.get("model") or "")
@@ -725,13 +779,25 @@ async def handle_anthropic_passthrough(
             started,
             request_headers,
             inbound_reasoning,
+            model_resolution=model_resolution,
         )
     try:
         status_code, payload = await get_provider(account.provider).post_native(
             account, body, credential, request_headers
         )
     except Exception as error:
-        return await _fail(api_key, account, body, "anthropic_messages", model, False, started, error, request_headers)
+        return await _fail(
+            api_key,
+            account,
+            body,
+            "anthropic_messages",
+            model,
+            False,
+            started,
+            error,
+            request_headers,
+            model_resolution=model_resolution,
+        )
 
     usage = extract_usage(payload if isinstance(payload, dict) else {})
     ok = status_code < 400
@@ -753,6 +819,7 @@ async def handle_anthropic_passthrough(
             inbound_reasoning,
             reasoning_map_from_anthropic_content(payload.get("content") if isinstance(payload, dict) else None),
         ),
+        model_resolution=model_resolution,
     )
     return JSONResponse(payload, status_code=status_code)
 
@@ -775,6 +842,7 @@ def _stream_anthropic_passthrough(
     started: float,
     request_headers: dict[str, str] | None,
     inbound_reasoning: dict[str, str],
+    model_resolution: ModelResolution | None = None,
 ) -> StreamingResponse:
     provider = get_provider(account.provider)
     url, headers = provider.native_request(account, credential, request_headers)
@@ -843,6 +911,7 @@ def _stream_anthropic_passthrough(
                         response_body.get("content") if isinstance(response_body, dict) else None
                     ),
                 ),
+                model_resolution=model_resolution,
             )
 
     return StreamingResponse(event_source(), media_type="text/event-stream")

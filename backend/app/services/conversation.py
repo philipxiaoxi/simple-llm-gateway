@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.clock import shanghai_day_start_utc, utcnow
@@ -20,7 +21,8 @@ SESSION_HEADER_NAMES = (
     "thread-id",
 )
 
-# 单会话最多保留的消息条数，防止超长会话把 request_log_messages 表撑爆
+# 单会话最多保留的消息条数（滚动窗口）：保留头部连续系统消息 + 最新 N 条，
+# 超过后从最旧的普通消息开始清理，防止超长会话把 request_log_messages 表撑爆
 MAX_LOG_MESSAGES = 1000
 
 
@@ -189,24 +191,42 @@ def common_prefix_len(stored: list[dict[str, Any]], inbound: list[dict[str, Any]
 
 
 def new_messages_to_store(
-    head: list[dict[str, Any]],
     tail: list[dict[str, Any]],
     inbound: list[dict[str, Any]],
     assistant: dict[str, Any] | None,
+    head_loader: Callable[[], list[dict[str, Any]]] | None = None,
 ) -> list[dict[str, Any]]:
-    """根据已存会话的头部/尾部片段计算需新增的消息。
+    """根据已存会话的尾部片段计算需新增的消息。
 
-    head 为已存会话的前 len(inbound) 条（前缀匹配用），tail 为最后一条（判重用），
-    等价于原来的全量 stored，但避免整段会话加载。
+    热路径只读取最后一条已存消息（tail，limit=1）：
+    - inbound 末条 == 已存末条：重发/无新增；
+    - inbound 倒数第二条 == 已存末条：正常续写（含滚动窗口/裁剪历史），只补录末条；
+    - 其余情况才通过 head_loader 加载头部做前缀匹配兜底（会话分叉、客户端裁剪等罕见场景）。
     """
-    prefix = common_prefix_len(head, inbound)
-    added = [dict(item) for item in inbound[prefix:]]
+    total = len(inbound)
+    last_stored = tail[-1] if tail else None
+    if total == 0:
+        added: list[dict[str, Any]] = []
+    elif last_stored is not None and message_fingerprint(last_stored) == message_fingerprint(inbound[-1]):
+        # 客户端历史已包含最后一条已存消息：重发/无新增
+        added = []
+    elif (
+        last_stored is not None
+        and total >= 2
+        and message_fingerprint(last_stored) == message_fingerprint(inbound[-2])
+    ):
+        # 正常续写：尾部已对齐，只补录本次新发的最后一条（滚出/裁剪的中间消息不重复入库）
+        added = [dict(inbound[total - 1])]
+    else:
+        # 兜底：与已存尾部对不齐，回退到头部前缀匹配
+        head = head_loader() if head_loader is not None else []
+        prefix = common_prefix_len(head, inbound)
+        added = [dict(item) for item in inbound[prefix:]]
     if assistant is None:
         return added
     if added and message_fingerprint(added[-1]) == message_fingerprint(assistant):
         return added
-    last = tail[-1] if tail else None
-    if not added and last is not None and message_fingerprint(last) == message_fingerprint(assistant):
+    if not added and last_stored is not None and message_fingerprint(last_stored) == message_fingerprint(assistant):
         return []
     added.append(dict(assistant))
     return added
@@ -225,6 +245,46 @@ def decode_stored_message(row: RequestLogMessage) -> dict[str, Any]:
             entry["tool_calls"] = content["tool_calls"]
         return entry
     return {"role": row.role, "content": content}
+
+
+PREVIEW_CHAR_LIMIT = 500
+TOOL_ARGS_PREVIEW_LIMIT = 200
+
+
+def content_preview(content: Any) -> tuple[str | None, bool, int]:
+    """列表用轻量预览：返回 (预览文本, 是否截断, 全文长度)，避免大正文进列表响应。"""
+    text = _content_key(content)
+    length = len(text)
+    if length <= PREVIEW_CHAR_LIMIT:
+        return text or None, False, length
+    return text[:PREVIEW_CHAR_LIMIT], True, length
+
+
+def tool_calls_summary(raw: Any) -> list[dict[str, str]] | None:
+    """工具调用摘要：只保留 id/name 与参数预览，列表接口不传完整参数。"""
+    if not isinstance(raw, list):
+        return None
+    items: list[dict[str, str]] = []
+    for call in raw:
+        if not isinstance(call, dict):
+            continue
+        fn = call.get("function")
+        fn = fn if isinstance(fn, dict) else None
+        name = str((fn.get("name") if fn else call.get("name")) or "") or "工具调用"
+        args = call.get("arguments")
+        if args is None:
+            args = (fn.get("arguments") if fn else None) or call.get("input")
+        if isinstance(args, dict | list):
+            args = json.dumps(args, ensure_ascii=False, default=str)
+        args = str(args or "")
+        items.append(
+            {
+                "id": str(call.get("id") or call.get("call_id") or ""),
+                "name": name,
+                "arguments_preview": args[:TOOL_ARGS_PREVIEW_LIMIT],
+            }
+        )
+    return items or None
 
 
 def encode_message_content(message: dict[str, Any]) -> str:
@@ -259,12 +319,14 @@ def load_log_messages_tail(db: Session, log_id: int, limit: int) -> list[dict[st
 def append_log_messages(db: Session, log_id: int, messages: list[dict[str, Any]]) -> None:
     if not messages:
         return
-    last_seq = db.scalar(select(func.max(RequestLogMessage.seq)).where(RequestLogMessage.log_id == log_id))
+    # 一次查询拿到 max(seq) 与当前条数：计数用于滚动窗口判断，避免追加后再 COUNT 一次
+    last_seq, total_before = db.execute(
+        select(func.max(RequestLogMessage.seq), func.count()).where(
+            RequestLogMessage.log_id == log_id
+        )
+    ).one()
     next_seq = (last_seq if last_seq is not None else -1) + 1
-    # 单会话消息条数上限：超过后不再追加消息（只更新 usage 元数据），避免超长会话把表撑爆
-    if next_seq >= MAX_LOG_MESSAGES:
-        return
-    messages = messages[: MAX_LOG_MESSAGES - next_seq]
+    total = (total_before or 0) + len(messages)
     now = utcnow()
     for offset, message in enumerate(messages):
         db.add(
@@ -276,6 +338,33 @@ def append_log_messages(db: Session, log_id: int, messages: list[dict[str, Any]]
                 created_at=now,
             )
         )
+    if total <= MAX_LOG_MESSAGES:
+        # session 为 autoflush=False，这里是本次写入唯一的 flush 点（交给调用方 commit）
+        db.flush()
+        return
+    # 滚动窗口：保留头部连续系统消息 + 最新 MAX_LOG_MESSAGES 条，
+    # 超出部分从最旧的普通消息开始清理（seq 持续递增，删除后留下空洞不影响查询）
+    db.flush()
+    excess = total - MAX_LOG_MESSAGES
+    first_non_system = db.scalar(
+        select(func.min(RequestLogMessage.seq)).where(
+            RequestLogMessage.log_id == log_id,
+            RequestLogMessage.role != "system",
+        )
+    )
+    oldest = select(RequestLogMessage.id).where(RequestLogMessage.log_id == log_id)
+    if first_non_system is not None:
+        oldest = oldest.where(RequestLogMessage.seq >= first_non_system)
+    # 单条 DELETE ... WHERE id IN (SELECT ... ORDER BY seq LIMIT excess)，避免逐行加载/删除
+    db.execute(
+        delete(RequestLogMessage)
+        .where(
+            RequestLogMessage.id.in_(
+                oldest.order_by(RequestLogMessage.seq.asc()).limit(excess)
+            )
+        )
+        .execution_options(synchronize_session=False)
+    )
 
 
 def find_continuation_log(

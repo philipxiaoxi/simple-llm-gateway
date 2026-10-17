@@ -1,4 +1,5 @@
-import type { LogItem, LogMessageItem } from '../lib/api'
+import { useMemo } from 'react'
+import type { LogItem, LogMessageItem, LogTurn } from '../lib/api'
 import {
   buildExecutionSteps,
   buildTurns,
@@ -9,7 +10,7 @@ import {
   summarizeTurn,
 } from '../lib/logView'
 import { cn } from '../lib/utils'
-import { Badge } from './ui'
+import { Badge, Button } from './ui'
 import { MetaItem } from './LogsShared'
 
 const toneDot: Record<string, string> = {
@@ -20,27 +21,49 @@ const toneDot: Record<string, string> = {
   mist: 'bg-mist',
 }
 
+const toneText: Record<string, string> = {
+  ok: 'text-signal',
+  bad: 'text-danger',
+  warn: 'text-warn',
+  info: 'text-info',
+  mist: 'text-mist',
+}
+
 export function LogTrajectory({
   log,
   messages,
-  onJumpToSeq,
+  turnsOutline,
+  onPreviewTurn,
+  onLoadOlder,
+  loadingOlder,
+  hasOlder,
 }: {
   log: LogItem
   messages: LogMessageItem[]
-  onJumpToSeq: (seq: number) => void
+  turnsOutline: LogTurn[]
+  onPreviewTurn: (anchor: number, to: number | null, index: number | null) => void
+  onLoadOlder: () => void
+  loadingOlder: boolean
+  hasOlder: boolean
 }) {
   const steps = buildExecutionSteps(log)
-  const turns = buildTurns(messages, log.reasoning ?? {})
-  const summaries = turns.map(summarizeTurn)
+  const loadedTurns = useMemo(() => buildTurns(messages, log.reasoning_summary ?? {}), [messages, log.reasoning_summary])
+  const loadedByAnchor = useMemo(
+    () => new Map(loadedTurns.map((turn) => [turn.messages[0]?.seq, summarizeTurn(turn)])),
+    [loadedTurns],
+  )
+  // 最新在前：轮次倒序展示，加载更早的按钮在列表底部
+  const displayTurns = useMemo(() => [...turnsOutline].reverse(), [turnsOutline])
   const meta = statusMeta(log.status)
   const tokens = log.total_tokens ?? (log.prompt_tokens ?? 0) + (log.completion_tokens ?? 0)
+  const chain = log.model_chain
 
   return (
     <div className="min-w-0 space-y-5">
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm lg:grid-cols-4">
         <MetaItem label="协议">{protocolLabel(log.protocol)}</MetaItem>
         <MetaItem label="传输">{log.stream ? '流式' : '非流式'}</MetaItem>
-        <MetaItem label="模型">{log.model || '—'}</MetaItem>
+        <MetaItem label="模型">{chain?.public_id || chain?.upstream || log.model || '—'}</MetaItem>
         <MetaItem label="状态">
           <Badge tone={meta.tone}>{meta.label}</Badge>
         </MetaItem>
@@ -63,7 +86,7 @@ export function LogTrajectory({
               </div>
               <div className="min-w-0 flex-1 pb-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium">{step.label}</span>
+                  <span className={cn('text-sm font-medium', toneText[step.tone] ?? 'text-paper')}>{step.label}</span>
                   <span className="min-w-0 truncate text-xs text-mist">{step.detail}</span>
                 </div>
                 {step.hint ? <div className="mt-0.5 truncate font-mono text-[11px] text-mist/70">{step.hint}</div> : null}
@@ -77,39 +100,50 @@ export function LogTrajectory({
         <div className="flex items-center justify-between">
           <div className="text-xs uppercase tracking-[0.16em] text-mist">轮次明细</div>
           <div className="text-xs text-mist">
-            {summaries.length} 轮 · 累计 {tokens} Token
+            {turnsOutline.length} 轮 · 最新在前 · 累计 {tokens} Token
           </div>
         </div>
-        {summaries.length === 0 ? (
+        {turnsOutline.length === 0 ? (
           <div className="rounded-xl border border-line bg-panel/60 px-4 py-8 text-center text-sm text-mist">
-            没有可展开的轮次明细。
+            没有可预览的轮次明细。
           </div>
         ) : (
           <ol className="space-y-2">
-            {summaries.map((summary) => (
-              <li key={summary.key}>
-                <button
-                  type="button"
-                  onClick={() => onJumpToSeq(summary.anchorSeq)}
-                  className="flex w-full items-start gap-3 rounded-xl border border-line bg-panel/60 p-3 text-left transition hover:border-mist/40 hover:bg-white/[0.03]"
-                >
-                  <Badge tone="mist">{summary.index != null ? `第 ${summary.index} 轮` : '上下文'}</Badge>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm" title={summary.preview}>
-                      {summary.preview}
+            {displayTurns.map((turn) => {
+              const summary = loadedByAnchor.get(turn.anchor_seq)
+              return (
+                <li key={`turn-${turn.anchor_seq}`}>
+                  <button
+                    type="button"
+                    onClick={() => onPreviewTurn(turn.anchor_seq, turn.to_seq, turn.index)}
+                    className="flex w-full items-start gap-3 rounded-xl border border-line bg-panel/60 p-3 text-left transition hover:border-mist/40 hover:bg-white/[0.03]"
+                  >
+                    <Badge tone="mist">{turn.index != null ? `第 ${turn.index} 轮` : '上下文'}</Badge>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm" title={summary?.preview}>
+                        {summary ? summary.preview : '（消息尚未加载，点击预览查看）'}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-mist">
+                        <span>{turn.message_count} 条消息</span>
+                        {summary ? <span>{summary.textLength} 字</span> : null}
+                        {summary?.reasoningCount ? <span>思考 {summary.reasoningCount}</span> : null}
+                        {summary?.toolCount ? <span>工具调用 {summary.toolCount}</span> : null}
+                      </div>
                     </div>
-                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-mist">
-                      <span>{summary.textLength} 字</span>
-                      {summary.reasoningCount ? <span>思考 {summary.reasoningCount}</span> : null}
-                      {summary.toolCount ? <span>工具调用 {summary.toolCount}</span> : null}
-                    </div>
-                  </div>
-                  <span className="shrink-0 text-xs text-signal">查看</span>
-                </button>
-              </li>
-            ))}
+                    <span className="shrink-0 text-xs text-signal">预览</span>
+                  </button>
+                </li>
+              )
+            })}
           </ol>
         )}
+        {hasOlder ? (
+          <div className="pt-2 text-center">
+            <Button variant="line" disabled={loadingOlder} onClick={onLoadOlder}>
+              {loadingOlder ? '加载中…' : '加载更早的轮次'}
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {log.error_message ? (

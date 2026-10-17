@@ -260,6 +260,19 @@ export type ApiKeyItem = {
   accounts?: KeyBoundAccount[]
 }
 
+export type ModelChain = {
+  requested?: string | null
+  alias?: string | null
+  public_id?: string | null
+  upstream?: string | null
+  resolved: boolean
+}
+
+export type ReasoningSummaryItem = {
+  length: number
+  preview: string
+}
+
 export type LogItem = {
   id: number
   account_id: number
@@ -283,14 +296,50 @@ export type LogItem = {
   response_body?: unknown
   message_count?: number
   turn_count?: number
-  reasoning?: Record<string, string> | null
+  reasoning_summary?: Record<string, ReasoningSummaryItem> | null
+  model_chain?: ModelChain | null
+  storage_truncated?: boolean
+}
+
+export type ToolCallSummary = {
+  id: string
+  name: string
+  arguments_preview: string
 }
 
 export type LogMessageItem = {
   seq: number
   role: string
+  content_preview?: string | null
+  content_truncated: boolean
+  content_length: number
+  tool_calls?: ToolCallSummary[] | null
+  content?: unknown
+  tool_calls_full?: unknown
+}
+
+export type LogMessageDetail = {
+  seq: number
+  role: string
   content: unknown
   tool_calls?: unknown
+}
+
+export type LogReasoningDetail = {
+  call_id: string
+  text: string
+}
+
+export type LogExportPayload = {
+  messages: LogMessageDetail[]
+  reasoning: Record<string, string>
+}
+
+export type LogTurn = {
+  index: number | null
+  anchor_seq: number
+  to_seq: number | null
+  message_count: number
 }
 
 export type DashboardLeaderboardTop = {
@@ -709,9 +758,16 @@ export const api = {
   },
   log: (id: number, includeBodies = false) =>
     request<LogItem>(`/api/admin/logs/${id}?include_bodies=${includeBodies ? 'true' : 'false'}`),
-  logMessages: (id: number, page: number, pageSize = 20, aroundSeq?: number) => {
+  logMessages: (
+    id: number,
+    page: number,
+    pageSize = 50,
+    range?: { fromSeq?: number; toSeq?: number; detail?: boolean },
+  ) => {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
-    if (aroundSeq != null && Number.isFinite(aroundSeq)) params.set('around_seq', String(aroundSeq))
+    if (range?.fromSeq != null && Number.isFinite(range.fromSeq)) params.set('from_seq', String(range.fromSeq))
+    if (range?.toSeq != null && Number.isFinite(range.toSeq)) params.set('to_seq', String(range.toSeq))
+    if (range?.detail) params.set('detail', 'true')
     return request<{
       items: LogMessageItem[]
       total: number
@@ -719,6 +775,11 @@ export const api = {
       page_size: number
     }>(`/api/admin/logs/${id}/messages?${params}`)
   },
+  logMessage: (id: number, seq: number) => request<LogMessageDetail>(`/api/admin/logs/${id}/messages/${seq}`),
+  logReasoning: (id: number, callId: string) =>
+    request<LogReasoningDetail>(`/api/admin/logs/${id}/reasoning/${encodeURIComponent(callId)}`),
+  logExport: (id: number) => request<LogExportPayload>(`/api/admin/logs/${id}/export`),
+  logTurns: (id: number) => request<{ items: LogTurn[] }>(`/api/admin/logs/${id}/turns`),
   shareLookup: (apiKey: string) =>
     request<ShareLookup>('/api/share/lookup', { method: 'POST', body: JSON.stringify({ api_key: apiKey }) }),
   shareCcSwitch: (payload: {

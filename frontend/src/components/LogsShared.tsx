@@ -1,7 +1,9 @@
+import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, Copy } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { isLongText, type ToolCall } from '../lib/logView'
+import { api } from '../lib/api'
+import { isLongText, type ReasoningRef, type ToolCall } from '../lib/logView'
 import { cn, copyText } from '../lib/utils'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { Badge } from './ui'
@@ -85,19 +87,37 @@ export function ToolCallList({ calls }: { calls: ToolCall[] }) {
   )
 }
 
-export function ReasoningBlock({ items }: { items: { id: string; text: string }[] }) {
+function ReasoningItem({ logId, item }: { logId: number; item: ReasoningRef }) {
+  const [open, setOpen] = useState(false)
+  const { data, isPending, isError } = useQuery({
+    queryKey: ['log-reasoning', logId, item.id],
+    queryFn: () => api.logReasoning(logId, item.id),
+    enabled: open,
+    staleTime: Infinity,
+  })
+  return (
+    <details
+      className="rounded-lg border border-line/70 bg-signal/[0.06] px-3 py-2 text-xs"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-signal">
+        <Badge tone="warn">思考</Badge>
+        <span className="text-mist">{item.length} 字</span>
+        <ChevronDown size={12} className="ml-auto" />
+      </summary>
+      <div className="mt-2 whitespace-pre-wrap break-words text-mist [overflow-wrap:anywhere]">
+        {isPending ? '加载思考内容…' : isError ? '思考内容加载失败，请刷新重试' : (data?.text ?? item.preview)}
+      </div>
+    </details>
+  )
+}
+
+export function ReasoningBlock({ logId, items }: { logId: number; items: ReasoningRef[] }) {
   if (items.length === 0) return null
   return (
     <div className="mt-2 space-y-2">
       {items.map((item) => (
-        <details key={item.id} className="rounded-lg border border-line/70 bg-signal/[0.06] px-3 py-2 text-xs">
-          <summary className="flex cursor-pointer list-none items-center gap-2 text-signal">
-            <Badge tone="warn">思考</Badge>
-            <span className="text-mist">{item.text.length} 字</span>
-            <ChevronDown size={12} className="ml-auto" />
-          </summary>
-          <div className="mt-2 whitespace-pre-wrap break-words text-mist [overflow-wrap:anywhere]">{item.text}</div>
-        </details>
+        <ReasoningItem key={item.id} logId={logId} item={item} />
       ))}
     </div>
   )

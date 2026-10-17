@@ -176,6 +176,11 @@ class RequestLog(Base):
     api_key_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     protocol: Mapped[str] = mapped_column(String(32), nullable=False)
     model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # 请求时记录的模型解析链：客户端请求名 / 命中的别名 / 解析出的公开模型名。
+    # 历史数据为空，详情页直接展示上游模型名（model 列）
+    requested_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    model_alias: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    model_public_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     stream: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     http_status: Mapped[int] = mapped_column(Integer, nullable=False)

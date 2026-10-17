@@ -10,6 +10,7 @@ from app.errors import protocol_error
 from app.services.bridge import prepare_credential
 from app.services.credentials import CredentialError
 from app.services.key_models import (
+    ModelResolution,
     active_bound_accounts,
     build_model_catalog,
     resolve_alias_public_id,
@@ -52,16 +53,17 @@ def _resolve_request_account(protocol: str, api_key, body: dict, db: Session):
     active_accounts = active_bound_accounts(api_key)
     single_account = active_accounts[0] if len(active_accounts) == 1 else None
     model = str(body.get("model") or "").strip()
+    requested = model
     alias_name = ""
     if not catalog:
         # 别名指向的模型已被全部移除时不透传原始别名，明确报错
         if resolve_alias_public_id(db, api_key.id, model) is not None:
-            return None, protocol_error(protocol, 400, f"别名“{model}”指向的模型不存在，请到自助查询页重新设置")
+            return None, None, protocol_error(protocol, 400, f"别名“{model}”指向的模型不存在，请到自助查询页重新设置")
         if single_account is not None:
-            return single_account, None
-        return None, protocol_error(protocol, 400, "该 Key 没有可用的上游模型")
+            return single_account, ModelResolution(requested=requested), None
+        return None, None, protocol_error(protocol, 400, "该 Key 没有可用的上游模型")
     if not model:
-        return None, protocol_error(protocol, 400, "请求缺少模型名称")
+        return None, None, protocol_error(protocol, 400, "请求缺少模型名称")
     entry = resolve_model(enabled_catalog, model, single_account=None)
     if entry is None:
         # 真实模型名优先，其次按 Key 级别名改写为绑定的公开模型名
@@ -73,14 +75,19 @@ def _resolve_request_account(protocol: str, api_key, body: dict, db: Session):
     if entry is None:
         disabled = resolve_model(catalog, model, single_account=None)
         if disabled is not None and disabled.record is not None and not disabled.record.enabled:
-            return None, protocol_error(protocol, 400, f"模型“{model}”已关闭")
+            return None, None, protocol_error(protocol, 400, f"模型“{model}”已关闭")
         if alias_name:
-            return None, protocol_error(protocol, 400, f"别名“{alias_name}”指向的模型不存在，请到自助查询页重新设置")
+            return None, None, protocol_error(protocol, 400, f"别名“{alias_name}”指向的模型不存在，请到自助查询页重新设置")
         if single_account is not None:
-            return None, protocol_error(protocol, 400, f"模型“{model}”不在该上游账号已配置的模型列表中")
-        return None, protocol_error(protocol, 400, f"模型“{model}”不在该 Key 已配置的模型列表中")
+            return None, None, protocol_error(protocol, 400, f"模型“{model}”不在该上游账号已配置的模型列表中")
+        return None, None, protocol_error(protocol, 400, f"模型“{model}”不在该 Key 已配置的模型列表中")
     body["model"] = entry.raw_id
-    return entry.account, None
+    resolution = ModelResolution(
+        requested=requested,
+        alias=alias_name or None,
+        public_id=entry.public_id,
+    )
+    return entry.account, resolution, None
 
 
 async def _validate_upstream_credential(protocol: str, account, db: Session) -> JSONResponse | None:
@@ -106,13 +113,15 @@ async def chat_completions(
         return error
     api_key, _primary = resolved
     body = await request.json()
-    account, error = _resolve_request_account(protocol, api_key, body, db)
+    account, resolution, error = _resolve_request_account(protocol, api_key, body, db)
     if error:
         return error
     error = await _validate_upstream_credential(protocol, account, db)
     if error:
         return error
-    return await handle_chat(db, api_key, account, body, protocol, dict(request.headers))
+    return await handle_chat(
+        db, api_key, account, body, protocol, dict(request.headers), model_resolution=resolution
+    )
 
 
 @router.api_route("/v1/responses", methods=["POST"], response_model=None)
@@ -129,13 +138,15 @@ async def responses(
         return error
     api_key, _primary = resolved
     body = await request.json()
-    account, error = _resolve_request_account(protocol, api_key, body, db)
+    account, resolution, error = _resolve_request_account(protocol, api_key, body, db)
     if error:
         return error
     error = await _validate_upstream_credential(protocol, account, db)
     if error:
         return error
-    return await handle_chat(db, api_key, account, body, protocol, dict(request.headers))
+    return await handle_chat(
+        db, api_key, account, body, protocol, dict(request.headers), model_resolution=resolution
+    )
 
 
 @router.api_route("/v1/messages", methods=["POST"], response_model=None)
@@ -152,13 +163,15 @@ async def messages(
         return error
     api_key, _primary = resolved
     body = await request.json()
-    account, error = _resolve_request_account(protocol, api_key, body, db)
+    account, resolution, error = _resolve_request_account(protocol, api_key, body, db)
     if error:
         return error
     error = await _validate_upstream_credential(protocol, account, db)
     if error:
         return error
-    return await handle_chat(db, api_key, account, body, protocol, dict(request.headers))
+    return await handle_chat(
+        db, api_key, account, body, protocol, dict(request.headers), model_resolution=resolution
+    )
 
 
 @router.api_route("/v1/messages/count_tokens", methods=["POST"], response_model=None)
@@ -175,7 +188,7 @@ async def count_tokens(
         return error
     api_key, _primary = resolved
     body = await request.json()
-    account, error = _resolve_request_account(protocol, api_key, body, db)
+    account, _resolution, error = _resolve_request_account(protocol, api_key, body, db)
     if error:
         return error
     error = await _validate_upstream_credential(protocol, account, db)
