@@ -36,6 +36,7 @@ from app.schemas import (
 )
 from app.services.leaderboard import latest_snapshot, snapshot_to_payload
 from app.services.local_agent_relay import local_agent_relay
+from app.services.read_cache import stats_cache
 
 router = APIRouter(prefix="/api/admin", tags=["admin-dashboard"], dependencies=[Depends(get_current_admin)])
 
@@ -203,16 +204,32 @@ def _shanghai_dates(days: int) -> list[str]:
     return [(first_day + timedelta(days=index)).strftime("%Y-%m-%d") for index in range(days)]
 
 
+def _stats_cache_key(days: int) -> str:
+    """按区间档位 + 上海自然日分 key：跨天后窗口变了，旧 key 自然不再命中。"""
+    start, _ = _stats_window(days)
+    return f"{days}:{start.strftime('%Y-%m-%d')}"
+
+
 @router.get("/dashboard/stats", response_model=DashboardStatsOut)
 def dashboard_stats(
     days: int = Query(default=7, ge=1, le=STATS_MAX_DAYS),
+    refresh: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> DashboardStatsOut:
     """概览图表数据：近 N 天每日调用/Token、模型与账号占比、小时分布、区间汇总与环比。
 
     - 日期按上海自然日分桶，未发生请求的日期补 0，前端可直接画连续时间轴
     - 模型超过 STATS_MODEL_SERIES 个时，其余归入「其他」，保证图例可读
+    - 结果是聚合扫表的大头，默认走 30 分钟惰性缓存（`ADMIN_STATS_CACHE_SECONDS`），
+      过期后由下一个请求重算；`refresh=1` 可强制重算
     """
+    key = _stats_cache_key(days)
+    if refresh:
+        stats_cache.delete(key)
+    return stats_cache.get_or_compute(key, lambda: _compute_stats(db, days))
+
+
+def _compute_stats(db: Session, days: int) -> DashboardStatsOut:
     start, end = _stats_window(days)
     prev_start, prev_end = _stats_window(days, periods_ago=1)
     window = (RequestLog.created_at >= start, RequestLog.created_at < end)

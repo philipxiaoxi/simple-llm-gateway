@@ -22,6 +22,7 @@ from app.clock import utcnow
 from app.config import get_settings
 from app.db import get_session_factory
 from app.models import ContentAuditFinding, ContentAuditScan, RequestLog, RequestLogMessage
+from app.services import read_cache
 from app.services.conversation import decode_stored_message, extract_request_messages
 
 BATCH_SIZE = 200
@@ -106,6 +107,7 @@ def reset_content_audit_cache() -> None:
     global _LEXICON, _scan_state
     _LEXICON = None
     _scan_state = _ScanState()
+    read_cache.invalidate_content_audit_progress()
 
 
 def scan_status() -> dict[str, Any]:
@@ -133,6 +135,8 @@ def start_scan() -> dict[str, Any]:
         _scan_state.total = 0
         _scan_state.remaining = 0
         _scan_state.error = None
+    # 上一次空闲时缓存的统计已不代表当前状态，先失效
+    read_cache.invalidate_content_audit_progress()
     thread = threading.Thread(target=_run_scan_loop, name="content-audit-scan", daemon=True)
     _scan_thread = thread
     thread.start()
@@ -793,6 +797,8 @@ def run_scan_batch_sync(batch_size: int = BATCH_SIZE, lexicon_directory: Path | 
             f"词库未能加载，已跳过敏感词；已扫描 {processed} 条请求，新增 {new_findings} 条命中，剩余 {remaining} 条"
         )
         extra["error_message"] = lexicon.error_message or "词库未能加载，已跳过敏感词扫描"
+    # 扫描结果落库后，缓存里的进度/命中数已过期
+    read_cache.invalidate_content_audit_progress()
     return extra
 
 
@@ -850,36 +856,57 @@ def _run_scan_loop() -> None:
         with _scan_lock:
             _scan_state.running = False
             _scan_state.paused = False
+        # 扫描结束：让下一次空闲读取拿到最终统计，而不是扫描前的旧缓存
+        read_cache.invalidate_content_audit_progress()
+
+
+def _compute_progress_stats(session: Session) -> dict[str, Any]:
+    total_logs = session.scalar(select(func.count()).select_from(RequestLog)) or 0
+    scanned_count = session.scalar(select(func.count()).select_from(ContentAuditScan)) or 0
+    finding_count = session.scalar(select(func.count()).select_from(ContentAuditFinding)) or 0
+    with _scan_lock:
+        running = _scan_state.running
+        cached_remaining = _scan_state.remaining
+    # 扫描运行期间 remaining 由扫描线程增量维护，避免轮询时反复跑反连接大查询
+    remaining = cached_remaining if running else count_remaining(session)
+    counts = dict(
+        session.execute(
+            select(ContentAuditFinding.category, func.count()).group_by(ContentAuditFinding.category)
+        ).all()
+    )
+    return {
+        "scanned_count": scanned_count,
+        "total_logs": total_logs,
+        "finding_count": finding_count,
+        "remaining": remaining,
+        "by_category": {
+            "sensitive": int(counts.get(CATEGORY_SENSITIVE) or 0),
+            "pii": int(counts.get(CATEGORY_PII) or 0),
+            "secret": int(counts.get(CATEGORY_SECRET) or 0),
+        },
+    }
 
 
 def progress_stats(db: Session | None = None) -> dict[str, Any]:
+    """内容审计进度。
+
+    扫描进行中必须实时（前端每 5 秒轮询，且此时 remaining 由扫描线程维护、代价很低），
+    空闲时结果会缓存一段时间：`remaining` 的反连接查询会扫全表消息，是管理端最贵的读之一。
+    """
+    with _scan_lock:
+        running = _scan_state.running
+    if running:
+        own = db is None
+        session = db or get_session_factory()()
+        try:
+            return _compute_progress_stats(session)
+        finally:
+            if own:
+                session.close()
     own = db is None
     session = db or get_session_factory()()
     try:
-        total_logs = session.scalar(select(func.count()).select_from(RequestLog)) or 0
-        scanned_count = session.scalar(select(func.count()).select_from(ContentAuditScan)) or 0
-        finding_count = session.scalar(select(func.count()).select_from(ContentAuditFinding)) or 0
-        with _scan_lock:
-            running = _scan_state.running
-            cached_remaining = _scan_state.remaining
-        # 扫描运行期间 remaining 由扫描线程增量维护，避免轮询时反复跑反连接大查询
-        remaining = cached_remaining if running else count_remaining(session)
-        counts = dict(
-            session.execute(
-                select(ContentAuditFinding.category, func.count()).group_by(ContentAuditFinding.category)
-            ).all()
-        )
-        return {
-            "scanned_count": scanned_count,
-            "total_logs": total_logs,
-            "finding_count": finding_count,
-            "remaining": remaining,
-            "by_category": {
-                "sensitive": int(counts.get(CATEGORY_SENSITIVE) or 0),
-                "pii": int(counts.get(CATEGORY_PII) or 0),
-                "secret": int(counts.get(CATEGORY_SECRET) or 0),
-            },
-        }
+        return read_cache.progress_cache.get_or_compute("progress", lambda: _compute_progress_stats(session))
     finally:
         if own:
             session.close()

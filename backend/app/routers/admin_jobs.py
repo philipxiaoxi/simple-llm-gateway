@@ -24,7 +24,14 @@ class JobParamsUpdate(BaseModel):
 
 
 @router.get("", response_model=JobListOut)
-def list_jobs() -> JobListOut:
+def list_jobs(refresh: bool = False) -> JobListOut:
+    """任务面板。
+
+    快照里的统计默认走 30 分钟惰性缓存；`refresh=1` 强制丢弃缓存重算
+    （前端「刷新状态」按钮用），运行时状态始终实时。
+    """
+    if refresh:
+        jobs_service.refresh_job_snapshots()
     return JobListOut(items=[JobOut.model_validate(item) for item in jobs_service.list_jobs()])
 
 

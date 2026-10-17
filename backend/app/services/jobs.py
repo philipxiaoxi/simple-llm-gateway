@@ -10,7 +10,7 @@ from typing import Any
 from app.clock import utcnow
 from app.config import get_settings
 from app.db import get_session_factory
-from app.services import content_audit, grok_oauth, model_caps, quota
+from app.services import content_audit, grok_oauth, model_caps, quota, read_cache
 from app.services import leaderboard as leaderboard_service
 from app.services.job_settings import get_job_int, get_job_params, update_job_params
 
@@ -100,6 +100,7 @@ def reset_jobs() -> None:
     _wake_events = {}
     _wake_reasons = {}
     _loop_tasks = []
+    read_cache.reset_read_caches()
 
 
 def get_job_runtime(job_id: str) -> JobRuntime:
@@ -171,6 +172,8 @@ def apply_job_params(job_id: str, payload: dict[str, Any]) -> dict[str, int]:
     updated = update_job_params(job_id, cleaned)
     if job_id in LOOP_JOBS:
         _wake(job_id, "reload")
+    # 快照里的 ttl_seconds / cache_expires_at 由参数推导，改参数后必须重算
+    read_cache.invalidate_job_snapshot(job_id)
     return updated
 
 
@@ -263,6 +266,10 @@ async def run_job(job_id: str) -> dict[str, Any]:
         finally:
             state.running = False
             state.last_finished_at = utcnow()
+            # 手动执行/循环执行结束后，面板上的数字要立刻反映这一轮结果
+            read_cache.invalidate_job_snapshot(job_id)
+            if job_id == JOB_CONTENT_AUDIT:
+                read_cache.invalidate_content_audit_progress()
 
 
 async def _catch_up_stale_cache(job_id: str) -> None:
@@ -447,6 +454,19 @@ _SNAPSHOTTERS = {
 }
 
 
+def _snapshot_for(job_id: str) -> dict[str, Any]:
+    """任务快照里都是要扫库/读大文件的数字，按请求惰性缓存（默认 30 分钟）。
+
+    运行时状态（running / last_* / next_run_at）不缓存，单独实时读。
+    """
+    return read_cache.jobs_cache.get_or_compute(job_id, lambda: _SNAPSHOTTERS[job_id]())
+
+
+def refresh_job_snapshots() -> None:
+    """面板上的「刷新状态」按钮：丢弃缓存，下一次读取全部重算。"""
+    read_cache.invalidate_jobs_snapshots()
+
+
 def list_jobs() -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for job_id in ALL_JOBS:
@@ -454,12 +474,12 @@ def list_jobs() -> list[dict[str, Any]]:
         state = _runtime[job_id]
         params = get_job_params(job_id)
         interval = int(params.get("interval_seconds") or params.get("ttl_seconds") or 0)
-        snapshot = _SNAPSHOTTERS[job_id]()
+        # 内容审计扫描进行中要实时进度（此时 remaining 由扫描线程维护，代价低），跳过缓存
+        audit_running = job_id == JOB_CONTENT_AUDIT and content_audit.scan_status()["running"]
+        snapshot = _SNAPSHOTTERS[job_id]() if audit_running else _snapshot_for(job_id)
         source_url = snapshot.get("source_url") or meta.get("source_url")
         error_message = state.error_message or snapshot.get("error_message")
-        running = state.running
-        if job_id == JOB_CONTENT_AUDIT:
-            running = content_audit.scan_status()["running"]
+        running = audit_running if job_id == JOB_CONTENT_AUDIT else state.running
         items.append(
             {
                 "id": job_id,

@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     aihot_leaderboard_data_url: str = "https://aihot.news/leaderboard.data"
     aihot_leaderboard_ttl_seconds: int = 43200
     aihot_leaderboard_min_refresh_seconds: int = 60
+    # ---- 管理端读缓存 ----
+    # 概览统计（图表聚合）与定时任务面板的 DB 快照默认缓存 30 分钟：
+    # 只在「用户发起请求且条目已过期」时惰性重算，不挂后台任务；设为 0 即关闭缓存。
+    admin_stats_cache_seconds: int = 1800
+    admin_jobs_cache_seconds: int = 1800
     xai_oauth_client_id: str = "b1a00492-073a-47ea-816f-4c329264a828"
     xai_oauth_authorize_url: str = "https://auth.x.ai/oauth2/authorize"
     xai_oauth_token_url: str = "https://auth.x.ai/oauth2/token"
