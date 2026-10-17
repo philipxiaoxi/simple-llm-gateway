@@ -232,7 +232,10 @@ export function Sheet({
         className={cn(
           'flex max-h-[90dvh] w-full flex-col overflow-hidden border-line bg-panel outline-none',
           // 移动：底部抽屉（长表单可直接占满视口）
-          mobileFull ? 'h-[100dvh] max-h-[100dvh] rounded-none border-0' : 'rounded-t-2xl border-t',
+          // 占满视口时为灵动岛/刘海留出顶部安全区，否则标题会被状态栏遮住
+          mobileFull
+            ? 'h-[100dvh] max-h-[100dvh] rounded-none border-0 pt-[env(safe-area-inset-top)] lg:pt-0'
+            : 'rounded-t-2xl border-t',
           'pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-20px_60px_rgba(0,0,0,0.45)]',
           // 桌面：居中弹窗
           'lg:my-[12vh] lg:max-h-[min(84dvh,56rem)] lg:rounded-xl lg:border lg:pb-0 lg:shadow-[0_20px_60px_rgba(0,0,0,0.45)]',

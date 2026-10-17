@@ -168,19 +168,26 @@ function AccountEditor({
       size="lg:max-w-2xl"
       mobileFull
       footer={
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-          {error ? <div className="text-sm text-danger sm:mr-auto" role="alert">{error}</div> : null}
-          <Button type="button" variant="ghost" className="w-full sm:w-auto" onClick={onClose}>
-            取消
-          </Button>
-          <Button
-            type="button"
-            className="w-full sm:w-auto"
-            disabled={!name.trim() || pending}
-            onClick={() => void save()}
-          >
-            保存
-          </Button>
+        <div className="flex flex-col gap-2">
+          {error ? (
+            <div className="text-sm text-danger" role="alert">
+              {error}
+            </div>
+          ) : null}
+          {/* 移动端取消/保存同排，避免长表单里两个整宽按钮各占一行 */}
+          <div className="flex items-center justify-end gap-2">
+            <Button type="button" variant="ghost" className="flex-1 sm:flex-none" onClick={onClose}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              className="flex-1 sm:flex-none"
+              disabled={!name.trim() || pending}
+              onClick={() => void save()}
+            >
+              保存
+            </Button>
+          </div>
         </div>
       }
     >
