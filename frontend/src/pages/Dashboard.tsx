@@ -266,7 +266,7 @@ export function DashboardPage() {
     <div className="space-y-5">
       <PageHeader
         title="概览"
-        description="调用趋势、消耗结构与资源快照，点卡片进入对应列表。"
+        description="调用趋势、消耗结构与资源快照，点卡片进入对应列表。图表聚合按缓存更新（默认 30 分钟），卡片数字实时。"
         actions={<RangeTabs days={days} onChange={setDays} />}
       />
       <DashboardSummary data={stats} />

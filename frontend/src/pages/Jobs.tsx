@@ -210,11 +210,26 @@ function ParamField({
 }
 
 export function JobsPage() {
-  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+  const queryClient = useQueryClient()
+  const [refreshing, setRefreshing] = useState(false)
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['jobs'],
-    queryFn: api.jobs,
+    queryFn: () => api.jobs(),
   })
   const jobs = data?.items ?? []
+
+  // 面板里的统计默认走 30 分钟后端缓存；「刷新状态」绕开缓存强制重算
+  async function refreshJobs() {
+    setRefreshing(true)
+    try {
+      const payload = await api.jobs(true)
+      queryClient.setQueryData(['jobs'], payload)
+    } catch (caught) {
+      notifyBad(errorMessage(caught, '刷新失败'))
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -222,10 +237,13 @@ export function JobsPage() {
         <div>
           <div className="mb-2 font-mono text-xs tracking-[0.28em] text-signal">BACKGROUND JOBS</div>
           <h1 className="text-2xl font-semibold">定时任务</h1>
-          <p className="mt-1 text-sm text-mist">查看循环任务、缓存时间和上次结果，改间隔后保存，或立刻请求一次。</p>
+          <p className="mt-1 text-sm text-mist">
+            查看循环任务、缓存时间和上次结果，改间隔后保存，或立刻请求一次。数字默认缓存 30
+            分钟，点「刷新状态」可强制重算。
+          </p>
         </div>
-        <Button type="button" variant="line" className="shrink-0" disabled={isFetching} onClick={() => void refetch()}>
-          <RefreshCw size={16} className={isFetching ? 'animate-spin' : undefined} />
+        <Button type="button" variant="line" className="shrink-0" disabled={refreshing} onClick={() => void refreshJobs()}>
+          <RefreshCw size={16} className={refreshing ? 'animate-spin' : undefined} />
           刷新状态
         </Button>
       </div>

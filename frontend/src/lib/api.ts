@@ -675,7 +675,8 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   dashboard: () => request<Dashboard>('/api/admin/dashboard'),
-  dashboardStats: (days: number) => request<DashboardStats>(`/api/admin/dashboard/stats?days=${days}`),
+  dashboardStats: (days: number, refresh = false) =>
+    request<DashboardStats>(`/api/admin/dashboard/stats?days=${days}${refresh ? '&refresh=1' : ''}`),
   agents: () => request<{ items: GatewayAgent[]; total: number }>('/api/admin/agents'),
   agent: (agentId: string) => request<GatewayAgent>(`/api/admin/agents/${encodeURIComponent(agentId)}`),
   refreshAgentRouteModels: (agentId: string, routeId: string) =>
@@ -1035,7 +1036,7 @@ export const api = {
   },
   leaderboard: () => request<Leaderboard>('/api/admin/leaderboard'),
   publicLeaderboard: () => request<Leaderboard>('/api/share/leaderboard'),
-  jobs: () => request<JobList>('/api/admin/jobs'),
+  jobs: (refresh = false) => request<JobList>(`/api/admin/jobs${refresh ? '?refresh=1' : ''}`),
   runJob: (id: string) => request<JobList>(`/api/admin/jobs/${id}/run`, { method: 'POST' }),
   updateJob: (id: string, payload: Record<string, number>) =>
     request<JobList>(`/api/admin/jobs/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
