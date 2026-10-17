@@ -344,7 +344,7 @@ function EditSkillDialog({
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             rows={5}
-            className="w-full rounded-md border border-line bg-ink px-3 py-2 text-base text-paper outline-none placeholder:text-mist/70 focus:border-signal/70 md:text-sm"
+            className="w-full rounded-md border border-line-strong bg-control px-3 py-2 text-base text-paper outline-none placeholder:text-mist-soft focus:border-signal focus:ring-2 focus:ring-signal/20 md:text-sm"
           />
         </Field>
         {error ? <div className="text-sm text-danger">{error}</div> : null}

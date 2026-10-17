@@ -22,7 +22,7 @@ export function MessageBubble({ message, logId }: { message: ConversationMessage
     <div data-seq={message.seq} className={cn('min-w-0 max-w-full', assistant ? 'lg:pl-8' : 'lg:pr-8')}>
       <div className="mb-1 flex items-center gap-2 text-xs text-mist">
         <Badge tone={meta.tone}>{meta.label}</Badge>
-        <span className="font-mono text-[10px] text-mist/70">#{message.seq}</span>
+        <span className="font-mono text-[10px] text-mist-strong">#{message.seq}</span>
       </div>
       <div
         className={cn(
@@ -46,7 +46,7 @@ function TurnLabel({ index, hint }: { index: number | null; hint?: string }) {
       <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-mist">
         {index != null ? `第 ${index} 轮` : '上下文'}
       </span>
-      {hint ? <span className="text-[11px] text-mist/60">{hint}</span> : null}
+      {hint ? <span className="text-[11px] text-mist-soft">{hint}</span> : null}
       <span className="h-px flex-1 bg-line" />
     </div>
   )
@@ -70,7 +70,7 @@ function TurnSummaryRow({
       <div className="min-w-0 flex-1 truncate text-sm text-mist" title={summary.preview}>
         {summary.preview}
       </div>
-      <span className="shrink-0 text-xs text-mist/70">
+      <span className="shrink-0 text-xs text-mist-strong">
         {turn.messages.length} 条 · {summary.textLength} 字
         {summary.reasoningCount ? ` · 思考 ${summary.reasoningCount}` : ''}
         {summary.toolCount ? ` · 工具 ${summary.toolCount}` : ''}

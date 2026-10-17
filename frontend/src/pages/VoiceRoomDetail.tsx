@@ -459,7 +459,7 @@ function ConfigTab({ roomId }: { roomId: string }) {
           />
           <span>
             自动删除语气词
-            <span className="mt-0.5 block text-xs text-mist/80">
+            <span className="mt-0.5 block text-xs text-mist-soft">
               实测关掉后「嗯/那个/就是说」一个都不会删；开启后 Qwen 能把语气词删干净并重组标点。
             </span>
           </span>
@@ -529,7 +529,7 @@ function ConfigTab({ roomId }: { roomId: string }) {
                 value={form.polishSystemPrompt ?? ''}
                 onChange={(event) => setForm({ ...form, polishSystemPrompt: event.target.value || null })}
                 rows={5}
-                className="w-full rounded-md border border-line bg-ink px-3 py-2 font-mono text-xs text-paper"
+                className="w-full rounded-md border border-line-strong bg-control px-3 py-2 font-mono text-xs text-paper"
                 placeholder="留空即可。默认提示词只允许修正同音字/错别字/标点，禁止改写句式。"
               />
             </Field>
@@ -549,7 +549,7 @@ function ConfigTab({ roomId }: { roomId: string }) {
           value={testText}
           onChange={(event) => setTestText(event.target.value)}
           rows={3}
-          className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm text-paper"
+          className="w-full rounded-md border border-line-strong bg-control px-3 py-2 text-sm text-paper"
         />
         <Button variant="line" disabled={test.isPending} onClick={() => test.mutate()}>
           {test.isPending ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />}

@@ -497,7 +497,7 @@ function EditDiagramDialog({
             rows={3}
             placeholder="这个图表是做什么的"
             disabled={pending}
-            className="w-full rounded-md border border-line bg-ink px-3 py-2 text-base text-paper outline-none placeholder:text-mist/70 focus:border-signal/70 md:text-sm"
+            className="w-full rounded-md border border-line-strong bg-control px-3 py-2 text-base text-paper outline-none placeholder:text-mist-soft focus:border-signal focus:ring-2 focus:ring-signal/20 md:text-sm"
           />
         </Field>
         <div className="flex justify-end gap-2">
@@ -595,7 +595,7 @@ function NewVersionDialog({
             spellCheck={false}
             disabled={create.isPending}
             placeholder="粘贴 Archify 类型化 JSON 源"
-            className="w-full rounded-md border border-line bg-ink px-3 py-2 font-mono text-xs text-paper outline-none placeholder:text-mist/70 focus:border-signal/70"
+            className="w-full rounded-md border border-line-strong bg-control px-3 py-2 font-mono text-xs text-paper outline-none placeholder:text-mist-soft focus:border-signal focus:ring-2 focus:ring-signal/20"
           />
         </Field>
         {error ? <p className="text-xs text-danger [overflow-wrap:anywhere]">{error}</p> : null}

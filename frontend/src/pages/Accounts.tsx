@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, FileJson, Upload } from 'lucide-react'
+import { ExternalLink, FileJson, MoreHorizontal, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Badge, Button, Card, Dialog, Field, Input, Select, Switch } from '../components/ui'
+import { ActionSheet, type ActionSheetAction, Badge, Button, Card, Dialog, Field, IconButton, Input, Select, Sheet, Switch } from '../components/ui'
 import { api, type Account, type AccountUsage, type ModelCaps, type Provider, type QuotaItem } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { MIN_PASSWORD_LENGTH, RISK_LEVELS, cn, errorMessage, formatEmbeddedTimes, formatTime, modelCapsHint } from '../lib/utils'
+import { FilterBar } from '../components/filter-bar'
 
 const QUOTA_WARN_HIGH = 90
 const QUOTA_WARN_MEDIUM = 70
@@ -161,7 +162,28 @@ function AccountEditor({
   }
 
   return (
-    <Dialog title={editing ? '编辑账号' : '新建账号'} onClose={onClose}>
+    <Sheet
+      title={editing ? '编辑账号' : '新建账号'}
+      onClose={onClose}
+      size="lg:max-w-2xl"
+      mobileFull
+      footer={
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          {error ? <div className="text-sm text-danger sm:mr-auto" role="alert">{error}</div> : null}
+          <Button type="button" variant="ghost" className="w-full sm:w-auto" onClick={onClose}>
+            取消
+          </Button>
+          <Button
+            type="button"
+            className="w-full sm:w-auto"
+            disabled={!name.trim() || pending}
+            onClick={() => void save()}
+          >
+            保存
+          </Button>
+        </div>
+      }
+    >
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="显示名">
           <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="DeepSeek 主号" />
@@ -262,17 +284,8 @@ function AccountEditor({
           </Field>
           <div className="mt-1.5 text-xs text-mist">风险指上游账号来源，与本站无关。</div>
         </div>
-        {error ? <div className="sm:col-span-2 text-sm text-danger">{error}</div> : null}
-        <div className="flex justify-end gap-2 sm:col-span-2">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            取消
-          </Button>
-          <Button type="button" disabled={!name.trim() || pending} onClick={() => void save()}>
-            保存
-          </Button>
-        </div>
       </div>
-    </Dialog>
+    </Sheet>
   )
 }
 
@@ -555,14 +568,20 @@ function ModelList({
                 onClick={() => onEdit(model)}
                 className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left hover:text-paper"
               >
-                <span className="min-w-0">
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5 lg:flex-row lg:items-center lg:gap-2">
                   <span
-                    className={cn('block truncate font-mono text-xs lg:inline', enabled ? 'text-paper' : 'text-mist')}
+                    className={cn(
+                      'block min-w-0 truncate font-mono text-xs',
+                      enabled ? 'text-paper' : 'text-mist',
+                    )}
                     title={model.id}
                   >
                     {model.id}
                   </span>
-                  <span className="mt-0.5 block text-[11px] leading-4 text-mist lg:ml-2 lg:mt-0 lg:inline">
+                  <span
+                    className="block min-w-0 truncate text-[11px] leading-4 text-mist lg:shrink-0"
+                    title={modelCapsHint(model) || undefined}
+                  >
                     {modelCapsHint(model) || '点击修改能力'}
                   </span>
                 </span>
@@ -593,7 +612,7 @@ function ModelList({
         </button>
       ) : null}
       {enabledCount !== models.length ? (
-        <div className="mt-1 text-[11px] text-mist">已关闭 {models.length - enabledCount} 个，对外不可见</div>
+        <div className="mt-1 text-xs text-mist">已关闭 {models.length - enabledCount} 个，对外不可见</div>
       ) : null}
     </div>
   )
@@ -952,6 +971,7 @@ export function AccountsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [providerFilter, setProviderFilter] = useState('')
+  const [actionAccount, setActionAccount] = useState<Account | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
 
   useEffect(() => {
@@ -1076,6 +1096,22 @@ export function AccountsPage() {
     setDeletingAccount(account)
   }
 
+  const actionSheetActions: ActionSheetAction[] = actionAccount
+    ? [
+        { label: '刷新额度', onSelect: () => void runQuota(actionAccount.id) },
+        { label: '获取模型', onSelect: () => void runModels(actionAccount.id) },
+        ...(actionAccount.auth_type === 'oauth'
+          ? [{ label: '去授权', onSelect: () => void startOauth(actionAccount.id) }]
+          : []),
+        { label: '编辑账号', onSelect: () => setEditor(actionAccount) },
+        {
+          label: actionAccount.status === 'active' ? '停用账号' : '启用账号',
+          onSelect: () => void toggle(actionAccount),
+        },
+        { label: '删除账号', tone: 'danger' as const, onSelect: () => setDeletingAccount(actionAccount) },
+      ]
+    : []
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -1102,7 +1138,15 @@ export function AccountsPage() {
           </Button>
         </div>
       </div>
-      <Card className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <FilterBar
+        activeCount={[search, statusFilter, providerFilter].filter(Boolean).length}
+        onReset={() => {
+          setSearch('')
+          setStatusFilter('')
+          setProviderFilter('')
+        }}
+        desktopClassName="grid grid-cols-2 gap-3 p-3 lg:grid-cols-3"
+      >
         <div className="col-span-2 min-w-0 lg:col-span-1">
           <Field label="搜索">
             <Input
@@ -1129,7 +1173,7 @@ export function AccountsPage() {
             ))}
           </Select>
         </Field>
-      </Card>
+      </FilterBar>
       <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
         {filteredAccounts.map((account) => (
           <Card key={account.id} className="flex min-w-0 flex-col space-y-3">
@@ -1154,10 +1198,18 @@ export function AccountsPage() {
                   </a>
                 ) : null}
               </div>
-              <span className="shrink-0">
+              <span className="flex shrink-0 items-center gap-1">
                 <Badge tone={account.status === 'active' ? 'ok' : 'mist'}>
                   {account.status === 'active' ? '启用' : '停用'}
                 </Badge>
+                <IconButton
+                  label={`${account.name} 更多操作`}
+                  className="md:hidden"
+                  aria-haspopup="dialog"
+                  onClick={() => setActionAccount(account)}
+                >
+                  <MoreHorizontal size={18} />
+                </IconButton>
               </span>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1392,6 +1444,12 @@ export function AccountsPage() {
           </div>
         </Dialog>
       ) : null}
+      <ActionSheet
+        open={Boolean(actionAccount)}
+        title={actionAccount?.name ?? ''}
+        actions={actionSheetActions}
+        onClose={() => setActionAccount(null)}
+      />
     </div>
   )
 }

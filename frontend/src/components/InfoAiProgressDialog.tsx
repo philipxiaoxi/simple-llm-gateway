@@ -213,7 +213,7 @@ export function InfoAiProgressDialog({ open, onClose }: { open: boolean; onClose
             />
           ))}
         </div>
-        <p className="text-[11px] text-mist/80">
+        <p className="text-[11px] text-mist-soft">
           判定进行中时列表会自动刷新；点击条目可查看详情，失败/待判定的条目可以跳过或删除。
         </p>
       </div>
@@ -248,7 +248,7 @@ function ProgressRow({
       >
         <div className="mt-0.5 flex w-16 shrink-0 flex-col items-start gap-1">
           <Badge tone={meta.tone}>{meta.label}</Badge>
-          {item.ai_score != null ? <span className="text-[11px] text-mist">{item.ai_score} 分</span> : null}
+          {item.ai_score != null ? <span className="text-xs text-mist">{item.ai_score} 分</span> : null}
         </div>
         <div className="min-w-0 flex-1">
           <div className="line-clamp-2 text-sm text-paper">{text}</div>

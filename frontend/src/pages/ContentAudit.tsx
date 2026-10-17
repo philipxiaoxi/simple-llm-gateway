@@ -7,6 +7,7 @@ import { Badge, Button, Card, Field, Select } from '../components/ui'
 import { api, type ContentAuditFinding, type ContentAuditSummary } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { LOG_PAGE_SIZE, errorMessage, formatTime } from '../lib/utils'
+import { PageHeader } from '../components/layout-primitives'
 
 const categoryLabel: Record<string, string> = {
   sensitive: '敏感词',
@@ -148,10 +149,7 @@ export function ContentAuditPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold">内容审计</h1>
-        <p className="mt-1 text-sm text-mist">事后扫描请求正文，只列出敏感词、PII 与密钥命中。</p>
-      </div>
+      <PageHeader title="内容审计" description="事后扫描请求正文，只列出敏感词、PII 与密钥命中。" />
 
       <Card className="space-y-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">

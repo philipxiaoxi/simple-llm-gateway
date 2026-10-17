@@ -131,13 +131,13 @@ export function LeaderboardView({
     <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-2">
         <Card>
-          <div className="text-[10px] uppercase tracking-[0.16em] text-mist lg:text-xs">条目</div>
+          <div className="text-xs uppercase tracking-[0.16em] text-mist lg:text-xs">条目</div>
           <div className="mt-2 truncate font-mono text-xl tabular-nums text-signal lg:mt-3 lg:text-3xl">
             {data ? data.total : '—'}
           </div>
         </Card>
         <Card>
-          <div className="text-[10px] uppercase tracking-[0.16em] text-mist lg:text-xs">缓存时间</div>
+          <div className="text-xs uppercase tracking-[0.16em] text-mist lg:text-xs">缓存时间</div>
           <div className="mt-2 truncate text-sm text-paper lg:mt-3 lg:text-lg">
             {data?.fetched_at ? formatTime(data.fetched_at) : '尚未拉取'}
           </div>
@@ -236,31 +236,31 @@ export function LeaderboardView({
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.16em] text-mist">上线</div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">上线</div>
                   <div className="mt-1 truncate font-mono text-xs">{formatReleaseDate(item.released_at)}</div>
                 </div>
                 <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.16em] text-mist">上下文</div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">上下文</div>
                   <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatContextWindow(item.context_window_tokens)}</div>
                 </div>
                 <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.16em] text-mist">输出</div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">输出</div>
                   <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatContextWindow(item.max_output_tokens)}</div>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.16em] text-mist">缓存价</div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">缓存价</div>
                   <div className="mt-1 truncate font-mono text-xs tabular-nums">
                     {formatPrice(item.cache_input_price_per_million_cny)}
                   </div>
                 </div>
                 <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.16em] text-mist">输入价</div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">输入价</div>
                   <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatPrice(item.input_price_per_million_cny)}</div>
                 </div>
                 <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.16em] text-mist">输出价</div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">输出价</div>
                   <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatPrice(item.output_price_per_million_cny)}</div>
                 </div>
               </div>
@@ -269,7 +269,7 @@ export function LeaderboardView({
                 <LocalCoverage entry={item} compact />
               </div>
               <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
-                <div className="text-[10px] uppercase tracking-[0.16em] text-mist">测试结果</div>
+                <div className="text-xs uppercase tracking-[0.16em] text-mist">测试结果</div>
                 <div className="mt-1 truncate font-mono text-xs tabular-nums text-signal">
                   {item.benchmark ? (
                     <>

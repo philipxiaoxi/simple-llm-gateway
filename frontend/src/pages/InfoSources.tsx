@@ -243,7 +243,7 @@ export function InfoSourcesPage() {
                     </span>
                     <Badge tone="info">{KIND_LABELS[source.kind] || source.kind}</Badge>
                     {source.subscriber_count_text ? (
-                      <span className="text-[11px] text-mist">{source.subscriber_count_text} 订阅</span>
+                      <span className="text-xs text-mist">{source.subscriber_count_text} 订阅</span>
                     ) : null}
                   </div>
                   <div className="mt-0.5 truncate text-[11px] text-mist">

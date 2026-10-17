@@ -133,7 +133,7 @@ export function McpDouyinPage() {
                 disabled={create.isPending}
                 rows={4}
                 placeholder="粘贴抖音分享文案，或直接粘贴 https://v.douyin.com/xxxx/ 链接"
-                className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm text-paper outline-none focus:border-signal/70"
+                className="w-full rounded-md border border-line-strong bg-control px-3 py-2 text-sm text-paper outline-none focus:border-signal focus:ring-2 focus:ring-signal/20"
               />
             </Field>
             <div className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2">

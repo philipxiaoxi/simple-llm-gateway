@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Card } from '../components/ui'
 import { api, type DashboardBenchmarkTop, type DashboardLeaderboardStatus, type DashboardLeaderboardTop } from '../lib/api'
 import { cn, formatContextWindow, formatTime, formatTokenCount } from '../lib/utils'
+import { PageHeader } from '../components/layout-primitives'
 
 type Metric = {
   label: string
@@ -203,10 +204,7 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold">概览</h1>
-        <p className="mt-1 text-sm text-mist">当前运行切片，点卡片进入对应列表。</p>
-      </div>
+      <PageHeader title="概览" description="当前运行切片，点卡片进入对应列表。" />
       <MetricSection title="今日" items={today} className="grid grid-cols-2 gap-3 lg:grid-cols-3" />
       <MetricSection title="累计" items={totals} className="grid grid-cols-2 gap-3 lg:max-w-xl" />
       <MetricSection title="资源" items={resources} className="grid grid-cols-2 gap-3 lg:grid-cols-4" />

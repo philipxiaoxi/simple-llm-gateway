@@ -7,6 +7,7 @@ import { errorMessage } from '../lib/utils'
 import { notifyBad } from '../lib/toast'
 import { Button } from './ui'
 import { MessageBubble } from './LogConversation'
+import { IconButton } from './ui'
 
 const TURN_PAGE_SIZE = 200
 
@@ -104,14 +105,9 @@ export function LogTurnDialog({
               {range} · {total} 条消息
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md p-1.5 text-mist transition hover:bg-white/5 hover:text-paper"
-            aria-label="关闭"
-          >
+          <IconButton label="关闭" onClick={onClose}>
             <X size={16} />
-          </button>
+          </IconButton>
         </div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
           {items === null && !failed ? (

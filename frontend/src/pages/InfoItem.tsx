@@ -493,7 +493,7 @@ export function InfoItemPage() {
                   </span>
                 ))}
                 {item.reactions_total != null ? (
-                  <span className="text-[11px] text-mist">共 {formatCount(item.reactions_total)}</span>
+                  <span className="text-xs text-mist">共 {formatCount(item.reactions_total)}</span>
                 ) : null}
               </div>
             ) : null}
@@ -505,7 +505,7 @@ export function InfoItemPage() {
                 rel="noreferrer"
                 className="block rounded-lg border border-line bg-panel-2 p-3 transition hover:border-signal/40"
               >
-                <div className="text-[11px] text-mist">{item.link_preview.site_name || '链接预览'}</div>
+                <div className="text-xs text-mist">{item.link_preview.site_name || '链接预览'}</div>
                 {item.link_preview.title ? (
                   <div className="mt-0.5 line-clamp-2 text-sm text-paper">{item.link_preview.title}</div>
                 ) : null}
@@ -536,7 +536,7 @@ export function InfoItemPage() {
               </button>
             </div>
 
-            <p className="text-[11px] text-mist/80">
+            <p className="text-[11px] text-mist-soft">
               采集时间：{formatTime(item.collected_at)} · 媒体 {item.media_count} 项
               <span className="hidden lg:inline"> · ESC 关闭 / ←→ 切换媒体</span>
             </p>

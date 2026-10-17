@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Copy, Download, FolderUp, Layers, RefreshCw, Search, Sparkles, Tags, Trash2, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
+import { Badge, Button, Card, Dialog, Field, Input, Select, Sheet } from '../components/ui'
 import { api, type Account, type SkillCategoryItem, type SkillItem } from '../lib/api'
 import { buildSkillInstallText, buildSkillUploadText } from '../lib/skillInstall'
 import { notifyBad, notifyOk } from '../lib/toast'
@@ -93,7 +93,27 @@ function UploadDialog({
   }
 
   return (
-    <Dialog title="上传 Skills" onClose={onClose} className="max-w-xl">
+    <Sheet
+      title="上传 Skills"
+      onClose={onClose}
+      size="lg:max-w-xl"
+      footer={
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          {error ? <div className="text-sm text-danger sm:mr-auto" role="alert">{error}</div> : null}
+          <Button type="button" variant="ghost" className="w-full sm:w-auto" onClick={onClose}>
+            取消
+          </Button>
+          <Button
+            type="button"
+            className="w-full sm:w-auto"
+            disabled={pending || !picked.length}
+            onClick={() => void submit(picked)}
+          >
+            {pending ? '导入中…' : '开始导入'}
+          </Button>
+        </div>
+      }
+    >
       <div className="grid gap-4">
         <p className="text-sm text-mist">
           支持单个 Skill 目录、包含多个 Skill 的目录，以及 zip / tar / tar.gz。每个 Skill 都需要有{' '}
@@ -116,17 +136,8 @@ function UploadDialog({
             {picked[0] ? `，例如 ${picked[0].name}` : ''}
           </div>
         ) : null}
-        {error ? <div className="text-sm text-danger">{error}</div> : null}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            取消
-          </Button>
-          <Button type="button" disabled={pending || !picked.length} onClick={() => void submit(picked)}>
-            {pending ? '导入中…' : '开始导入'}
-          </Button>
-        </div>
       </div>
-    </Dialog>
+    </Sheet>
   )
 }
 

@@ -295,7 +295,7 @@ export function BenchmarkPage() {
             <span className="font-mono text-xs text-signal">{selectedTargets.length} 已选</span>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <span className="text-[11px] text-mist">共 {targets.length} 个可用模型</span>
+            <span className="text-xs text-mist">共 {targets.length} 个可用模型</span>
             <div className="flex items-center gap-2">
               <Button variant="line" className="px-3" onClick={() => setGroupSelectOpen(true)}>
                 <Settings2 size={14} />
@@ -450,15 +450,15 @@ export function BenchmarkPage() {
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
-                      <div className="text-[10px] uppercase tracking-[0.16em] text-mist">首 token</div>
+                      <div className="text-xs uppercase tracking-[0.16em] text-mist">首 token</div>
                       <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatMs(result?.first_token_ms)}</div>
                     </div>
                     <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
-                      <div className="text-[10px] uppercase tracking-[0.16em] text-mist">总耗时</div>
+                      <div className="text-xs uppercase tracking-[0.16em] text-mist">总耗时</div>
                       <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatMs(result?.total_ms)}</div>
                     </div>
                     <div className="rounded-lg border border-line bg-ink/40 px-2 py-2">
-                      <div className="text-[10px] uppercase tracking-[0.16em] text-mist">速度</div>
+                      <div className="text-xs uppercase tracking-[0.16em] text-mist">速度</div>
                       <div className="mt-1 truncate font-mono text-xs tabular-nums">{formatSpeed(result?.output_tokens_per_second)}</div>
                     </div>
                   </div>
@@ -504,13 +504,13 @@ export function BenchmarkPage() {
               <textarea
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
-                className="min-h-28 w-full resize-y border border-line bg-black/20 p-3 text-sm text-paper outline-none focus:border-signal"
+                className="min-h-28 w-full resize-y border border-line-strong bg-black/20 p-3 text-sm text-paper outline-none focus:border-signal focus:ring-2 focus:ring-signal/20"
               />
             </Field>
             <Field label="最大输出 token">
               <Input type="number" min="1" max="512" value={maxTokens} onChange={(event) => setMaxTokens(event.target.value)} />
             </Field>
-            <p className="text-[11px] text-mist">最大输出 token 上限 512。</p>
+            <p className="text-xs text-mist">最大输出 token 上限 512。</p>
             <div className="flex justify-end">
               <Button onClick={() => setConfigOpen(false)}>完成</Button>
             </div>

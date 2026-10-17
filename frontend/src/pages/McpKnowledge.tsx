@@ -59,7 +59,7 @@ function ScopeFields({
     <>
       <Field label="访问范围（MCP 下游）">
         <select
-          className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm text-paper"
+          className="w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm text-paper"
           value={scope}
           onChange={(e) => onScopeChange(e.target.value)}
         >
@@ -119,7 +119,7 @@ function EmbeddingFields({
     <>
       <Field label="向量上游账号">
         <select
-          className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm text-paper"
+          className="w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm text-paper"
           value={accountId === '' ? '' : String(accountId)}
           onChange={(e) => {
             const value = e.target.value
@@ -145,7 +145,7 @@ function EmbeddingFields({
       <Field label="向量模型">
         {models.length ? (
           <select
-            className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm text-paper"
+            className="w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm text-paper"
             value={model}
             onChange={(e) => onModelChange(e.target.value)}
             disabled={!accountId}
@@ -609,7 +609,7 @@ export function McpKnowledgeDetailPage() {
         </div>
         <Field label="粘贴纯文本入库">
           <textarea
-            className="min-h-28 w-full rounded-md border border-line bg-ink px-3 py-2 text-sm text-paper"
+            className="min-h-28 w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm text-paper"
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="支持 .txt / .md 内容"
@@ -633,7 +633,7 @@ export function McpKnowledgeDetailPage() {
               accept={FILE_ACCEPT}
               multiple
               disabled={submitBatch.isPending}
-              className="block w-full min-w-0 text-sm text-mist file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-1.5 file:text-sm file:text-paper"
+              className="block w-full min-w-0 text-sm text-mist file:mr-3 file:rounded-md file:border file:border-line-strong-strong file:bg-panel file:px-3 file:py-1.5 file:text-sm file:text-paper"
               onChange={(e) => {
                 submitFiles(Array.from(e.target.files || []))
                 e.target.value = ''
@@ -646,7 +646,7 @@ export function McpKnowledgeDetailPage() {
               type="file"
               multiple
               disabled={submitBatch.isPending}
-              className="block w-full min-w-0 text-sm text-mist file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-1.5 file:text-sm file:text-paper"
+              className="block w-full min-w-0 text-sm text-mist file:mr-3 file:rounded-md file:border file:border-line-strong-strong file:bg-panel file:px-3 file:py-1.5 file:text-sm file:text-paper"
               onChange={(e) => {
                 onPickDirectory(e.target.files)
                 e.target.value = ''
@@ -666,7 +666,7 @@ export function McpKnowledgeDetailPage() {
         </Field>
         <Field label="模式">
           <select
-            className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm"
+            className="w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm"
             value={mode}
             onChange={(e) => setMode(e.target.value)}
           >

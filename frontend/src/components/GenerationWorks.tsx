@@ -92,7 +92,7 @@ function WorkMedia({ task, onPreview }: { task: GenerationTask; onPreview: (url:
       return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-panel-2 text-mist">
           {active ? <Loader2 size={22} className="animate-spin" /> : <Film size={24} />}
-          <span className="text-[11px] text-mist/70">{active ? '视频生成中' : '视频'}</span>
+          <span className="text-xs text-mist-strong">{active ? '视频生成中' : '视频'}</span>
         </div>
       )
     }
@@ -121,7 +121,7 @@ function WorkMedia({ task, onPreview }: { task: GenerationTask; onPreview: (url:
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition duration-200 group-hover/play:scale-110 group-hover/play:bg-black/80">
           <Play size={22} className="translate-x-[1px] fill-current" />
         </span>
-        <span className="text-[11px] text-mist/70 transition group-hover/play:text-paper">点击播放</span>
+        <span className="text-xs text-mist-strong transition group-hover/play:text-paper">点击播放</span>
       </button>
     )
   }
@@ -177,7 +177,7 @@ export function GenerationWorks({
       <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-line px-4 py-16 text-center">
         <ImageIcon size={26} className="text-mist" />
         <div className="text-sm text-mist">还没有作品</div>
-        <div className="text-xs text-mist/70">点击下方按钮开始生成，结果会出现在这里。</div>
+        <div className="text-xs text-mist-strong">点击下方按钮开始生成，结果会出现在这里。</div>
         <Button type="button" onClick={onCreate}>
           <Plus size={15} /> 开始生成
         </Button>
@@ -230,7 +230,7 @@ export function GenerationWorks({
                   </span>
                   <span className="shrink-0">{formatTime(task.created_at)}</span>
                 </div>
-                {!active ? <div className="truncate text-[11px] text-mist/80">{taskParamSummary(task)}</div> : null}
+                {!active ? <div className="truncate text-[11px] text-mist-soft">{taskParamSummary(task)}</div> : null}
               </button>
 
               <div className="absolute right-2 top-2 flex gap-1 opacity-100 transition lg:opacity-0 lg:group-hover:opacity-100">

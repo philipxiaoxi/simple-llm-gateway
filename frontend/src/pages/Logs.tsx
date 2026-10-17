@@ -282,7 +282,7 @@ export function LogsPage() {
           <section key={group.key}>
             <div className="mb-1.5 flex items-center gap-2 px-1 text-xs font-medium text-mist">
               <span>{group.label}</span>
-              <span className="tabular-nums text-mist/70">{group.items.length} 条</span>
+              <span className="tabular-nums text-mist-strong">{group.items.length} 条</span>
             </div>
             <div className="divide-y divide-line/60 overflow-hidden rounded-xl border border-line/70 bg-panel/40">
               {group.items.map((item) => (

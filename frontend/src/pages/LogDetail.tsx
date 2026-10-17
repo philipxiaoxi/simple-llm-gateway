@@ -160,7 +160,7 @@ export function LogDetailPage() {
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-mist">
               <Badge tone="mist">{protocolLabel(data.protocol)}</Badge>
               <span>{data.stream ? '流式' : '非流式'}</span>
-              <span className="text-mist/50">·</span>
+              <span className="text-mist-soft">·</span>
               <span>会话 #{data.id}</span>
             </div>
           </div>

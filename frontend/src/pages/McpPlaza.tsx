@@ -3,6 +3,7 @@ import { BookOpen, Download, FileText, Globe, KeyRound, Layers3, Newspaper, Scro
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
 import { cn, errorMessage } from '../lib/utils'
+import { PageHeader } from '../components/layout-primitives'
 
 const tabs = [
   { to: '/mcp-plaza', label: '服务目录', icon: Store, end: true },
@@ -32,14 +33,14 @@ export function McpPlazaLayout() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold">MCP 广场</h1>
-        <p className="mt-1 text-sm text-mist">
-          {inApp
+      <PageHeader
+        title="MCP 广场"
+        description={
+          inApp
             ? '应用管理页。平台级入口：服务目录 / MCP Key / 调用记录 / 接入说明。'
-            : '服务目录由能力注册表驱动；每个应用独立维护，从卡片进入。MCP Key 与调用审计为平台能力。'}
-        </p>
-      </div>
+            : '服务目录由能力注册表驱动；每个应用独立维护，从卡片进入。MCP Key 与调用审计为平台能力。'
+        }
+      />
       {inApp ? null : (
         <div className="flex flex-wrap gap-2 border-b border-line pb-2">
           {tabs.map((tab) => (

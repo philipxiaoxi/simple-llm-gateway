@@ -9,6 +9,7 @@ import { errorMessage } from '../lib/utils'
 import { GenerationModelSelect } from '../components/GenerationModelSelect'
 import { Button, Card, Field, Input, Switch } from '../components/ui'
 import { GENERATION_SETTINGS_KEY, useGenerationSettings } from '../components/useGenerationSettings'
+import { PageHeader } from '../components/layout-primitives'
 
 type ProviderForm = {
   provider: string
@@ -99,12 +100,10 @@ export function McpGenerationPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">图片 / 视频生成</h1>
-        <p className="mt-1 text-sm text-mist">
-          配置生成供应商凭据，并选定该能力对外提供的模型。MCP / REST 调用固定使用所选模型，只能传提示词与参数，不能切换模型。
-        </p>
-      </div>
+      <PageHeader
+        title="图片 / 视频生成"
+        description="配置生成供应商凭据，并选定该能力对外提供的模型。MCP / REST 调用固定使用所选模型，只能传提示词与参数，不能切换模型。"
+      />
 
       {!settings.data ? (
         <Card>

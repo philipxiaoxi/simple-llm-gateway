@@ -92,7 +92,7 @@ export function VoiceRoomsPage() {
 
       {items.length === 0 && !roomsQuery.isFetching ? (
         <Card className="flex flex-col items-center gap-3 py-10 text-center">
-          <Mic size={28} className="text-mist/60" />
+          <Mic size={28} className="text-mist-soft" />
           <p className="text-sm text-mist">还没有语音房。新建一个，然后让手机和电脑都加入它。</p>
           <Button onClick={() => setCreating(true)}>
             <Plus size={16} />
@@ -184,7 +184,7 @@ function RoomRow({ room, onDelete }: { room: VoiceRoomSummary; onDelete: () => v
         ) : (
           <span>
             {room.polishModel || '账号默认模型'}
-            <span className="ml-1 text-mist/70">({room.polishMode === 'rewrite' ? '允许改写' : '只纠错'})</span>
+            <span className="ml-1 text-mist-strong">({room.polishMode === 'rewrite' ? '允许改写' : '只纠错'})</span>
           </span>
         )}
       </div>

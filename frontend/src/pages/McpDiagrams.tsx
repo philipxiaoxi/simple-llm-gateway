@@ -208,7 +208,7 @@ export function McpDiagramsPage() {
                 rows={12}
                 spellCheck={false}
                 disabled={create.isPending}
-                className="w-full rounded-md border border-line bg-ink px-3 py-2 font-mono text-xs text-paper outline-none placeholder:text-mist/70 focus:border-signal/70"
+                className="w-full rounded-md border border-line-strong bg-control px-3 py-2 font-mono text-xs text-paper outline-none placeholder:text-mist-soft focus:border-signal focus:ring-2 focus:ring-signal/20"
               />
             </Field>
             <Field label="Slug（可选，留空自动生成）">

@@ -51,7 +51,7 @@ export function HistoryInput({
           </datalist>
         ) : null}
         {history.length ? (
-          <History size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-mist/50" />
+          <History size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-mist-soft" />
         ) : null}
       </div>
       <Button type="submit" disabled={busy || !value.trim()} className="shrink-0">

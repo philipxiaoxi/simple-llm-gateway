@@ -120,7 +120,7 @@ export function InfoPublicGateDialog({
                 <span className="font-mono tracking-wider text-signal">
                   {status.data.password_fingerprint}
                 </span>
-                <span className="ml-1 text-mist/70">（用于与访问记录比对，定位泄露口令）</span>
+                <span className="ml-1 text-mist-strong">（用于与访问记录比对，定位泄露口令）</span>
               </div>
             ) : null}
 

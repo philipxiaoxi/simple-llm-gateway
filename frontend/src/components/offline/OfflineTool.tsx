@@ -344,12 +344,12 @@ export function OfflineTool({ base }: { base: string }) {
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
                 placeholder="搜索名称 / 文件名"
-                className="h-8 w-40 rounded-lg border border-line bg-ink/60 px-2.5 text-xs text-paper outline-none transition placeholder:text-mist/60 focus:border-signal/50"
+                className="h-8 w-40 rounded-lg border border-line-strong bg-control/60 px-2.5 text-xs text-paper outline-none transition placeholder:text-mist-soft focus:border-signal focus:ring-2 focus:ring-signal/20"
               />
               <select
                 value={sort}
                 onChange={(event) => setSort(event.target.value as 'recent' | 'name' | 'size')}
-                className="h-8 rounded-lg border border-line bg-ink/60 px-2 text-xs text-paper outline-none transition focus:border-signal/50"
+                className="h-8 rounded-lg border border-line-strong bg-control/60 px-2 text-xs text-paper outline-none transition focus:border-signal focus:ring-2 focus:ring-signal/20"
               >
                 <option value="recent">最近缓存</option>
                 <option value="name">按名称</option>

@@ -204,9 +204,9 @@ export function GenerationComposer({
               ? '描述你想生成的画面：主体、场景、光线、风格……'
               : '描述镜头、动作、节奏与声音：主体、运镜、时长、氛围……'
           }
-          className="w-full resize-y rounded-lg border border-line bg-ink px-3 py-2.5 text-sm leading-6 text-paper outline-none focus:border-signal/70"
+          className="w-full resize-y rounded-lg border border-line-strong bg-control px-3 py-2.5 text-sm leading-6 text-paper outline-none focus:border-signal focus:ring-2 focus:ring-signal/20"
         />
-        <div className="text-right text-[11px] text-mist">Ctrl / ⌘ + Enter 生成</div>
+        <div className="text-right text-xs text-mist">Ctrl / ⌘ + Enter 生成</div>
       </div>
 
       {supportsRefs ? (

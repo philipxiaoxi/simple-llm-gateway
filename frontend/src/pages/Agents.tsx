@@ -3,6 +3,7 @@ import { ChevronRight, CircleDot, RefreshCw, Server } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Badge, Button, Card } from '../components/ui'
 import { api } from '../lib/api'
+import { PageHeader } from '../components/layout-primitives'
 
 export function AgentsPage() {
   const { data, isFetching, refetch } = useQuery({
@@ -15,16 +16,16 @@ export function AgentsPage() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">网关代理</h1>
-          <p className="mt-1 text-sm text-mist">已发现的机器与其连接状态、路由和上游模型缓存。</p>
-        </div>
-        <Button variant="line" onClick={() => void refetch()} disabled={isFetching} title="刷新在线状态">
-          <RefreshCw size={16} className={isFetching ? 'animate-spin' : ''} />
-          刷新
-        </Button>
-      </div>
+      <PageHeader
+        title="网关代理"
+        description="已发现的机器与其连接状态、路由和上游模型缓存。"
+        actions={
+          <Button variant="line" onClick={() => void refetch()} disabled={isFetching} title="刷新在线状态">
+            <RefreshCw size={16} className={isFetching ? 'animate-spin' : ''} />
+            刷新
+          </Button>
+        }
+      />
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card>

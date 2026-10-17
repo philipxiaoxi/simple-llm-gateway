@@ -356,7 +356,7 @@ export function McpSiteDetailPage() {
                 type="file"
                 accept=".zip,application/zip"
                 disabled={deploy.isPending}
-                className="block w-full min-w-0 text-sm text-mist file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-2 file:text-sm file:text-paper"
+                className="block w-full min-w-0 text-sm text-mist file:mr-3 file:rounded-md file:border file:border-line-strong-strong file:bg-panel file:px-3 file:py-2 file:text-sm file:text-paper"
                 onChange={(event) => setFile(event.target.files?.[0] || null)}
               />
             </Field>
@@ -542,7 +542,7 @@ function EditSiteDialog({
             rows={3}
             placeholder="这个站点是做什么的"
             disabled={pending}
-            className="w-full rounded-md border border-line bg-ink px-3 py-2 text-base text-paper outline-none placeholder:text-mist/70 focus:border-signal/70 md:text-sm"
+            className="w-full rounded-md border border-line-strong bg-control px-3 py-2 text-base text-paper outline-none placeholder:text-mist-soft focus:border-signal focus:ring-2 focus:ring-signal/20 md:text-sm"
           />
         </Field>
 

@@ -27,6 +27,7 @@ import {
   Field,
   Input,
   Select,
+  Sheet,
 } from "../components/ui";
 import { cn, errorMessage, formatBytes, formatTime } from "../lib/utils";
 import { notifyBad, notifyOk } from "../lib/toast";
@@ -78,7 +79,23 @@ function ToolEditDialog({
     }
   }
   return (
-    <Dialog title={`编辑 ${tool.name}`} onClose={onClose} className="max-w-3xl">
+    <Sheet
+      title={`编辑 ${tool.name}`}
+      onClose={onClose}
+      size="lg:max-w-3xl"
+      mobileFull
+      footer={
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          {error ? <div className="text-sm text-danger sm:mr-auto" role="alert">{error}</div> : null}
+          <Button variant="ghost" className="w-full sm:w-auto" onClick={onClose}>
+            取消
+          </Button>
+          <Button className="w-full sm:w-auto" onClick={() => void save()}>
+            保存配置
+          </Button>
+        </div>
+      }
+    >
       <div className="grid gap-4">
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="名称">
@@ -108,19 +125,12 @@ function ToolEditDialog({
           <textarea
             value={script}
             onChange={(event) => setScript(event.target.value)}
-            className="min-h-72 w-full rounded-md border border-line bg-ink p-3 font-mono text-xs text-paper outline-none focus:border-signal/70"
+            className="min-h-72 w-full rounded-md border border-line-strong bg-control p-3 font-mono text-xs text-paper outline-none focus:border-signal focus:ring-2 focus:ring-signal/20"
             spellCheck={false}
           />
         </Field>
-        {error ? <div className="text-sm text-danger">{error}</div> : null}
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            取消
-          </Button>
-          <Button onClick={() => void save()}>保存配置</Button>
-        </div>
       </div>
-    </Dialog>
+    </Sheet>
   );
 }
 
@@ -345,7 +355,7 @@ function ToolCreateDialog({ onClose }: { onClose: () => void }) {
           <textarea
             value={script}
             onChange={(event) => setScript(event.target.value)}
-            className="min-h-72 w-full rounded-md border border-line bg-ink p-3 font-mono text-xs text-paper outline-none focus:border-signal/70"
+            className="min-h-72 w-full rounded-md border border-line-strong bg-control p-3 font-mono text-xs text-paper outline-none focus:border-signal focus:ring-2 focus:ring-signal/20"
             spellCheck={false}
           />
         </Field>

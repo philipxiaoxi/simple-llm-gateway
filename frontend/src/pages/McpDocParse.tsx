@@ -190,7 +190,7 @@ export function McpDocParsePage() {
             accept={ACCEPT}
             multiple
             disabled={upload.isPending}
-            className="block w-full min-w-0 text-sm text-mist file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-2 file:text-sm file:text-paper"
+            className="block w-full min-w-0 text-sm text-mist file:mr-3 file:rounded-md file:border file:border-line-strong-strong file:bg-panel file:px-3 file:py-2 file:text-sm file:text-paper"
             onChange={(event) => {
               const files = Array.from(event.target.files || [])
               event.target.value = ''
@@ -298,7 +298,7 @@ export function McpDocParsePage() {
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
             <Field label="送入知识库">
               <select
-                className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm"
+                className="w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm"
                 value={kbId}
                 onChange={(event) => setKbId(event.target.value)}
               >

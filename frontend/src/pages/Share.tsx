@@ -232,9 +232,9 @@ function AccountModelGroups({
                 {account.account_name}
               </span>
               <span className="shrink-0 text-[10px] text-mist">{accountSourceLabel(account.account_source)}</span>
-              <span className={cn('ml-auto shrink-0 font-mono text-[10px]', color.text)}>优先 {account.account_index + 1}</span>
+              <span className={cn('ml-auto shrink-0 font-mono text-xs', color.text)}>优先 {account.account_index + 1}</span>
             </div>
-            <div className="mt-1 text-[11px] text-mist">{models.length} 个模型</div>
+            <div className="mt-1 text-xs text-mist">{models.length} 个模型</div>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {models.map((model) => {
                 const title = [model.id, model.raw_id !== model.id ? `原始模型 ${model.raw_id}` : null, modelHint(modelCapsOf(lookup, model.id))]

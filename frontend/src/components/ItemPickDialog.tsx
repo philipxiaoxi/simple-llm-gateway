@@ -139,7 +139,7 @@ export function ItemPickDialog({
         {preview ? (
           <Field label="手动复制">
             <textarea
-              className="h-36 w-full rounded-md border border-line bg-ink px-3 py-2 font-mono text-xs text-paper outline-none"
+              className="h-36 w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 font-mono text-xs text-paper outline-none"
               value={preview}
               readOnly
               onFocus={(event) => event.currentTarget.select()}

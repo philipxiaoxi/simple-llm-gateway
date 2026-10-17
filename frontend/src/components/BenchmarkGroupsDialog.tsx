@@ -105,7 +105,7 @@ export function BenchmarkGroupsDialog({ onClose }: { onClose: () => void }) {
               新建
             </Button>
           </div>
-          <div className="mt-2 text-[11px] text-mist">先建空分组，再点「添加 / 编辑模型」维护要测速的模型；模型下架后会自动移除。</div>
+          <div className="mt-2 text-xs text-mist">先建空分组，再点「添加 / 编辑模型」维护要测速的模型；模型下架后会自动移除。</div>
         </div>
 
         <div className="grid gap-3">
@@ -132,7 +132,7 @@ export function BenchmarkGroupsDialog({ onClose }: { onClose: () => void }) {
                     <>
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium" title={group.name}>{group.name}</div>
-                        <div className="mt-0.5 truncate text-[11px] text-mist" title={`更新于 ${formatTime(group.updated_at)}`}>
+                        <div className="mt-0.5 truncate text-xs text-mist" title={`更新于 ${formatTime(group.updated_at)}`}>
                           {group.member_count} 个模型 · {group.available_count} 可用
                           {unavailable > 0 ? <span className="text-warn"> · {unavailable} 不可用</span> : null}
                           {' · '}更新于 {formatTime(group.updated_at)}

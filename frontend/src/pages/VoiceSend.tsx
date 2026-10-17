@@ -403,7 +403,7 @@ export function VoiceSendPage() {
       <div ref={listRef} className="flex-1 overflow-y-auto px-3 py-3">
         {sentences.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <Mic size={30} className="text-mist/50" />
+            <Mic size={30} className="text-mist-soft" />
             <p className="text-sm text-mist">
               {connection === 'online' ? '按住下面的按钮开始说话' : '正在连接房间…'}
             </p>

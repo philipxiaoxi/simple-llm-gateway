@@ -49,7 +49,7 @@ function RoutePrefixEditor({
     <>
       <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-line bg-ink/40 px-3 py-2">
         <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-[0.12em] text-mist">模型前缀</div>
+          <div className="text-xs uppercase tracking-[0.12em] text-mist">模型前缀</div>
           <div className="mt-1 truncate font-mono text-xs text-paper">{initialPrefix || '自动生成'}</div>
         </div>
         <Button type="button" variant="line" className="shrink-0" onClick={() => setOpen(true)}>
@@ -229,7 +229,7 @@ export function AgentDetailPage() {
                             >
                               {model.id}
                             </span>
-                            <span className="mt-0.5 block text-[11px] text-mist">{modelCapsHint(model) || (enabled ? '对外可见' : '已关闭，测速仍可用')}</span>
+                            <span className="mt-0.5 block text-xs text-mist">{modelCapsHint(model) || (enabled ? '对外可见' : '已关闭，测速仍可用')}</span>
                           </span>
                           {route.account_id ? (
                             <Switch

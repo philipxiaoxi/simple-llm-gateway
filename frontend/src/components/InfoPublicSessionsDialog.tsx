@@ -7,6 +7,7 @@ import { api, type InfoPublicSession, type PublicGateScope } from '../lib/api'
 import { relativeTime } from '../lib/info'
 import { errorMessage, formatTime } from '../lib/utils'
 import { Badge, Input } from './ui'
+import { IconButton } from './ui'
 
 function deviceLabel(userAgent: string) {
   if (!userAgent) return '未知设备'
@@ -72,7 +73,7 @@ function SessionRow({ row }: { row: InfoPublicSession }) {
       </div>
       <div className="shrink-0 text-right text-[11px]">
         <div className="text-mist">{relativeTime(row.created_at)}</div>
-        <div className="mt-0.5 text-mist/60">{formatTime(row.created_at)}</div>
+        <div className="mt-0.5 text-mist-soft">{formatTime(row.created_at)}</div>
       </div>
     </div>
   )
@@ -147,14 +148,9 @@ export function InfoPublicSessionsDialog({
                 按水印短码溯源：定位截图对应的访问时间、来源设备与口令版本
               </p>
             </div>
-            <button
-              type="button"
-              aria-label="关闭"
-              onClick={onClose}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-mist transition hover:bg-white/5 hover:text-paper"
-            >
+            <IconButton label="关闭" onClick={onClose} className="rounded-lg">
               <X size={18} />
-            </button>
+            </IconButton>
           </div>
         </div>
 

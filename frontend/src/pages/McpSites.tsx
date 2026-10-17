@@ -151,7 +151,7 @@ export function McpSitesPage() {
                 type="file"
                 accept=".zip,application/zip"
                 disabled={create.isPending}
-                className="block w-full min-w-0 text-sm text-mist file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-2 file:text-sm file:text-paper"
+                className="block w-full min-w-0 text-sm text-mist file:mr-3 file:rounded-md file:border file:border-line-strong-strong file:bg-panel file:px-3 file:py-2 file:text-sm file:text-paper"
                 onChange={(event) => setFile(event.target.files?.[0] || null)}
               />
             </Field>

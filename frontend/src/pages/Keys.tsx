@@ -8,6 +8,7 @@ import { api, type Account, type ApiKeyItem, type ApiKeySort, type CcSwitchTarge
 import { openShareWithApiKey } from '../lib/shareTransfer'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { ALIAS_INPUT_PATTERN, cn, errorMessage, formatTime, formatTokenCount, RISK_LEVELS } from '../lib/utils'
+import { FilterBar } from '../components/filter-bar'
 
 function MoreMenu({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
@@ -627,7 +628,15 @@ export function KeysPage() {
           </Button>
         </div>
       </div>
-      <Card className="grid grid-cols-2 gap-3 md:grid-cols-3">
+      <FilterBar
+        activeCount={[search, statusFilter, accountFilter].filter(Boolean).length}
+        onReset={() => {
+          setSearch('')
+          setStatusFilter('')
+          setAccountFilter('')
+        }}
+        desktopClassName="grid grid-cols-2 gap-3 p-3 md:grid-cols-3"
+      >
         <Field label="搜索">
           <Input
             value={search}
@@ -654,7 +663,7 @@ export function KeysPage() {
           </Select>
         </Field>
         </div>
-      </Card>
+      </FilterBar>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {filteredKeys.map((item) => {
           const boundAccounts = item.accounts?.length

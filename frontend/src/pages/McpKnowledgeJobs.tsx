@@ -143,7 +143,7 @@ export function McpKnowledgeJobsPage() {
         </Field>
         <Field label="知识库">
           <select
-            className="w-full rounded-md border border-line bg-ink px-3 py-2 text-sm text-paper"
+            className="w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm text-paper"
             value={kbId}
             onChange={(e) => updateParam('kb_id', e.target.value)}
           >

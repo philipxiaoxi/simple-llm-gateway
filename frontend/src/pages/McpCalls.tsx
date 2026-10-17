@@ -1,10 +1,40 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { api } from '../lib/api'
+import { api, type McpCallLogItem } from '../lib/api'
 import { errorMessage, formatTime } from '../lib/utils'
+import { type Column, DataView, EmptyState } from '../components/data-view'
 import { Badge, Button, Card, Field, Input, Select } from '../components/ui'
+import { FilterBar } from '../components/filter-bar'
 
 const PAGE_SIZES = [25, 50, 100]
+
+const COLUMNS: Column<McpCallLogItem>[] = [
+  { key: 'time', header: '时间', className: 'whitespace-nowrap', cell: (item) => formatTime(item.created_at) },
+  {
+    key: 'key',
+    header: 'Key',
+    cell: (item) => (
+      <div className="min-w-0">
+        <div className="text-paper">{item.mcp_key_name || '-'}</div>
+        <div className="font-mono text-xs text-mist">{item.mcp_key_prefix || '-'}</div>
+      </div>
+    ),
+  },
+  { key: 'capability', header: '能力', cell: (item) => item.capability_id },
+  { key: 'operation', header: '操作', className: 'font-mono text-xs', cell: (item) => item.operation },
+  {
+    key: 'result',
+    header: '结果',
+    cell: (item) => <Badge tone={item.success ? 'ok' : 'bad'}>{item.success ? '成功' : '失败'}</Badge>,
+  },
+  { key: 'latency', header: '耗时', className: 'whitespace-nowrap', cell: (item) => `${item.latency_ms} ms` },
+  {
+    key: 'error',
+    header: '错误',
+    className: 'max-w-lg whitespace-pre-wrap break-words text-mist',
+    cell: (item) => item.error_message || '-',
+  },
+]
 
 export function McpCallsPage() {
   const [capabilityId, setCapabilityId] = useState('')
@@ -53,10 +83,10 @@ export function McpCallsPage() {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" aria-busy={calls.isFetching}>
       <p className="text-sm text-mist">授权通过后的能力调用都会记录，成功与失败均可查。当前共 {total} 条。</p>
 
-      <Card className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
+      <FilterBar activeCount={hasFilter ? 1 : 0} onReset={clearFilters} desktopClassName="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="能力">
           <Select
             value={capabilityId}
@@ -127,7 +157,7 @@ export function McpCallsPage() {
             </Button>
           </div>
         </Field>
-      </Card>
+      </FilterBar>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm text-mist">
@@ -168,47 +198,44 @@ export function McpCallsPage() {
         </div>
       </div>
 
-      {calls.isError ? <div className="text-sm text-danger">{errorMessage(calls.error, '加载失败')}</div> : null}
-      {calls.isFetching && !items.length ? <div className="text-sm text-mist">加载中…</div> : null}
+      {calls.isError ? <div className="text-sm text-danger" role="alert">{errorMessage(calls.error, '加载失败')}</div> : null}
 
-      <div className="overflow-x-auto rounded-xl border border-line">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-panel text-mist">
-            <tr>
-              <th className="px-3 py-2">时间</th>
-              <th className="px-3 py-2">Key</th>
-              <th className="px-3 py-2">能力</th>
-              <th className="px-3 py-2">操作</th>
-              <th className="px-3 py-2">结果</th>
-              <th className="px-3 py-2">耗时</th>
-              <th className="px-3 py-2">错误</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.id} className="border-t border-line align-top">
-                <td className="px-3 py-2 whitespace-nowrap">{formatTime(item.created_at)}</td>
-                <td className="px-3 py-2">
-                  <div className="text-paper">{item.mcp_key_name || '-'}</div>
-                  <div className="font-mono text-xs text-mist">{item.mcp_key_prefix || '-'}</div>
-                </td>
-                <td className="px-3 py-2">{item.capability_id}</td>
-                <td className="px-3 py-2 font-mono text-xs">{item.operation}</td>
-                <td className="px-3 py-2">
-                  <Badge tone={item.success ? 'ok' : 'bad'}>{item.success ? '成功' : '失败'}</Badge>
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap">{item.latency_ms} ms</td>
-                <td className="px-3 py-2 max-w-lg whitespace-pre-wrap break-words text-mist">
-                  {item.error_message || '-'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {!items.length && !calls.isFetching ? (
-        <Card className="p-8 text-center text-sm text-mist">{hasFilter ? '没有符合条件的记录' : '暂无调用记录'}</Card>
-      ) : null}
+      <DataView
+        items={items}
+        columns={COLUMNS}
+        keyOf={(item) => String(item.id)}
+        loading={calls.isFetching && !items.length}
+        empty={
+          <EmptyState
+            title={hasFilter ? '没有符合条件的记录' : '暂无调用记录'}
+            description={hasFilter ? '可以重置筛选后重试' : '授权能力被调用后会在这里留下记录'}
+          />
+        }
+        renderCard={(item) => (
+          <Card className="min-w-0 space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{item.mcp_key_name || '-'}</div>
+                <div className="truncate font-mono text-xs text-mist">{item.mcp_key_prefix || '-'}</div>
+              </div>
+              <Badge tone={item.success ? 'ok' : 'bad'}>{item.success ? '成功' : '失败'}</Badge>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-mist">
+              <span className="font-mono">{item.capability_id}</span>
+              <span aria-hidden="true">·</span>
+              <span className="font-mono">{item.operation}</span>
+              <span aria-hidden="true">·</span>
+              <span>{item.latency_ms} ms</span>
+            </div>
+            <div className="text-xs text-mist">{formatTime(item.created_at)}</div>
+            {item.error_message ? (
+              <div className="line-clamp-3 break-words rounded-md bg-danger/10 px-2 py-1.5 font-mono text-xs text-danger [overflow-wrap:anywhere]">
+                {item.error_message}
+              </div>
+            ) : null}
+          </Card>
+        )}
+      />
     </div>
   )
 }

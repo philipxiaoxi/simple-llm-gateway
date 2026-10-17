@@ -61,7 +61,7 @@ export function BenchmarkModelPicker({
 
   return (
     <Dialog title="选择测试模型" className="my-6 max-w-5xl lg:my-[12vh]" onClose={onClose}>
-      <div className="flex max-h-[min(680px,calc(100vh-10rem))] flex-col gap-4">
+      <div className="flex max-h-[min(680px,calc(100dvh-10rem))] flex-col gap-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label="账号来源">
             <Select

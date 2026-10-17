@@ -89,7 +89,7 @@ export function LogTrajectory({
                   <span className={cn('text-sm font-medium', toneText[step.tone] ?? 'text-paper')}>{step.label}</span>
                   <span className="min-w-0 truncate text-xs text-mist">{step.detail}</span>
                 </div>
-                {step.hint ? <div className="mt-0.5 truncate font-mono text-[11px] text-mist/70">{step.hint}</div> : null}
+                {step.hint ? <div className="mt-0.5 truncate font-mono text-[11px] text-mist-strong">{step.hint}</div> : null}
               </div>
             </li>
           ))}

@@ -253,7 +253,7 @@ export function PublicInfoGate({
                 placeholder="请输入访问口令"
                 onChange={(event) => setPassword(event.target.value)}
                 disabled={busy}
-                className="h-12 w-full rounded-xl border border-line bg-ink/60 pl-10 pr-11 text-sm text-paper outline-none transition placeholder:text-mist/60 focus:border-signal/60 focus:ring-2 focus:ring-signal/20 disabled:opacity-60"
+                className="h-12 w-full rounded-xl border border-line-strong bg-control/60 pl-10 pr-11 text-sm text-paper outline-none transition placeholder:text-mist-soft focus:border-signal focus:ring-2 focus:ring-signal/20 disabled:opacity-60"
               />
               <button
                 type="button"
@@ -287,7 +287,7 @@ export function PublicInfoGate({
             </button>
           </form>
 
-          <p className="text-center text-[11px] leading-5 text-mist/70">请勿在公共设备上保持登录</p>
+          <p className="text-center text-xs leading-5 text-mist-strong">请勿在公共设备上保持登录</p>
         </div>
       </div>
     </div>

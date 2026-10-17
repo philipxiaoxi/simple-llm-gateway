@@ -74,7 +74,7 @@ export function BenchmarkGroupSelectDialog({
               保存
             </Button>
           </div>
-          <div className="mt-2 text-[11px] text-mist">当前已选 {currentTargetCount} 个目标</div>
+          <div className="mt-2 text-xs text-mist">当前已选 {currentTargetCount} 个目标</div>
         </div>
 
         <div className="flex items-center justify-between">

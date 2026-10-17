@@ -31,7 +31,7 @@ function CapabilityChip({ capability }: { capability: McpIntegrationCapability }
       title={capability.authorized ? capability.description : '该 Key 未授权此能力'}
       className={cn(
         'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs',
-        capability.authorized ? 'border-signal/40 bg-signal/10 text-signal' : 'border-line text-mist/60',
+        capability.authorized ? 'border-signal/40 bg-signal/10 text-signal' : 'border-line text-mist-soft',
       )}
     >
       {capability.capability_id}
@@ -353,7 +353,7 @@ export function McpDocsPage() {
         <div className="text-sm text-danger">{errorMessage(integration.error, '加载接入信息失败')}</div>
       ) : null}
       {keys.data?.length ? (
-        <div className="text-[11px] text-mist">最近更新 {formatTime(keys.data[0].created_at)}</div>
+        <div className="text-xs text-mist">最近更新 {formatTime(keys.data[0].created_at)}</div>
       ) : null}
     </div>
   )
