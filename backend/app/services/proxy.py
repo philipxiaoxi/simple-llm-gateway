@@ -19,6 +19,7 @@ from app.db import get_session_factory
 from app.errors import protocol_error
 from app.models import ApiKey, RequestLog, UpstreamAccount
 from app.providers import get_provider
+from app.services.client_meta import client_meta, lookup_ip_location
 from app.services.key_models import ModelResolution, build_model_catalog
 from app.services.model_caps import serialize_record
 from app.services.bridge import (
@@ -119,10 +120,12 @@ def _finalize_request_log(
     request_headers: dict[str, str] | None,
     reasoning_map: dict[str, str] | None = None,
     model_resolution: ModelResolution | None = None,
+    ip_location: str | None = None,
+    peer: str | None = None,
 ) -> None:
     session = get_session_factory()()
     try:
-        save_log(
+        log = save_log(
             session,
             account_id=account_id,
             api_key_id=api_key_id,
@@ -139,6 +142,8 @@ def _finalize_request_log(
             request_headers=request_headers,
             reasoning_map=reasoning_map,
             model_resolution=model_resolution,
+            ip_location=ip_location,
+            peer=peer,
         )
         stored_key = session.get(ApiKey, api_key_id)
         if stored_key is not None:
@@ -169,7 +174,10 @@ async def _finalize_request_log_async(
     request_headers: dict[str, str] | None,
     reasoning_map: dict[str, str] | None = None,
     model_resolution: ModelResolution | None = None,
+    peer: str | None = None,
 ) -> None:
+    ip = client_meta(request_headers, peer=peer).get("client_ip")
+    location = await lookup_ip_location(ip)
     await asyncio.to_thread(
         _finalize_request_log,
         account_id=account_id,
@@ -187,6 +195,8 @@ async def _finalize_request_log_async(
         request_headers=request_headers,
         reasoning_map=reasoning_map,
         model_resolution=model_resolution,
+        ip_location=location,
+        peer=peer,
     )
 
 
@@ -317,10 +327,13 @@ def save_log(
     request_headers: dict[str, str] | None = None,
     reasoning_map: dict[str, str] | None = None,
     model_resolution: ModelResolution | None = None,
+    ip_location: str | None = None,
+    peer: str | None = None,
 ) -> RequestLog:
     prompt, completion, total = usage
     now = utcnow()
     session_key = extract_session_key(request_body if isinstance(request_body, dict) else None, request_headers)
+    meta = client_meta(request_headers, peer=peer)
     existing = find_continuation_log(
         db,
         account_id=account_id,
@@ -348,6 +361,7 @@ def save_log(
         existing.updated_at = now
         if session_key:
             existing.session_key = session_key
+        _apply_client_meta(existing, meta)
         if reasoning_map:
             existing.reasoning_json = dump_reasoning_json(
                 merge_reasoning_maps(parse_reasoning_json(existing.reasoning_json), reasoning_map)
@@ -388,6 +402,12 @@ def save_log(
         updated_at=now,
         session_key=session_key,
         reasoning_json=dump_reasoning_json(reasoning_map or {}),
+        client_ip=meta["client_ip"],
+        user_agent=meta["user_agent"],
+        client_device=meta["device"],
+        client_browser=meta["browser"],
+        referrer=meta["referrer"],
+        ip_location=ip_location,
     )
     db.add(log)
     db.flush()
@@ -399,6 +419,19 @@ def save_log(
     return log
 
 
+def _apply_client_meta(log: RequestLog, meta: dict[str, str | None]) -> None:
+    if meta["client_ip"]:
+        log.client_ip = meta["client_ip"]
+    if meta["user_agent"]:
+        log.user_agent = meta["user_agent"]
+    if meta["device"]:
+        log.client_device = meta["device"]
+    if meta["browser"]:
+        log.client_browser = meta["browser"]
+    if meta["referrer"]:
+        log.referrer = meta["referrer"]
+
+
 async def handle_chat(
     db: Session,
     api_key: ApiKey,
@@ -407,6 +440,7 @@ async def handle_chat(
     protocol: str,
     request_headers: dict[str, str] | None = None,
     model_resolution: ModelResolution | None = None,
+    peer: str | None = None,
 ) -> JSONResponse | StreamingResponse:
     started = time.perf_counter()
     stream = body.get("stream") is True
@@ -429,6 +463,7 @@ async def handle_chat(
             started=started,
             request_body=body,
             response_body=None,
+            peer=peer,
             request_headers=request_headers,
             model_resolution=model_resolution,
         )
@@ -445,6 +480,7 @@ async def handle_chat(
             started,
             request_headers,
             model_resolution=model_resolution,
+            peer=peer,
         )
 
     if protocol == "anthropic_messages":
@@ -469,12 +505,15 @@ async def handle_chat(
     )
     account_snapshot = {
         "id": account.id,
+        "name": account.name,
         "provider": account.provider,
         "base_url": account.base_url,
         "source": account.source,
+        "auth_type": account.auth_type,
         "api_key_encrypted": account.api_key_encrypted,
-        "header_spoof": account.header_spoof,
+        "header_spoof": account.header_spoof or "none",
         "agent_route_id": account.agent_route_id,
+        "status": account.status,
     }
     api_key_id = api_key.id
     db.commit()
@@ -498,6 +537,7 @@ async def handle_chat(
             request_headers,
             inbound_reasoning,
             responses_input=sanitize_responses_input(body.get("input")),
+            peer=peer,
             model_resolution=model_resolution,
         )
 
@@ -520,6 +560,7 @@ async def handle_chat(
             error,
             request_headers,
             model_resolution=model_resolution,
+            peer=peer,
         )
     if hasattr(result, "model_dump"):
         openai_payload = result.model_dump()
@@ -557,6 +598,7 @@ async def handle_chat(
         request_headers=request_headers,
         reasoning_map=merge_reasoning_maps(inbound_reasoning, reasoning_map),
         model_resolution=model_resolution,
+        peer=peer,
     )
     return JSONResponse(payload)
 
@@ -576,6 +618,7 @@ async def _stream_response(
     inbound_reasoning: dict[str, str] | None = None,
     responses_input: Any = None,
     model_resolution: ModelResolution | None = None,
+    peer: str | None = None,
 ) -> StreamingResponse | JSONResponse:
     try:
         if protocol == "openai_responses":
@@ -594,6 +637,7 @@ async def _stream_response(
             error,
             request_headers,
             model_resolution=model_resolution,
+            peer=peer,
         )
 
     message_id = f"msg_{uuid.uuid4().hex}"
@@ -695,6 +739,7 @@ async def _stream_response(
                 request_headers=request_headers,
                 reasoning_map=merge_reasoning_maps(inbound_reasoning or {}, response_map),
                 model_resolution=model_resolution,
+                peer=peer,
             )
 
     return StreamingResponse(event_source(), media_type="text/event-stream")
@@ -751,6 +796,7 @@ async def _fail(
     error: Exception,
     request_headers: dict[str, str] | None = None,
     model_resolution: ModelResolution | None = None,
+    peer: str | None = None,
 ) -> JSONResponse:
     message = str(error)
     status_code = 504 if "timeout" in message.lower() else 502
@@ -769,6 +815,7 @@ async def _fail(
         response_body=None,
         request_headers=request_headers,
         model_resolution=model_resolution,
+        peer=peer,
     )
     return protocol_error(protocol, status_code, message)
 
@@ -782,6 +829,7 @@ async def handle_anthropic_passthrough(
     started: float,
     request_headers: dict[str, str] | None = None,
     model_resolution: ModelResolution | None = None,
+    peer: str | None = None,
 ) -> JSONResponse | StreamingResponse:
     stream = body.get("stream") is True
     model = str(body.get("model") or "")
@@ -796,6 +844,7 @@ async def handle_anthropic_passthrough(
             request_headers,
             inbound_reasoning,
             model_resolution=model_resolution,
+            peer=peer,
         )
     try:
         status_code, payload = await get_provider(account.provider).post_native(
@@ -813,6 +862,7 @@ async def handle_anthropic_passthrough(
             error,
             request_headers,
             model_resolution=model_resolution,
+            peer=peer,
         )
 
     usage = extract_usage(payload if isinstance(payload, dict) else {})
@@ -836,6 +886,7 @@ async def handle_anthropic_passthrough(
             reasoning_map_from_anthropic_content(payload.get("content") if isinstance(payload, dict) else None),
         ),
         model_resolution=model_resolution,
+        peer=peer,
     )
     return JSONResponse(payload, status_code=status_code)
 
@@ -859,6 +910,7 @@ def _stream_anthropic_passthrough(
     request_headers: dict[str, str] | None,
     inbound_reasoning: dict[str, str],
     model_resolution: ModelResolution | None = None,
+    peer: str | None = None,
 ) -> StreamingResponse:
     provider = get_provider(account.provider)
     url, headers = provider.native_request(account, credential, request_headers)
@@ -928,6 +980,7 @@ def _stream_anthropic_passthrough(
                     ),
                 ),
                 model_resolution=model_resolution,
+                peer=peer,
             )
 
     return StreamingResponse(event_source(), media_type="text/event-stream")

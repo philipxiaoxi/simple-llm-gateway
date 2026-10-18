@@ -203,6 +203,16 @@ def _ensure_columns(engine: Engine) -> None:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN updated_at DATETIME"))
         if "session_key" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN session_key VARCHAR(128)"))
+        for column, statement in {
+            "client_ip": "ALTER TABLE request_logs ADD COLUMN client_ip VARCHAR(64)",
+            "ip_location": "ALTER TABLE request_logs ADD COLUMN ip_location VARCHAR(128)",
+            "user_agent": "ALTER TABLE request_logs ADD COLUMN user_agent VARCHAR(512)",
+            "client_device": "ALTER TABLE request_logs ADD COLUMN client_device VARCHAR(64)",
+            "client_browser": "ALTER TABLE request_logs ADD COLUMN client_browser VARCHAR(64)",
+            "referrer": "ALTER TABLE request_logs ADD COLUMN referrer VARCHAR(512)",
+        }.items():
+            if column not in log_columns:
+                connection.execute(text(statement))
         # 请求时记录的模型解析链；历史数据为空（详情页回退展示上游模型名）
         if "requested_model" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN requested_model VARCHAR(128)"))

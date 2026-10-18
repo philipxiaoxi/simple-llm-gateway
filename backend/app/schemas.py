@@ -439,6 +439,12 @@ class LogOut(BaseModel):
     completion_tokens: int | None
     total_tokens: int | None
     latency_ms: int
+    client_ip: str | None = None
+    ip_location: str | None = None
+    user_agent: str | None = None
+    client_device: str | None = None
+    client_browser: str | None = None
+    referrer: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
     request_body: Any | None = None

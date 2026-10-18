@@ -174,6 +174,12 @@ export function LogDetailPage() {
           <MetaItem label="账号">{accountText(data)}</MetaItem>
           <MetaItem label="开始">{formatLogTime(data.created_at)}</MetaItem>
           <MetaItem label="最近活动">{formatLogTime(data.updated_at || data.created_at)}</MetaItem>
+          <MetaItem label="IP">{data.client_ip || '—'}</MetaItem>
+          <MetaItem label="归属地">{data.ip_location || '—'}</MetaItem>
+          <MetaItem label="设备">{data.client_device || '—'}</MetaItem>
+          <MetaItem label="浏览器">{data.client_browser || '—'}</MetaItem>
+          <MetaItem label="来源">{data.referrer || '—'}</MetaItem>
+          <MetaItem label="User-Agent">{data.user_agent || '—'}</MetaItem>
         </div>
       </div>
 

@@ -84,6 +84,14 @@ function SessionRow({ item }: { item: LogItem }) {
           <span className="tabular-nums">{formatTokens(item)}</span>
           <span className="text-mist/40">·</span>
           <span className="tabular-nums">{item.latency_ms}ms</span>
+          {item.client_ip ? (
+            <>
+              <span className="text-mist/40">·</span>
+              <span className="font-mono" title={item.ip_location || undefined}>
+                {item.client_ip}
+              </span>
+            </>
+          ) : null}
         </div>
       </div>
       <time className="hidden text-right font-mono text-xs text-mist lg:block" title={fullTime}>

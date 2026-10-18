@@ -120,7 +120,14 @@ async def chat_completions(
     if error:
         return error
     return await handle_chat(
-        db, api_key, account, body, protocol, dict(request.headers), model_resolution=resolution
+        db,
+        api_key,
+        account,
+        body,
+        protocol,
+        dict(request.headers),
+        model_resolution=resolution,
+        peer=request.client.host if request.client else None,
     )
 
 
@@ -145,7 +152,14 @@ async def responses(
     if error:
         return error
     return await handle_chat(
-        db, api_key, account, body, protocol, dict(request.headers), model_resolution=resolution
+        db,
+        api_key,
+        account,
+        body,
+        protocol,
+        dict(request.headers),
+        model_resolution=resolution,
+        peer=request.client.host if request.client else None,
     )
 
 
@@ -170,7 +184,14 @@ async def messages(
     if error:
         return error
     return await handle_chat(
-        db, api_key, account, body, protocol, dict(request.headers), model_resolution=resolution
+        db,
+        api_key,
+        account,
+        body,
+        protocol,
+        dict(request.headers),
+        model_resolution=resolution,
+        peer=request.client.host if request.client else None,
     )
 
 

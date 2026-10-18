@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # 额度/余额查询走独立短超时：上游不可达时管理页要快速失败，而不是挂到 request_timeout
     quota_timeout_seconds: int = 20
     local_agent_token: str = ""
+    # 请求日志 IP 归属地。留空则只记录 IP，不查位置。
+    ip_geo_url: str = "http://ip-api.com/json/{ip}?lang=zh-CN&fields=status,country,regionName,city,message"
+    # 只有直连地址落在这些网段时，才信任 X-Forwarded-For / X-Real-IP。逗号分隔，支持前缀或 CIDR。
+    trusted_proxy_cidrs: str = "172.20.0.0/16"
     quota_refresh_interval_seconds: int = 3600
     jwt_expire_days: int = 7
     frontend_dist: str = ""

@@ -48,6 +48,12 @@ _LIST_COLUMNS = (
     RequestLog.completion_tokens,
     RequestLog.total_tokens,
     RequestLog.latency_ms,
+    RequestLog.client_ip,
+    RequestLog.ip_location,
+    RequestLog.user_agent,
+    RequestLog.client_device,
+    RequestLog.client_browser,
+    RequestLog.referrer,
     RequestLog.created_at,
     RequestLog.updated_at,
 )
