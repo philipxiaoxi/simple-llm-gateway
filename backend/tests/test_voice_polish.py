@@ -54,6 +54,15 @@ class FakeSession:
     def get(self, _model: Any, _pk: Any) -> Any:
         return self._account
 
+    def commit(self) -> None:
+        return None
+
+    def rollback(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
 
 def _patch_deps(monkeypatch, *, account: Any = None, available: bool = True, response: Any = None, error: Exception | None = None):
     monkeypatch.setattr(voice_polish, "is_account_available", lambda _account: available)
