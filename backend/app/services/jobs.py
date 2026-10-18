@@ -10,7 +10,8 @@ from typing import Any
 from app.clock import utcnow
 from app.config import get_settings
 from app.db import get_session_factory
-from app.services import content_audit, grok_oauth, model_caps, quota, read_cache
+from app.services import dashboard_stats as dashboard_stats_service
+from app.services import grok_oauth, model_caps, quota, read_cache
 from app.services import leaderboard as leaderboard_service
 from app.services.job_settings import get_job_int, get_job_params, update_job_params
 
@@ -23,9 +24,9 @@ JOB_CATALOG = "catalog"
 JOB_QUOTA = "quota"
 JOB_OAUTH = "oauth"
 JOB_LEADERBOARD = "leaderboard"
-JOB_CONTENT_AUDIT = "content_audit"
-LOOP_JOBS = (JOB_CATALOG, JOB_QUOTA, JOB_OAUTH, JOB_LEADERBOARD)
-ALL_JOBS = LOOP_JOBS + (JOB_CONTENT_AUDIT,)
+JOB_DASHBOARD_STATS = "dashboard_stats"
+LOOP_JOBS = (JOB_CATALOG, JOB_QUOTA, JOB_OAUTH, JOB_LEADERBOARD, JOB_DASHBOARD_STATS)
+ALL_JOBS = LOOP_JOBS
 
 PARAM_LIMITS: dict[str, tuple[int, int]] = {
     "interval_seconds": (60, 604800),
@@ -66,10 +67,10 @@ JOB_META = {
         "kind": "loop",
         "source_url": None,
     },
-    JOB_CONTENT_AUDIT: {
-        "name": "内容审计扫描",
-        "description": "手动扫描请求正文，产出敏感词 / PII / 密钥命中",
-        "kind": "manual",
+    JOB_DASHBOARD_STATS: {
+        "name": "概览图表刷新",
+        "description": "按间隔把概览图表聚合写入数据库。打开页面只读快照，不再现场扫表。",
+        "kind": "loop",
         "source_url": None,
     },
 }
@@ -235,8 +236,13 @@ async def _execute(job_id: str) -> dict[str, Any]:
                 raise RuntimeError(f"{error_message}（沿用缓存 {total} 条榜单）")
             raise RuntimeError(str(error_message))
         return {"message": f"已缓存 {total} 条榜单", "total": total}
-    if job_id == JOB_CONTENT_AUDIT:
-        return content_audit.start_scan()
+    if job_id == JOB_DASHBOARD_STATS:
+        session = get_session_factory()()
+        try:
+            refreshed = dashboard_stats_service.refresh_all(session)
+        finally:
+            session.close()
+        return {"message": f"已刷新 {refreshed} 个区间的概览图表", "refreshed": refreshed}
     raise ValueError("任务不存在")
 
 
@@ -255,7 +261,7 @@ async def run_job(job_id: str) -> dict[str, Any]:
             extra = await _execute(job_id)
             state.last_ok = True
             state.last_message = str(extra.get("message") or "已完成")
-            state.error_message = extra.get("error_message") if extra.get("lexicon_ok") is False else None
+            state.error_message = None
             state.extra = extra
             return extra
         except Exception as error:
@@ -266,10 +272,7 @@ async def run_job(job_id: str) -> dict[str, Any]:
         finally:
             state.running = False
             state.last_finished_at = utcnow()
-            # 手动执行/循环执行结束后，面板上的数字要立刻反映这一轮结果
             read_cache.invalidate_job_snapshot(job_id)
-            if job_id == JOB_CONTENT_AUDIT:
-                read_cache.invalidate_content_audit_progress()
 
 
 async def _catch_up_stale_cache(job_id: str) -> None:
@@ -396,23 +399,28 @@ def _oauth_snapshot() -> dict[str, Any]:
     }
 
 
-def _content_audit_snapshot() -> dict[str, Any]:
-    interval = get_job_int(JOB_CONTENT_AUDIT, "interval_seconds", 86400)
-    stats = content_audit.progress_stats()
-    state = _runtime[JOB_CONTENT_AUDIT]
-    extra = state.extra or {}
+def _dashboard_stats_snapshot() -> dict[str, Any]:
+    interval = get_job_int(JOB_DASHBOARD_STATS, "interval_seconds", 1800)
+    session = get_session_factory()()
+    try:
+        latest = None
+        ready = 0
+        for days in dashboard_stats_service.snapshot_days():
+            row = session.get(dashboard_stats_service.StatsRow, days)
+            if row is None or not row.payload_json or row.payload_json == "{}":
+                continue
+            ready += 1
+            if latest is None or row.computed_at > latest:
+                latest = row.computed_at
+    finally:
+        session.close()
     return {
-        "cache_fetched_at": state.last_finished_at,
-        "cache_expires_at": _expires_at(state.last_finished_at, interval) if state.last_finished_at else None,
-        "cache_ok": bool(state.last_ok),
+        "cache_fetched_at": latest,
+        "cache_expires_at": _expires_at(latest, interval) if latest else None,
+        "cache_ok": ready > 0,
         "ttl_seconds": interval,
-        "processed": extra.get("processed"),
-        "new_findings": extra.get("new_findings"),
-        "remaining": stats["remaining"],
-        "lexicon_ok": extra.get("lexicon_ok"),
-        "scanned_count": stats["scanned_count"],
-        "total_logs": stats["total_logs"],
-        "finding_count": stats["finding_count"],
+        "ready": ready,
+        "buckets": len(dashboard_stats_service.snapshot_days()),
     }
 
 
@@ -450,7 +458,7 @@ _SNAPSHOTTERS = {
     JOB_QUOTA: _quota_snapshot,
     JOB_OAUTH: _oauth_snapshot,
     JOB_LEADERBOARD: _leaderboard_snapshot,
-    JOB_CONTENT_AUDIT: _content_audit_snapshot,
+    JOB_DASHBOARD_STATS: _dashboard_stats_snapshot,
 }
 
 
@@ -474,12 +482,10 @@ def list_jobs() -> list[dict[str, Any]]:
         state = _runtime[job_id]
         params = get_job_params(job_id)
         interval = int(params.get("interval_seconds") or params.get("ttl_seconds") or 0)
-        # 内容审计扫描进行中要实时进度（此时 remaining 由扫描线程维护，代价低），跳过缓存
-        audit_running = job_id == JOB_CONTENT_AUDIT and content_audit.scan_status()["running"]
-        snapshot = _SNAPSHOTTERS[job_id]() if audit_running else _snapshot_for(job_id)
+        snapshot = _snapshot_for(job_id)
         source_url = snapshot.get("source_url") or meta.get("source_url")
         error_message = state.error_message or snapshot.get("error_message")
-        running = audit_running if job_id == JOB_CONTENT_AUDIT else state.running
+        running = state.running
         items.append(
             {
                 "id": job_id,

@@ -152,8 +152,12 @@ def list_log_messages(
         filters = filters.where(RequestLogMessage.seq <= to_seq)
     total = db.scalar(select(func.count()).select_from(filters.subquery())) or 0
     offset = (page - 1) * page_size
+    columns = [RequestLogMessage.seq, RequestLogMessage.role, RequestLogMessage.content_json]
     rows = db.scalars(
-        filters.order_by(RequestLogMessage.seq.desc()).offset(offset).limit(page_size)
+        filters.options(load_only(*columns))
+        .order_by(RequestLogMessage.seq.desc())
+        .offset(offset)
+        .limit(page_size)
     ).all()
     items: list[LogMessageOut] = []
     for row in rows:
@@ -226,9 +230,9 @@ def get_log_message(log_id: int, seq: int, db: Session = Depends(get_db)) -> Log
     if item is None:
         raise HTTPException(status_code=404, detail="记录不存在")
     row = db.scalar(
-        select(RequestLogMessage).where(
-            RequestLogMessage.log_id == log_id, RequestLogMessage.seq == seq
-        )
+        select(RequestLogMessage)
+        .where(RequestLogMessage.log_id == log_id, RequestLogMessage.seq == seq)
+        .options(load_only(RequestLogMessage.seq, RequestLogMessage.role, RequestLogMessage.content_json))
     )
     if row is None:
         raise HTTPException(status_code=404, detail="消息不存在")
@@ -243,7 +247,11 @@ def get_log_message(log_id: int, seq: int, db: Session = Depends(get_db)) -> Log
 
 @router.get("/{log_id}/reasoning/{call_id}", response_model=LogReasoningDetailOut)
 def get_log_reasoning(log_id: int, call_id: str, db: Session = Depends(get_db)) -> LogReasoningDetailOut:
-    item = db.get(RequestLog, log_id)
+    item = db.scalar(
+        select(RequestLog)
+        .where(RequestLog.id == log_id)
+        .options(load_only(RequestLog.id, RequestLog.reasoning_json))
+    )
     if item is None:
         raise HTTPException(status_code=404, detail="记录不存在")
     mapping = parse_reasoning_json(item.reasoning_json)
@@ -262,6 +270,7 @@ def export_log_messages(log_id: int, db: Session = Depends(get_db)) -> LogExport
     rows = db.scalars(
         select(RequestLogMessage)
         .where(RequestLogMessage.log_id == log_id)
+        .options(load_only(RequestLogMessage.seq, RequestLogMessage.role, RequestLogMessage.content_json))
         .order_by(RequestLogMessage.seq)
     ).all()
     messages: list[LogMessageDetailOut] = []
@@ -281,10 +290,15 @@ def export_log_messages(log_id: int, db: Session = Depends(get_db)) -> LogExport
 @router.get("/{log_id}", response_model=LogOut)
 def get_log(
     log_id: int,
-    include_bodies: bool = Query(default=True),
+    include_bodies: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> LogOut:
-    item = db.get(RequestLog, log_id)
+    columns = list(_LIST_COLUMNS)
+    if include_bodies:
+        columns.extend([RequestLog.request_body, RequestLog.response_body, RequestLog.reasoning_json])
+    else:
+        columns.append(RequestLog.reasoning_json)
+    item = db.scalar(select(RequestLog).where(RequestLog.id == log_id).options(load_only(*columns)))
     if item is None:
         raise HTTPException(status_code=404, detail="记录不存在")
     message_count = db.scalar(select(func.count()).where(RequestLogMessage.log_id == log_id)) or 0

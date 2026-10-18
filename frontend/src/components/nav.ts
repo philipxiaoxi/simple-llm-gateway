@@ -12,7 +12,6 @@ import {
   PackageOpen,
   RadioTower,
   ServerCog,
-  ShieldAlert,
   Sparkles,
   Store,
   Timer,
@@ -57,7 +56,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: '内容',
     links: [
       { to: '/info', label: '资讯收集', icon: Newspaper, keywords: 'info 资讯 采集' },
-      { to: '/content-audit', label: '内容审计', icon: ShieldAlert, keywords: 'audit 内容 审核' },
       { to: '/image-gen', label: '图片生成', icon: Image, keywords: 'image 图片 生成' },
       { to: '/video-gen', label: '视频生成', icon: Film, keywords: 'video 视频 生成' },
       { to: '/offline', label: '离线下载', icon: PackageOpen, keywords: 'offline 下载' },

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import contextlib
+import time
+import traceback
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
 from app.models import Base
@@ -18,10 +21,30 @@ def get_engine() -> Engine:
     global _engine
     if _engine is None:
         settings = get_settings()
+        # SQLite 用 NullPool：每个 Session 自建连接，用完即关。
+        # 默认 QueuePool 只有 5+10 个槽，长请求占满后新请求会堵 30 秒，事件循环一起卡住。
         _engine = create_engine(
             settings.database_url,
             connect_args={"check_same_thread": False},
+            poolclass=NullPool,
         )
+
+        @event.listens_for(_engine, "checkout")
+        def _mark_checkout(_dbapi_connection, connection_record, _connection_proxy) -> None:  # type: ignore[no-untyped-def]
+            connection_record.info["checked_out_at"] = time.monotonic()
+            connection_record.info["checkout_stack"] = "".join(traceback.format_stack(limit=12))
+
+        @event.listens_for(_engine, "checkin")
+        def _log_long_hold(_dbapi_connection, connection_record) -> None:  # type: ignore[no-untyped-def]
+            started = connection_record.info.pop("checked_out_at", None)
+            stack = connection_record.info.pop("checkout_stack", "")
+            threshold = get_settings().db_long_hold_seconds
+            if started is None or threshold <= 0:
+                return
+            held = time.monotonic() - started
+            if held < threshold:
+                return
+            print(f"[db-hold] {held:.1f}s\n{stack}")
 
         @event.listens_for(_engine, "connect")
         def _set_sqlite_pragma(database_api_connection, _connection_record) -> None:  # type: ignore[no-untyped-def]
@@ -202,6 +225,20 @@ def _ensure_columns(engine: Engine) -> None:
             text(
                 "CREATE INDEX IF NOT EXISTS ix_request_logs_api_key_usage "
                 "ON request_logs (api_key_id, created_at, total_tokens)"
+            )
+        )
+        # 会话续写：同一账号、Key、协议、session，且只在当天内找最新一条
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_request_logs_session_continuation "
+                "ON request_logs (account_id, api_key_id, protocol, session_key, created_at, id)"
+            )
+        )
+        # 消息数/轮次统计只需要 log_id + role，避免回表读取 content_json
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_request_log_messages_log_role_seq "
+                "ON request_log_messages (log_id, role, seq)"
             )
         )
         connection.execute(

@@ -25,7 +25,6 @@ from app.routers import (
     admin_benchmark,
     admin_benchmark_groups,
     admin_benchmark_history,
-    admin_content_audit,
     admin_dashboard,
     admin_generation,
     admin_info,
@@ -94,10 +93,8 @@ def _warm_up() -> None:
     started = time.perf_counter()
     try:
         with get_engine().connect() as connection:
-            # 覆盖列表、统计与内容审计三条主要读取路径
             connection.execute(text("SELECT count(*) FROM request_logs"))
             connection.execute(text("SELECT coalesce(sum(total_tokens), 0) FROM request_logs"))
-            connection.execute(text("SELECT count(*) FROM content_audit_findings"))
             connection.execute(
                 text("SELECT id FROM leaderboard_snapshots ORDER BY id DESC LIMIT 1")
             )
@@ -192,7 +189,6 @@ app.include_router(admin_benchmark_history.router)
 app.include_router(admin_keys.router)
 app.include_router(admin_leaderboard.router)
 app.include_router(admin_jobs.router)
-app.include_router(admin_content_audit.router)
 app.include_router(admin_logs.router)
 app.include_router(admin_dashboard.router)
 app.include_router(admin_info.router)
@@ -201,6 +197,19 @@ app.include_router(admin_info.media_router)
 app.include_router(admin_integrations.router)
 app.include_router(admin_generation.router)
 app.include_router(admin_generation.asset_router)
+
+
+@app.middleware("http")
+async def log_slow_requests(request: Request, call_next):
+    started = time.perf_counter()
+    response = await call_next(request)
+    elapsed = time.perf_counter() - started
+    threshold = get_settings().slow_request_seconds
+    if threshold > 0 and elapsed >= threshold:
+        print(f"[slow] {elapsed:.1f}s {request.method} {request.url.path} {response.status_code}")
+    return response
+
+
 app.include_router(admin_skills.router)
 app.include_router(admin_skills.download_router)
 app.include_router(admin_skill_bundles.router)

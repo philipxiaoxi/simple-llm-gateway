@@ -6,6 +6,7 @@ import re
 import time
 import uuid
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -412,6 +413,7 @@ async def handle_chat(
     model = str(body.get("model") or "")
     try:
         credential = await prepare_credential(account, db)
+        db.commit()
     except (CredentialError, ValueError) as error:
         status_code = getattr(error, "status_code", 403)
         await _finalize_request_log_async(
@@ -465,6 +467,20 @@ async def handle_chat(
         load_reasoning_map(db, api_key.id, account.id, session_key),
         inbound_reasoning,
     )
+    account_snapshot = {
+        "id": account.id,
+        "provider": account.provider,
+        "base_url": account.base_url,
+        "source": account.source,
+        "api_key_encrypted": account.api_key_encrypted,
+        "header_spoof": account.header_spoof,
+        "agent_route_id": account.agent_route_id,
+    }
+    api_key_id = api_key.id
+    db.commit()
+    db.close()
+    account = SimpleNamespace(**account_snapshot)
+    api_key = SimpleNamespace(id=api_key_id)
     inject_reasoning_into_messages(messages, stored_reasoning)
 
     if stream:
