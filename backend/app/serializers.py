@@ -129,6 +129,7 @@ def log_to_out(
     reasoning_summary: dict[str, ReasoningSummaryItemOut] | None = None,
     model_chain: ModelChainOut | None = None,
     storage_truncated: bool = False,
+    request_headers: dict[str, str] | None = None,
 ) -> LogOut:
     return LogOut(
         id=item.id,
@@ -147,6 +148,11 @@ def log_to_out(
         completion_tokens=item.completion_tokens,
         total_tokens=item.total_tokens,
         latency_ms=item.latency_ms,
+        client_ip=item.client_ip,
+        ip_location=item.ip_location,
+        user_agent=item.user_agent,
+        client_name=item.client_name,
+        request_headers=request_headers,
         created_at=item.created_at,
         updated_at=item.updated_at or item.created_at,
         request_body=parse_json(item.request_body) if include_bodies else None,

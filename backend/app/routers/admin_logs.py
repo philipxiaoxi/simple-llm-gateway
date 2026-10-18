@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -48,6 +49,10 @@ _LIST_COLUMNS = (
     RequestLog.completion_tokens,
     RequestLog.total_tokens,
     RequestLog.latency_ms,
+    RequestLog.client_ip,
+    RequestLog.ip_location,
+    RequestLog.user_agent,
+    RequestLog.client_name,
     RequestLog.created_at,
     RequestLog.updated_at,
 )
@@ -152,8 +157,12 @@ def list_log_messages(
         filters = filters.where(RequestLogMessage.seq <= to_seq)
     total = db.scalar(select(func.count()).select_from(filters.subquery())) or 0
     offset = (page - 1) * page_size
+    columns = [RequestLogMessage.seq, RequestLogMessage.role, RequestLogMessage.content_json]
     rows = db.scalars(
-        filters.order_by(RequestLogMessage.seq.desc()).offset(offset).limit(page_size)
+        filters.options(load_only(*columns))
+        .order_by(RequestLogMessage.seq.desc())
+        .offset(offset)
+        .limit(page_size)
     ).all()
     items: list[LogMessageOut] = []
     for row in rows:
@@ -226,9 +235,9 @@ def get_log_message(log_id: int, seq: int, db: Session = Depends(get_db)) -> Log
     if item is None:
         raise HTTPException(status_code=404, detail="记录不存在")
     row = db.scalar(
-        select(RequestLogMessage).where(
-            RequestLogMessage.log_id == log_id, RequestLogMessage.seq == seq
-        )
+        select(RequestLogMessage)
+        .where(RequestLogMessage.log_id == log_id, RequestLogMessage.seq == seq)
+        .options(load_only(RequestLogMessage.seq, RequestLogMessage.role, RequestLogMessage.content_json))
     )
     if row is None:
         raise HTTPException(status_code=404, detail="消息不存在")
@@ -243,7 +252,11 @@ def get_log_message(log_id: int, seq: int, db: Session = Depends(get_db)) -> Log
 
 @router.get("/{log_id}/reasoning/{call_id}", response_model=LogReasoningDetailOut)
 def get_log_reasoning(log_id: int, call_id: str, db: Session = Depends(get_db)) -> LogReasoningDetailOut:
-    item = db.get(RequestLog, log_id)
+    item = db.scalar(
+        select(RequestLog)
+        .where(RequestLog.id == log_id)
+        .options(load_only(RequestLog.id, RequestLog.reasoning_json))
+    )
     if item is None:
         raise HTTPException(status_code=404, detail="记录不存在")
     mapping = parse_reasoning_json(item.reasoning_json)
@@ -262,6 +275,7 @@ def export_log_messages(log_id: int, db: Session = Depends(get_db)) -> LogExport
     rows = db.scalars(
         select(RequestLogMessage)
         .where(RequestLogMessage.log_id == log_id)
+        .options(load_only(RequestLogMessage.seq, RequestLogMessage.role, RequestLogMessage.content_json))
         .order_by(RequestLogMessage.seq)
     ).all()
     messages: list[LogMessageDetailOut] = []
@@ -281,10 +295,16 @@ def export_log_messages(log_id: int, db: Session = Depends(get_db)) -> LogExport
 @router.get("/{log_id}", response_model=LogOut)
 def get_log(
     log_id: int,
-    include_bodies: bool = Query(default=True),
+    include_bodies: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> LogOut:
-    item = db.get(RequestLog, log_id)
+    columns = list(_LIST_COLUMNS)
+    if include_bodies:
+        columns.extend([RequestLog.request_body, RequestLog.response_body, RequestLog.reasoning_json])
+    else:
+        columns.append(RequestLog.reasoning_json)
+    columns.append(RequestLog.request_headers)
+    item = db.scalar(select(RequestLog).where(RequestLog.id == log_id).options(load_only(*columns)))
     if item is None:
         raise HTTPException(status_code=404, detail="记录不存在")
     message_count = db.scalar(select(func.count()).where(RequestLogMessage.log_id == log_id)) or 0
@@ -311,4 +331,17 @@ def get_log(
         reasoning_summary=reasoning_summary,
         model_chain=build_model_chain(item),
         storage_truncated=message_count >= MAX_LOG_MESSAGES,
+        request_headers=_load_headers(item.request_headers),
     )
+
+
+def _load_headers(raw: str | None) -> dict[str, str] | None:
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return {str(key): str(value) for key, value in parsed.items()}

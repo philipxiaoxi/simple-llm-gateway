@@ -170,6 +170,22 @@ async def polish_text(
     resolved_model = resolve_model(account, model)
     if not resolved_model:
         return PolishResult(status="skipped", text=source, raw=source, reason="no_model")
+    account_pk = account.id
+    try:
+        credential = await prepare_credential(account, db)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        return PolishResult(
+            status="failed",
+            text=source,
+            raw=source,
+            model=resolved_model,
+            account_id=account_pk,
+            ms=int((time.perf_counter() - started) * 1000),
+            error=f"{type(exc).__name__}: {exc}",
+        )
+    db.close()
 
     messages = [
         {"role": "system", "content": (system_prompt or "").strip() or default_prompt(mode)},
@@ -178,7 +194,6 @@ async def polish_text(
     effective_timeout = timeout or get_settings().voice_polish_timeout_seconds
 
     try:
-        credential = await prepare_credential(account, db)
         response = await asyncio.wait_for(
             call_chat(
                 account,
@@ -196,7 +211,7 @@ async def polish_text(
             text=source,
             raw=source,
             model=resolved_model,
-            account_id=account.id,
+            account_id=account_pk,
             ms=int((time.perf_counter() - started) * 1000),
             error=f"纠错超时（>{effective_timeout}s）",
         )
@@ -206,7 +221,7 @@ async def polish_text(
             text=source,
             raw=source,
             model=resolved_model,
-            account_id=account.id,
+            account_id=account_pk,
             ms=int((time.perf_counter() - started) * 1000),
             error=f"{type(exc).__name__}: {exc}",
         )
@@ -221,7 +236,7 @@ async def polish_text(
             text=source,
             raw=source,
             model=resolved_model,
-            account_id=account.id,
+            account_id=account_pk,
             ms=elapsed,
             error=(
                 f"模型输出为空：token 预算被推理过程耗尽（max_tokens="
@@ -235,7 +250,7 @@ async def polish_text(
             text=source,
             raw=source,
             model=resolved_model,
-            account_id=account.id,
+            account_id=account_pk,
             ms=elapsed,
         )
     return PolishResult(
@@ -243,7 +258,7 @@ async def polish_text(
         text=cleaned,
         raw=source,
         model=resolved_model,
-        account_id=account.id,
+        account_id=account_pk,
         ms=elapsed,
     )
 

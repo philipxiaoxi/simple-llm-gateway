@@ -290,6 +290,11 @@ export type LogItem = {
   completion_tokens: number | null
   total_tokens: number | null
   latency_ms: number
+  client_ip?: string | null
+  ip_location?: string | null
+  user_agent?: string | null
+  client_name?: string | null
+  request_headers?: Record<string, string> | null
   created_at: string
   updated_at?: string | null
   request_body?: unknown
@@ -441,6 +446,7 @@ export type DashboardStats = {
   hourly: DashboardStatsHour[]
   summary: DashboardStatsSummary
   previous: DashboardStatsSummary
+  computed_at?: string | null
 }
 
 export type LeaderboardComponent = {
@@ -1040,25 +1046,6 @@ export const api = {
   runJob: (id: string) => request<JobList>(`/api/admin/jobs/${id}/run`, { method: 'POST' }),
   updateJob: (id: string, payload: Record<string, number>) =>
     request<JobList>(`/api/admin/jobs/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  contentAuditFindings: (query: Record<string, string | number | undefined> = {}) => {
-    const params = new URLSearchParams()
-    Object.entries(query).forEach(([key, value]) => {
-      if (value !== undefined && value !== '') params.set(key, String(value))
-    })
-    const suffix = params.toString() ? `?${params}` : ''
-    return request<ContentAuditFindingList>(`/api/admin/content-audit/findings${suffix}`)
-  },
-  contentAuditSummary: () => request<ContentAuditSummary>('/api/admin/content-audit/summary'),
-  startContentAudit: () =>
-    request<{ started: boolean; message: string }>('/api/admin/content-audit/scan/start', { method: 'POST' }),
-  stopContentAudit: () =>
-    request<{ stopped: boolean; message: string }>('/api/admin/content-audit/scan/stop', { method: 'POST' }),
-  pauseContentAudit: () =>
-    request<{ paused: boolean; message: string }>('/api/admin/content-audit/scan/pause', { method: 'POST' }),
-  resumeContentAudit: () =>
-    request<{ resumed: boolean; message: string }>('/api/admin/content-audit/scan/resume', { method: 'POST' }),
-  syncContentAuditLexicon: () =>
-    request<ContentAuditLexiconSync>('/api/admin/content-audit/lexicon/sync', { method: 'POST' }),
 
   // ---- 语音输入（手机 → 电脑）----
   voiceRooms: () => request<{ items: VoiceRoomSummary[]; total: number }>('/api/admin/voice/rooms'),
@@ -2097,60 +2084,6 @@ export function voiceSocketUrl(path: string, token: string): string {
 
 export const VOICE_DESKTOP_WS_PATH = '/api/voice/desktop/connect'
 
-
-export type ContentAuditFinding = {
-  id: number
-  log_id: number
-  message_seq: number
-  category: string
-  lexicon_category: string | null
-  rule_key: string
-  severity: string
-  excerpt: string
-  start_offset: number
-  end_offset: number
-  api_key_id: number | null
-  api_key_name: string | null
-  account_name: string | null
-  created_at: string
-}
-
-export type ContentAuditFindingList = {
-  items: ContentAuditFinding[]
-  total: number
-  page: number
-  page_size: number
-}
-
-export type ContentAuditSummary = {
-  running: boolean
-  status: string
-  paused: boolean
-  scanned_in_run: number
-  total_in_run: number
-  last_finished_at: string | null
-  last_message: string | null
-  error_message: string | null
-  scanned_count: number
-  total_logs: number
-  finding_count: number
-  remaining: number
-  processed: number | null
-  new_findings: number | null
-  lexicon_ok: boolean | null
-  lexicon_updated_at: string | null
-  lexicon_word_count: number
-  by_category: Record<string, number>
-  lexicon_categories: string[]
-}
-
-export type ContentAuditLexiconSync = {
-  ok: boolean
-  updated_at: string | null
-  word_count: number
-  categories: string[]
-  error_message: string | null
-}
 
 export type BenchmarkResult = {
   ok: boolean

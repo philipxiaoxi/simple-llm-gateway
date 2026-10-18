@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import contextlib
+import time
+import traceback
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
 from app.models import Base
@@ -18,10 +21,30 @@ def get_engine() -> Engine:
     global _engine
     if _engine is None:
         settings = get_settings()
+        # SQLite 用 NullPool：每个 Session 自建连接，用完即关。
+        # 默认 QueuePool 只有 5+10 个槽，长请求占满后新请求会堵 30 秒，事件循环一起卡住。
         _engine = create_engine(
             settings.database_url,
             connect_args={"check_same_thread": False},
+            poolclass=NullPool,
         )
+
+        @event.listens_for(_engine, "checkout")
+        def _mark_checkout(_dbapi_connection, connection_record, _connection_proxy) -> None:  # type: ignore[no-untyped-def]
+            connection_record.info["checked_out_at"] = time.monotonic()
+            connection_record.info["checkout_stack"] = "".join(traceback.format_stack(limit=12))
+
+        @event.listens_for(_engine, "checkin")
+        def _log_long_hold(_dbapi_connection, connection_record) -> None:  # type: ignore[no-untyped-def]
+            started = connection_record.info.pop("checked_out_at", None)
+            stack = connection_record.info.pop("checkout_stack", "")
+            threshold = get_settings().db_long_hold_seconds
+            if started is None or threshold <= 0:
+                return
+            held = time.monotonic() - started
+            if held < threshold:
+                return
+            print(f"[db-hold] {held:.1f}s\n{stack}")
 
         @event.listens_for(_engine, "connect")
         def _set_sqlite_pragma(database_api_connection, _connection_record) -> None:  # type: ignore[no-untyped-def]
@@ -180,6 +203,18 @@ def _ensure_columns(engine: Engine) -> None:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN updated_at DATETIME"))
         if "session_key" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN session_key VARCHAR(128)"))
+        for column, statement in {
+            "client_ip": "ALTER TABLE request_logs ADD COLUMN client_ip VARCHAR(64)",
+            "ip_location": "ALTER TABLE request_logs ADD COLUMN ip_location VARCHAR(128)",
+            "user_agent": "ALTER TABLE request_logs ADD COLUMN user_agent VARCHAR(512)",
+            "client_name": "ALTER TABLE request_logs ADD COLUMN client_name VARCHAR(64)",
+        }.items():
+            if column not in log_columns:
+                connection.execute(text(statement))
+        # API 调用没有浏览器语境，早期误加的浏览器字段直接移除
+        for dropped in ("client_device", "client_browser", "referrer"):
+            if dropped in log_columns:
+                connection.execute(text(f"ALTER TABLE request_logs DROP COLUMN {dropped}"))
         # 请求时记录的模型解析链；历史数据为空（详情页回退展示上游模型名）
         if "requested_model" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN requested_model VARCHAR(128)"))
@@ -202,6 +237,20 @@ def _ensure_columns(engine: Engine) -> None:
             text(
                 "CREATE INDEX IF NOT EXISTS ix_request_logs_api_key_usage "
                 "ON request_logs (api_key_id, created_at, total_tokens)"
+            )
+        )
+        # 会话续写：同一账号、Key、协议、session，且只在当天内找最新一条
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_request_logs_session_continuation "
+                "ON request_logs (account_id, api_key_id, protocol, session_key, created_at, id)"
+            )
+        )
+        # 消息数/轮次统计只需要 log_id + role，避免回表读取 content_json
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_request_log_messages_log_role_seq "
+                "ON request_log_messages (log_id, role, seq)"
             )
         )
         connection.execute(
@@ -236,6 +285,8 @@ def _ensure_columns(engine: Engine) -> None:
         )
         if "reasoning_json" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN reasoning_json TEXT"))
+        if "request_headers" not in log_columns:
+            connection.execute(text("ALTER TABLE request_logs ADD COLUMN request_headers TEXT"))
         if "account_source" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN account_source VARCHAR(16) DEFAULT 'upstream' NOT NULL"))
             connection.execute(

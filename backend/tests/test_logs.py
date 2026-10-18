@@ -1,3 +1,4 @@
+import json
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -200,6 +201,11 @@ def test_log_message_detail_range_export_and_reasoning(
     assert detail["model_chain"]["resolved"] is False
     assert detail["storage_truncated"] is False
     assert detail["reasoning_summary"] is None
+
+    # 请求头落库前脱敏：凭据打码，原始 API Key 不得出现在详情里
+    stored_headers = {name.lower(): value for name, value in detail["request_headers"].items()}
+    assert stored_headers["authorization"] == "<redacted>"
+    assert key not in json.dumps(detail["request_headers"], ensure_ascii=False)
 
 
 def _make_raw_log(session, **kwargs) -> int:

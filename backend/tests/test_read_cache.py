@@ -100,59 +100,33 @@ def test_ttl_cache_single_flight_merges_concurrent_misses() -> None:
     assert len(calls) == 1
 
 
-def test_dashboard_stats_uses_lazy_cache(
+def test_dashboard_stats_reads_snapshot_until_refresh(
     client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from app.routers import admin_dashboard
 
     calls: list[int] = []
-    real = admin_dashboard._compute_stats
+    real = admin_dashboard.compute_stats
 
     def spy(db, days):  # type: ignore[no-untyped-def]
         calls.append(days)
         return real(db, days)
 
-    monkeypatch.setattr(admin_dashboard, "_compute_stats", spy)
-    first = client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7})
-    second = client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7})
-    assert first.status_code == 200 and second.status_code == 200
-    assert first.json() == second.json()
-    # 命中缓存：同一区间只算一次
-    assert calls == [7]
+    monkeypatch.setattr(admin_dashboard, "compute_stats", spy)
+    empty = client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7})
+    assert empty.status_code == 200
+    assert empty.json()["daily"] == []
+    assert calls == []
 
-    # 区间不同 → 独立 key
-    client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 30})
-    assert calls == [7, 30]
-
-    # refresh=1 强制重算
     forced = client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7, "refresh": 1})
     assert forced.status_code == 200
-    assert calls == [7, 30, 7]
+    assert calls == [7]
+    assert forced.json()["computed_at"]
 
-
-def test_dashboard_stats_cache_can_be_disabled(
-    client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from app.config import reset_settings
-    from app.routers import admin_dashboard
-
-    calls: list[int] = []
-    real = admin_dashboard._compute_stats
-
-    def spy(db, days):  # type: ignore[no-untyped-def]
-        calls.append(days)
-        return real(db, days)
-
-    monkeypatch.setattr(admin_dashboard, "_compute_stats", spy)
-    monkeypatch.setenv("ADMIN_STATS_CACHE_SECONDS", "0")
-    reset_settings()
-    try:
-        client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7})
-        client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7})
-        assert calls == [7, 7]
-    finally:
-        monkeypatch.undo()
-        reset_settings()
+    cached = client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7})
+    assert cached.status_code == 200
+    assert cached.json()["computed_at"] == forced.json()["computed_at"]
+    assert calls == [7]
 
 
 def test_jobs_snapshot_cached_and_invalidated(
@@ -220,24 +194,3 @@ def test_jobs_snapshot_recomputed_after_run(
     assert calls == ["catalog", "catalog"]
 
 
-def test_content_audit_progress_cached_when_idle(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import content_audit, read_cache
-
-    calls: list[int] = []
-    real = content_audit.count_remaining
-
-    def spy(session):  # type: ignore[no-untyped-def]
-        calls.append(1)
-        return real(session)
-
-    monkeypatch.setattr(content_audit, "count_remaining", spy)
-
-    first = content_audit.progress_stats()
-    second = content_audit.progress_stats()
-    assert first == second
-    # 空闲时反连接查询只跑一次
-    assert len(calls) == 1
-
-    read_cache.invalidate_content_audit_progress()
-    content_audit.progress_stats()
-    assert len(calls) == 2

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import delete, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.clock import shanghai_day_start_utc, utcnow
 from app.models import RequestLog, RequestLogMessage
@@ -294,6 +294,13 @@ def encode_message_content(message: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
+_MESSAGE_COMPARE_COLUMNS = (
+    RequestLogMessage.seq,
+    RequestLogMessage.role,
+    RequestLogMessage.content_json,
+)
+
+
 def load_log_messages_head(db: Session, log_id: int, limit: int) -> list[dict[str, Any]]:
     """按 seq 升序加载会话前 limit 条消息，用于增量前缀匹配。"""
     rows = db.scalars(
@@ -301,6 +308,7 @@ def load_log_messages_head(db: Session, log_id: int, limit: int) -> list[dict[st
         .where(RequestLogMessage.log_id == log_id)
         .order_by(RequestLogMessage.seq.asc())
         .limit(limit)
+        .options(load_only(*_MESSAGE_COMPARE_COLUMNS))
     ).all()
     return [decode_stored_message(row) for row in rows]
 
@@ -312,6 +320,7 @@ def load_log_messages_tail(db: Session, log_id: int, limit: int) -> list[dict[st
         .where(RequestLogMessage.log_id == log_id)
         .order_by(RequestLogMessage.seq.desc())
         .limit(limit)
+        .options(load_only(*_MESSAGE_COMPARE_COLUMNS))
     ).all()
     return [decode_stored_message(row) for row in reversed(rows)]
 

@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.models import RequestLog
 
@@ -188,6 +188,7 @@ def load_reasoning_map(
                 RequestLog.account_id == account_id,
                 RequestLog.session_key == session_key,
             )
+            .options(load_only(RequestLog.id, RequestLog.reasoning_json, RequestLog.response_body))
             .order_by(RequestLog.id.desc())
             .limit(20)
         ).all()

@@ -439,6 +439,11 @@ class LogOut(BaseModel):
     completion_tokens: int | None
     total_tokens: int | None
     latency_ms: int
+    client_ip: str | None = None
+    ip_location: str | None = None
+    user_agent: str | None = None
+    client_name: str | None = None
+    request_headers: dict[str, str] | None = None
     created_at: datetime
     updated_at: datetime | None = None
     request_body: Any | None = None
@@ -572,6 +577,7 @@ class DashboardStatsOut(BaseModel):
     hourly: list[DashboardStatsHourOut] = Field(default_factory=list)
     summary: DashboardStatsSummaryOut = Field(default_factory=DashboardStatsSummaryOut)
     previous: DashboardStatsSummaryOut = Field(default_factory=DashboardStatsSummaryOut)
+    computed_at: datetime | None = None
 
 
 class DashboardOut(BaseModel):
@@ -857,60 +863,6 @@ class JobOut(BaseModel):
 
 class JobListOut(BaseModel):
     items: list[JobOut] = Field(default_factory=list)
-
-
-class ContentAuditFindingOut(BaseModel):
-    id: int
-    log_id: int
-    message_seq: int
-    category: str
-    lexicon_category: str | None = None
-    rule_key: str
-    severity: str
-    excerpt: str
-    start_offset: int
-    end_offset: int
-    api_key_id: int | None = None
-    api_key_name: str | None = None
-    account_name: str | None = None
-    created_at: datetime
-
-
-class ContentAuditFindingListOut(BaseModel):
-    items: list[ContentAuditFindingOut]
-    total: int
-    page: int
-    page_size: int
-
-
-class ContentAuditSummaryOut(BaseModel):
-    running: bool = False
-    status: str
-    paused: bool = False
-    scanned_in_run: int = 0
-    total_in_run: int = 0
-    last_finished_at: datetime | None = None
-    last_message: str | None = None
-    error_message: str | None = None
-    scanned_count: int = 0
-    total_logs: int = 0
-    finding_count: int = 0
-    remaining: int = 0
-    processed: int | None = None
-    new_findings: int | None = None
-    lexicon_ok: bool | None = None
-    lexicon_updated_at: datetime | None = None
-    lexicon_word_count: int = 0
-    by_category: dict[str, int] = Field(default_factory=dict)
-    lexicon_categories: list[str] = Field(default_factory=list)
-
-
-class ContentAuditLexiconSyncOut(BaseModel):
-    ok: bool = True
-    updated_at: datetime | None = None
-    word_count: int = 0
-    categories: list[str] = Field(default_factory=list)
-    error_message: str | None = None
 
 
 class McpKeyCreate(BaseModel):

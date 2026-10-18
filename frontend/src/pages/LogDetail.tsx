@@ -174,7 +174,25 @@ export function LogDetailPage() {
           <MetaItem label="账号">{accountText(data)}</MetaItem>
           <MetaItem label="开始">{formatLogTime(data.created_at)}</MetaItem>
           <MetaItem label="最近活动">{formatLogTime(data.updated_at || data.created_at)}</MetaItem>
+          <MetaItem label="IP">{data.client_ip || '—'}</MetaItem>
+          <MetaItem label="归属地">{data.ip_location || '—'}</MetaItem>
+          <MetaItem label="客户端">{data.client_name || '—'}</MetaItem>
+          <MetaItem label="User-Agent">{data.user_agent || '—'}</MetaItem>
         </div>
+
+        {data.request_headers && Object.keys(data.request_headers).length > 0 ? (
+          <div className="rounded-xl border border-line bg-panel/60 px-4 py-3">
+            <div className="text-xs text-mist">请求头（敏感项已脱敏）</div>
+            <dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 text-xs lg:grid-cols-2">
+              {Object.entries(data.request_headers).map(([key, value]) => (
+                <div key={key} className="flex min-w-0 gap-2">
+                  <dt className="shrink-0 font-mono text-mist">{key}:</dt>
+                  <dd className="min-w-0 break-all font-mono text-paper">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ) : null}
       </div>
 
       {data.error_message ? (

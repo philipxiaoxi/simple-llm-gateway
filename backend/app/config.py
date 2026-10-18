@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # 额度/余额查询走独立短超时：上游不可达时管理页要快速失败，而不是挂到 request_timeout
     quota_timeout_seconds: int = 20
     local_agent_token: str = ""
+    # 请求日志 IP 归属地。留空则只记录 IP，不查位置。
+    ip_geo_url: str = "http://ip-api.com/json/{ip}?lang=zh-CN&fields=status,country,regionName,city,message"
+    # 只有直连地址落在这些网段时，才信任 X-Forwarded-For / X-Real-IP。逗号分隔，支持前缀或 CIDR。
+    trusted_proxy_cidrs: str = "172.20.0.0/16"
     quota_refresh_interval_seconds: int = 3600
     jwt_expire_days: int = 7
     frontend_dist: str = ""
@@ -59,11 +63,14 @@ class Settings(BaseSettings):
     aihot_leaderboard_data_url: str = "https://aihot.news/leaderboard.data"
     aihot_leaderboard_ttl_seconds: int = 43200
     aihot_leaderboard_min_refresh_seconds: int = 60
-    # ---- 管理端读缓存 ----
-    # 概览统计（图表聚合）与定时任务面板的 DB 快照默认缓存 30 分钟：
-    # 只在「用户发起请求且条目已过期」时惰性重算，不挂后台任务；设为 0 即关闭缓存。
-    admin_stats_cache_seconds: int = 1800
+    # 概览图表落库后的刷新间隔（秒）。请求只读快照，后台任务按这个间隔重算。
+    dashboard_stats_refresh_seconds: int = 1800
+    # 定时任务面板的 DB 快照默认缓存 30 分钟；设为 0 即关闭。
     admin_jobs_cache_seconds: int = 1800
+    # 连接持有超过这个秒数就打 [db-hold]，0 关闭。
+    db_long_hold_seconds: float = 5
+    # 请求超过这个秒数就打 [slow]，0 关闭。
+    slow_request_seconds: float = 2
     xai_oauth_client_id: str = "b1a00492-073a-47ea-816f-4c329264a828"
     xai_oauth_authorize_url: str = "https://auth.x.ai/oauth2/authorize"
     xai_oauth_token_url: str = "https://auth.x.ai/oauth2/token"

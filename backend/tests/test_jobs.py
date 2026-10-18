@@ -17,7 +17,7 @@ def test_list_jobs_includes_catalog_quota_oauth_leaderboard(
     response = client.get("/api/admin/jobs", headers=auth_headers)
     assert response.status_code == 200
     ids = [item["id"] for item in response.json()["items"]]
-    assert ids == ["catalog", "quota", "oauth", "leaderboard", "content_audit"]
+    assert ids == ["catalog", "quota", "oauth", "leaderboard", "dashboard_stats"]
     catalog = response.json()["items"][0]
     assert catalog["kind"] == "loop"
     assert catalog["params"][0]["key"] == "interval_seconds"
@@ -26,10 +26,10 @@ def test_list_jobs_includes_catalog_quota_oauth_leaderboard(
     assert leaderboard["kind"] == "loop"
     assert {item["key"] for item in leaderboard["params"]} == {"interval_seconds"}
     assert leaderboard["params"][0]["value"] == 43200
-    audit = response.json()["items"][4]
-    assert audit["kind"] == "manual"
-    assert audit["name"] == "内容审计扫描"
-    assert audit["params"] == []
+    stats_job = response.json()["items"][4]
+    assert stats_job["kind"] == "loop"
+    assert stats_job["name"] == "概览图表刷新"
+    assert stats_job["params"][0]["key"] == "interval_seconds"
 
 
 def test_update_catalog_interval(client: TestClient, auth_headers: dict[str, str]) -> None:

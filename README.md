@@ -57,7 +57,7 @@ cp .env.example .env
 | `QUOTA_TIMEOUT_SECONDS` | 额度查询超时，默认 20；连接阶段最多 5 秒，上游不可达时快速失败 |
 | `XAI_OAUTH_CLIENT_ID` | Grok OAuth 客户端，可覆盖默认值 |
 | `SKILLS_PATH` | Skills 文件目录。默认与数据库同级的 `skills/`（例如 `data/skills`） |
-| `ADMIN_STATS_CACHE_SECONDS` | 概览统计缓存秒数，默认 1800（30 分钟）；请求到来且过期时才重算，0 关闭 |
+| `DASHBOARD_STATS_REFRESH_SECONDS` | 概览图表落库刷新间隔，默认 1800 秒；请求只读快照 |
 | `ADMIN_JOBS_CACHE_SECONDS` | 定时任务面板快照缓存秒数，默认 1800（30 分钟）；0 关闭 |
 
 

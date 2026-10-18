@@ -17,7 +17,6 @@ const BenchmarkPage = lazy(() => import('./pages/Benchmark').then((m) => ({ defa
 const BenchmarkHistoryPage = lazy(() =>
   import('./pages/BenchmarkHistory').then((m) => ({ default: m.BenchmarkHistoryPage })),
 )
-const ContentAuditPage = lazy(() => import('./pages/ContentAudit').then((m) => ({ default: m.ContentAuditPage })))
 const JobsPage = lazy(() => import('./pages/Jobs').then((m) => ({ default: m.JobsPage })))
 const InfoFeedPage = lazy(() => import('./pages/InfoFeed').then((m) => ({ default: m.InfoFeedPage })))
 const InfoItemPage = lazy(() => import('./pages/InfoItem').then((m) => ({ default: m.InfoItemPage })))
@@ -187,7 +186,6 @@ export default function App() {
               <Route path="/jobs" element={<JobsPage />} />
               <Route path="/logs" element={<LogsPage />} />
               <Route path="/logs/:id" element={<LogDetailPage />} />
-              <Route path="/content-audit" element={<ContentAuditPage />} />
               <Route path="/voice" element={<VoiceRoomsPage />} />
               <Route path="/voice/rooms/:roomId" element={<VoiceRoomDetailPage />} />
             </Route>

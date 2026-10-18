@@ -66,6 +66,20 @@ def _seed(client: TestClient, auth_headers: dict[str, str]) -> tuple[int, int]:
     return account["id"], key_id
 
 
+def test_dashboard_stats_reads_stored_snapshot(client: TestClient, auth_headers: dict[str, str]) -> None:
+    account_id, key_id = _seed(client, auth_headers)
+    _add_log(account_id, key_id, "glm-5.2", total_tokens=100)
+    empty = client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7})
+    assert empty.status_code == 200
+    assert empty.json()["summary"]["requests"] == 0
+    refreshed = client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7, "refresh": 1})
+    assert refreshed.status_code == 200
+    assert refreshed.json()["summary"]["requests"] == 1
+    cached = client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7})
+    assert cached.json()["computed_at"] == refreshed.json()["computed_at"]
+    assert cached.json()["summary"]["requests"] == 1
+
+
 def test_dashboard_stats_buckets_by_shanghai_day(client: TestClient, auth_headers: dict[str, str]) -> None:
     account_id, key_id = _seed(client, auth_headers)
     # 上海 01:00 == 前一天 UTC 17:00，必须落在上海「今天」而不是 UTC 昨天
@@ -82,7 +96,7 @@ def test_dashboard_stats_buckets_by_shanghai_day(client: TestClient, auth_header
         created_at=_to_utc_naive(_shanghai_today() - timedelta(days=8)),
     )
 
-    response = client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7})
+    response = client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7, "refresh": 1})
     assert response.status_code == 200, response.text
     body = response.json()
 
@@ -135,7 +149,7 @@ def test_dashboard_stats_token_fallback_and_previous_window(
         created_at=_to_utc_naive(_shanghai_today() - timedelta(days=9)),
     )
 
-    body = client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7}).json()
+    body = client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7, "refresh": 1}).json()
     assert body["summary"]["requests"] == 1
     assert body["summary"]["tokens"] == 12
     assert body["previous"]["requests"] == 1
