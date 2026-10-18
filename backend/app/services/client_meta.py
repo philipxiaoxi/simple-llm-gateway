@@ -1,4 +1,8 @@
-"""从代理请求头提取客户端信息，并按需查询 IP 归属地。"""
+"""从代理请求头提取客户端信息，并按需查询 IP 归属地。
+
+网关由 API 客户端（SDK、curl、CLI）调用，不是浏览器，所以只记录
+网络来源（IP + 归属地）和客户端标识，不记录 Referer、设备、浏览器。
+"""
 
 from __future__ import annotations
 
@@ -12,7 +16,6 @@ import httpx
 from app.config import get_settings
 
 _UA_LIMIT = 512
-_REFERRER_LIMIT = 512
 _LOCATION_LIMIT = 128
 
 # 归属地按 IP 进程内缓存：成功缓存 6 小时，失败缓存 10 分钟，避免每个请求都外呼。
@@ -20,6 +23,32 @@ _LOCATION_TTL = 6 * 3600
 _LOCATION_FAIL_TTL = 600
 _LOCATION_CACHE_MAX = 4096
 _location_cache: dict[str, tuple[float, str | None]] = {}
+
+# 常见 API 客户端 / 命令行工具的 User-Agent 标记，按顺序匹配
+_CLIENT_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("curl/", "curl"),
+    ("wget/", "wget"),
+    ("postmanruntime", "Postman"),
+    ("insomnia", "Insomnia"),
+    ("openai-python", "OpenAI SDK"),
+    ("openai/python", "OpenAI SDK"),
+    ("openai/node", "OpenAI SDK"),
+    ("openai/", "OpenAI SDK"),
+    ("anthropic", "Anthropic SDK"),
+    ("langchain", "LangChain"),
+    ("python-requests", "python-requests"),
+    ("python-httpx", "httpx"),
+    ("httpx/", "httpx"),
+    ("aiohttp/", "aiohttp"),
+    ("go-http-client", "Go HTTP"),
+    ("okhttp", "OkHttp"),
+    ("java/", "Java HTTP"),
+    ("node-fetch", "node-fetch"),
+    ("undici", "undici"),
+    ("axios/", "axios"),
+    ("node", "Node HTTP"),
+    ("git/", "git"),
+)
 
 
 def trusted_proxy(peer: str | None) -> bool:
@@ -61,48 +90,21 @@ def client_meta(
 ) -> dict[str, str | None]:
     lowered = _lower_headers(headers)
     user_agent = _clip(lowered.get("user-agent"), _UA_LIMIT)
-    referrer = _clip(lowered.get("referer") or lowered.get("referrer"), _REFERRER_LIMIT)
-    device, browser = parse_user_agent(user_agent or "")
     return {
         "client_ip": client_ip(headers, fallback_ip, peer=peer),
         "user_agent": user_agent,
-        "device": device,
-        "browser": browser,
-        "referrer": referrer,
+        "client_name": parse_client_name(user_agent or ""),
     }
 
 
-def parse_user_agent(user_agent: str) -> tuple[str | None, str | None]:
-    text = user_agent or ""
-    if not text:
-        return None, None
-    device = "Desktop"
-    system = ""
-    if "iPhone" in text or "iPad" in text:
-        device = "Mobile" if "iPhone" in text else "Tablet"
-        system = "iOS"
-    elif "Android" in text:
-        device = "Mobile"
-        system = "Android"
-    elif "Windows" in text:
-        system = "Windows"
-    elif "Mac OS X" in text or "Macintosh" in text:
-        system = "macOS"
-    elif "Linux" in text:
-        system = "Linux"
-    browser = "未知"
-    if "MicroMessenger" in text:
-        browser = "微信"
-    elif "Edg/" in text:
-        browser = "Edge"
-    elif "Chrome/" in text and "Chromium" not in text:
-        browser = "Chrome"
-    elif "Firefox/" in text:
-        browser = "Firefox"
-    elif "Safari/" in text:
-        browser = "Safari"
-    device_text = " · ".join(part for part in (device, system) if part)
-    return device_text or None, browser
+def parse_client_name(user_agent: str) -> str | None:
+    lowered = (user_agent or "").lower()
+    if not lowered:
+        return None
+    for needle, label in _CLIENT_PATTERNS:
+        if needle in lowered:
+            return label
+    return None
 
 
 async def lookup_ip_location(ip: str | None) -> str | None:

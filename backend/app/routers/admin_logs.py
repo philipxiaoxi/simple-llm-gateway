@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -51,9 +52,7 @@ _LIST_COLUMNS = (
     RequestLog.client_ip,
     RequestLog.ip_location,
     RequestLog.user_agent,
-    RequestLog.client_device,
-    RequestLog.client_browser,
-    RequestLog.referrer,
+    RequestLog.client_name,
     RequestLog.created_at,
     RequestLog.updated_at,
 )
@@ -304,6 +303,7 @@ def get_log(
         columns.extend([RequestLog.request_body, RequestLog.response_body, RequestLog.reasoning_json])
     else:
         columns.append(RequestLog.reasoning_json)
+    columns.append(RequestLog.request_headers)
     item = db.scalar(select(RequestLog).where(RequestLog.id == log_id).options(load_only(*columns)))
     if item is None:
         raise HTTPException(status_code=404, detail="记录不存在")
@@ -331,4 +331,17 @@ def get_log(
         reasoning_summary=reasoning_summary,
         model_chain=build_model_chain(item),
         storage_truncated=message_count >= MAX_LOG_MESSAGES,
+        request_headers=_load_headers(item.request_headers),
     )
+
+
+def _load_headers(raw: str | None) -> dict[str, str] | None:
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return {str(key): str(value) for key, value in parsed.items()}

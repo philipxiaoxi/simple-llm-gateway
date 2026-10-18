@@ -207,12 +207,14 @@ def _ensure_columns(engine: Engine) -> None:
             "client_ip": "ALTER TABLE request_logs ADD COLUMN client_ip VARCHAR(64)",
             "ip_location": "ALTER TABLE request_logs ADD COLUMN ip_location VARCHAR(128)",
             "user_agent": "ALTER TABLE request_logs ADD COLUMN user_agent VARCHAR(512)",
-            "client_device": "ALTER TABLE request_logs ADD COLUMN client_device VARCHAR(64)",
-            "client_browser": "ALTER TABLE request_logs ADD COLUMN client_browser VARCHAR(64)",
-            "referrer": "ALTER TABLE request_logs ADD COLUMN referrer VARCHAR(512)",
+            "client_name": "ALTER TABLE request_logs ADD COLUMN client_name VARCHAR(64)",
         }.items():
             if column not in log_columns:
                 connection.execute(text(statement))
+        # API 调用没有浏览器语境，早期误加的浏览器字段直接移除
+        for dropped in ("client_device", "client_browser", "referrer"):
+            if dropped in log_columns:
+                connection.execute(text(f"ALTER TABLE request_logs DROP COLUMN {dropped}"))
         # 请求时记录的模型解析链；历史数据为空（详情页回退展示上游模型名）
         if "requested_model" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN requested_model VARCHAR(128)"))
@@ -283,6 +285,8 @@ def _ensure_columns(engine: Engine) -> None:
         )
         if "reasoning_json" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN reasoning_json TEXT"))
+        if "request_headers" not in log_columns:
+            connection.execute(text("ALTER TABLE request_logs ADD COLUMN request_headers TEXT"))
         if "account_source" not in log_columns:
             connection.execute(text("ALTER TABLE request_logs ADD COLUMN account_source VARCHAR(16) DEFAULT 'upstream' NOT NULL"))
             connection.execute(

@@ -293,9 +293,8 @@ export type LogItem = {
   client_ip?: string | null
   ip_location?: string | null
   user_agent?: string | null
-  client_device?: string | null
-  client_browser?: string | null
-  referrer?: string | null
+  client_name?: string | null
+  request_headers?: Record<string, string> | null
   created_at: string
   updated_at?: string | null
   request_body?: unknown

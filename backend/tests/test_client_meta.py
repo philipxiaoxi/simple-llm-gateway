@@ -1,5 +1,7 @@
+import asyncio
+
 import app.services.client_meta as client_meta_module
-from app.services.client_meta import client_ip, client_meta, lookup_ip_location, parse_user_agent
+from app.services.client_meta import client_ip, client_meta, lookup_ip_location, parse_client_name
 
 
 def test_forwarded_ip_ignored_unless_peer_is_trusted() -> None:
@@ -16,19 +18,28 @@ def test_client_ip_prefers_forwarded_chain() -> None:
     assert client_ip(headers, peer="172.20.0.8") == "219.137.186.167"
 
 
-def test_client_meta_reads_nginx_headers() -> None:
+def test_client_meta_reads_api_client_headers() -> None:
     meta = client_meta(
         {
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit Mobile/15E148 MicroMessenger/8.0.49",
-            "Referer": "https://weixin110.qq.com/",
+            "User-Agent": "OpenAI/Python 1.30.0",
             "X-Real-IP": "219.137.186.167",
+            "Referer": "https://weixin110.qq.com/",
         },
         peer="172.20.0.8",
     )
     assert meta["client_ip"] == "219.137.186.167"
-    assert meta["device"] == "Mobile · iOS"
-    assert meta["browser"] == "微信"
-    assert meta["referrer"] == "https://weixin110.qq.com/"
+    assert meta["user_agent"] == "OpenAI/Python 1.30.0"
+    assert meta["client_name"] == "OpenAI SDK"
+    assert "referrer" not in meta
+
+
+def test_parse_client_name_recognizes_tools() -> None:
+    assert parse_client_name("curl/8.4.0") == "curl"
+    assert parse_client_name("OpenAI/Python 1.30.0") == "OpenAI SDK"
+    assert parse_client_name("python-requests/2.31.0") == "python-requests"
+    assert parse_client_name("Go-http-client/2.0") == "Go HTTP"
+    assert parse_client_name("SomethingWeird/1.0") is None
+    assert parse_client_name("") is None
 
 
 def test_lookup_ip_location_caches(monkeypatch) -> None:
@@ -64,18 +75,8 @@ def test_lookup_ip_location_caches(monkeypatch) -> None:
         private = await lookup_ip_location("127.0.0.1")
         return first, second, private
 
-    import asyncio
-
     first, second, private = asyncio.run(run())
     assert first == "中国 广东 深圳"
     assert second == first
     assert private is None
     assert len(calls) == 1
-
-
-def test_parse_user_agent_desktop_browser() -> None:
-    device, browser = parse_user_agent(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
-    )
-    assert device == "Desktop · Windows"
-    assert browser == "Chrome"

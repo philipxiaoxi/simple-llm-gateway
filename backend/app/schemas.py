@@ -442,9 +442,8 @@ class LogOut(BaseModel):
     client_ip: str | None = None
     ip_location: str | None = None
     user_agent: str | None = None
-    client_device: str | None = None
-    client_browser: str | None = None
-    referrer: str | None = None
+    client_name: str | None = None
+    request_headers: dict[str, str] | None = None
     created_at: datetime
     updated_at: datetime | None = None
     request_body: Any | None = None

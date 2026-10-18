@@ -191,13 +191,14 @@ class RequestLog(Base):
     latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     request_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     response_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 脱敏后的请求头（Authorization / x-api-key / Cookie 等打码）
+    request_headers: Mapped[str | None] = mapped_column(Text, nullable=True)
     session_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     client_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ip_location: Mapped[str | None] = mapped_column(String(128), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    client_device: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    client_browser: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    referrer: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # 由 User-Agent 解析出的客户端标识（如 curl、OpenAI SDK）；认不出则为空
+    client_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reasoning_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, index=True, nullable=True)

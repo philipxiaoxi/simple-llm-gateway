@@ -20,6 +20,7 @@ from app.errors import protocol_error
 from app.models import ApiKey, RequestLog, UpstreamAccount
 from app.providers import get_provider
 from app.services.client_meta import client_meta, lookup_ip_location
+from app.services.headers_redact import dump_headers
 from app.services.key_models import ModelResolution, build_model_catalog
 from app.services.model_caps import serialize_record
 from app.services.bridge import (
@@ -362,6 +363,9 @@ def save_log(
         if session_key:
             existing.session_key = session_key
         _apply_client_meta(existing, meta)
+        stored_headers = dump_headers(request_headers)
+        if stored_headers:
+            existing.request_headers = stored_headers
         if reasoning_map:
             existing.reasoning_json = dump_reasoning_json(
                 merge_reasoning_maps(parse_reasoning_json(existing.reasoning_json), reasoning_map)
@@ -404,10 +408,9 @@ def save_log(
         reasoning_json=dump_reasoning_json(reasoning_map or {}),
         client_ip=meta["client_ip"],
         user_agent=meta["user_agent"],
-        client_device=meta["device"],
-        client_browser=meta["browser"],
-        referrer=meta["referrer"],
+        client_name=meta["client_name"],
         ip_location=ip_location,
+        request_headers=dump_headers(request_headers),
     )
     db.add(log)
     db.flush()
@@ -424,12 +427,8 @@ def _apply_client_meta(log: RequestLog, meta: dict[str, str | None]) -> None:
         log.client_ip = meta["client_ip"]
     if meta["user_agent"]:
         log.user_agent = meta["user_agent"]
-    if meta["device"]:
-        log.client_device = meta["device"]
-    if meta["browser"]:
-        log.client_browser = meta["browser"]
-    if meta["referrer"]:
-        log.referrer = meta["referrer"]
+    if meta["client_name"]:
+        log.client_name = meta["client_name"]
 
 
 async def handle_chat(
