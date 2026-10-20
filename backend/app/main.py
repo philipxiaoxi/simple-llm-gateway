@@ -43,6 +43,7 @@ from app.routers import (
     admin_mcp_knowledge_jobs,
     admin_mcp_sites,
     admin_public_gate,
+    admin_security,
     admin_skill_bundles,
     admin_skills,
     admin_tools,
@@ -73,6 +74,8 @@ from app.services.jobs import start_job_loops
 from app.services.knowledge_jobs import reconcile_stuck_jobs as reconcile_stuck_knowledge_jobs
 from app.services.knowledge_jobs import start_knowledge_job_workers
 from app.services.knowledge_retention import retention_loop as knowledge_retention_loop
+from app.services.security_audit import SecurityAuditMiddleware, audit_worker
+from app.services.security_retention import retention_loop as security_retention_loop
 from app.services.site_retention import retention_loop as site_retention_loop
 from app.services.voice_retention import voice_cleanup_loop
 from app.static_assets import (
@@ -160,6 +163,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         background_tasks.append(asyncio.create_task(info_retention_loop()))
         # 图片 / 视频生成：提交、轮询、结果转存
         background_tasks.append(asyncio.create_task(generation_loop()))
+        # 安全中心：审计事件异步落库 + 保留期清理
+        background_tasks.append(asyncio.create_task(audit_worker()))
+        background_tasks.append(asyncio.create_task(security_retention_loop()))
         try:
             yield
         finally:
@@ -193,6 +199,7 @@ app.include_router(admin_logs.router)
 app.include_router(admin_dashboard.router)
 app.include_router(admin_info.router)
 app.include_router(admin_public_gate.router, dependencies=[Depends(get_current_admin)])
+app.include_router(admin_security.router)
 app.include_router(admin_info.media_router)
 app.include_router(admin_integrations.router)
 app.include_router(admin_generation.router)
@@ -326,6 +333,7 @@ class DisableApiCacheMiddleware:
 
 app.add_middleware(RedactMcpQueryMiddleware)
 app.add_middleware(DisableApiCacheMiddleware)
+app.add_middleware(SecurityAuditMiddleware)
 # 最后添加，保证压缩在最外层：API JSON 与静态文本都会用到
 app.add_middleware(CompressTextMiddleware, minimum_size=1024, compresslevel=5)
 

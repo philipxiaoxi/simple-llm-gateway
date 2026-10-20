@@ -1072,3 +1072,97 @@ class KnowledgeSearchResponse(BaseModel):
     degraded: bool = False
     degraded_reason: str | None = None
     hits: list[KnowledgeHitOut] = Field(default_factory=list)
+
+
+# ---- 安全中心 ----
+
+class SecurityEventOut(BaseModel):
+    id: int
+    created_at: datetime
+    event_type: str
+    severity: str
+    source: str
+    actor: str | None = None
+    client_ip: str | None = None
+    ip_location: str | None = None
+    location_trusted: bool | None = None
+    location_rule: str | None = None
+    user_agent: str | None = None
+    client_name: str | None = None
+    client_version: str | None = None
+    device_type: str | None = None
+    request_headers: dict[str, str] | None = None
+    method: str | None = None
+    path: str | None = None
+    status_code: int | None = None
+    outcome: str | None = None
+    risk_tags: list[str] = Field(default_factory=list)
+    detail: dict[str, Any] | None = None
+
+
+class SecurityEventDetailOut(SecurityEventOut):
+    attempted_password: str | None = None
+    password_unavailable: bool = False
+
+
+class SecurityEventListOut(BaseModel):
+    items: list[SecurityEventOut] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    page_size: int = 20
+
+
+class SecurityTrendPoint(BaseModel):
+    date: str
+    login_success: int = 0
+    login_failure: int = 0
+    suspicious: int = 0
+
+
+class SecurityOverviewOut(BaseModel):
+    since: datetime
+    until: datetime
+    login_success: int = 0
+    login_failure: int = 0
+    suspicious: int = 0
+    distinct_ips: int = 0
+    severity_counts: dict[str, int] = Field(default_factory=dict)
+    outcome_counts: dict[str, int] = Field(default_factory=dict)
+    client_counts: list[dict[str, Any]] = Field(default_factory=list)
+    top_ips: list[dict[str, Any]] = Field(default_factory=list)
+    trend: list[SecurityTrendPoint] = Field(default_factory=list)
+
+
+class BeaconEvent(BaseModel):
+    event: str = "beacon"
+    path: str | None = None
+    client_time: int | None = None
+    timezone: str | None = None
+    language: str | None = None
+    screen_w: int | None = None
+    screen_h: int | None = None
+    dpr: float | None = None
+    platform: str | None = None
+    webdriver: bool | None = None
+    action: str | None = None
+    target: str | None = None
+
+
+class SecurityLocationEntry(BaseModel):
+    country: str = ""
+    province: str = ""
+    city: str = ""
+    raw: str = ""
+    enabled: bool = True
+
+
+class SecuritySettingsOut(BaseModel):
+    location_check_enabled: bool = True
+    trusted_locations: list[SecurityLocationEntry] = Field(default_factory=list)
+    ip_allowlist: list[str] = Field(default_factory=list)
+
+
+class SecuritySettingsUpdate(BaseModel):
+    location_check_enabled: bool = True
+    trusted_locations: list[SecurityLocationEntry] = Field(default_factory=list)
+    ip_allowlist: list[str] = Field(default_factory=list)

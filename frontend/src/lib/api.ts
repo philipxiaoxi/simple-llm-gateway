@@ -25,6 +25,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body !== undefined && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
+  // 安全中心以前端标识区分「正规前端请求」与直接调试/探测
+  headers.set('X-GW-Client', 'web')
   const token = getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
   // 管理接口禁止复用浏览器缓存。/api/admin/skills 曾被缓存成 index.html，导致列表一直为空。
@@ -668,6 +670,89 @@ export type GatewayAgent = {
   }[]
 }
 
+export type SecurityEvent = {
+  id: number
+  created_at: string
+  event_type: string
+  severity: 'info' | 'warn' | 'critical'
+  source: string
+  actor: string | null
+  client_ip: string | null
+  ip_location: string | null
+  location_trusted: boolean | null
+  location_rule: string | null
+  user_agent: string | null
+  client_name: string | null
+  client_version: string | null
+  device_type: string | null
+  request_headers: Record<string, string> | null
+  method: string | null
+  path: string | null
+  status_code: number | null
+  outcome: string | null
+  risk_tags: string[]
+  detail: Record<string, unknown> | null
+}
+
+export type SecurityEventDetail = SecurityEvent & {
+  attempted_password?: string | null
+  password_unavailable?: boolean
+}
+
+export type SecurityEventList = {
+  items: SecurityEvent[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type SecurityEventQuery = {
+  group?: string
+  event_type?: string
+  severity?: string
+  source?: string
+  ip?: string
+  q?: string
+  tags?: string[]
+  page?: number
+  page_size?: number
+}
+
+export type SecurityTrendPoint = {
+  date: string
+  login_success: number
+  login_failure: number
+  suspicious: number
+}
+
+export type SecurityOverview = {
+  since: string
+  until: string
+  login_success: number
+  login_failure: number
+  suspicious: number
+  distinct_ips: number
+  severity_counts: Record<string, number>
+  outcome_counts: Record<string, number>
+  client_counts: { name: string; count: number }[]
+  top_ips: { ip: string; count: number }[]
+  trend: SecurityTrendPoint[]
+}
+
+export type SecurityLocationEntry = {
+  country: string
+  province: string
+  city: string
+  raw: string
+  enabled: boolean
+}
+
+export type SecuritySettings = {
+  location_check_enabled: boolean
+  trusted_locations: SecurityLocationEntry[]
+  ip_allowlist: string[]
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<{ token: string; username: string }>('/api/admin/login', {
@@ -678,6 +763,29 @@ export const api = {
   updateMe: (payload: { current_password: string; username?: string; password?: string }) =>
     request<{ token: string; username: string }>('/api/admin/me', {
       method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  securityOverview: (days: number) => request<SecurityOverview>(`/api/admin/security/overview?days=${days}`),
+  securityEvents: (params: SecurityEventQuery) => {
+    const search = new URLSearchParams()
+    if (params.group) search.set('group', params.group)
+    if (params.event_type) search.set('event_type', params.event_type)
+    if (params.severity) search.set('severity', params.severity)
+    if (params.source) search.set('source', params.source)
+    if (params.ip) search.set('ip', params.ip)
+    if (params.q) search.set('q', params.q)
+    if (params.tags?.length) {
+      for (const tag of params.tags) search.append('tags', tag)
+    }
+    search.set('page', String(params.page ?? 1))
+    search.set('page_size', String(params.page_size ?? 20))
+    return request<SecurityEventList>(`/api/admin/security/events?${search.toString()}`)
+  },
+  securityEvent: (id: number) => request<SecurityEventDetail>(`/api/admin/security/events/${id}`),
+  securitySettings: () => request<SecuritySettings>('/api/admin/security/settings'),
+  updateSecuritySettings: (payload: SecuritySettings) =>
+    request<SecuritySettings>('/api/admin/security/settings', {
+      method: 'PUT',
       body: JSON.stringify(payload),
     }),
   dashboard: () => request<Dashboard>('/api/admin/dashboard'),

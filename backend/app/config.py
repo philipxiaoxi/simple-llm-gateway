@@ -238,6 +238,15 @@ class Settings(BaseSettings):
     generation_token_ttl_seconds: int = 43200
     # MCP 生成能力提交后内联等待完成的秒数上限
     generation_mcp_max_wait_seconds: int = 60
+    # ---- 安全中心（登录审计 / 异常请求标记 / 前端埋点）----
+    security_audit_enabled: bool = True
+    security_beacon_enabled: bool = True
+    security_event_retention_days: int = 90
+    security_dedupe_window_seconds: int = 30
+    security_max_password_len: int = 256
+    security_beacon_rate_limit: int = 60
+    security_auth_fail_threshold: int = 10
+    security_auth_fail_window_seconds: int = 300
 
     @property
     def database_url(self) -> str:

@@ -1244,3 +1244,58 @@ class GenerationAsset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     task: Mapped[GenerationTask | None] = relationship(back_populates="assets")
+
+
+class SecurityEvent(Base):
+    """安全中心事件：登录审计、前端埋点、异常请求、认证突增统一落这一张表。"""
+
+    __tablename__ = "security_events"
+    __table_args__ = (
+        Index("ix_security_events_created_at", "created_at"),
+        Index("ix_security_events_type_created", "event_type", "created_at"),
+        Index("ix_security_events_ip_created", "client_ip", "created_at"),
+        Index("ix_security_events_severity_created", "severity", "created_at"),
+        Index("ix_security_events_outcome_created", "outcome", "created_at"),
+        Index("ix_security_events_client_created", "client_name", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # login_success / login_failure / login_locked / logout / admin_credential_change
+    # / suspicious_request / auth_fail_burst / frontend_beacon
+    event_type: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), default="info", nullable=False)
+    source: Mapped[str] = mapped_column(String(16), default="web", nullable=False)
+    actor: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # 失败/锁定登录尝试的密码密文；成功登录与其余事件为空
+    attempted_password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ip_location: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    location_trusted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    location_rule: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    client_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    client_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # 设备端归类：iPhone / iPad / Android / PC
+    device_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # 脱敏后的请求头（Authorization / Cookie 等打码）
+    request_headers: Mapped[str | None] = mapped_column(Text, nullable=True)
+    method: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 后端响应结果：success（2xx/3xx）/ rejected（401/403/429）/ failed（其余 4xx/5xx）/ unknown
+    outcome: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    risk_tags: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    detail_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class SecuritySettings(Base):
+    """安全中心配置：常用登录地点白名单与 IP/CIDR 白名单。单行表（id=1）。"""
+
+    __tablename__ = "security_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    location_check_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    trusted_locations_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    ip_allowlist_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

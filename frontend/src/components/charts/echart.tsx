@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { CSSProperties } from 'react'
 import * as echarts from 'echarts/core'
-import { BarChart, LineChart } from 'echarts/charts'
+import { BarChart, LineChart, PieChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { ChartOption } from '../../lib/chart-theme'
@@ -9,7 +9,7 @@ import { cn } from '../../lib/utils'
 
 // 按需注册：只打包柱状/折线 + 网格/图例/提示框，避免把整个 echarts 塞进主包。
 // 该模块只被动态导入的图表区引用，资源页等其它路由不会付出这份体积。
-echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
+echarts.use([BarChart, LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
 let prefersReducedMotion = false
 if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {

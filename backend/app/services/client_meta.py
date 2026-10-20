@@ -48,6 +48,16 @@ _CLIENT_PATTERNS: tuple[tuple[str, str], ...] = (
     ("axios/", "axios"),
     ("node", "Node HTTP"),
     ("git/", "git"),
+    # 浏览器 / 自动化识别：管理台事件多为浏览器发起来源，便于安全中心区分客户端。
+    # headless 必须排在 chrome 之前，chrome 必须排在 safari 之前（Chrome UA 含 Safari）。
+    ("headlesschrome", "Headless Chrome"),
+    ("edg/", "Edge"),
+    ("opr/", "Opera"),
+    ("chrome/", "Chrome"),
+    ("firefox/", "Firefox"),
+    ("safari/", "Safari"),
+    # iOS/Android 应用内 WebView 常见：只有 AppleWebKit + Mobile，没有 Safari 令牌
+    ("mobile/", "Mobile WebView"),
 )
 
 
@@ -94,7 +104,25 @@ def client_meta(
         "client_ip": client_ip(headers, fallback_ip, peer=peer),
         "user_agent": user_agent,
         "client_name": parse_client_name(user_agent or ""),
+        "client_version": parse_client_version(user_agent or ""),
+        "device_type": parse_device_type(user_agent or ""),
     }
+
+
+def parse_device_type(user_agent: str) -> str | None:
+    """从 UA 归类设备端：iPhone / iPad / Android / PC。"""
+    lowered = (user_agent or "").lower()
+    if not lowered:
+        return None
+    if "iphone" in lowered or "ipod" in lowered:
+        return "iPhone"
+    if "ipad" in lowered:
+        return "iPad"
+    if "android" in lowered:
+        return "Android"
+    if any(token in lowered for token in ("windows", "macintosh", "mac os x", "linux", "x11", "cros")):
+        return "PC"
+    return None
 
 
 def parse_client_name(user_agent: str) -> str | None:
@@ -104,6 +132,24 @@ def parse_client_name(user_agent: str) -> str | None:
     for needle, label in _CLIENT_PATTERNS:
         if needle in lowered:
             return label
+    return None
+
+
+def parse_client_version(user_agent: str) -> str | None:
+    """从 UA 中提取与识别出的客户端对应的版本号。"""
+    lowered = (user_agent or "").lower()
+    if not lowered:
+        return None
+    for needle, _label in _CLIENT_PATTERNS:
+        index = lowered.find(needle)
+        if index < 0:
+            continue
+        if needle == "mobile/":
+            # Mobile/15E148 是 WebView 的构建号，不是有意义的客户端版本
+            return None
+        rest = user_agent[index + len(needle) :]
+        match = re.match(r"[ /]?(\d[A-Za-z0-9._-]*)", rest)
+        return _clip(match.group(1), 64) if match else None
     return None
 
 
