@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ForceUpdateButton } from '../components/PwaUpdate'
 import { Button, Card, Field, Input } from '../components/ui'
 import { api, setToken } from '../lib/api'
+import { track } from '../lib/security'
 import { errorMessage } from '../lib/utils'
 
 export function LoginPage() {
@@ -19,6 +20,7 @@ export function LoginPage() {
     try {
       const result = await api.login(username, password)
       setToken(result.token)
+      track('session_start')
       navigate('/')
     } catch (err) {
       setError(errorMessage(err, '登录失败'))

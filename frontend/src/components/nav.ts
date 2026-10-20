@@ -12,6 +12,7 @@ import {
   PackageOpen,
   RadioTower,
   ServerCog,
+  Shield,
   Sparkles,
   Store,
   Timer,
@@ -65,6 +66,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: '平台',
     links: [
       { to: '/skills', label: 'Skills', icon: Sparkles, keywords: 'skill 技能' },
+      { to: '/security', label: '安全中心', icon: Shield, keywords: 'security 安全 审计 登录 异常' },
       { to: '/mcp-plaza', label: 'MCP 广场', icon: Store, keywords: 'mcp 广场 能力' },
       { to: '/tools', label: '工具中心', icon: Download, keywords: 'tools 工具' },
       { to: '/jobs', label: '定时任务', icon: Timer, keywords: 'jobs 任务 定时' },

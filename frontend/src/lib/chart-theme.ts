@@ -1,5 +1,5 @@
 import type { ComposeOption } from 'echarts/core'
-import type { BarSeriesOption, LineSeriesOption } from 'echarts/charts'
+import type { BarSeriesOption, LineSeriesOption, PieSeriesOption } from 'echarts/charts'
 import type { GridComponentOption, LegendComponentOption, TooltipComponentOption } from 'echarts/components'
 
 /**
@@ -38,6 +38,7 @@ export const CHART_FONT_MONO = '"IBM Plex Mono", ui-monospace, monospace'
 export type ChartOption = ComposeOption<
   | BarSeriesOption
   | LineSeriesOption
+  | PieSeriesOption
   | GridComponentOption
   | LegendComponentOption
   | TooltipComponentOption

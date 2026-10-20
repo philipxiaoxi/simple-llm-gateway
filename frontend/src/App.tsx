@@ -27,6 +27,7 @@ const KeysPage = lazy(() => import('./pages/Keys').then((m) => ({ default: m.Key
 const LeaderboardPage = lazy(() => import('./pages/Leaderboard').then((m) => ({ default: m.LeaderboardPage })))
 const LogDetailPage = lazy(() => import('./pages/LogDetail').then((m) => ({ default: m.LogDetailPage })))
 const LogsPage = lazy(() => import('./pages/Logs').then((m) => ({ default: m.LogsPage })))
+const SecurityPage = lazy(() => import('./pages/Security').then((m) => ({ default: m.SecurityPage })))
 const PublicLeaderboardPage = lazy(() =>
   import('./pages/PublicLeaderboard').then((m) => ({ default: m.PublicLeaderboardPage })),
 )
@@ -186,6 +187,7 @@ export default function App() {
               <Route path="/jobs" element={<JobsPage />} />
               <Route path="/logs" element={<LogsPage />} />
               <Route path="/logs/:id" element={<LogDetailPage />} />
+              <Route path="/security" element={<SecurityPage />} />
               <Route path="/voice" element={<VoiceRoomsPage />} />
               <Route path="/voice/rooms/:roomId" element={<VoiceRoomDetailPage />} />
             </Route>

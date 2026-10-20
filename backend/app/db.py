@@ -78,6 +78,39 @@ def init_db() -> None:
     _ensure_info_items_source_nullable(engine)
     _ensure_request_logs_have_no_parent_fks(engine)
     _ensure_knowledge_fts(engine)
+    _ensure_security_tables(engine)
+
+
+def _ensure_security_tables(engine: Engine) -> None:
+    """安全中心表：create_all 已建表，这里补齐索引、列与单行配置默认值（幂等）。"""
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(security_events)"))}
+        for column, statement in {
+            "client_version": "ALTER TABLE security_events ADD COLUMN client_version VARCHAR(64)",
+            "device_type": "ALTER TABLE security_events ADD COLUMN device_type VARCHAR(16)",
+            "request_headers": "ALTER TABLE security_events ADD COLUMN request_headers TEXT",
+            "outcome": "ALTER TABLE security_events ADD COLUMN outcome VARCHAR(16)",
+        }.items():
+            if column not in columns:
+                connection.execute(text(statement))
+        for index_name, index_columns in (
+            ("ix_security_events_created_at", "created_at"),
+            ("ix_security_events_type_created", "event_type, created_at"),
+            ("ix_security_events_ip_created", "client_ip, created_at"),
+            ("ix_security_events_severity_created", "severity, created_at"),
+            ("ix_security_events_outcome_created", "outcome, created_at"),
+            ("ix_security_events_client_created", "client_name, created_at"),
+        ):
+            connection.execute(
+                text(f"CREATE INDEX IF NOT EXISTS {index_name} ON security_events ({index_columns})")
+            )
+        connection.execute(
+            text(
+                "INSERT INTO security_settings (id, location_check_enabled, trusted_locations_json, "
+                "ip_allowlist_json, updated_at) SELECT 1, 1, '[]', '[]', CURRENT_TIMESTAMP "
+                "WHERE NOT EXISTS (SELECT 1 FROM security_settings WHERE id = 1)"
+            )
+        )
 
 
 def _ensure_knowledge_fts(engine: Engine) -> None:

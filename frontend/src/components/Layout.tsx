@@ -13,6 +13,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
+import { flush, track } from '../lib/security'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { MIN_PASSWORD_LENGTH, cn, errorMessage } from '../lib/utils'
 import { useMediaQuery } from '../lib/useMediaQuery'
@@ -209,6 +210,8 @@ export function Layout() {
   }, [location.pathname, collapsed])
 
   function logout() {
+    track('logout')
+    flush()
     clearToken()
     void queryClient.clear()
     navigate('/login')
