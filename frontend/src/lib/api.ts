@@ -20,6 +20,16 @@ export class ApiError extends Error {
   }
 }
 
+// 前端标识：安全中心据此区分「正规前端请求」与直接调试/探测。
+// 所有离开 SPA 的 XHR / fetch 都要带上，否则会被判为「缺少前端标识」。
+export function webHeaders(): Headers {
+  const headers = new Headers()
+  headers.set('X-GW-Client', 'web')
+  const token = getToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  return headers
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   if (init.body !== undefined && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
@@ -887,17 +897,13 @@ export const api = {
   deleteBenchmarkGroup: (id: number) =>
     request<{ removed: boolean }>(`/api/admin/benchmark/groups/${id}`, { method: 'DELETE' }),
   exportBenchmarkHistory: async () => {
-    const headers = new Headers()
-    const token = getToken()
-    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const headers = webHeaders()
     const response = await fetch('/api/admin/benchmark/history/export', { headers })
     if (!response.ok) throw new ApiError(response.status, '导出测速结果失败')
     return response.blob()
   },
   exportBenchmarkLeaderboard: async () => {
-    const headers = new Headers()
-    const token = getToken()
-    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const headers = webHeaders()
     const response = await fetch('/api/admin/benchmark/leaderboard/export', { headers })
     if (!response.ok) throw new ApiError(response.status, '导出排行榜失败')
     return response.blob()
@@ -1038,9 +1044,7 @@ export const api = {
       const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath
       body.append('files', file, relative || file.name)
     })
-    const headers = new Headers()
-    const token = getToken()
-    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const headers = webHeaders()
     const response = await fetch('/api/admin/skills/upload', { method: 'POST', headers, body })
     if (response.status === 401) {
       clearToken()
@@ -1065,9 +1069,7 @@ export const api = {
       const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath
       body.append('files', file, relative || file.name)
     })
-    const headers = new Headers()
-    const token = getToken()
-    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const headers = webHeaders()
     const response = await fetch(`/api/admin/skills/${id}/replace`, { method: 'POST', headers, body })
     if (!response.ok) {
       let message = `请求失败 (${response.status})`
@@ -1086,9 +1088,7 @@ export const api = {
       const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath
       body.append('files', file, relative || file.name)
     })
-    const headers = new Headers()
-    const token = getToken()
-    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const headers = webHeaders()
     const response = await fetch('/api/admin/skills/bulk-update', { method: 'POST', headers, body })
     if (!response.ok) {
       let message = `请求失败 (${response.status})`
@@ -1101,9 +1101,7 @@ export const api = {
     return response.json() as Promise<SkillUploadResult>
   },
   downloadSkill: async (id: number) => {
-    const headers = new Headers()
-    const token = getToken()
-    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const headers = webHeaders()
     const response = await fetch(`/api/admin/skills/${id}/download`, { headers })
     if (!response.ok) throw new ApiError(response.status, '下载 Skill 失败')
     return response.blob()
@@ -1134,9 +1132,7 @@ export const api = {
   removeSkillBundleMember: (id: number, skillId: number) =>
     request<{ ok: boolean }>(`/api/admin/skill-bundles/${id}/members/${skillId}`, { method: 'DELETE' }),
   downloadSkillBundle: async (id: number) => {
-    const headers = new Headers()
-    const token = getToken()
-    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const headers = webHeaders()
     const response = await fetch(`/api/admin/skill-bundles/${id}/download`, { headers })
     if (!response.ok) {
       let message = '下载组合包失败'
@@ -1155,9 +1151,7 @@ export const api = {
       method: 'POST',
     }),
   downloadSkillFile: async (id: number, path: string) => {
-    const headers = new Headers()
-    const token = getToken()
-    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const headers = webHeaders()
     const response = await fetch(`/api/admin/skills/${id}/files/${path.split('/').map(encodeURIComponent).join('/')}`, {
       headers,
     })
@@ -1810,6 +1804,7 @@ function uploadDocParse(file: File, onProgress?: (percent: number) => void): Pro
     xhr.open('POST', '/api/admin/mcp/docparse/jobs')
     const token = getToken()
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.setRequestHeader('X-GW-Client', 'web')
     xhr.upload.onprogress = (event) => {
       if (!onProgress || !event.lengthComputable) return
       onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)))
@@ -1998,6 +1993,7 @@ function uploadSite(
     xhr.open('POST', path)
     const token = getToken()
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.setRequestHeader('X-GW-Client', 'web')
     xhr.upload.onprogress = (event) => {
       if (!onProgress || !event.lengthComputable) return
       onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)))
