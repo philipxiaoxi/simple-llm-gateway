@@ -15,9 +15,19 @@ const HEADER_SPOOF_OPTIONS = [
   { value: 'none', label: '关闭' },
   { value: 'grok', label: 'Grok CLI' },
   { value: 'opencode', label: 'OpenCode' },
+  { value: 'claude_code', label: 'Claude Code' },
+  { value: 'codex', label: 'Codex CLI' },
 ] as const
 
-type HeaderSpoof = 'none' | 'grok' | 'opencode'
+type HeaderSpoof = 'none' | 'grok' | 'opencode' | 'claude_code' | 'codex'
+
+const HEADER_SPOOF_LABELS: Record<HeaderSpoof, string> = {
+  none: '',
+  grok: '伪装 Grok CLI',
+  opencode: '伪装 OpenCode',
+  claude_code: '伪装 Claude Code',
+  codex: '伪装 Codex CLI',
+}
 
 function defaultHeaderSpoof(providerId: string): HeaderSpoof {
   if (providerId === 'grok') return 'grok'
@@ -1230,9 +1240,7 @@ export function AccountsPage() {
                 {account.has_credential ? '已配置凭证' : '缺凭证'}
               </Badge>
               {account.header_spoof && account.header_spoof !== 'none' ? (
-                <Badge tone="info">
-                  {account.header_spoof === 'grok' ? '伪装 Grok CLI' : '伪装 OpenCode'}
-                </Badge>
+                <Badge tone="info">{HEADER_SPOOF_LABELS[account.header_spoof] || '已伪装'}</Badge>
               ) : null}
               {account.last_probe_ok === true ? <Badge tone="ok">探测正常</Badge> : null}
               {account.last_probe_ok === false ? <Badge tone="bad">探测失败</Badge> : null}

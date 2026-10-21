@@ -76,7 +76,7 @@ class AnthropicGenericProvider(Provider):
     ) -> tuple[str, dict[str, str]]:
         headers = self.merge_inbound_headers(token, inbound_headers)
         headers.update(self.relay_headers(account))
-        headers.update(spoof_headers(account.header_spoof))
+        headers.update(spoof_headers(account.header_spoof, seed=f"account:{account.id}"))
         return self.messages_url(account), headers
 
     async def complete(
@@ -129,7 +129,7 @@ class AnthropicGenericProvider(Provider):
         url = self.count_tokens_url(account)
         headers = self.merge_inbound_headers(token, inbound_headers)
         headers.update(self.relay_headers(account))
-        headers.update(spoof_headers(account.header_spoof))
+        headers.update(spoof_headers(account.header_spoof, seed=f"account:{account.id}"))
         settings = get_settings()
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
             response = await client.post(url, headers=headers, json=body)
