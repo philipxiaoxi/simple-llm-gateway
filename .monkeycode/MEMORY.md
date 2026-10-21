@@ -65,7 +65,8 @@ Entries discovered by the Agent during task execution should follow this format:
     4. 若通过环境文件传递认证值，必须用 `shlex.quote()` 包裹，否则 `basic` 与 base64 之间的空格会被 shell 当成命令分隔符，导致 token 丢失
     5. 推送命令：`git -c credential.helper= -c "http.https://github.com/.extraheader=AUTHORIZATION: $AUTH_HEADER" push origin HEAD:<branch>`
     6. 完成后删除临时环境文件
-  - 常见失败诊断：若提示 `could not read Username`，说明 extraheader 值没传进去（检查环境文件空格/引号问题）；若 401 说明 token 过期，重新从 socket 取
+  - 常见失败诊断：若提示 `could not read Username`，说明 extraheader 值没传进去（检查环境文件空格/引号问题，或临时凭据文件已被清空——用完即清空，**每次推送都要重新从 socket 生成**）；若 401 说明 token 过期，重新从 socket 取
+  - 仓库 `main` 允许匿名读取（`git fetch` 不带凭据也能成功），但 `push` 必须带 socket token
 
 [本机创建 PR 走 GitHub API]
 - Date: 2026-09-10
