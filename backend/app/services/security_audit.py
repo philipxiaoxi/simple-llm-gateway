@@ -128,6 +128,58 @@ def looks_like_browser(user_agent: str | None) -> bool:
     return bool(user_agent) and bool(_BROWSER_TOKEN.search(user_agent))
 
 
+_SUBRESOURCE_DESTS = frozenset(
+    {
+        "audio",
+        "embed",
+        "font",
+        "frame",
+        "iframe",
+        "image",
+        "manifest",
+        "object",
+        "paintworklet",
+        "script",
+        "serviceworker",
+        "sharedworker",
+        "style",
+        "track",
+        "video",
+        "worker",
+        "xslt",
+    }
+)
+
+
+def is_subresource_request(headers: dict[str, str]) -> bool:
+    """是否为浏览器子资源加载（图片/字体/脚本/iframe 等）。
+
+    这类请求由浏览器直接发起，既无法携带自定义头，其 404 也只说明资源缺失，
+    不该按「缺少前端标识」或「路径探测」告警。
+    """
+    return (headers.get("sec-fetch-dest") or "").strip().lower() in _SUBRESOURCE_DESTS
+
+
+def is_xhr_request(headers: dict[str, str]) -> bool:
+    """是否为 XHR / fetch 这类程序化请求。
+
+    只有这类请求才要求前端标识：导航、图片/字体等子资源、文件下载链接天然不会带
+    自定义头，如果也要求标识会把正常使用误判成异常（图片访问、上传回跳等）。
+
+    判定优先用 Fetch Metadata：`Sec-Fetch-Dest: empty` 正是 fetch()/XHR 的特征，
+    而 `image` / `document` / `script` 等说明是子资源或页面导航。
+    """
+    if (headers.get("x-requested-with") or "").strip().lower() == "xmlhttprequest":
+        return True
+    dest = (headers.get("sec-fetch-dest") or "").strip().lower()
+    if dest:
+        return dest == "empty"
+    # 没有 Fetch Metadata 的客户端（旧浏览器 / 命令行）：退回按 Accept、Content-Type 判断
+    accept = (headers.get("accept") or "").lower()
+    content_type = (headers.get("content-type") or "").lower()
+    return "application/json" in accept or "application/json" in content_type
+
+
 def is_console_path(path: str) -> bool:
     return path.startswith(CONSOLE_API_PREFIXES)
 
@@ -157,7 +209,8 @@ def judge_request(path: str, headers: dict[str, str], peer: str | None) -> Judge
 
     tags: list[str] = []
     has_marker = lowered.get("x-gw-client") == "web"
-    if not has_marker:
+    # 只对 XHR / fetch 要求前端标识；导航、图片等子资源不要求
+    if not has_marker and is_xhr_request(lowered):
         tags.append("missing_marker")
     if not looks_like_browser(user_agent):
         tags.append("non_browser_ua")
@@ -450,7 +503,8 @@ def submit_request_event(
     if not judge.is_console:
         return
     tags = list(judge.risk_tags)
-    if status == 404:
+    # 子资源（图片/字体/iframe 等）的 404 只是资源缺失，不代表有人在探测接口
+    if status == 404 and not is_subresource_request(headers or {}):
         tags.append("probe_path")
     if not tags:
         return
