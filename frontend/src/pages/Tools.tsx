@@ -153,7 +153,7 @@ function ToolLogDialog({
     const controller = new AbortController();
     void (async () => {
       const response = await fetch(`/api/admin/tools/${tool.id}/events`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
+        headers: { 'X-GW-Client': 'web', Authorization: `Bearer ${getToken()}` },
         signal: controller.signal,
       });
       if (!response.body) return;

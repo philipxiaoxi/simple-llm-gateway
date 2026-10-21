@@ -150,8 +150,10 @@ export function McpDocParsePage() {
 
   async function download(job: DocParseJob) {
     const token = getToken()
+    const headers: Record<string, string> = { 'X-GW-Client': 'web' }
+    if (token) headers.Authorization = `Bearer ${token}`
     const response = await fetch(`/api/admin/mcp/docparse/jobs/${encodeURIComponent(job.job_id)}/download`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers,
     })
     if (!response.ok) {
       notifyBad('下载失败')

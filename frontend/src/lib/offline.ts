@@ -123,6 +123,8 @@ export function formatBytes(bytes: number): string {
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
+  // 安全中心据此区分正规前端请求与直接探测
+  headers.set('X-GW-Client', 'web')
   if (init.body !== undefined && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
@@ -253,7 +255,9 @@ export async function downloadWithAuth(base: string, url: string, filename?: str
     return
   }
   const token = getToken()
-  const response = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  const headers: Record<string, string> = { 'X-GW-Client': 'web' }
+  if (token) headers.Authorization = `Bearer ${token}`
+  const response = await fetch(url, { headers })
   if (!response.ok) throw new ApiError(response.status, '下载失败')
   const blob = await response.blob()
   const objectUrl = URL.createObjectURL(blob)
