@@ -67,6 +67,8 @@ def key_to_out(
     reveal: bool = False,
     today_tokens: int = 0,
     total_tokens: int = 0,
+    rpm_used: int = 0,
+    concurrency_used: int = 0,
 ) -> KeyOut:
     settings = get_settings()
     plaintext = None
@@ -87,6 +89,10 @@ def key_to_out(
         status=item.status,
         created_at=item.created_at,
         last_used_at=item.last_used_at,
+        rpm_limit=item.rpm_limit,
+        concurrency_limit=item.concurrency_limit,
+        rpm_used=rpm_used,
+        concurrency_used=concurrency_used,
         today_tokens=today_tokens,
         total_tokens=total_tokens,
         account_ids=[account.id for account in accounts],

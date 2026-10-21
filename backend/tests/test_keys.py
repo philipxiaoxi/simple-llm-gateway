@@ -260,3 +260,39 @@ def test_list_keys_includes_token_usage_and_sorts(
     detail = client.get(f"/api/admin/keys/{older['id']}", headers=auth_headers)
     assert detail.json()["today_tokens"] == 10
     assert detail.json()["total_tokens"] == 30
+
+
+def test_key_rate_limit_defaults_and_update(client: TestClient, auth_headers: dict[str, str]) -> None:
+    account_id = _account(client, auth_headers)
+    created = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "限速默认", "account_id": account_id},
+    )
+    assert created.status_code == 200
+    body = created.json()
+    assert body["rpm_limit"] == 400
+    assert body["concurrency_limit"] == 200
+    key_id = body["id"]
+
+    updated = client.patch(
+        f"/api/admin/keys/{key_id}",
+        headers=auth_headers,
+        json={"rpm_limit": 60, "concurrency_limit": 5},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["rpm_limit"] == 60
+    assert updated.json()["concurrency_limit"] == 5
+
+    # 0 表示不限，允许保存
+    unlimited = client.patch(
+        f"/api/admin/keys/{key_id}",
+        headers=auth_headers,
+        json={"rpm_limit": 0, "concurrency_limit": 0},
+    )
+    assert unlimited.status_code == 200
+    assert unlimited.json()["rpm_limit"] == 0
+
+    usage = client.get("/api/admin/keys/usage", headers=auth_headers)
+    assert usage.status_code == 200
+    assert "items" in usage.json()

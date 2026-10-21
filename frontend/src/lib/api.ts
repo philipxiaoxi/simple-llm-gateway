@@ -243,6 +243,12 @@ export type KeyBoundAccount = {
   model_prefix?: string | null
 }
 
+export type KeyUsageItem = {
+  id: number
+  rpm_used: number
+  concurrency_used: number
+}
+
 export type ApiKeyItem = {
   id: number
   name: string
@@ -254,6 +260,10 @@ export type ApiKeyItem = {
   account_source: 'upstream' | 'agent'
   risk_level: string
   status: string
+  rpm_limit: number
+  concurrency_limit: number
+  rpm_used?: number
+  concurrency_used?: number
   created_at: string
   last_used_at: string | null
   today_tokens: number
@@ -843,7 +853,13 @@ export const api = {
   completeOauth: (payload: { account_id?: number; callback_url?: string; code?: string; state?: string }) =>
     request<{ ok: boolean }>('/api/admin/oauth/grok/callback', { method: 'POST', body: JSON.stringify(payload) }),
   keys: (sort: ApiKeySort = 'last_used') => request<ApiKeyItem[]>(`/api/admin/keys?sort=${sort}`),
-  createKey: (payload: { name: string; account_ids: number[] }) =>
+  keyUsage: () => request<{ items: KeyUsageItem[] }>('/api/admin/keys/usage'),
+  createKey: (payload: {
+    name: string
+    account_ids: number[]
+    rpm_limit?: number
+    concurrency_limit?: number
+  }) =>
     request<ApiKeyItem>('/api/admin/keys', { method: 'POST', body: JSON.stringify(payload) }),
   key: (id: number) => request<ApiKeyItem>(`/api/admin/keys/${id}`),
   benchmark: (payload: { account_id: number; model: string; prompt: string; max_tokens: number }) =>
@@ -1408,13 +1424,15 @@ export const api = {
       `/api/admin/mcp/diagrams/${encodeURIComponent(siteId)}/token`,
     ),
   mcpKeys: () => request<McpKeyItem[]>('/api/admin/mcp/keys'),
+  mcpKeyUsage: () =>
+    request<{ items: KeyUsageItem[] }>('/api/admin/mcp/keys/usage'),
   revealMcpKey: (id: number) =>
     request<{ id: number; name: string; key: string }>(`/api/admin/mcp/keys/${id}/reveal`),
   mcpKeyIntegration: (id: number) =>
     request<McpKeyIntegration>(`/api/admin/mcp/keys/${id}/integration`),
-  createMcpKey: (payload: { name: string; capability_ids: string[] }) =>
+  createMcpKey: (payload: { name: string; capability_ids: string[]; rpm_limit?: number; concurrency_limit?: number }) =>
     request<McpKeyItem>('/api/admin/mcp/keys', { method: 'POST', body: JSON.stringify(payload) }),
-  updateMcpKey: (id: number, payload: { name?: string; status?: string }) =>
+  updateMcpKey: (id: number, payload: { name?: string; status?: string; rpm_limit?: number; concurrency_limit?: number }) =>
     request<McpKeyItem>(`/api/admin/mcp/keys/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   updateMcpKeyCapabilities: (id: number, capability_ids: string[]) =>
     request<McpKeyItem>(`/api/admin/mcp/keys/${id}/capabilities`, {
@@ -2020,6 +2038,10 @@ export type McpKeyItem = {
   status: string
   capability_ids: string[]
   capability_configs?: Record<string, Record<string, unknown>>
+  rpm_limit: number
+  concurrency_limit: number
+  rpm_used?: number
+  concurrency_used?: number
   created_at: string
   last_used_at: string | null
   key?: string | null

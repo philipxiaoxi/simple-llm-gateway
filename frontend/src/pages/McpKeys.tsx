@@ -37,16 +37,68 @@ function CapabilityPicker({
   )
 }
 
+function parseLimit(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined
+  return Math.floor(parsed)
+}
+
+function RateLimitFields({
+  rpm,
+  concurrency,
+  onRpm,
+  onConcurrency,
+  disabled,
+}: {
+  rpm: string
+  concurrency: string
+  onRpm: (value: string) => void
+  onConcurrency: (value: string) => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <Field label="RPM 上限">
+        <Input
+          type="number"
+          min={0}
+          value={rpm}
+          disabled={disabled}
+          onChange={(event) => onRpm(event.target.value)}
+          placeholder="400"
+        />
+      </Field>
+      <Field label="并发上限">
+        <Input
+          type="number"
+          min={0}
+          value={concurrency}
+          disabled={disabled}
+          onChange={(event) => onConcurrency(event.target.value)}
+          placeholder="200"
+        />
+      </Field>
+      <div className="col-span-2 text-xs text-mist">每分钟请求数与同时在途请求数，0 表示不限</div>
+    </div>
+  )
+}
+
 export function McpKeysPage() {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [selected, setSelected] = useState<string[]>([])
+  const [rpm, setRpm] = useState('400')
+  const [concurrency, setConcurrency] = useState('200')
   const [createdKey, setCreatedKey] = useState<string | null>(null)
   const [revealed, setRevealed] = useState<{ id: number; name: string; key: string } | null>(null)
   const [editing, setEditing] = useState<McpKeyItem | null>(null)
   const [editName, setEditName] = useState('')
   const [editSelected, setEditSelected] = useState<string[]>([])
+  const [editRpm, setEditRpm] = useState('400')
+  const [editConcurrency, setEditConcurrency] = useState('200')
 
   const catalog = useQuery({
     queryKey: ['mcp-catalog'],
@@ -67,12 +119,30 @@ export function McpKeysPage() {
     queryFn: () => api.mcpKeys(),
   })
 
+  const { data: liveUsage = [] } = useQuery({
+    queryKey: ['mcp-key-usage'],
+    queryFn: () => api.mcpKeyUsage().then((payload) => payload.items),
+    refetchInterval: 10000,
+  })
+  const usageByKey: Record<number, { rpm: number; concurrency: number }> = {}
+  for (const entry of liveUsage) {
+    usageByKey[entry.id] = { rpm: entry.rpm_used, concurrency: entry.concurrency_used }
+  }
+
   const createMutation = useMutation({
-    mutationFn: () => api.createMcpKey({ name: name.trim(), capability_ids: selected }),
+    mutationFn: () =>
+      api.createMcpKey({
+        name: name.trim(),
+        capability_ids: selected,
+        rpm_limit: parseLimit(rpm) ?? 0,
+        concurrency_limit: parseLimit(concurrency) ?? 0,
+      }),
     onSuccess: async (item) => {
       notifyOk('MCP Key 已创建')
       setCreatedKey(item.key || null)
       setName('')
+      setRpm('400')
+      setConcurrency('200')
       await queryClient.invalidateQueries({ queryKey: ['mcp-keys'] })
     },
     onError: (caught) => notifyBad(errorMessage(caught, '创建失败')),
@@ -109,9 +179,15 @@ export function McpKeysPage() {
       const current = [...editing.capability_ids].sort().join(',')
       const next = [...editSelected].sort().join(',')
       const capsChanged = current !== next
-      if (!nameChanged && !capsChanged) return
-      if (nameChanged) {
-        await api.updateMcpKey(editing.id, { name: trimmed })
+      const rpmValue = parseLimit(editRpm) ?? 0
+      const concurrencyValue = parseLimit(editConcurrency) ?? 0
+      const limitsChanged = rpmValue !== editing.rpm_limit || concurrencyValue !== editing.concurrency_limit
+      if (!nameChanged && !capsChanged && !limitsChanged) return
+      if (nameChanged || limitsChanged) {
+        await api.updateMcpKey(editing.id, {
+          ...(nameChanged ? { name: trimmed } : {}),
+          ...(limitsChanged ? { rpm_limit: rpmValue, concurrency_limit: concurrencyValue } : {}),
+        })
       }
       if (capsChanged) {
         await api.updateMcpKeyCapabilities(editing.id, editSelected)
@@ -129,6 +205,8 @@ export function McpKeysPage() {
     setEditing(item)
     setEditName(item.name)
     setEditSelected([...item.capability_ids])
+    setEditRpm(String(item.rpm_limit))
+    setEditConcurrency(String(item.concurrency_limit))
   }
 
   async function copyKey(key: string) {
@@ -165,6 +243,12 @@ export function McpKeysPage() {
               <div className="mt-1 text-xs text-mist">
                 {item.key_prefix}… · {item.status} · 能力 [{item.capability_ids.join(', ')}] · 创建{' '}
                 {formatTime(item.created_at)}
+              </div>
+              <div className="mt-1 font-mono text-xs text-mist">
+                RPM {usageByKey[item.id]?.rpm ?? item.rpm_used ?? 0} /{' '}
+                {item.rpm_limit > 0 ? item.rpm_limit : '不限'} · 并发{' '}
+                {usageByKey[item.id]?.concurrency ?? item.concurrency_used ?? 0} /{' '}
+                {item.concurrency_limit > 0 ? item.concurrency_limit : '不限'}
               </div>
             </div>
             <div className="flex gap-2">
@@ -239,6 +323,12 @@ export function McpKeysPage() {
                 <Field label="授权能力（来自服务目录注册表）">
                   <CapabilityPicker options={capabilityOptions} selected={selected} onChange={setSelected} />
                 </Field>
+                <RateLimitFields
+                  rpm={rpm}
+                  concurrency={concurrency}
+                  onRpm={setRpm}
+                  onConcurrency={setConcurrency}
+                />
                 <div className="flex justify-end gap-2">
                   <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
                     取消
@@ -271,6 +361,13 @@ export function McpKeysPage() {
               <CapabilityPicker options={capabilityOptions} selected={editSelected} onChange={setEditSelected} />
             </Field>
             <p className="text-xs text-mist">取消勾选即收回该能力授权；至少保留一项。</p>
+            <RateLimitFields
+              rpm={editRpm}
+              concurrency={editConcurrency}
+              onRpm={setEditRpm}
+              onConcurrency={setEditConcurrency}
+              disabled={saveEdit.isPending}
+            />
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" disabled={saveEdit.isPending} onClick={() => setEditing(null)}>
                 取消

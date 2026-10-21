@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.clock import utcnow
 from app.models import ApiKey, ApiKeyAccount, ModelAlias, UpstreamAccount
+from app.services.gateway_rate_limit import invalidate_gateway_key
 from app.services.model_caps import ModelRecord, parse_model_records, serialize_record
 
 PREFIX_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")
@@ -256,3 +257,4 @@ def unbind_account_keys(db: Session, account: UpstreamAccount) -> None:
             api_key.account_id = None
             api_key.account = None
             api_key.status = "disabled"
+            invalidate_gateway_key(api_key.key_hash)

@@ -3,17 +3,35 @@ from __future__ import annotations
 from fastapi.responses import JSONResponse
 
 
-def openai_error(status_code: int, message: str, error_type: str = "invalid_request_error") -> JSONResponse:
+def _headers_for(status_code: int, error_type: str | None) -> dict[str, str] | None:
+    if status_code == 401:
+        return {"WWW-Authenticate": "Bearer"}
+    return None
+
+
+def openai_error(
+    status_code: int,
+    message: str,
+    error_type: str = "invalid_request_error",
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
         content={"error": {"message": message, "type": error_type, "param": None, "code": None}},
+        headers=headers or _headers_for(status_code, error_type),
     )
 
 
-def anthropic_error(status_code: int, message: str, error_type: str = "invalid_request_error") -> JSONResponse:
+def anthropic_error(
+    status_code: int,
+    message: str,
+    error_type: str = "invalid_request_error",
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
         content={"type": "error", "error": {"type": error_type, "message": message}},
+        headers=headers or _headers_for(status_code, error_type),
     )
 
 

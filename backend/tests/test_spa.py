@@ -59,10 +59,26 @@ def test_spa_does_not_serve_repo_files(client: TestClient) -> None:
 
     if not FRONTEND_DIST.exists():
         pytest.skip("frontend dist 不存在")
-    response = client.get("/.env")
-    assert response.status_code == 200
-    assert "APP_SECRET_KEY" not in response.text
-    assert "AI一体化服务平台" in response.text
+    # 未知路径（含 .env 这类仓库文件）必须给真 404，不能回落到 index.html
+    for path in ("/.env", "/.git/config", "/nope", "/API/admin/me"):
+        response = client.get(path)
+        assert response.status_code == 404, path
+        assert "AI一体化服务平台" not in response.text
+
+
+def test_robots_and_security_txt(client: TestClient) -> None:
+    from app.main import FRONTEND_DIST
+
+    if not FRONTEND_DIST.exists():
+        pytest.skip("frontend dist 不存在")
+    robots = client.get("/robots.txt")
+    assert robots.status_code == 200
+    assert "Disallow: /" in robots.text
+    # 未配置安全联系人时返回 404，而不是落到 SPA
+    from app.config import get_settings
+
+    if not (get_settings().security_contact or "").strip():
+        assert client.get("/.well-known/security.txt").status_code == 404
 
 
 def test_spa_does_not_swallow_unknown_api_posts(client: TestClient) -> None:
@@ -143,3 +159,14 @@ def test_voice_worklet_is_served_as_javascript(client: TestClient) -> None:
     assert response.headers["cache-control"] == "no-cache"
     assert b"registerProcessor" in response.content
     assert not response.content.lstrip().startswith(b"<!doctype html")
+
+
+def test_spa_route_allowlist() -> None:
+    from app.main import is_spa_route
+
+    # 已知前端路由（含子路径）
+    for path in ("", "login", "accounts", "logs/123", "mcp-plaza/sites/42", "security"):
+        assert is_spa_route(path) is True, path
+    # 未知路径不能回落
+    for path in (".env", ".git/config", "nope", "API/admin/me", "admin", "robots.txt"):
+        assert is_spa_route(path) is False, path

@@ -20,6 +20,7 @@ from app.schemas import (
     KeyUpdate,
 )
 from app.serializers import key_to_out
+from app.services.gateway_rate_limit import gateway_limiter, invalidate_gateway_key
 from app.services.ccswitch import (
     CCS_SWITCH_TARGETS,
     build_ccswitch_url_for_app,
@@ -49,15 +50,30 @@ def list_keys(
 ) -> list[KeyOut]:
     rows = list(db.scalars(select(ApiKey).options(*_key_load_options())).unique().all())
     usage = _token_usage_by_key(db, [row.id for row in rows])
+    live = gateway_limiter.usage("api")
     rows.sort(key=lambda item: _sort_value(item, sort, usage), reverse=True)
     return [
         key_to_out(
             row,
             today_tokens=usage.get(row.id, (0, 0))[0],
             total_tokens=usage.get(row.id, (0, 0))[1],
+            rpm_used=live.get(row.id, (0, 0))[0],
+            concurrency_used=live.get(row.id, (0, 0))[1],
         )
         for row in rows
     ]
+
+
+@router.get("/usage")
+def key_usage() -> dict:
+    """近一分钟的实时用量：每个 Key 的 RPM 与并发使用量。"""
+    usage = gateway_limiter.usage("api")
+    return {
+        "items": [
+            {"id": key_id, "rpm_used": rpm, "concurrency_used": concurrency}
+            for key_id, (rpm, concurrency) in usage.items()
+        ]
+    }
 
 
 @router.post("", response_model=KeyOut)
@@ -69,9 +85,16 @@ def create_key(payload: KeyCreate, db: Session = Depends(get_db)) -> KeyOut:
         key_hash=hash_api_key(plaintext),
         key_encrypted=encrypt_secret(plaintext, settings.app_secret_key),
         key_prefix=key_prefix(plaintext),
+        rpm_limit=payload.rpm_limit if payload.rpm_limit is not None else settings.security_gateway_key_rpm,
+        concurrency_limit=(
+            payload.concurrency_limit
+            if payload.concurrency_limit is not None
+            else settings.security_gateway_key_concurrency
+        ),
     )
     db.add(item)
     db.flush()
+    invalidate_gateway_key(item.key_hash)
     try:
         replace_key_accounts(db, item, payload.resolved_account_ids())
     except ValueError as error:
@@ -200,12 +223,17 @@ def update_key(key_id: int, payload: KeyUpdate, db: Session = Depends(get_db)) -
         item.name = payload.name
     if payload.status is not None:
         item.status = payload.status
+    if payload.rpm_limit is not None:
+        item.rpm_limit = payload.rpm_limit
+    if payload.concurrency_limit is not None:
+        item.concurrency_limit = payload.concurrency_limit
     account_ids = payload.resolved_account_ids()
     if account_ids is not None:
         try:
             replace_key_accounts(db, item, account_ids)
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
+    invalidate_gateway_key(item.key_hash)
     return _key_out(db, item)
 
 
@@ -218,6 +246,7 @@ def delete_key(key_id: int, db: Session = Depends(get_db)) -> dict[str, bool]:
         .values(api_key_name=func.coalesce(RequestLog.api_key_name, item.name))
     )
     db.delete(item)
+    invalidate_gateway_key(item.key_hash)
     return {"ok": True}
 
 
@@ -275,7 +304,15 @@ def _token_usage_by_key(db: Session, key_ids: list[int]) -> dict[int, tuple[int,
 
 def _key_out(db: Session, item: ApiKey, reveal: bool = False) -> KeyOut:
     today_tokens, total_tokens = _token_usage_by_key(db, [item.id]).get(item.id, (0, 0))
-    return key_to_out(item, reveal=reveal, today_tokens=today_tokens, total_tokens=total_tokens)
+    rpm_used, concurrency_used = gateway_limiter.usage("api").get(item.id, (0, 0))
+    return key_to_out(
+        item,
+        reveal=reveal,
+        today_tokens=today_tokens,
+        total_tokens=total_tokens,
+        rpm_used=rpm_used,
+        concurrency_used=concurrency_used,
+    )
 
 
 def _sort_value(
