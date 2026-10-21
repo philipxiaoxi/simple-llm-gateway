@@ -86,7 +86,7 @@ class Provider:
         return {
             **self.auth_headers(token or ""),
             **self.relay_headers(account),
-            **spoof_headers(account.header_spoof, model=model),
+            **spoof_headers(account.header_spoof, model=model, seed=f"account:{account.id}"),
         }
 
     def can_passthrough(self, inbound_protocol: str) -> bool:

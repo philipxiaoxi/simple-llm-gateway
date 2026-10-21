@@ -52,6 +52,7 @@ from app.services.bridge import (
 )
 from app.services.conversation import (
     append_log_messages,
+    conversation_fingerprint,
     extract_assistant_message,
     extract_request_messages,
     extract_session_key,
@@ -61,6 +62,7 @@ from app.services.conversation import (
     new_messages_to_store,
 )
 from app.services.credentials import CredentialError
+from app.services.header_spoof import spoof_identity
 from app.services.reasoning import (
     dump_reasoning_json,
     inject_reasoning_into_messages,
@@ -431,6 +433,19 @@ def _apply_client_meta(log: RequestLog, meta: dict[str, str | None]) -> None:
         log.client_name = meta["client_name"]
 
 
+def _spoof_identity(
+    body: Any,
+    request_headers: dict[str, str] | None,
+    api_key_id: int | None,
+    account_id: int,
+):
+    """本次请求的伪装身份：客户端会话标识优先，缺失时用 api key + 账号 + 对话指纹兜底。"""
+    payload = body if isinstance(body, dict) else None
+    session_key = extract_session_key(payload, request_headers)
+    seed = f"{api_key_id}:{account_id}:{conversation_fingerprint(payload) or ''}"
+    return spoof_identity(session_key, seed)
+
+
 async def handle_chat(
     db: Session,
     api_key: ApiKey,
@@ -522,31 +537,33 @@ async def handle_chat(
     inject_reasoning_into_messages(messages, stored_reasoning)
 
     if stream:
-        return await _stream_response(
-            db,
-            api_key,
-            account,
-            body,
-            protocol,
-            model,
-            messages,
-            extra,
-            credential,
-            started,
-            request_headers,
-            inbound_reasoning,
-            responses_input=sanitize_responses_input(body.get("input")),
-            peer=peer,
-            model_resolution=model_resolution,
-        )
+        with _spoof_identity(body, request_headers, api_key.id, account.id):
+            return await _stream_response(
+                db,
+                api_key,
+                account,
+                body,
+                protocol,
+                model,
+                messages,
+                extra,
+                credential,
+                started,
+                request_headers,
+                inbound_reasoning,
+                responses_input=sanitize_responses_input(body.get("input")),
+                peer=peer,
+                model_resolution=model_resolution,
+            )
 
     try:
-        if protocol == "openai_responses":
-            result = await call_responses(
-                account, sanitize_responses_input(body.get("input")), model, False, extra, credential
-            )
-        else:
-            result = await call_chat(account, messages, model, False, extra, credential)
+        with _spoof_identity(body, request_headers, api_key.id, account.id):
+            if protocol == "openai_responses":
+                result = await call_responses(
+                    account, sanitize_responses_input(body.get("input")), model, False, extra, credential
+                )
+            else:
+                result = await call_chat(account, messages, model, False, extra, credential)
     except Exception as error:
         return await _fail(
             api_key,
@@ -834,21 +851,23 @@ async def handle_anthropic_passthrough(
     model = str(body.get("model") or "")
     inbound_reasoning = reasoning_map_from_anthropic_messages(body.get("messages") if isinstance(body, dict) else None)
     if stream:
-        return _stream_anthropic_passthrough(
-            api_key,
-            account,
-            body,
-            credential,
-            started,
-            request_headers,
-            inbound_reasoning,
-            model_resolution=model_resolution,
-            peer=peer,
-        )
+        with _spoof_identity(body, request_headers, api_key.id, account.id):
+            return _stream_anthropic_passthrough(
+                api_key,
+                account,
+                body,
+                credential,
+                started,
+                request_headers,
+                inbound_reasoning,
+                model_resolution=model_resolution,
+                peer=peer,
+            )
     try:
-        status_code, payload = await get_provider(account.provider).post_native(
-            account, body, credential, request_headers
-        )
+        with _spoof_identity(body, request_headers, api_key.id, account.id):
+            status_code, payload = await get_provider(account.provider).post_native(
+                account, body, credential, request_headers
+            )
     except Exception as error:
         return await _fail(
             api_key,
@@ -992,7 +1011,8 @@ async def handle_count_tokens(
 ) -> JSONResponse:
     provider = get_provider(account.provider)
     try:
-        native = await provider.count_tokens_native(account, body, request_headers)
+        with _spoof_identity(body, request_headers, None, account.id):
+            native = await provider.count_tokens_native(account, body, request_headers)
     except Exception as error:
         return protocol_error("anthropic_messages", 502, str(error))
     if native is not None:

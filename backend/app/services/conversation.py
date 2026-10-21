@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Callable
@@ -12,6 +13,11 @@ from app.clock import shanghai_day_start_utc, utcnow
 from app.models import RequestLog, RequestLogMessage
 
 SESSION_HEADER_NAMES = (
+    # 各客户端/上游的会话头，优先识别，便于网关把同一会话的多轮请求合并到一条记录
+    "x-opencode-session",
+    "x-claude-code-session-id",
+    "x-grok-session-id",
+    "x-grok-conv-id",
     "x-session-id",
     "x-session-affinity",
     "x-parent-session-id",
@@ -19,6 +25,8 @@ SESSION_HEADER_NAMES = (
     "x-cursor-conversation-id",
     "x-codex-thread-id",
     "thread-id",
+    "session-id",
+    "x-client-request-id",
 )
 
 # 单会话最多保留的消息条数（滚动窗口）：保留头部连续系统消息 + 最新 N 条，
@@ -55,6 +63,28 @@ def extract_session_key(body: dict[str, Any] | None, headers: dict[str, str] | N
             if isinstance(value, str) and value.strip():
                 return value.strip()
     return None
+
+
+def conversation_fingerprint(body: dict[str, Any] | None) -> str | None:
+    """无会话标识时，用对话「开头」的内容指纹近似会话身份。
+
+    取系统提示与第一条用户消息：同一会话的后续轮次保持不变，不同会话通常不同。
+    仅用于给上游伪造稳定会话头，不参与网关自身的会话归类。
+    """
+    messages = extract_request_messages(body)
+    if not messages:
+        return None
+    picked: list[str] = []
+    for message in messages:
+        role = str(message.get("role") or "")
+        if role == "system":
+            picked.append("system:" + _content_key(message.get("content")))
+        elif role == "user":
+            picked.append("user:" + _content_key(message.get("content")))
+            break
+    if not picked:
+        return None
+    return hashlib.sha256("\n".join(picked).encode("utf-8")).hexdigest()[:32]
 
 
 def _content_key(content: Any) -> str:
