@@ -122,6 +122,8 @@ class ApiKey(Base):
     key_prefix: Mapped[str] = mapped_column(String(32), nullable=False)
     account_id: Mapped[int | None] = mapped_column(ForeignKey("upstream_accounts.id"), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    rpm_limit: Mapped[int] = mapped_column(Integer, default=400, server_default="400", nullable=False)
+    concurrency_limit: Mapped[int] = mapped_column(Integer, default=200, server_default="200", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -603,6 +605,8 @@ class McpKey(Base):
     key_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     key_prefix: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    rpm_limit: Mapped[int] = mapped_column(Integer, default=400, server_default="400", nullable=False)
+    concurrency_limit: Mapped[int] = mapped_column(Integer, default=200, server_default="200", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

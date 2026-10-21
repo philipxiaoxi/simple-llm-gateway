@@ -24,27 +24,31 @@ def create_access_token(admin: Admin) -> str:
     return jwt.encode(payload, settings.app_secret_key, algorithm="HS256")
 
 
+def _unauthorized(detail: str) -> HTTPException:
+    return HTTPException(status_code=401, detail=detail, headers={"WWW-Authenticate": "Bearer"})
+
+
 def get_current_admin(
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> Admin:
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="未登录")
+        raise _unauthorized("未登录")
     token = authorization.split(" ", 1)[1].strip()
     settings = get_settings()
     try:
         payload = jwt.decode(token, settings.app_secret_key, algorithms=["HS256"])
     except jwt.PyJWTError as error:
-        raise HTTPException(status_code=401, detail="登录已失效") from error
+        raise _unauthorized("登录已失效") from error
     username = payload.get("sub")
     if not username:
-        raise HTTPException(status_code=401, detail="登录已失效")
+        raise _unauthorized("登录已失效")
     admin = db.scalar(select(Admin).where(Admin.username == username))
     if admin is None:
-        raise HTTPException(status_code=401, detail="账号不存在")
+        raise _unauthorized("账号不存在")
     token_version = int(payload.get("ver") or 0)
     if token_version != int(admin.token_version or 0):
-        raise HTTPException(status_code=401, detail="登录已失效")
+        raise _unauthorized("登录已失效")
     return admin
 
 

@@ -247,6 +247,16 @@ class Settings(BaseSettings):
     security_beacon_rate_limit: int = 60
     security_auth_fail_threshold: int = 10
     security_auth_fail_window_seconds: int = 300
+    # 登录锁定按来源 IP 计数；这些 IP/CIDR 豁免（逗号分隔）
+    security_login_whitelist: str = ""
+    # ---- 网关限速（/mcp 与 /v1 等，按 Key 的 RPM 与并发）----
+    # Key 默认额度，可在后台按 Key 覆盖；0 表示不限
+    security_gateway_key_rpm: int = 400
+    security_gateway_key_concurrency: int = 200
+    # 未携带有效 Key 的请求按来源 IP 计数，防止 Key 枚举；0 表示不限
+    security_gateway_ip_rpm: int = 300
+    # 安全联系人：配置后 /.well-known/security.txt 才会提供
+    security_contact: str = ""
 
     @property
     def database_url(self) -> str:

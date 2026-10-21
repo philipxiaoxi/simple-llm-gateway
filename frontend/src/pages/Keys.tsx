@@ -187,10 +187,56 @@ function BoundAccountList({
   )
 }
 
+function parseLimit(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined
+  return Math.floor(parsed)
+}
+
+function RateLimitFields({
+  rpm,
+  concurrency,
+  onRpm,
+  onConcurrency,
+}: {
+  rpm: string
+  concurrency: string
+  onRpm: (value: string) => void
+  onConcurrency: (value: string) => void
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <Field label="RPM 上限">
+        <Input
+          type="number"
+          min={0}
+          value={rpm}
+          onChange={(event) => onRpm(event.target.value)}
+          placeholder="400"
+        />
+      </Field>
+      <Field label="并发上限">
+        <Input
+          type="number"
+          min={0}
+          value={concurrency}
+          onChange={(event) => onConcurrency(event.target.value)}
+          placeholder="200"
+        />
+      </Field>
+      <div className="col-span-2 text-xs text-mist">每分钟请求数与同时在途请求数，0 表示不限</div>
+    </div>
+  )
+}
+
 function KeyEditDialog({
   keyId,
   initialName,
   initialAccountIds,
+  initialRpm,
+  initialConcurrency,
   accounts,
   onClose,
   onSaved,
@@ -198,12 +244,16 @@ function KeyEditDialog({
   keyId: number
   initialName: string
   initialAccountIds: number[]
+  initialRpm: number
+  initialConcurrency: number
   accounts: Account[]
   onClose: () => void
   onSaved: () => void
 }) {
   const [name, setName] = useState(initialName)
   const [accountIds, setAccountIds] = useState<number[]>(initialAccountIds)
+  const [rpm, setRpm] = useState(String(initialRpm))
+  const [concurrency, setConcurrency] = useState(String(initialConcurrency))
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
 
@@ -220,7 +270,12 @@ function KeyEditDialog({
     setPending(true)
     setError('')
     try {
-      await api.updateKey(keyId, { name: trimmed, account_ids: accountIds })
+      await api.updateKey(keyId, {
+        name: trimmed,
+        account_ids: accountIds,
+        rpm_limit: parseLimit(rpm) ?? 0,
+        concurrency_limit: parseLimit(concurrency) ?? 0,
+      })
       onSaved()
     } catch (caught) {
       setError(errorMessage(caught, '保存失败'))
@@ -238,6 +293,12 @@ function KeyEditDialog({
         <Field label="绑定上游">
           <BoundAccountList accounts={accounts} selectedIds={accountIds} onChange={setAccountIds} />
         </Field>
+        <RateLimitFields
+          rpm={rpm}
+          concurrency={concurrency}
+          onRpm={setRpm}
+          onConcurrency={setConcurrency}
+        />
         {error ? <div className="text-sm text-danger">{error}</div> : null}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
@@ -389,6 +450,8 @@ export function KeysPage() {
   const { data: keys = [] } = useQuery({ queryKey: ['keys', sort], queryFn: () => api.keys(sort) })
   const [name, setName] = useState('')
   const [accountIds, setAccountIds] = useState<number[]>([])
+  const [rpm, setRpm] = useState('400')
+  const [concurrency, setConcurrency] = useState('200')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [accountFilter, setAccountFilter] = useState('')
@@ -408,11 +471,36 @@ export function KeysPage() {
     keyName: string
     accounts: NonNullable<ApiKeyItem['accounts']>
   } | null>(null)
-  const [editDialog, setEditDialog] = useState<{ keyId: number; name: string; accountIds: number[] } | null>(null)
+  const [editDialog, setEditDialog] = useState<{
+    keyId: number
+    name: string
+    accountIds: number[]
+    rpm: number
+    concurrency: number
+  } | null>(null)
   const [aliasesDialog, setAliasesDialog] = useState<{ keyId: number; keyName: string } | null>(null)
 
+  const { data: liveUsage = [] } = useQuery({
+    queryKey: ['key-usage'],
+    queryFn: () => api.keyUsage().then((data) => data.items),
+    refetchInterval: 10000,
+  })
+  const usageByKey = useMemo(() => {
+    const map: Record<number, { rpm: number; concurrency: number }> = {}
+    for (const entry of liveUsage) {
+      map[entry.id] = { rpm: entry.rpm_used, concurrency: entry.concurrency_used }
+    }
+    return map
+  }, [liveUsage])
+
   const createMutation = useMutation({
-    mutationFn: () => api.createKey({ name, account_ids: accountIds }),
+    mutationFn: () =>
+      api.createKey({
+        name,
+        account_ids: accountIds,
+        rpm_limit: parseLimit(rpm) ?? 0,
+        concurrency_limit: parseLimit(concurrency) ?? 0,
+      }),
     onSuccess: (item) => {
       queryClient.invalidateQueries({ queryKey: ['keys'] })
       if (item.key) {
@@ -426,6 +514,8 @@ export function KeysPage() {
       }
       setName('')
       setAccountIds([])
+      setRpm('400')
+      setConcurrency('200')
       setCreateDialog(false)
     },
     onError: (error: Error) => notifyBad(error.message),
@@ -732,6 +822,25 @@ export function KeysPage() {
                   <div className="mt-1 font-mono text-xl text-signal">{formatTokenCount(item.total_tokens)}</div>
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-line bg-ink/40 px-3 py-3">
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">RPM</div>
+                  <div className="mt-1 font-mono text-xl text-signal">
+                    {usageByKey[item.id]?.rpm ?? item.rpm_used ?? 0}
+                    <span className="text-sm text-mist"> / {item.rpm_limit > 0 ? item.rpm_limit : '不限'}</span>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-line bg-ink/40 px-3 py-3">
+                  <div className="text-xs uppercase tracking-[0.16em] text-mist">并发</div>
+                  <div className="mt-1 font-mono text-xl text-signal">
+                    {usageByKey[item.id]?.concurrency ?? item.concurrency_used ?? 0}
+                    <span className="text-sm text-mist">
+                      {' '}
+                      / {item.concurrency_limit > 0 ? item.concurrency_limit : '不限'}
+                    </span>
+                  </div>
+                </div>
+              </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-mist">
                 <span>最近使用：{formatTime(item.last_used_at)}</span>
                 <span>创建时间：{formatTime(item.created_at)}</span>
@@ -752,7 +861,15 @@ export function KeysPage() {
                 <div className="col-span-2 md:col-auto md:w-auto">
                 <MoreMenu>
                   <MenuItem
-                    onClick={() => setEditDialog({ keyId: item.id, name: item.name, accountIds: keyBoundIds(item) })}
+                    onClick={() =>
+                      setEditDialog({
+                        keyId: item.id,
+                        name: item.name,
+                        accountIds: keyBoundIds(item),
+                        rpm: item.rpm_limit,
+                        concurrency: item.concurrency_limit,
+                      })
+                    }
                   >
                     编辑
                   </MenuItem>
@@ -833,6 +950,12 @@ export function KeysPage() {
             <Field label="绑定上游">
               <BoundAccountList accounts={availableAccounts} selectedIds={accountIds} onChange={setAccountIds} />
             </Field>
+            <RateLimitFields
+              rpm={rpm}
+              concurrency={concurrency}
+              onRpm={setRpm}
+              onConcurrency={setConcurrency}
+            />
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" onClick={() => setCreateDialog(false)}>
                 取消
@@ -891,6 +1014,8 @@ export function KeysPage() {
           keyId={editDialog.keyId}
           initialName={editDialog.name}
           initialAccountIds={editDialog.accountIds}
+          initialRpm={editDialog.rpm}
+          initialConcurrency={editDialog.concurrency}
           accounts={accounts.filter(
             (account) => availableAccounts.includes(account) || editDialog.accountIds.includes(account.id),
           )}

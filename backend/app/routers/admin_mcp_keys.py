@@ -13,11 +13,13 @@ from app.models import McpKey
 from app.schemas import McpCapabilityConfigUpdate, McpKeyCapabilitiesUpdate, McpKeyCreate, McpKeyOut, McpKeyUpdate
 from app.services.mcp_auth import allowed_capability_ids, create_mcp_key_record, replace_mcp_key_capabilities
 from app.services.mcp_key_config import all_capability_configs, set_capability_config
+from app.services.gateway_rate_limit import gateway_limiter, invalidate_gateway_key
 
 router = APIRouter(prefix="/api/admin/mcp/keys", tags=["admin-mcp-keys"], dependencies=[Depends(get_current_admin)])
 
 
 def _out(item: McpKey, key: str | None = None) -> McpKeyOut:
+    rpm_used, concurrency_used = gateway_limiter.usage("mcp").get(item.id, (0, 0))
     return McpKeyOut(
         id=item.id,
         name=item.name,
@@ -25,6 +27,10 @@ def _out(item: McpKey, key: str | None = None) -> McpKeyOut:
         status=item.status,
         capability_ids=[cap.capability_id for cap in item.capabilities],
         capability_configs=all_capability_configs(item),
+        rpm_limit=item.rpm_limit,
+        concurrency_limit=item.concurrency_limit,
+        rpm_used=rpm_used,
+        concurrency_used=concurrency_used,
         created_at=item.created_at,
         last_used_at=item.last_used_at,
         key=key,
@@ -40,10 +46,30 @@ def list_keys(db: Session = Depends(get_db)):
 @router.post("", response_model=McpKeyOut, status_code=201)
 def create_key(payload: McpKeyCreate, db: Session = Depends(get_db)):
     record, plaintext = create_mcp_key_record(db, payload.name, payload.capability_ids)
+    settings = get_settings()
+    record.rpm_limit = payload.rpm_limit if payload.rpm_limit is not None else settings.security_gateway_key_rpm
+    record.concurrency_limit = (
+        payload.concurrency_limit
+        if payload.concurrency_limit is not None
+        else settings.security_gateway_key_concurrency
+    )
+    db.flush()
     db.refresh(record)
     record = db.scalar(select(McpKey).where(McpKey.id == record.id).options(selectinload(McpKey.capabilities)))
     assert record is not None
     return _out(record, key=plaintext)
+
+
+@router.get("/usage")
+def key_usage() -> dict:
+    """近一分钟的实时用量：每个 MCP Key 的 RPM 与并发使用量。"""
+    usage = gateway_limiter.usage("mcp")
+    return {
+        "items": [
+            {"id": key_id, "rpm_used": rpm, "concurrency_used": concurrency}
+            for key_id, (rpm, concurrency) in usage.items()
+        ]
+    }
 
 
 @router.patch("/{key_id}", response_model=McpKeyOut)
@@ -58,7 +84,12 @@ def update_key(key_id: int, payload: McpKeyUpdate, db: Session = Depends(get_db)
         if status not in {"active", "disabled"}:
             raise HTTPException(400, "status 只能是 active 或 disabled")
         item.status = status
+    if payload.rpm_limit is not None:
+        item.rpm_limit = payload.rpm_limit
+    if payload.concurrency_limit is not None:
+        item.concurrency_limit = payload.concurrency_limit
     db.flush()
+    invalidate_gateway_key(item.key_hash)
     db.refresh(item)
     return _out(item)
 
@@ -140,3 +171,4 @@ def delete_key(key_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "MCP Key 不存在")
     db.delete(item)
     db.flush()
+    invalidate_gateway_key(item.key_hash)

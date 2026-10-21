@@ -7,7 +7,8 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy import text
 
 from app.capabilities import ensure_defaults
@@ -74,6 +75,7 @@ from app.services.jobs import start_job_loops
 from app.services.knowledge_jobs import reconcile_stuck_jobs as reconcile_stuck_knowledge_jobs
 from app.services.knowledge_jobs import start_knowledge_job_workers
 from app.services.knowledge_retention import retention_loop as knowledge_retention_loop
+from app.services.gateway_rate_limit import GatewayRateLimitMiddleware
 from app.services.security_audit import SecurityAuditMiddleware, audit_worker
 from app.services.security_retention import retention_loop as security_retention_loop
 from app.services.site_retention import retention_loop as site_retention_loop
@@ -206,6 +208,18 @@ app.include_router(admin_generation.router)
 app.include_router(admin_generation.asset_router)
 
 
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    # 统一错误体，不外抛 Pydantic 的字段/类型明细，避免泄露技术栈。
+    # 日志同样只记位置与类型，不记 input/ctx，避免把请求体里的密码等敏感值写进日志。
+    details = [
+        {"loc": list(error.get("loc", ())), "type": error.get("type")}
+        for error in exc.errors()
+    ]
+    print(f"[validation] {request.method} {request.url.path}: {details}")
+    return JSONResponse(status_code=422, content={"detail": "请求参数不合法"})
+
+
 @app.middleware("http")
 async def log_slow_requests(request: Request, call_next):
     started = time.perf_counter()
@@ -334,6 +348,7 @@ class DisableApiCacheMiddleware:
 app.add_middleware(RedactMcpQueryMiddleware)
 app.add_middleware(DisableApiCacheMiddleware)
 app.add_middleware(SecurityAuditMiddleware)
+app.add_middleware(GatewayRateLimitMiddleware)
 # 最后添加，保证压缩在最外层：API JSON 与静态文本都会用到
 app.add_middleware(CompressTextMiddleware, minimum_size=1024, compresslevel=5)
 
@@ -348,6 +363,35 @@ def _frontend_dist() -> Path:
 
 
 FRONTEND_DIST = _frontend_dist()
+# 已知前端路由的顶层段（对照 frontend/src/App.tsx）；其余路径返回真 404。
+SPA_SEGMENTS = frozenset(
+    {
+        "",
+        "login",
+        "share",
+        "voice",
+        "accounts",
+        "agents",
+        "keys",
+        "skills",
+        "mcp-plaza",
+        "tools",
+        "info",
+        "image-gen",
+        "video-gen",
+        "offline",
+        "benchmark",
+        "leaderboard",
+        "jobs",
+        "logs",
+        "security",
+    }
+)
+def is_spa_route(full_path: str) -> bool:
+    """是否为已知前端路由（对照 SPA_SEGMENTS），未知路径应返回真 404。"""
+    return full_path.split("/", 1)[0] in SPA_SEGMENTS
+
+
 if FRONTEND_DIST.exists():
     no_cache_headers = {"Cache-Control": "no-cache"}
     icon_headers = {"Cache-Control": MUTABLE_ASSET_CACHE}
@@ -427,6 +471,19 @@ if FRONTEND_DIST.exists():
             raise HTTPException(status_code=404, detail="Not Found")
         return _frontend_file(name, no_cache_headers)
 
+    @app.api_route("/robots.txt", methods=["GET", "HEAD"])
+    def frontend_robots() -> Response:
+        return Response("User-agent: *\nDisallow: /\n", media_type="text/plain")
+
+    @app.api_route("/.well-known/security.txt", methods=["GET", "HEAD"])
+    def frontend_security_txt() -> Response:
+        # 未配置安全联系人时返回 404，避免给出无效联系方式。
+        contact = (get_settings().security_contact or "").strip()
+        if not contact:
+            raise HTTPException(status_code=404, detail="Not Found")
+        body = f"Contact: {contact}\nPreferred-Languages: zh, en\n"
+        return Response(body, media_type="text/plain")
+
     @app.api_route("/{full_path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
     def spa(full_path: str, request: Request) -> FileResponse:
         # API 路径不能回落到 SPA，否则未注册的 POST 会变成 405 而不是 404。
@@ -436,6 +493,9 @@ if FRONTEND_DIST.exists():
             or full_path.startswith(("api/", "v1/", "anthropic/", "chat", "responses", "models", "mcp/"))
         )
         if is_api or request.method not in {"GET", "HEAD"}:
+            raise HTTPException(status_code=404, detail="Not Found")
+        # 只有已知前端路由才回 index.html，其余给真 404，避免把不存在的路径伪装成 200。
+        if not is_spa_route(full_path):
             raise HTTPException(status_code=404, detail="Not Found")
         # 前端路由一律回 index.html，不把用户路径拼到磁盘上。
         return FileResponse(FRONTEND_DIST / "index.html", headers=no_cache_headers)

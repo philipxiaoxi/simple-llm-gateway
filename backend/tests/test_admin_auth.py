@@ -74,8 +74,20 @@ def test_login_lockout_after_repeated_failures(client: TestClient) -> None:
         assert failed.status_code == 401
     locked = client.post("/api/admin/login", json={"username": "admin", "password": "nope"})
     assert locked.status_code == 429
+    assert int(locked.headers["retry-after"]) > 0
     still_locked = client.post("/api/admin/login", json={"username": "admin", "password": "admin123"})
     assert still_locked.status_code == 429
+
+
+def test_login_lockout_is_keyed_by_source_not_username(client: TestClient) -> None:
+    for _ in range(4):
+        failed = client.post("/api/admin/login", json={"username": "admin", "password": "nope"})
+        assert failed.status_code == 401
+    # 第 5 次换用户名仍计入同一来源，触发锁定
+    fifth = client.post("/api/admin/login", json={"username": "someone-else", "password": "nope"})
+    assert fifth.status_code == 401
+    locked = client.post("/api/admin/login", json={"username": "yet-another", "password": "nope"})
+    assert locked.status_code == 429
 
 
 def test_docs_and_openapi_are_disabled(client: TestClient) -> None:

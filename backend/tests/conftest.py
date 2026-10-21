@@ -35,10 +35,13 @@ def client(tmp_path, monkeypatch) -> TestClient:
     from app.config import reset_settings
     from app.db import reset_db_runtime
     from app.login_gate import login_gate
+    from app.services.gateway_rate_limit import clear_gateway_key_cache, gateway_limiter
 
     reset_settings()
     reset_db_runtime()
     login_gate.reset()
+    gateway_limiter.reset()
+    clear_gateway_key_cache()
 
     from app.services.chroma_store import reset_chroma_client_cache
     from app.services.embedding import FakeEmbeddingClient, set_embedding_client

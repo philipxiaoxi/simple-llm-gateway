@@ -215,6 +215,19 @@ def _ensure_columns(engine: Engine) -> None:
         for column, statement in skill_statements.items():
             if column not in skill_columns:
                 connection.execute(text(statement))
+        # 网关限速：按 Key 的 RPM 与并发额度（0 表示不限）
+        for table in ("api_keys", "mcp_keys"):
+            key_columns = {row[1] for row in connection.execute(text(f"PRAGMA table_info({table})"))}
+            if not key_columns:
+                continue
+            if "rpm_limit" not in key_columns:
+                connection.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN rpm_limit INTEGER DEFAULT 400 NOT NULL")
+                )
+            if "concurrency_limit" not in key_columns:
+                connection.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN concurrency_limit INTEGER DEFAULT 200 NOT NULL")
+                )
         generation_provider_columns = {
             row[1] for row in connection.execute(text("PRAGMA table_info(generation_providers)"))
         }

@@ -320,6 +320,8 @@ class KeyCreate(BaseModel):
     name: str
     account_id: int | None = None
     account_ids: list[int] | None = None
+    rpm_limit: int | None = Field(default=None, ge=0, le=1_000_000)
+    concurrency_limit: int | None = Field(default=None, ge=0, le=1_000_000)
 
     @model_validator(mode="after")
     def require_accounts(self) -> KeyCreate:
@@ -340,6 +342,8 @@ class KeyUpdate(BaseModel):
     status: str | None = None
     account_id: int | None = None
     account_ids: list[int] | None = None
+    rpm_limit: int | None = Field(default=None, ge=0, le=1_000_000)
+    concurrency_limit: int | None = Field(default=None, ge=0, le=1_000_000)
 
     def resolved_account_ids(self) -> list[int] | None:
         if self.account_ids is not None:
@@ -362,6 +366,10 @@ class KeyOut(BaseModel):
     status: str
     created_at: datetime
     last_used_at: datetime | None
+    rpm_limit: int = 400
+    concurrency_limit: int = 200
+    rpm_used: int = 0
+    concurrency_used: int = 0
     today_tokens: int = 0
     total_tokens: int = 0
     account_ids: list[int] = Field(default_factory=list)
@@ -868,11 +876,15 @@ class JobListOut(BaseModel):
 class McpKeyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     capability_ids: list[str] = Field(min_length=1)
+    rpm_limit: int | None = Field(default=None, ge=0, le=1_000_000)
+    concurrency_limit: int | None = Field(default=None, ge=0, le=1_000_000)
 
 
 class McpKeyUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     status: str | None = None
+    rpm_limit: int | None = Field(default=None, ge=0, le=1_000_000)
+    concurrency_limit: int | None = Field(default=None, ge=0, le=1_000_000)
 
 
 class McpKeyCapabilitiesUpdate(BaseModel):
@@ -890,6 +902,10 @@ class McpKeyOut(BaseModel):
     status: str
     capability_ids: list[str]
     capability_configs: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    rpm_limit: int = 400
+    concurrency_limit: int = 200
+    rpm_used: int = 0
+    concurrency_used: int = 0
     created_at: datetime
     last_used_at: datetime | None = None
     key: str | None = None

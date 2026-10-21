@@ -27,24 +27,29 @@ def _request_meta(request: Request) -> dict[str, str | None]:
 def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> LoginResponse:
     meta = _request_meta(request)
     headers = dict(request.headers)
+    client = meta.get("client_ip") or (request.client.host if request.client else "unknown")
     try:
-        login_gate.check(payload.username)
+        login_gate.check(client)
     except LoginLocked as error:
         enqueue_login_event(
             "login_locked", payload.username, meta,
             severity="warn", attempted_password=payload.password, headers=headers, status=429,
         )
-        raise HTTPException(status_code=429, detail="登录失败次数过多，请稍后再试") from error
+        raise HTTPException(
+            status_code=429,
+            detail="登录失败次数过多，请稍后再试",
+            headers={"Retry-After": str(error.retry_after)},
+        ) from error
     admin = db.scalar(select(Admin).where(Admin.username == payload.username))
     if admin is None or not verify_password(payload.password, admin.password_hash):
-        login_gate.fail(payload.username)
+        login_gate.fail(client)
         enqueue_login_event(
             "login_failure", payload.username, meta,
             attempted_password=payload.password, headers=headers, status=401,
         )
         record_auth_failure(meta.get("client_ip"))
         raise HTTPException(status_code=401, detail="用户名或密码错误")
-    login_gate.succeed(payload.username)
+    login_gate.succeed(client)
     enqueue_login_event("login_success", admin.username, meta, headers=headers, status=200)
     admin.last_login_at = utcnow()
     return LoginResponse(token=create_access_token(admin), username=admin.username)
