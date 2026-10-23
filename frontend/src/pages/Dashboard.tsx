@@ -240,12 +240,12 @@ export function DashboardPage() {
     placeholderData: keepPreviousData,
   })
   const today: Metric[] = [
-    { label: '今日请求', value: data?.today_requests ?? '—', to: '/logs' },
+    { label: '今日调用', value: data?.today_requests ?? '—', to: '/logs' },
     { label: '今日失败', value: data?.today_failures ?? '—', to: '/logs', warn: true },
     { label: '今日 Token', value: formatTokenCount(data?.today_tokens), to: '/logs', span: true },
   ]
   const totals: Metric[] = [
-    { label: '总请求', value: data?.total_requests ?? '—', to: '/logs' },
+    { label: '总调用', value: data?.total_requests ?? '—', to: '/logs' },
     { label: '总 Token', value: formatTokenCount(data?.total_tokens), to: '/logs' },
   ]
   const resources: Metric[] = [

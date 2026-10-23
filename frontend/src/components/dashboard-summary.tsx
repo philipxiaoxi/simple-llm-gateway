@@ -106,7 +106,7 @@ export function DashboardSummary({ data }: { data?: DashboardStats }) {
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <RangeStat
-          label="请求"
+          label="调用"
           value={summary ? formatCount(summary.requests) : '—'}
           hint={summary ? `日均 ${formatCount(Math.round(summary.requests / days))} 次` : undefined}
           delta={summary && previous ? percentDelta(summary.requests, previous.requests) : null}

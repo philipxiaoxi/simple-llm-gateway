@@ -61,6 +61,19 @@ _TOKEN_EXPR = func.coalesce(
     0,
 )
 _FAIL_EXPR = func.coalesce(func.sum(case((RequestLog.status == "error", 1), else_=0)), 0)
+# 一条日志 = 一个会话，可能聚合多次调用；按调用数统计时用 turn_count（历史未回填按 1 计）
+_CALLS_EXPR = func.coalesce(func.sum(func.coalesce(RequestLog.turn_count, 1)), 0)
+# 单次调用耗时：合并行的 latency_ms 是会话累计耗时，不能进延迟口径（否则 p95/均值被拉爆）。
+# 单轮行用 last_latency_ms，历史未回填时回退 latency_ms（对单轮行两者相等）
+_LATENCY_EXPR = func.coalesce(
+    RequestLog.last_latency_ms,
+    # 历史未回填：只有单轮行的 latency_ms 等于单次耗时；合并行的 latency_ms 是会话累计，
+    # 不能回退使用，留 NULL 从延迟统计中排除
+    case(
+        (func.coalesce(RequestLog.turn_count, 1) <= 1, RequestLog.latency_ms),
+        else_=None,
+    ),
+)
 
 
 def _utc_naive(moment: datetime) -> datetime:
@@ -156,31 +169,32 @@ def _benchmark_speed_top(db: Session, limit: int = 3) -> list[DashboardBenchmark
 
 
 def _p95_latency(db: Session, start: datetime, end: datetime) -> int | None:
-    """成功请求的 p95 耗时。SQLite 没有 percentile，用排序 + 偏移取近似分位。"""
+    """成功单次调用的 p95 耗时。SQLite 没有 percentile，用排序 + 偏移取近似分位。"""
     filters = (
         RequestLog.created_at >= start,
         RequestLog.created_at < end,
         RequestLog.status != "error",
+        _LATENCY_EXPR.is_not(None),
     )
     ok_count = db.scalar(select(func.count()).select_from(RequestLog).where(*filters)) or 0
     if ok_count <= 0:
         return None
     offset = min(ok_count - 1, max(0, math.ceil(ok_count * 0.95) - 1))
-    value = db.scalar(select(RequestLog.latency_ms).where(*filters).order_by(RequestLog.latency_ms).offset(offset).limit(1))
+    value = db.scalar(select(_LATENCY_EXPR).where(*filters).order_by(_LATENCY_EXPR).offset(offset).limit(1))
     return int(value) if value is not None else None
 
 
 def _stats_summary(db: Session, start: datetime, end: datetime) -> DashboardStatsSummaryOut:
     row = db.execute(
         select(
-            func.count(),
+            _CALLS_EXPR,
             _FAIL_EXPR,
             _TOKEN_EXPR,
             func.coalesce(func.sum(func.coalesce(RequestLog.prompt_tokens, 0)), 0),
             func.coalesce(func.sum(func.coalesce(RequestLog.completion_tokens, 0)), 0),
             func.count(func.distinct(func.coalesce(func.nullif(RequestLog.model, ""), "未知"))),
             func.count(func.distinct(_DAY_EXPR)),
-            func.avg(case((RequestLog.status != "error", RequestLog.latency_ms), else_=None)),
+            func.avg(case((RequestLog.status != "error", _LATENCY_EXPR), else_=None)),
         ).where(RequestLog.created_at >= start, RequestLog.created_at < end)
     ).one()
     requests = int(row[0] or 0)
@@ -235,7 +249,7 @@ def compute_stats(db: Session, days: int) -> DashboardStatsOut:
     for day, requests, failures, prompt_tokens, completion_tokens, tokens in db.execute(
         select(
             _DAY_EXPR.label("day"),
-            func.count(),
+            _CALLS_EXPR,
             _FAIL_EXPR,
             func.coalesce(func.sum(func.coalesce(RequestLog.prompt_tokens, 0)), 0),
             func.coalesce(func.sum(func.coalesce(RequestLog.completion_tokens, 0)), 0),
@@ -257,7 +271,7 @@ def compute_stats(db: Session, days: int) -> DashboardStatsOut:
     model_totals: dict[str, dict[str, int]] = {}
     daily_models: dict[str, dict[str, int]] = {}
     for day, model, requests, tokens in db.execute(
-        select(_DAY_EXPR.label("day"), model_expr.label("model"), func.count(), _TOKEN_EXPR)
+        select(_DAY_EXPR.label("day"), model_expr.label("model"), _CALLS_EXPR, _TOKEN_EXPR)
         .where(*window)
         .group_by(_DAY_EXPR, model_expr)
     ):
@@ -322,7 +336,7 @@ def compute_stats(db: Session, days: int) -> DashboardStatsOut:
     hourly_counts = {
         int(hour): int(requests or 0)
         for hour, requests in db.execute(
-            select(_HOUR_EXPR.label("hour"), func.count()).where(*window).group_by(_HOUR_EXPR)
+            select(_HOUR_EXPR.label("hour"), _CALLS_EXPR).where(*window).group_by(_HOUR_EXPR)
         )
         if hour is not None
     }
@@ -331,10 +345,10 @@ def compute_stats(db: Session, days: int) -> DashboardStatsOut:
     # 上游账号消耗占比：多账号时能看出流量压在哪个账号上
     account_expr = func.coalesce(func.nullif(RequestLog.account_name, ""), "未知上游")
     account_rows = db.execute(
-        select(account_expr.label("account"), func.count(), _TOKEN_EXPR)
+        select(account_expr.label("account"), _CALLS_EXPR, _TOKEN_EXPR)
         .where(*window)
         .group_by(account_expr)
-        .order_by(func.count().desc())
+        .order_by(_CALLS_EXPR.desc())
         .limit(STATS_RANK_LIMIT)
     ).all()
     accounts = [
@@ -371,7 +385,12 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardOut:
     )
     today = shanghai_day_start_utc()
     today_requests = (
-        db.scalar(select(func.count()).select_from(RequestLog).where(RequestLog.created_at >= today)) or 0
+        db.scalar(
+            select(func.coalesce(func.sum(func.coalesce(RequestLog.turn_count, 1)), 0)).where(
+                RequestLog.created_at >= today
+            )
+        )
+        or 0
     )
     today_failures = (
         db.scalar(
@@ -387,7 +406,9 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardOut:
         )
         or 0
     )
-    total_requests = db.scalar(select(func.count()).select_from(RequestLog)) or 0
+    total_requests = (
+        db.scalar(select(func.coalesce(func.sum(func.coalesce(RequestLog.turn_count, 1)), 0))) or 0
+    )
     total_tokens = db.scalar(select(func.coalesce(func.sum(RequestLog.total_tokens), 0))) or 0
     benchmark_count = db.scalar(select(func.count()).select_from(BenchmarkRun)) or 0
     skill_count = db.scalar(select(func.count()).select_from(Skill)) or 0
