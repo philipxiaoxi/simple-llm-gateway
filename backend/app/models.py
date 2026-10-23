@@ -190,7 +190,14 @@ class RequestLog(Base):
     prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 会话累计耗时：同一会话续写合并时逐次累加，用于「这段会话总共花了多久」
     latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # 最近一次调用的耗时（监控口径）。历史合并行无法拆分单轮耗时，回填后为 NULL，
+    # 统计时排除；单轮历史行回填为 latency_ms
+    last_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 该条日志聚合的调用次数：新建为 1，每次续写合并 +1。历史行由回填脚本按写入批次近似，
+    # 回填前为 NULL（统计按 1 计）
+    turn_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     request_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     response_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 脱敏后的请求头（Authorization / x-api-key / Cookie 等打码）

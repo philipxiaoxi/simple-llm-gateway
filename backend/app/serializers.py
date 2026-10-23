@@ -154,6 +154,7 @@ def log_to_out(
         completion_tokens=item.completion_tokens,
         total_tokens=item.total_tokens,
         latency_ms=item.latency_ms,
+        last_latency_ms=item.last_latency_ms,
         client_ip=item.client_ip,
         ip_location=item.ip_location,
         user_agent=item.user_agent,

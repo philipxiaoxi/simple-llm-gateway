@@ -365,6 +365,9 @@ def save_log(
             (prompt, completion, total),
         )
         existing.latency_ms = (existing.latency_ms or 0) + latency_ms
+        # 单次调用耗时单独留痕：合并行的 latency_ms 是会话累计，不能进延迟监控口径
+        existing.last_latency_ms = latency_ms
+        existing.turn_count = (existing.turn_count or 1) + 1
         existing.updated_at = now
         if session_key:
             existing.session_key = session_key
@@ -408,6 +411,8 @@ def save_log(
         completion_tokens=completion,
         total_tokens=billed_total(prompt, completion, total),
         latency_ms=latency_ms,
+        last_latency_ms=latency_ms,
+        turn_count=1,
         created_at=now,
         updated_at=now,
         session_key=session_key,

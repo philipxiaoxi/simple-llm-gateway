@@ -46,6 +46,8 @@ function StatusIndicator({ status }: { status: string }) {
 
 function SessionRow({ item }: { item: LogItem }) {
   const turns = item.turn_count ?? 0
+  const merged = turns > 1
+  const callLatency = item.last_latency_ms ?? item.latency_ms
   const title = sessionTitle(item)
   const time = formatClock(item.updated_at || item.created_at)
   const fullTime = formatTime(item.updated_at || item.created_at)
@@ -79,11 +81,21 @@ function SessionRow({ item }: { item: LogItem }) {
             {accountText(item)}
           </span>
           <span className="text-mist/40">·</span>
-          <span className="tabular-nums">{turns} 轮</span>
+          <span className="tabular-nums">{merged ? `会话 · ${turns} 次调用` : `${turns} 轮`}</span>
           <span className="text-mist/40">·</span>
-          <span className="tabular-nums">{formatTokens(item)}</span>
+          <span
+            className="tabular-nums"
+            title={merged ? '会话累计 Token' : undefined}
+          >
+            {formatTokens(item)}
+          </span>
           <span className="text-mist/40">·</span>
-          <span className="tabular-nums">{item.latency_ms}ms</span>
+          <span
+            className="tabular-nums"
+            title={merged ? `最近一次调用，会话累计 ${item.latency_ms}ms` : undefined}
+          >
+            {callLatency}ms
+          </span>
           {item.client_ip ? (
             <>
               <span className="text-mist/40">·</span>

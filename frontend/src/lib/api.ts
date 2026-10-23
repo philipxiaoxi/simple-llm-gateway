@@ -312,6 +312,7 @@ export type LogItem = {
   completion_tokens: number | null
   total_tokens: number | null
   latency_ms: number
+  last_latency_ms?: number | null
   client_ip?: string | null
   ip_location?: string | null
   user_agent?: string | null

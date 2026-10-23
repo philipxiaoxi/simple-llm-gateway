@@ -72,6 +72,8 @@ export function LogTrajectory({
         </MetaItem>
         <MetaItem label="开始">{formatLogTime(log.created_at)}</MetaItem>
         <MetaItem label="最近活动">{formatLogTime(log.updated_at || log.created_at)}</MetaItem>
+        <MetaItem label="调用次数">{log.turn_count ?? 1}</MetaItem>
+        <MetaItem label="最近一次耗时">{(log.last_latency_ms ?? log.latency_ms)}ms</MetaItem>
         <MetaItem label="累计耗时">{log.latency_ms}ms</MetaItem>
       </div>
 

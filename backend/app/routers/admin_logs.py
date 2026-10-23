@@ -49,6 +49,8 @@ _LIST_COLUMNS = (
     RequestLog.completion_tokens,
     RequestLog.total_tokens,
     RequestLog.latency_ms,
+    RequestLog.last_latency_ms,
+    RequestLog.turn_count,
     RequestLog.client_ip,
     RequestLog.ip_location,
     RequestLog.user_agent,
@@ -130,7 +132,9 @@ def list_logs(
         log_to_out(
             row,
             message_count=counts.get(row.id, (0, 0))[0],
-            turn_count=counts.get(row.id, (0, 0))[1],
+            # 优先用落库的调用次数（含失败轮次、不受消息滚动窗口截断）；历史未回填时退回
+            # 消息里的 assistant 条数
+            turn_count=row.turn_count if row.turn_count is not None else counts.get(row.id, (0, 0))[1],
         )
         for row in rows
     ]
@@ -327,7 +331,7 @@ def get_log(
         item,
         include_bodies=include_bodies,
         message_count=message_count,
-        turn_count=turn_count,
+        turn_count=item.turn_count if item.turn_count is not None else turn_count,
         reasoning_summary=reasoning_summary,
         model_chain=build_model_chain(item),
         storage_truncated=message_count >= MAX_LOG_MESSAGES,

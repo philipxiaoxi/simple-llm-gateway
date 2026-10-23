@@ -446,7 +446,9 @@ class LogOut(BaseModel):
     prompt_tokens: int | None
     completion_tokens: int | None
     total_tokens: int | None
+    # latency_ms 为会话累计耗时；last_latency_ms 为最近一次调用耗时（历史合并行可能为空）
     latency_ms: int
+    last_latency_ms: int | None = None
     client_ip: str | None = None
     ip_location: str | None = None
     user_agent: str | None = None

@@ -254,6 +254,11 @@ def _ensure_columns(engine: Engine) -> None:
             "ip_location": "ALTER TABLE request_logs ADD COLUMN ip_location VARCHAR(128)",
             "user_agent": "ALTER TABLE request_logs ADD COLUMN user_agent VARCHAR(512)",
             "client_name": "ALTER TABLE request_logs ADD COLUMN client_name VARCHAR(64)",
+            # 会话聚合口径：last_latency_ms 为最近一次调用耗时（监控用，历史合并行为 NULL），
+            # turn_count 为该日志聚合的调用次数。都是可空列（无默认值，避免全表重写），
+            # 历史数据由 scripts/backfill_turn_count.py 分批回填；回填前统计按 turn_count=1 处理
+            "last_latency_ms": "ALTER TABLE request_logs ADD COLUMN last_latency_ms INTEGER",
+            "turn_count": "ALTER TABLE request_logs ADD COLUMN turn_count INTEGER",
         }.items():
             if column not in log_columns:
                 connection.execute(text(statement))
