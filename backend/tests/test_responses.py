@@ -437,20 +437,42 @@ def test_responses_endpoint_stream(client: TestClient, auth_headers: dict[str, s
     assert items[0]["content"] == "你好"
 
 
+class FakeChatCompletion:
+    def __init__(self, message: dict, usage: dict | None = None, model: str = "deepseek-chat") -> None:
+        self._payload = {
+            "id": "chatcmpl_1",
+            "object": "chat.completion",
+            "model": model,
+            "choices": [{"index": 0, "message": message, "finish_reason": "stop"}],
+            "usage": usage or {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
+        }
+
+    def model_dump(self) -> dict:
+        return self._payload
+
+
 def test_responses_endpoint_reasoning_and_tools(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
     captured: dict = {}
 
-    async def fake_responses(_account, input_items, _model, _stream, _extra, _credential):
-        captured["input"] = input_items
-        return FakeResponsesResponse(
-            _responses_dict(
-                "",
-                function_calls=[{"call_id": "call_abc", "name": "Read", "arguments": '{"path":"/tmp"}'}],
-            )
+    async def fake_chat(_account, messages, _model, _stream, extra, _credential):
+        captured["messages"] = messages
+        captured["extra"] = extra
+        return FakeChatCompletion(
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_abc",
+                        "type": "function",
+                        "function": {"name": "Read", "arguments": '{"path":"/tmp"}'},
+                    }
+                ],
+            }
         )
 
-    with patch("app.services.proxy.call_responses", new=fake_responses):
+    with patch("app.services.proxy.call_chat", new=fake_chat):
         response = client.post(
             "/v1/responses",
             headers={"Authorization": f"Bearer {key}"},
@@ -458,6 +480,7 @@ def test_responses_endpoint_reasoning_and_tools(client: TestClient, auth_headers
                 "model": "deepseek-chat",
                 "input": [
                     {"role": "user", "content": "读一下"},
+                    {"type": "reasoning", "summary": [{"type": "summary_text", "text": "先想一下"}]},
                     {
                         "type": "function_call",
                         "call_id": "call_abc",
@@ -466,16 +489,206 @@ def test_responses_endpoint_reasoning_and_tools(client: TestClient, auth_headers
                     },
                     {"type": "function_call_output", "call_id": "call_abc", "output": "ok"},
                 ],
+                "tools": [
+                    {"type": "function", "name": "Read", "description": "read", "parameters": {"type": "object"}}
+                ],
+                "tool_choice": "auto",
+                "max_output_tokens": 64,
             },
         )
     assert response.status_code == 200
     body = response.json()
+    assert body["object"] == "response"
     kinds = [item["type"] for item in body["output"]]
     assert "function_call" in kinds
+    assert body["output"][-1]["call_id"] == "call_abc"
     assert body["output"][-1]["name"] == "Read"
-    # 原始 input items 原样传给上游（litellm 负责转换）
-    assert captured["input"][1]["type"] == "function_call"
-    assert captured["input"][2]["type"] == "function_call_output"
+
+    # 带工具调用的 Responses 请求改走 Chat 上游：assistant 消息必须带上 reasoning_content
+    assistant = [m for m in captured["messages"] if m.get("role") == "assistant" and m.get("tool_calls")]
+    assert assistant, "assistant tool call message should reach upstream"
+    assert assistant[-1]["reasoning_content"] == "先想一下"
+    # Responses -> Chat 参数映射
+    assert captured["extra"]["max_tokens"] == 64
+    assert captured["extra"]["tools"][0]["function"]["name"] == "Read"
+    assert "instructions" not in captured["extra"]
+    assert "store" not in captured["extra"]
+
+    log_id = _log_id(client, auth_headers)
+    assert client.get(f"/api/admin/logs/{log_id}", headers=auth_headers).json()["protocol"] == "openai_responses"
+
+
+def test_responses_tool_history_streams_via_chat(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+
+    async def fake_chat(_account, _messages, _model, _stream, _extra, _credential):
+        async def chunks():
+            yield {"choices": [{"index": 0, "delta": {"reasoning_content": "想"}}]}
+            yield {"choices": [{"index": 0, "delta": {"content": "好"}}]}
+            yield {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {"name": "Read", "arguments": '{"path":'},
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+            yield {
+                "choices": [
+                    {"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": '"/tmp"}'}}]}}
+                ]
+            }
+            yield {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
+            }
+
+        return chunks()
+
+    with patch("app.services.proxy.call_chat", new=fake_chat):
+        with client.stream(
+            "POST",
+            "/v1/responses",
+            headers={"Authorization": f"Bearer {key}"},
+            json={
+                "model": "deepseek-chat",
+                "stream": True,
+                "input": [
+                    {"role": "user", "content": "读一下"},
+                    {"type": "function_call", "call_id": "call_prev", "name": "Read", "arguments": "{}"},
+                    {"type": "function_call_output", "call_id": "call_prev", "output": "ok"},
+                ],
+            },
+        ) as response:
+            text = "".join(response.iter_text())
+    assert '"type": "response.created"' in text
+    assert '"type": "response.reasoning_summary_text.delta"' in text
+    assert '"type": "response.output_text.delta"' in text
+    assert '"type": "response.function_call_arguments.delta"' in text
+    assert '"type": "response.completed"' in text
+    assert "call_1" in text
+    assert '"arguments": "{\\"path\\":\\"/tmp\\"}"' in text
+
+    log_id = _log_id(client, auth_headers)
+    detail = client.get(f"/api/admin/logs/{log_id}", headers=auth_headers).json()
+    assert detail["protocol"] == "openai_responses"
+    assert detail["stream"] is True
+    assert detail["prompt_tokens"] == 3
+    assert detail["completion_tokens"] == 2
+
+
+def test_input_to_messages_merges_reasoning_with_following_tool_call() -> None:
+    from app.services.bridge import input_to_messages
+
+    messages = input_to_messages(
+        {
+            "model": "x",
+            "input": [
+                {"role": "user", "content": "读一下"},
+                {"type": "reasoning", "summary": [{"type": "summary_text", "text": "先想一下"}]},
+                {"type": "function_call", "call_id": "call_abc", "name": "Read", "arguments": "{}"},
+                {"type": "function_call_output", "call_id": "call_abc", "output": "ok"},
+            ],
+        }
+    )
+    assistant = [m for m in messages if m.get("role") == "assistant"]
+    assert len(assistant) == 1
+    assert assistant[0]["reasoning_content"] == "先想一下"
+    assert assistant[0]["tool_calls"][0]["id"] == "call_abc"
+
+
+def test_messages_need_reasoning_replay() -> None:
+    from app.services.bridge import messages_need_reasoning_replay
+
+    assert messages_need_reasoning_replay([{"role": "user", "content": "hi"}]) is False
+    assert (
+        messages_need_reasoning_replay([{"role": "assistant", "content": "x", "tool_calls": [{"id": "c"}]}])
+        is True
+    )
+
+
+def test_responses_extra_to_chat_maps_supported_params() -> None:
+    from app.services.bridge import responses_extra_to_chat
+
+    extra = responses_extra_to_chat(
+        {
+            "max_output_tokens": 128,
+            "temperature": 0.3,
+            "tools": [
+                {"type": "function", "name": "Read", "description": "d", "parameters": {"type": "object"}},
+                {"type": "web_search"},
+            ],
+            "tool_choice": {"type": "function", "name": "Read"},
+            "text": {"format": {"type": "json_schema", "name": "out", "schema": {"type": "object"}, "strict": True}},
+            "reasoning": {"effort": "high"},
+            "store": True,
+            "include": ["reasoning.encrypted_content"],
+        }
+    )
+    assert extra["max_tokens"] == 128
+    assert extra["temperature"] == 0.3
+    assert extra["tools"] == [
+        {"type": "function", "function": {"name": "Read", "description": "d", "parameters": {"type": "object"}}}
+    ]
+    assert extra["tool_choice"] == {"type": "function", "function": {"name": "Read"}}
+    assert extra["response_format"]["json_schema"]["name"] == "out"
+    assert extra["reasoning_effort"] == "high"
+    assert "store" not in extra
+    assert "include" not in extra
+
+
+def test_chat_completion_to_responses_shapes_output() -> None:
+    from app.services.bridge import chat_completion_to_responses
+
+    payload = {
+        "model": "deepseek-chat",
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "reasoning_content": "想想",
+                    "tool_calls": [
+                        {"id": "call_1", "type": "function", "function": {"name": "Read", "arguments": "{}"}}
+                    ],
+                }
+            }
+        ],
+        "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
+    }
+    body = chat_completion_to_responses(payload, "deepseek-chat")
+    kinds = [item["type"] for item in body["output"]]
+    assert kinds == ["reasoning", "function_call"]
+    assert body["output"][1]["call_id"] == "call_1"
+    assert body["usage"] == {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5}
+
+
+def test_classify_upstream_error() -> None:
+    from app.services.proxy import classify_upstream_error
+
+    class FakeBadRequest(Exception):
+        status_code = 400
+        code = "invalid_request_error"
+
+    status, message = classify_upstream_error(FakeBadRequest("reasoning_content must be passed back"))
+    assert status == 400
+    assert "invalid_request_error" in message
+    assert classify_upstream_error(TimeoutError("request timeout"))[0] == 504
+    assert classify_upstream_error(RuntimeError("boom"))[0] == 502
+
+    class FakeAuthError(Exception):
+        status_code = 403
+
+    assert classify_upstream_error(FakeAuthError("personal-team-blocked:spending-limit"))[0] == 502
 
 
 def test_responses_follow_up_without_session_creates_new_log(client: TestClient, auth_headers: dict[str, str]) -> None:

@@ -26,10 +26,12 @@ from app.services.model_caps import serialize_record
 from app.services.bridge import (
     AnthropicStreamTranslator,
     ResponsesStreamCollector,
+    ResponsesStreamTranslator,
     anthropic_extra_to_openai,
     anthropic_to_openai_messages,
     call_chat,
     call_responses,
+    chat_completion_to_responses,
     count_openai_tokens,
     ensure_stream_usage,
     estimate_usage,
@@ -37,11 +39,13 @@ from app.services.bridge import (
     extract_text_from_openai_chunk,
     extract_usage,
     input_to_messages,
+    messages_need_reasoning_replay,
     pick_usage_from_chunk,
     openai_response_to_anthropic,
     prepare_credential,
     reasoning_map_from_responses_payload,
     responses_extra_passthrough,
+    responses_extra_to_chat,
     responses_event_to_dict,
     responses_payload_to_dict,
     responses_sse,
@@ -536,6 +540,15 @@ async def handle_chat(
     api_key = SimpleNamespace(id=api_key_id)
     inject_reasoning_into_messages(messages, stored_reasoning)
 
+    # Responses 请求里若历史带工具调用，需要在 assistant 消息上回传 reasoning_content；
+    # 而 Responses 协议直透会把注入旁路掉，所以这类请求改走 Chat Completions 上游后再转回
+    # Responses 结构（其余 Responses 请求继续走 litellm 的 Responses 桥接）。
+    responses_via_chat = protocol == "openai_responses" and messages_need_reasoning_replay(messages)
+    if responses_via_chat:
+        extra = responses_extra_to_chat(body)
+        if stream:
+            extra = ensure_stream_usage(extra)
+
     if stream:
         with _spoof_identity(body, request_headers, api_key.id, account.id):
             return await _stream_response(
@@ -552,13 +565,14 @@ async def handle_chat(
                 request_headers,
                 inbound_reasoning,
                 responses_input=sanitize_responses_input(body.get("input")),
+                responses_via_chat=responses_via_chat,
                 peer=peer,
                 model_resolution=model_resolution,
             )
 
     try:
         with _spoof_identity(body, request_headers, api_key.id, account.id):
-            if protocol == "openai_responses":
+            if protocol == "openai_responses" and not responses_via_chat:
                 result = await call_responses(
                     account, sanitize_responses_input(body.get("input")), model, False, extra, credential
                 )
@@ -586,18 +600,21 @@ async def handle_chat(
     if protocol == "anthropic_messages":
         payload = openai_response_to_anthropic(openai_payload, model)
     elif protocol == "openai_responses":
-        payload = responses_payload_to_dict(result)
+        payload = (
+            chat_completion_to_responses(openai_payload, model)
+            if responses_via_chat
+            else responses_payload_to_dict(result)
+        )
     else:
         payload = openai_payload
 
     usage = extract_usage(openai_payload)
     if usage[0] is None and usage[1] is None and usage[2] is None:
         usage = await estimate_usage(model, messages, _output_text_from_openai(openai_payload))
-    reasoning_map = (
-        reasoning_map_from_responses_payload(payload)
-        if protocol == "openai_responses"
-        else reasoning_map_from_openai_payload(openai_payload)
-    )
+    if protocol == "openai_responses" and not responses_via_chat:
+        reasoning_map = reasoning_map_from_responses_payload(payload)
+    else:
+        reasoning_map = reasoning_map_from_openai_payload(openai_payload)
     await _finalize_request_log_async(
         account_id=account.id,
         api_key_id=api_key.id,
@@ -633,11 +650,12 @@ async def _stream_response(
     request_headers: dict[str, str] | None = None,
     inbound_reasoning: dict[str, str] | None = None,
     responses_input: Any = None,
+    responses_via_chat: bool = False,
     model_resolution: ModelResolution | None = None,
     peer: str | None = None,
 ) -> StreamingResponse | JSONResponse:
     try:
-        if protocol == "openai_responses":
+        if protocol == "openai_responses" and not responses_via_chat:
             result = await call_responses(account, responses_input, model, True, extra, credential)
         else:
             result = await call_chat(account, messages, model, True, extra, credential)
@@ -664,7 +682,12 @@ async def _stream_response(
         collector = OpenAIStreamCollector()
         responses_collector = (
             ResponsesStreamCollector(f"resp_{uuid.uuid4().hex}", model)
-            if protocol == "openai_responses"
+            if protocol == "openai_responses" and not responses_via_chat
+            else None
+        )
+        responses_translator = (
+            ResponsesStreamTranslator(f"resp_{uuid.uuid4().hex}", model)
+            if responses_via_chat
             else None
         )
         translator = AnthropicStreamTranslator(message_id, model)
@@ -678,7 +701,7 @@ async def _stream_response(
             if protocol == "anthropic_messages":
                 for event in translator.start():
                     yield event
-            if protocol == "openai_responses":
+            if protocol == "openai_responses" and responses_collector is not None:
                 # litellm 流自带 response.created 等官方事件，直接透传
                 async for event in result:
                     data = responses_event_to_dict(event)
@@ -689,6 +712,10 @@ async def _stream_response(
                     usage_candidate = pick_usage_from_chunk(chunk)
                     if usage_candidate is not None:
                         usage = usage_candidate
+                    if responses_translator is not None:
+                        for event in responses_translator.feed(chunk):
+                            yield event
+                        continue
                     collector.feed(chunk)
                     if protocol == "anthropic_messages":
                         for event in translator.feed(chunk):
@@ -701,6 +728,12 @@ async def _stream_response(
                 response_body = translator.payload()
                 response_map = translator.reasoning_map()
                 usage = translator.usage
+            elif responses_translator is not None:
+                for event in responses_translator.finish():
+                    yield event
+                response_body = responses_translator.payload()
+                response_map = responses_translator.reasoning_map()
+                usage = responses_translator.usage
             elif responses_collector is not None:
                 response_body = responses_collector.payload()
                 response_map = responses_collector.reasoning_map()
@@ -710,25 +743,31 @@ async def _stream_response(
                 response_body = {"choices": [{"message": collector.message()}]}
                 response_map = collector.reasoning_map()
             if usage[0] is None and usage[1] is None and usage[2] is None:
-                if responses_collector is not None:
+                if responses_translator is not None:
+                    usage = await estimate_usage(model, messages, responses_translator.text)
+                elif responses_collector is not None:
                     usage = await estimate_usage(model, messages, responses_collector.text)
                 else:
                     usage = await estimate_usage(model, messages, _stream_output_text(protocol, collector, translator))
         except Exception as error:
             status = "error"
-            http_status = 502
-            error_text = str(error)
+            http_status, error_text = classify_upstream_error(error)
             if protocol == "anthropic_messages":
                 yield sse_event(
                     "error",
                     {"type": "error", "error": {"type": "api_error", "message": error_text}},
                 )
-            elif responses_collector is not None:
+            elif responses_translator is not None or responses_collector is not None:
+                response_id = (
+                    responses_translator.response_id
+                    if responses_translator is not None
+                    else responses_collector.response_id
+                )
                 yield responses_sse(
                     {
                         "type": "response.failed",
                         "response": {
-                            "id": responses_collector.response_id,
+                            "id": response_id,
                             "object": "response",
                             "status": "failed",
                             "error": {"code": "server_error", "message": error_text},
@@ -801,6 +840,27 @@ class OpenAIStreamCollector:
         return {str(tool["id"]): self.reasoning for tool in self.tools.values() if tool.get("id")}
 
 
+def classify_upstream_error(error: Exception) -> tuple[int, str]:
+    """按上游语义归类错误：请求级 4xx 透传，超时 504，其余 502。
+
+    上游返回 invalid_request_error / BadRequestError、限流、找不到模型之类属于客户端可
+    处理的问题，一律记成 502 会误导告警、重试策略与排查；401/403 是网关侧账号/凭据问题，
+    对客户端仍按 502 返回，避免被误解为自己的鉴权失败。
+    """
+    upstream_status = getattr(error, "status_code", None)
+    if not isinstance(upstream_status, int):
+        upstream_status = getattr(getattr(error, "response", None), "status_code", None)
+    message = str(error)
+    code = getattr(error, "code", None)
+    if isinstance(code, str) and code and code not in message:
+        message = f"{message} (code: {code})"
+    if isinstance(upstream_status, int) and 400 <= upstream_status < 500 and upstream_status not in (401, 403):
+        return upstream_status, message
+    if "timeout" in message.lower():
+        return 504, message
+    return 502, message
+
+
 async def _fail(
     api_key: ApiKey,
     account: UpstreamAccount,
@@ -814,8 +874,7 @@ async def _fail(
     model_resolution: ModelResolution | None = None,
     peer: str | None = None,
 ) -> JSONResponse:
-    message = str(error)
-    status_code = 504 if "timeout" in message.lower() else 502
+    status_code, message = classify_upstream_error(error)
     await _finalize_request_log_async(
         account_id=account.id,
         api_key_id=api_key.id,

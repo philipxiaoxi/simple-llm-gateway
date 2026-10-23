@@ -46,6 +46,10 @@ def protocol_error(protocol: str, status_code: int, message: str, error_type: st
         )
         return anthropic_error(status_code, message, mapped)
     mapped = error_type or (
-        "invalid_request_error" if status_code in {400, 401, 403} else "server_error"
+        "rate_limit_error"
+        if status_code == 429
+        else "invalid_request_error"
+        if 400 <= status_code < 500
+        else "server_error"
     )
     return openai_error(status_code, message, mapped)
