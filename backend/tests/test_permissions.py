@@ -178,9 +178,9 @@ def test_permission_guard_denies_and_allows(client: TestClient, auth_headers: di
 
     assert client.get("/api/admin/logs", headers=reader).status_code == 200
 
-    denied = client.get("/api/admin/accounts", headers=reader)
+    denied = client.get("/api/admin/mcp/sites", headers=reader)
     assert denied.status_code == 403
-    assert denied.json()["detail"]["error"]["permission"] == "accounts:view"
+    assert denied.json()["detail"]["error"]["permission"] == "mcp_sites:view"
 
     denied_write = client.post(
         "/api/admin/accounts", headers=reader, json={"name": "x", "provider": "deepseek", "api_key": "sk"}
@@ -195,13 +195,13 @@ def test_role_permission_change_applies_without_relogin(
     role = _create_role(client, auth_headers, "动态权限", ["logs:view"])
     _create_user(client, auth_headers, "dynamic-user", role["id"])
     reader = _login(client, "dynamic-user")
-    assert client.get("/api/admin/accounts", headers=reader).status_code == 403
+    assert client.get("/api/admin/mcp/sites", headers=reader).status_code == 403
 
     patch = client.patch(
-        f"/api/admin/roles/{role['id']}", headers=auth_headers, json={"permissions": ["logs:view", "accounts:view"]}
+        f"/api/admin/roles/{role['id']}", headers=auth_headers, json={"permissions": ["logs:view", "mcp_sites:view"]}
     )
     assert patch.status_code == 200
-    assert client.get("/api/admin/accounts", headers=reader).status_code == 200
+    assert client.get("/api/admin/mcp/sites", headers=reader).status_code == 200
 
 
 # ---------------------------------------------------------------- 防提权与保护

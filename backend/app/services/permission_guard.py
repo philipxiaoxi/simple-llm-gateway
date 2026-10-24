@@ -81,6 +81,7 @@ ROUTE_ANY_CODES: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", "/api/admin/benchmark/groups"): (
         "benchmark_groups:view",
         "benchmark:view",
+        "benchmark_history:view",
     ),
     ("GET", "/api/admin/generation/settings"): (
         "generation:settings",
@@ -88,6 +89,31 @@ ROUTE_ANY_CODES: dict[tuple[str, str], tuple[str, ...]] = {
         "image_gen:task_create",
         "video_gen:view",
         "video_gen:task_create",
+    ),
+    ("GET", "/api/admin/accounts"): (
+        "accounts:view",
+        "benchmark:view",
+        "benchmark_groups:manage",
+        "logs:view",
+        "keys:view",
+        "skills:analysis",
+        "info:ai_settings",
+    ),
+    ("GET", "/api/admin/keys"): (
+        "keys:view",
+        "logs:view",
+    ),
+    ("GET", "/api/admin/mcp/catalog"): (
+        "mcp_catalog:view",
+        "mcp_keys:view",
+    ),
+    ("GET", "/api/admin/mcp/keys"): (
+        "mcp_keys:view",
+        "mcp_knowledge:view",
+    ),
+    ("GET", "/api/admin/mcp/knowledge/bases"): (
+        "mcp_knowledge:view",
+        "mcp_docparse:view",
     ),
     ("GET", "/api/admin/integrations/tikhub"): (
         "integrations:view",

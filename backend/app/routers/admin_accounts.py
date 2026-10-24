@@ -27,6 +27,7 @@ from app.services.account_refs import collect_account_usage, detach_account_refs
 from app.services.account_transfer import export_accounts, import_accounts
 from app.services.header_spoof import default_header_spoof, normalize_header_spoof
 from app.services.key_models import ensure_account_prefix, normalize_model_prefix, unbind_account_keys
+from app.services.permission_guard import has_permission, permission_denied, permissions_for_admin
 from app.services.model_caps import (
     LOCAL_MODEL_SOURCES,
     apply_model_override,
@@ -127,8 +128,11 @@ def import_upstream_accounts(payload: AccountImportRequest, db: Session = Depend
 def get_account(
     account_id: int,
     reveal: bool = Query(default=False),
+    admin: Admin = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ) -> AccountOut:
+    if reveal and not has_permission(permissions_for_admin(db, admin), "accounts:update"):
+        raise permission_denied("accounts:update")
     account = _get_account(db, account_id)
     return account_to_out(account, reveal=reveal)
 
