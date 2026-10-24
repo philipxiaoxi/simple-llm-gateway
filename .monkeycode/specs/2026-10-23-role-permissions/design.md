@@ -44,6 +44,18 @@ graph TD
 
 判定链路：请求进入 `/api/admin/*` → `get_current_admin` 解出 `Admin`（`deps.py:30`）→ `Permission_Guard` 依据该路由的 `Resource` 与覆盖表得到 Route_Permission → 角色持有通配 `*` 或包含该 Permission 即放行，否则 403。
 
+### 页面依赖的只读接口
+
+页面进入时会加载筛选器、分组、供应商等只读数据，这些查询不能要求用户具备对应的管理权限，否则只读角色会在页面加载时收到 403。`ROUTE_ANY_CODES` 为这类接口登记「任一命中即可」的权限集合，例如：
+
+- `GET /api/admin/accounts`：`accounts:view` / `benchmark:view` / `logs:view` / `keys:view` 等（列表不含密钥明文）；
+- `GET /api/admin/keys`：`keys:view` / `logs:view`；
+- `GET /api/admin/benchmark/groups`：`benchmark_groups:view` / `benchmark:view` / `benchmark_history:view`；
+- `GET /api/admin/generation/settings`：`generation:settings` 或对应 kind 的查看/创建权限；
+- `GET /api/admin/integrations/tikhub`：`integrations:view` / `info:view` / `mcp_douyin:view`。
+
+写入仍走原权限码；`resolve_permission` 返回集合首项作为主权限，供目录覆盖测试使用。涉及密钥明文的读取（如 `accounts?reveal=1`）额外要求 `accounts:update`。
+
 ## Components and Interfaces
 
 ### 后端
@@ -197,8 +209,8 @@ admins（新增列）
 
 1. 通配持有者对任一 `/api/admin/*` 接口都放行；升级后现有账号行为与升级前逐接口一致。
 2. 不存在任何可编辑或删除内置「管理员」角色的路径（需求 2.2）。
-3. 系统始终保留至少一个通配持有者账号（需求 4.2 / 4.3）。
-4. 每个 `/api/admin/*` 接口都解析出确定且合法的 Route_Permission；覆盖表中每个 code 都存在于 `CATALOG`。
+3. 系统始终保留至少一个**启用中**的通配持有者账号（需求 4.2 / 4.3）；非通配持有者不能改密、停用或删除权限高于自己的账号。
+4. 每个 `/api/admin/*` 接口都解析出确定且合法的 Route_Permission；覆盖表与「任一命中」集合中的每个 code 都存在于 `CATALOG`。
 5. 非通配持有者创建/更新的角色权限、分配的角色权限，均为其自身权限的子集。
 6. 生成的列表接口只返回请求者被授权的 kind。
 7. 权限校验结论只依赖「当前角色权限集合」与「路由」，不依赖请求体中的其他字段。

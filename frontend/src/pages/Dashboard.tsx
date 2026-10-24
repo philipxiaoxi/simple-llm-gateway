@@ -3,6 +3,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Card } from '../components/ui'
 import { api, type DashboardBenchmarkTop, type DashboardLeaderboardStatus, type DashboardLeaderboardTop } from '../lib/api'
+import { useSession } from '../lib/session'
 import { cn, formatContextWindow, formatTime, formatTokenCount } from '../lib/utils'
 import { PageHeader } from '../components/layout-primitives'
 import { DashboardSummary } from '../components/dashboard-summary'
@@ -59,25 +60,33 @@ type Metric = {
   label: string
   value: string | number
   to: string
+  perm?: string
   warn?: boolean
   span?: boolean
 }
 
-function MetricCard({ label, value, to, warn, span }: Metric) {
+function MetricCard({ label, value, to, perm, warn, span }: Metric) {
+  const { can } = useSession()
+  const body = (
+    <Card className={cn('h-full', can(perm) && 'hover:border-signal/40')}>
+      <div className="text-[10px] uppercase tracking-[0.16em] text-mist lg:text-xs">{label}</div>
+      <div
+        className={cn(
+          'mt-2 truncate font-mono text-xl tabular-nums lg:mt-3 lg:text-3xl',
+          warn ? 'text-warn' : 'text-signal',
+        )}
+        title={String(value)}
+      >
+        {value}
+      </div>
+    </Card>
+  )
+  if (!can(perm)) {
+    return <div className={cn('min-h-11 min-w-0', span && 'col-span-2 lg:col-span-1')}>{body}</div>
+  }
   return (
     <Link to={to} className={cn('block min-h-11 min-w-0', span && 'col-span-2 lg:col-span-1')}>
-      <Card className="h-full hover:border-signal/40">
-        <div className="text-[10px] uppercase tracking-[0.16em] text-mist lg:text-xs">{label}</div>
-        <div
-          className={cn(
-            'mt-2 truncate font-mono text-xl tabular-nums lg:mt-3 lg:text-3xl',
-            warn ? 'text-warn' : 'text-signal',
-          )}
-          title={String(value)}
-        >
-          {value}
-        </div>
-      </Card>
+      {body}
     </Link>
   )
 }
@@ -139,6 +148,8 @@ function LeaderboardTopSection({
   items: DashboardLeaderboardTop[]
   status?: DashboardLeaderboardStatus
 }) {
+  const { can } = useSession()
+  const canView = can('leaderboard:view')
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
@@ -146,15 +157,24 @@ function LeaderboardTopSection({
           <h2 className="text-xs uppercase tracking-[0.16em] text-mist">排行榜前三</h2>
           <LeaderboardStatusBadge status={status} />
         </div>
-        <Link to="/leaderboard" className="text-xs text-signal hover:underline">
-          查看全部
-        </Link>
+        {canView ? (
+          <Link to="/leaderboard" className="text-xs text-signal hover:underline">
+            查看全部
+          </Link>
+        ) : null}
       </div>
       <div className="grid gap-3 lg:grid-cols-3">
         {items.length
           ? items.map((item, index) => (
-              <Link key={`${item.slug || item.name}-${index}`} to="/leaderboard" className="block min-h-11 min-w-0">
-                <Card className="h-full hover:border-signal/40">
+              <Link
+                key={`${item.slug || item.name}-${index}`}
+                to={canView ? '/leaderboard' : '#'}
+                className="block min-h-11 min-w-0"
+                onClick={(event) => {
+                  if (!canView) event.preventDefault()
+                }}
+              >
+                <Card className={cn('h-full', canView && 'hover:border-signal/40')}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-[10px] uppercase tracking-[0.16em] text-mist">#{rankLabel(item.rank, index)}</div>
@@ -182,23 +202,30 @@ function LeaderboardTopSection({
 }
 
 function BenchmarkSpeedTopSection({ items }: { items: DashboardBenchmarkTop[] }) {
+  const { can } = useSession()
+  const canView = can('benchmark_history:view')
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xs uppercase tracking-[0.16em] text-mist">近期测试</h2>
-        <Link to="/benchmark/history" className="text-xs text-signal hover:underline">
-          查看历史
-        </Link>
+        {canView ? (
+          <Link to="/benchmark/history" className="text-xs text-signal hover:underline">
+            查看历史
+          </Link>
+        ) : null}
       </div>
       <div className="grid gap-3 lg:grid-cols-3">
         {items.length
           ? items.map((item, index) => (
               <Link
                 key={`${item.run_id ?? 'x'}-${item.model}-${item.account_name}-${index}`}
-                to="/benchmark/history"
+                to={canView ? '/benchmark/history' : '#'}
                 className="block min-h-11 min-w-0"
+                onClick={(event) => {
+                  if (!canView) event.preventDefault()
+                }}
               >
-                <Card className="h-full hover:border-signal/40">
+                <Card className={cn('h-full', canView && 'hover:border-signal/40')}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-[10px] uppercase tracking-[0.16em] text-mist">{formatTime(item.created_at)}</div>
@@ -240,26 +267,27 @@ export function DashboardPage() {
     placeholderData: keepPreviousData,
   })
   const today: Metric[] = [
-    { label: '今日调用', value: data?.today_requests ?? '—', to: '/logs' },
-    { label: '今日失败', value: data?.today_failures ?? '—', to: '/logs', warn: true },
-    { label: '今日 Token', value: formatTokenCount(data?.today_tokens), to: '/logs', span: true },
+    { label: '今日调用', value: data?.today_requests ?? '—', to: '/logs', perm: 'logs:view' },
+    { label: '今日失败', value: data?.today_failures ?? '—', to: '/logs', perm: 'logs:view', warn: true },
+    { label: '今日 Token', value: formatTokenCount(data?.today_tokens), to: '/logs', perm: 'logs:view', span: true },
   ]
   const totals: Metric[] = [
-    { label: '总调用', value: data?.total_requests ?? '—', to: '/logs' },
-    { label: '总 Token', value: formatTokenCount(data?.total_tokens), to: '/logs' },
+    { label: '总调用', value: data?.total_requests ?? '—', to: '/logs', perm: 'logs:view' },
+    { label: '总 Token', value: formatTokenCount(data?.total_tokens), to: '/logs', perm: 'logs:view' },
   ]
   const resources: Metric[] = [
-    { label: '上游账号', value: data?.account_count ?? '—', to: '/accounts' },
-    { label: '异常账号', value: data?.unhealthy_count ?? '—', to: '/accounts', warn: true },
-    { label: 'API Key', value: data?.key_count ?? '—', to: '/keys' },
+    { label: '上游账号', value: data?.account_count ?? '—', to: '/accounts', perm: 'accounts:view' },
+    { label: '异常账号', value: data?.unhealthy_count ?? '—', to: '/accounts', perm: 'accounts:view', warn: true },
+    { label: 'API Key', value: data?.key_count ?? '—', to: '/keys', perm: 'keys:view' },
     {
       label: '网关在线',
       value: data ? `${data.agent_online_count}/${data.agent_count}` : '—',
       to: '/agents',
+      perm: 'agents:view',
     },
-    { label: '工具', value: data?.tool_count ?? '—', to: '/tools' },
-    { label: 'Skills', value: data?.skill_count ?? '—', to: '/skills' },
-    { label: '测速条数', value: data?.benchmark_count ?? '—', to: '/benchmark/history' },
+    { label: '工具', value: data?.tool_count ?? '—', to: '/tools', perm: 'tools:view' },
+    { label: 'Skills', value: data?.skill_count ?? '—', to: '/skills', perm: 'skills:view' },
+    { label: '测速条数', value: data?.benchmark_count ?? '—', to: '/benchmark/history', perm: 'benchmark_history:view' },
   ]
 
   return (
