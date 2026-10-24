@@ -72,9 +72,7 @@ export function VSCodePanel({ api, onQueued, canQueue = true, canResolve = true 
         busy={busy}
         listId="offline-vscode-history"
       />
-      ) : (
-        <EmptyNote message="你没有「解析上游」权限，请联系管理员开通后再查询。" />
-      )}
+      ) : null}
       {error ? <ErrorNote message={error} /> : null}
       {result ? (
         <ResultCard
@@ -191,9 +189,7 @@ export function ChromePanel({ api, onQueued, canQueue = true, canResolve = true 
         busy={busy}
         listId="offline-chrome-history"
       />
-      ) : (
-        <EmptyNote message="你没有「解析上游」权限，请联系管理员开通后再查询。" />
-      )}
+      ) : null}
       {suggestions.length ? (
         <div className="flex flex-wrap gap-2">
           {suggestions.map((item) => (
@@ -310,9 +306,7 @@ export function EdgePanel({ api, onQueued, canQueue = true, canResolve = true }:
         busy={busy}
         listId="offline-edge-history"
       />
-      ) : (
-        <EmptyNote message="你没有「解析上游」权限，请联系管理员开通后再查询。" />
-      )}
+      ) : null}
       {suggestions.length ? (
         <div className="flex flex-wrap gap-2">
           {suggestions.map((item) => (
@@ -490,9 +484,7 @@ export function DockerPanel({ api, onQueued, canQueue = true, canResolve = true 
         busy={busy}
         listId="offline-docker-history"
       />
-      ) : (
-        <EmptyNote message="你没有「解析上游」权限，请联系管理员开通后再查询。" />
-      )}
+      ) : null}
       {error ? <ErrorNote message={error} /> : null}
       {tags.length ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-mist">
@@ -609,9 +601,7 @@ export function MsStorePanel({ api, onQueued, canQueue = true, canResolve = true
         busy={busy}
         listId="offline-msstore-history"
       />
-      ) : (
-        <EmptyNote message="你没有「解析上游」权限，请联系管理员开通后再查询。" />
-      )}
+      ) : null}
       {error ? <ErrorNote message={error} /> : null}
       {result ? (
         <ResultCard title={result.title || result.productId} subtitle={result.publisherName}>

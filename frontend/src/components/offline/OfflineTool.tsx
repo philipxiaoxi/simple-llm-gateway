@@ -228,6 +228,7 @@ export function OfflineTool({ base }: { base: string }) {
   const adminScope = base.startsWith('/api/admin')
   const canCreate = useCan('offline:task_create')
   const canResolvePerm = useCan('offline:resolve')
+  const canResolveArea = !adminScope || canResolvePerm
   const canRetryPerm = useCan('offline:retry')
   const canDeletePerm = useCan('offline:task_delete')
   const hasActive = useMemo(
@@ -264,7 +265,9 @@ export function OfflineTool({ base }: { base: string }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-2">
+      {canResolveArea ? (
+        <>
+        <div className="flex flex-wrap gap-2">
         {list.map((provider) => {
           const Icon = META[provider.slug]?.icon ?? Globe
           const selected = provider.slug === active
@@ -307,6 +310,8 @@ export function OfflineTool({ base }: { base: string }) {
             <div className="text-sm text-mist">该来源暂未实现</div>
           )}
         </div>
+      ) : null}
+        </>
       ) : null}
 
       <div className="space-y-3">
