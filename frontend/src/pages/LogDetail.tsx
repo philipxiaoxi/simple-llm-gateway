@@ -32,6 +32,7 @@ export function LogDetailPage() {
   const params = useParams()
   const id = Number(params.id)
   const ready = Number.isFinite(id)
+  const canViewList = useCan('logs:view')
   const canMessages = useCan('logs:messages')
   const [tab, setTab] = useState<TabKey>(canMessages ? 'conversation' : 'content')
   const [messages, setMessages] = useState<LogMessageItem[] | null>(null)
@@ -134,10 +135,12 @@ export function LogDetailPage() {
   if (error) {
     return (
       <div className="space-y-3">
+        {canViewList ? (
         <Link to="/logs" className="inline-flex items-center gap-1 text-sm text-mist hover:text-signal">
           <ArrowLeft size={14} />
           返回列表
         </Link>
+        ) : null}
         <div className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-6 text-sm text-danger">
           {errorMessage(error, '加载记录失败')}
         </div>
@@ -158,10 +161,12 @@ export function LogDetailPage() {
   return (
     <div className="min-w-0 max-w-full space-y-5 overflow-x-hidden">
       <div className="flex items-center justify-between gap-3">
+        {canViewList ? (
         <Link to="/logs" className="inline-flex items-center gap-1 text-sm text-mist hover:text-signal">
           <ArrowLeft size={14} />
           返回列表
         </Link>
+        ) : null}
         <Button variant="line" onClick={() => void refetch()}>
           <RefreshCw size={14} className={cn(isFetching && 'animate-spin')} />
           刷新
