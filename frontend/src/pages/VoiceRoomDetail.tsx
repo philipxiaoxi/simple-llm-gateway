@@ -20,6 +20,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Badge, Button, Card, Field, Input, Select } from '../components/ui'
 import { api } from '../lib/api'
+import { useCan } from '../lib/session'
 import type { VoicePolishMode, VoiceRoomUpdateInput } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { LOG_PAGE_SIZE, cn, errorMessage, formatTime } from '../lib/utils'
@@ -332,6 +333,7 @@ function LiveTab({
 }
 
 function ConfigTab({ roomId }: { roomId: string }) {
+  const canManage = useCan('voice:manage')
   const queryClient = useQueryClient()
   const roomQuery = useQuery({ queryKey: ['voice-room', roomId], queryFn: () => api.voiceRoom(roomId) })
   const accountsQuery = useQuery({ queryKey: ['voice-polish-accounts'], queryFn: api.voicePolishAccounts })
@@ -419,10 +421,13 @@ function ConfigTab({ roomId }: { roomId: string }) {
           />
         </Field>
         <div className="flex flex-wrap gap-2">
+          {canManage ? (
           <Button disabled={save.isPending} onClick={() => save.mutate()}>
             {save.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
             保存配置
           </Button>
+          ) : null}
+          {canManage ? (
           <Button
             variant="line"
             disabled={rotate.isPending}
@@ -433,6 +438,7 @@ function ConfigTab({ roomId }: { roomId: string }) {
             <RotateCcw size={15} />
             重置房间码
           </Button>
+          ) : null}
         </div>
       </Card>
 
@@ -551,10 +557,12 @@ function ConfigTab({ roomId }: { roomId: string }) {
           rows={3}
           className="w-full rounded-md border border-line-strong bg-control px-3 py-2 text-sm text-paper"
         />
+        {canManage ? (
         <Button variant="line" disabled={test.isPending} onClick={() => test.mutate()}>
           {test.isPending ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />}
           试跑
         </Button>
+        ) : null}
         {testResult && (
           <div className="space-y-2 rounded-lg border border-line bg-panel-2/60 p-3 text-sm">
             <div className="flex items-center gap-2 text-xs text-mist">

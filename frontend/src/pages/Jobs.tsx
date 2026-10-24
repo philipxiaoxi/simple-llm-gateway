@@ -3,6 +3,7 @@ import { ExternalLink, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge, Button, Card, Field, Input } from '../components/ui'
 import { api, type JobParam, type ScheduledJob } from '../lib/api'
+import { useCan } from '../lib/session'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage, formatTime } from '../lib/utils'
 
@@ -53,6 +54,8 @@ const DETAIL_LABELS: Record<string, string> = {
 }
 
 function JobCard({ job }: { job: ScheduledJob }) {
+  const canRun = useCan('jobs:run')
+  const canEdit = useCan('jobs:edit')
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState<Record<string, string>>({})
 
@@ -104,6 +107,7 @@ function JobCard({ job }: { job: ScheduledJob }) {
           </div>
           <p className="mt-1 text-sm text-mist">{job.description}</p>
         </div>
+        {canRun ? (
         <Button
           type="button"
           variant="line"
@@ -114,6 +118,7 @@ function JobCard({ job }: { job: ScheduledJob }) {
           <RefreshCw size={16} className={job.running || runMutation.isPending ? 'animate-spin' : undefined} />
           立即请求
         </Button>
+        ) : null}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -158,10 +163,12 @@ function JobCard({ job }: { job: ScheduledJob }) {
               key={param.key}
               param={param}
               value={draft[param.key] ?? String(param.value)}
+              disabled={!canEdit}
               onChange={(next) => setDraft((current) => ({ ...current, [param.key]: next }))}
             />
           ))}
         </div>
+        {canEdit ? (
         <Button
           type="button"
           className="w-full lg:w-auto"
@@ -170,6 +177,7 @@ function JobCard({ job }: { job: ScheduledJob }) {
         >
           保存参数
         </Button>
+        ) : null}
       </div>
     </Card>
   )
@@ -189,10 +197,12 @@ function Meta({ label, value }: { label: string; value: string }) {
 function ParamField({
   param,
   value,
+  disabled,
   onChange,
 }: {
   param: JobParam
   value: string
+  disabled?: boolean
   onChange: (value: string) => void
 }) {
   return (
@@ -203,6 +213,7 @@ function ParamField({
         max={param.max}
         step={1}
         value={value}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
       />
     </Field>

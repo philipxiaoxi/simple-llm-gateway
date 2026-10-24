@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 import { Dices, ImagePlus, Music, Sparkles, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api, type GenerationAsset, type GenerationModel, type GenerationSettings } from '../lib/api'
+import { useCan } from '../lib/session'
 import type { GenerationPreset } from '../lib/generation'
 import {
   defaultParams,
@@ -57,6 +58,8 @@ export function GenerationComposer({
     initialParams(findModel(models, resolveModelKey(models, defaultModel))),
   )
   const [inputs, setInputs] = useState<GenerationAsset[]>([])
+  const canConfig = useCan('generation:settings')
+  const canUpload = useCan('generation:upload')
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -172,9 +175,11 @@ export function GenerationComposer({
           <span>
             {model.provider_label || model.provider} 尚未配置，提交前请先完成配置。
           </span>
+          {canConfig ? (
           <Button type="button" variant="line" className="min-h-8 py-1" onClick={onOpenConfig}>
             去配置
           </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -223,6 +228,7 @@ export function GenerationComposer({
                 ) : (
                   <img src={asset.thumb_url ?? asset.url} alt="参考图" className="h-16 w-16 rounded-lg border border-line object-cover" />
                 )}
+                {canUpload ? (
                 <button
                   type="button"
                   onClick={() => void removeInput(asset)}
@@ -231,13 +237,16 @@ export function GenerationComposer({
                 >
                   <X size={12} />
                 </button>
+                ) : null}
               </div>
             ))}
+            {canUpload ? (
             <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-line text-[10px] text-mist transition hover:border-signal/60 hover:text-paper">
               <ImagePlus size={16} />
               {uploading ? '上传中' : '添加'}
               <input ref={fileRef} type="file" multiple accept={accept} className="hidden" onChange={(event) => void handleFiles(event.target.files)} />
             </label>
+            ) : null}
           </div>
           <div className="text-[11px] text-mist">
             仅支持本地上传

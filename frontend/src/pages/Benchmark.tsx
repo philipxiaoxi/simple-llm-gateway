@@ -9,6 +9,7 @@ import { api, type BenchmarkGroupTarget, type BenchmarkResult } from '../lib/api
 import { keyOf, targetsFromAccounts, type Target } from '../lib/benchmark'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage, shanghaiDateStamp } from '../lib/utils'
+import { useCan } from '../lib/session'
 
 function formatMs(value?: number) {
   return value ? `${value} ms` : '—'
@@ -72,6 +73,10 @@ function ResultBadge({ result, isTesting }: { result?: BenchmarkResult; isTestin
 }
 
 export function BenchmarkPage() {
+  const canRun = useCan('benchmark:run')
+  const canManageGroups = useCan('benchmark_groups:manage')
+  const canExport = useCan('benchmark_history:export')
+  const canManageModels = useCan('accounts:models_manage')
   const queryClient = useQueryClient()
   const { data: accounts = [], isLoading } = useQuery({ queryKey: ['key-accounts'], queryFn: api.keyAccounts })
   const { data: groupsData } = useQuery({ queryKey: ['benchmark-groups'], queryFn: api.benchmarkGroups })
@@ -250,26 +255,32 @@ export function BenchmarkPage() {
               <CircleStop size={16} />
               停止
             </Button>
-          ) : (
+          ) : canRun ? (
             <Button type="button" className="shrink-0 lg:hidden" onClick={() => void run()} disabled={isLoading || !visibleTargets.length}>
               <Play size={16} />
               开始
             </Button>
-          )}
+          ) : null}
         </div>
         <div className="grid grid-cols-2 items-end gap-2 lg:flex lg:shrink-0 lg:flex-wrap lg:justify-end">
+{canManageGroups ? (
           <Button type="button" variant="line" className="w-full lg:w-auto" onClick={() => setConfigOpen(true)}>
             <SlidersHorizontal size={16} />
             测试配置
           </Button>
+) : null}
+{canManageGroups ? (
           <Button type="button" variant="line" className="w-full lg:w-auto" onClick={() => setGroupDialogOpen(true)}>
             <Settings2 size={16} />
             分组管理
           </Button>
+) : null}
+{canExport ? (
           <Button type="button" variant="line" className="w-full lg:w-auto" onClick={() => void exportResults()}>
             <Download size={16} />
             导出历史
           </Button>
+) : null}
           <Button type="button" variant="line" className="w-full lg:w-auto" onClick={() => setResults({})}>
             <RotateCcw size={16} />
             清空结果
@@ -279,12 +290,12 @@ export function BenchmarkPage() {
               <CircleStop size={16} />
               停止
             </Button>
-          ) : (
+          ) : canRun ? (
             <Button type="button" className="hidden lg:inline-flex" onClick={() => void run()} disabled={isLoading || !visibleTargets.length}>
               <Play size={16} />
               开始测速
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -348,6 +359,7 @@ export function BenchmarkPage() {
             <h2 className="font-semibold">测速结果</h2>
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-xs text-mist">{completedCount} / {visibleTargets.length} 已完成</span>
+              {canRun ? (
               <Button
                 type="button"
                 variant="line"
@@ -358,6 +370,8 @@ export function BenchmarkPage() {
                 <RotateCcw size={14} />
                 重试失败
               </Button>
+              ) : null}
+              {canManageModels ? (
               <Button
                 type="button"
                 variant="danger"
@@ -368,6 +382,7 @@ export function BenchmarkPage() {
                 <Ban size={14} />
                 一键关闭
               </Button>
+              ) : null}
             </div>
           </div>
           {visibleTargets.length > 0 && completedCount > 0 && completedCount < visibleTargets.length ? (
@@ -410,7 +425,7 @@ export function BenchmarkPage() {
                       <td className="px-4 py-4 font-mono">{formatSpeed(result?.output_tokens_per_second)}</td>
                       <td className="max-w-[260px] px-4 py-4 text-xs text-mist">
                         <div>{previewText(result)}</div>
-                        {result && !result.ok && target.enabled && !isTesting ? (
+                        {canManageModels && result && !result.ok && target.enabled && !isTesting ? (
                           <button type="button" className="mt-2 text-danger hover:underline" onClick={() => void disableTarget(target)}>
                             关闭此模型
                           </button>
@@ -465,7 +480,7 @@ export function BenchmarkPage() {
                   <div className={cn('break-all text-xs [overflow-wrap:anywhere]', result?.error ? 'text-danger' : 'text-mist')} title={preview}>
                     {preview}
                   </div>
-                  {result && !result.ok && target.enabled && !isTesting ? (
+                  {canManageModels && result && !result.ok && target.enabled && !isTesting ? (
                     <Button type="button" variant="danger" className="w-full" onClick={() => void disableTarget(target)}>
                       关闭此模型
                     </Button>
@@ -531,6 +546,7 @@ export function BenchmarkPage() {
             setGroupSelectOpen(false)
             setGroupDialogOpen(true)
           }}
+          canManage={canManageGroups}
           onClose={() => setGroupSelectOpen(false)}
         />
       ) : null}

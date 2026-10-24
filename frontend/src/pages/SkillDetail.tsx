@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type SkillAnalysis } from '../lib/api'
+import { useCan } from '../lib/session'
 import { buildSkillInstallText } from '../lib/skillInstall'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { copyText, errorMessage, formatBytes, formatTime } from '../lib/utils'
@@ -20,6 +21,9 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 export function SkillDetailPage() {
+  const canUpdate = useCan('skills:update')
+  const canDelete = useCan('skills:delete')
+  const canDownload = useCan('skills:download')
   const { skillId = '' } = useParams()
   const id = Number(skillId)
   const navigate = useNavigate()
@@ -126,18 +130,23 @@ export function SkillDetailPage() {
           <p className="mt-3 max-w-3xl break-words text-sm text-mist [overflow-wrap:anywhere]">{data.description}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canUpdate ? (
           <Button variant="line" onClick={() => setEditing(true)}>
             <Pencil size={16} />
             编辑
           </Button>
+          ) : null}
           <Button variant="line" onClick={() => void copyInstall()}>
             <Copy size={16} />
             复制安装指令
           </Button>
+          {canDownload ? (
           <Button onClick={() => void downloadAll()}>
             <Download size={16} />
             下载 zip
           </Button>
+          ) : null}
+          {canDelete ? (
           <Button
             variant="danger"
             onClick={() => {
@@ -147,6 +156,7 @@ export function SkillDetailPage() {
             <Trash2 size={16} />
             删除
           </Button>
+          ) : null}
         </div>
       </div>
 
@@ -247,6 +257,7 @@ function AnalysisPanel({
   error: string
   onAnalyze: () => void
 }) {
+  const canAnalysis = useCan('skills:analysis')
   const sections: Array<[string, string[]]> = analysis
     ? [
         ['适用场景', analysis.use_cases],
@@ -270,7 +281,9 @@ function AnalysisPanel({
         {!analysis ? <p className="text-sm leading-6 text-mist">从适用场景、能力边界、依赖、权限风险和配置建议等维度分析这个 Skill。</p> : null}
         {analysis && generatedAt ? <div className="text-xs text-mist">上次分析：{formatTime(generatedAt)}</div> : null}
         {error ? <div className="text-sm leading-6 text-danger">{error}</div> : null}
+        {canAnalysis ? (
         <Button type="button" disabled={pending} onClick={onAnalyze}><Sparkles size={16} />{pending ? '分析中…' : analysis ? '重新分析' : '开始 AI 分析'}</Button>
+        ) : null}
         {analysis ? <>
           <div className="rounded-lg border border-line bg-ink p-3 text-sm leading-6 text-paper">{analysis.summary}</div>
           {sections.map(([title, values]) => <ReportSection key={title} title={title} values={values} />)}

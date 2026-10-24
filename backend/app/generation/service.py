@@ -1180,10 +1180,14 @@ def list_tasks(
     page: int = 1,
     page_size: int = 20,
     mcp_key_id: int | None = None,
+    kinds: set[str] | None = None,
 ) -> dict[str, Any]:
     filters = []
     if kind:
         filters.append(GenerationTask.kind == kind)
+    if kinds is not None:
+        # 管理端按登录者的图片/视频权限过滤；空集合表示两者都无权限，直接返回空
+        filters.append(GenerationTask.kind.in_(sorted(kinds)))
     if status:
         filters.append(GenerationTask.status == status)
     if mcp_key_id is not None:

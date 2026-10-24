@@ -3,6 +3,7 @@ import { Loader2, RefreshCw, SkipForward, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { api, type InfoItem } from '../lib/api'
+import { useCan } from '../lib/session'
 import { relativeTime } from '../lib/info'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage } from '../lib/utils'
@@ -37,6 +38,9 @@ function labelText(label: string) {
 }
 
 export function InfoAiProgressDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const canRescore = useCan('info:rescore')
+  const canSkip = useCan('info:ai_skip')
+  const canDelete = useCan('info:article_delete')
   const queryClient = useQueryClient()
   const location = useLocation()
   const [tab, setTab] = useState<TabKey>('queue')
@@ -165,7 +169,7 @@ export function InfoAiProgressDialog({ open, onClose }: { open: boolean; onClose
             </button>
           ))}
           <div className="ml-auto flex items-center gap-2">
-            {canRetry ? (
+            {canRetry && canRescore ? (
               <Button
                 type="button"
                 variant="line"
@@ -209,6 +213,8 @@ export function InfoAiProgressDialog({ open, onClose }: { open: boolean; onClose
               onOpen={onClose}
               onSkip={(id) => skipOne.mutate(id)}
               onDelete={(id) => removeOne.mutate(id)}
+              canSkip={canSkip}
+              canDelete={canDelete}
               busy={skipOne.isPending || removeOne.isPending}
             />
           ))}
@@ -227,6 +233,8 @@ function ProgressRow({
   onOpen,
   onSkip,
   onDelete,
+  canSkip: allowSkip,
+  canDelete: allowDelete,
   busy,
 }: {
   item: InfoItem
@@ -234,11 +242,13 @@ function ProgressRow({
   onOpen: () => void
   onSkip: (id: string) => void
   onDelete: (id: string) => void
+  canSkip: boolean
+  canDelete: boolean
   busy: boolean
 }) {
   const meta = STATUS_META[item.ai_status] ?? { label: item.ai_status, tone: 'mist' as const }
   const text = item.excerpt || item.text || '（无正文）'
-  const canSkip = item.ai_status === 'failed' || item.ai_status === 'pending'
+  const canSkip = allowSkip && (item.ai_status === 'failed' || item.ai_status === 'pending')
   return (
     <div className="flex items-start gap-2 border-b border-line/70 px-3 py-2.5 transition last:border-0 hover:bg-white/[0.03]">
       <Link
@@ -273,6 +283,7 @@ function ProgressRow({
             <SkipForward size={14} />
           </button>
         ) : null}
+        {allowDelete ? (
         <button
           type="button"
           aria-label="删除"
@@ -285,6 +296,7 @@ function ProgressRow({
         >
           <Trash2 size={14} />
         </button>
+        ) : null}
       </div>
     </div>
   )

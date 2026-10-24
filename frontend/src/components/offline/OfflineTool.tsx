@@ -3,6 +3,7 @@ import type { ComponentType } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AppWindow, Archive, Code2, Compass, Container, Download, Globe, RefreshCw, RotateCcw, Trash2, TriangleAlert } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useCan } from '../../lib/session'
 import { Button } from '../ui'
 import { notifyBad, notifyOk } from '../../lib/toast'
 import { errorMessage, cn } from '../../lib/utils'
@@ -11,7 +12,10 @@ import { createOfflineApi, formatBytes, type OfflineApi, type OfflineCacheItem, 
 import { ChromePanel, DockerPanel, EdgePanel, MsStorePanel, VSCodePanel } from './panels'
 import { EmptyNote } from './shared'
 
-const PANELS: Record<string, ComponentType<{ api: OfflineApi; onQueued: () => void }>> = {
+const PANELS: Record<
+  string,
+  ComponentType<{ api: OfflineApi; onQueued: () => void; canQueue?: boolean; canResolve?: boolean }>
+> = {
   vscode: VSCodePanel,
   chrome: ChromePanel,
   edge: EdgePanel,
@@ -38,12 +42,14 @@ const FALLBACK: OfflineProvider[] = [
 function CacheCard({
   row,
   api,
-  canManage,
+  canRetry,
+  canDeleteCache,
   onChanged,
 }: {
   row: OfflineCacheItem
   api: OfflineApi
-  canManage: boolean
+  canRetry: boolean
+  canDeleteCache: boolean
   onChanged: () => void
 }) {
   const meta = META[row.provider]
@@ -158,12 +164,12 @@ function CacheCard({
             )}
           </Button>
         )}
-        {canManage && failed ? (
+        {canRetry && failed ? (
           <Button type="button" variant="line" aria-label="重新缓存" disabled={refreshing} onClick={update}>
             <RotateCcw size={14} className={refreshing ? 'animate-spin' : undefined} />
           </Button>
         ) : null}
-        {canManage && row.downloadable ? (
+        {canRetry && row.downloadable ? (
           <Button
             type="button"
             variant="line"
@@ -174,7 +180,7 @@ function CacheCard({
             <RefreshCw size={14} className={refreshing ? 'animate-spin' : undefined} />
           </Button>
         ) : null}
-        {canManage ? (
+        {canDeleteCache ? (
           <Button
             type="button"
             variant="line"
@@ -219,7 +225,12 @@ export function OfflineTool({ base }: { base: string }) {
   const current = list.find((item) => item.slug === active) ?? list[0]
   const Panel = current ? PANELS[current.slug] : undefined
   const items = useMemo(() => cacheQuery.data?.items ?? [], [cacheQuery.data])
-  const canManage = base.startsWith('/api/admin')
+  const adminScope = base.startsWith('/api/admin')
+  const canCreate = useCan('offline:task_create')
+  const canResolvePerm = useCan('offline:resolve')
+  const canResolveArea = !adminScope || canResolvePerm
+  const canRetryPerm = useCan('offline:retry')
+  const canDeletePerm = useCan('offline:task_delete')
   const hasActive = useMemo(
     () => items.some((row) => row.status === 'queued' || row.status === 'caching'),
     [items],
@@ -254,7 +265,9 @@ export function OfflineTool({ base }: { base: string }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-2">
+      {canResolveArea ? (
+        <>
+        <div className="flex flex-wrap gap-2">
         {list.map((provider) => {
           const Icon = META[provider.slug]?.icon ?? Globe
           const selected = provider.slug === active
@@ -286,8 +299,19 @@ export function OfflineTool({ base }: { base: string }) {
       {current ? (
         <div className="rounded-2xl border border-line bg-panel/60 p-4 sm:p-5">
           <p className="mb-3 text-xs text-mist">{current.description}</p>
-          {Panel ? <Panel api={api} onQueued={refreshCache} /> : <div className="text-sm text-mist">该来源暂未实现</div>}
+          {Panel ? (
+            <Panel
+              api={api}
+              onQueued={refreshCache}
+              canQueue={adminScope ? canCreate : true}
+              canResolve={adminScope ? canResolvePerm : true}
+            />
+          ) : (
+            <div className="text-sm text-mist">该来源暂未实现</div>
+          )}
         </div>
+      ) : null}
+        </>
       ) : null}
 
       <div className="space-y-3">
@@ -362,7 +386,14 @@ export function OfflineTool({ base }: { base: string }) {
         {filtered.length ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filtered.map((row) => (
-              <CacheCard key={row.id} row={row} api={api} canManage={canManage} onChanged={refreshCache} />
+              <CacheCard
+                key={row.id}
+                row={row}
+                api={api}
+                canRetry={adminScope ? canRetryPerm : true}
+                canDeleteCache={adminScope ? canDeletePerm : true}
+                onChanged={refreshCache}
+              />
             ))}
           </div>
         ) : items.length ? (

@@ -6,6 +6,7 @@ import { Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api, type McpKnowledgeEmbeddingAccount } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
+import { useCan, Can } from '../lib/session'
 
 const OFFICE_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'html', 'htm'])
 
@@ -182,6 +183,8 @@ function EmbeddingFields({
 }
 
 export function McpKnowledgePage() {
+  const canCreate = useCan('mcp_knowledge:kb_create')
+  const canDelete = useCan('mcp_knowledge:kb_delete')
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -245,9 +248,11 @@ export function McpKnowledgePage() {
 
   return (
     <div className="space-y-4">
+<Can code="mcp_catalog:view">
       <Link to="/mcp-plaza" className="inline-flex text-sm text-mist hover:text-paper">
         ← 返回服务目录
       </Link>
+      </Can>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold">知识库</h2>
@@ -259,9 +264,11 @@ export function McpKnowledgePage() {
           <Button type="button" variant="line" onClick={() => navigate('/mcp-plaza/knowledge/jobs')}>
             <ListChecks size={16} /> 采集任务
           </Button>
+{canCreate ? (
           <Button type="button" onClick={() => setOpen(true)}>
             <Plus size={16} /> 新建知识库
           </Button>
+) : null}
         </div>
       </div>
 
@@ -273,6 +280,7 @@ export function McpKnowledgePage() {
                 <div className="font-medium text-paper">{item.name}</div>
                 <div className="mt-1 break-all text-xs text-mist">{item.id}</div>
               </div>
+{canDelete ? (
               <Button
                 type="button"
                 variant="ghost"
@@ -282,6 +290,7 @@ export function McpKnowledgePage() {
               >
                 <Trash2 size={15} />
               </Button>
+) : null}
             </div>
             <p className="line-clamp-2 text-sm text-mist">{item.description || '无描述'}</p>
             <div className="break-words text-xs text-mist [overflow-wrap:anywhere]">
@@ -360,6 +369,11 @@ export function McpKnowledgePage() {
 }
 
 export function McpKnowledgeDetailPage() {
+  const canUpdate = useCan('mcp_knowledge:kb_update')
+  const canUpload = useCan('mcp_knowledge:doc_upload')
+  const canReembed = useCan('mcp_knowledge:doc_reembed')
+  const canDeleteDoc = useCan('mcp_knowledge:doc_delete')
+  const canSearch = useCan('mcp_knowledge:search')
   const { kbId = '' } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -576,9 +590,11 @@ export function McpKnowledgeDetailPage() {
           </div>
         ) : null}
         <div className="flex flex-wrap gap-2">
+{canUpdate ? (
           <Button type="button" disabled={!dirty || saveSettings.isPending} onClick={() => saveSettings.mutate()}>
             保存设置
           </Button>
+) : null}
           <Button
             type="button"
             variant="line"
@@ -607,6 +623,8 @@ export function McpKnowledgeDetailPage() {
             查看采集任务 →
           </Link>
         </div>
+{canUpload ? (
+        <>
         <Field label="粘贴纯文本入库">
           <textarea
             className="min-h-28 w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm text-paper"
@@ -618,6 +636,7 @@ export function McpKnowledgeDetailPage() {
         <Field label="来源名">
           <Input value={sourceName} onChange={(e) => setSourceName(e.target.value)} />
         </Field>
+{canUpload ? (
         <Button
           type="button"
           disabled={!text.trim() || submitText.isPending || submitBatch.isPending}
@@ -625,6 +644,7 @@ export function McpKnowledgeDetailPage() {
         >
           提交入库任务
         </Button>
+) : null}
 
         <div className="grid gap-3 border-t border-line pt-3">
           <Field label="上传文件（可多选，.md / .txt / Word / PDF / Excel / PPT）">
@@ -657,8 +677,11 @@ export function McpKnowledgeDetailPage() {
         <p className="text-xs text-mist">
           多选上传和目录入库都走同一条处理：文本直接入库，Word、PDF、Excel、PPT、HTML 先转成 Markdown 再入库。转换失败的文件记入跳过清单。文本单文件上限 2 MiB，办公文档上限 30 MiB。
         </p>
+        </>
+        ) : null}
       </Card>
 
+      {canSearch ? (
       <Card className="grid min-w-0 gap-3 overflow-hidden p-4">
         <div className="font-medium">试检索</div>
         <Field label="查询">
@@ -693,6 +716,7 @@ export function McpKnowledgeDetailPage() {
           </div>
         ) : null}
       </Card>
+      ) : null}
 
       <div className="space-y-2">
         <div className="font-medium">文档</div>
@@ -707,12 +731,16 @@ export function McpKnowledgeDetailPage() {
                 </div>
               </div>
               <div className="flex gap-2">
+{canReembed ? (
                 <Button type="button" variant="line" disabled={reembed.isPending} onClick={() => reembed.mutate(doc.id)}>
                   重新向量化
                 </Button>
+) : null}
+{canDeleteDoc ? (
                 <Button type="button" variant="ghost" onClick={() => remove.mutate(doc.id)}>
                   删除
                 </Button>
+) : null}
               </div>
             </div>
           </Card>

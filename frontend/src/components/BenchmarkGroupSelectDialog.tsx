@@ -9,6 +9,7 @@ export function BenchmarkGroupSelectDialog({
   onApply,
   onSaveNew,
   onManage,
+  canManage,
   onClose,
 }: {
   groups: BenchmarkGroup[]
@@ -17,6 +18,7 @@ export function BenchmarkGroupSelectDialog({
   onApply: (groupId: number) => void
   onSaveNew: (name: string) => void
   onManage: () => void
+  canManage: boolean
   onClose: () => void
 }) {
   const [name, setName] = useState('')
@@ -54,6 +56,7 @@ export function BenchmarkGroupSelectDialog({
           ) : null}
         </div>
 
+        {canManage ? (
         <div className="border-t border-line pt-4">
           <div className="text-xs uppercase tracking-[0.16em] text-mist">把当前已选保存为新分组</div>
           <div className="mt-2 flex flex-col gap-2 sm:flex-row">
@@ -76,11 +79,16 @@ export function BenchmarkGroupSelectDialog({
           </div>
           <div className="mt-2 text-xs text-mist">当前已选 {currentTargetCount} 个目标</div>
         </div>
+        ) : null}
 
         <div className="flex items-center justify-between">
-          <button type="button" className="text-xs text-signal hover:underline" onClick={onManage}>
-            管理分组
-          </button>
+          {canManage ? (
+            <button type="button" className="text-xs text-signal hover:underline" onClick={onManage}>
+              管理分组
+            </button>
+          ) : (
+            <span />
+          )}
           <Button variant="line" onClick={onClose}>关闭</Button>
         </div>
       </div>

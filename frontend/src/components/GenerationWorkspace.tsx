@@ -11,6 +11,7 @@ import { Pagination } from './Pagination'
 import { useGenerationSettings } from './useGenerationSettings'
 import { GenerationTaskDialog } from './GenerationTaskDialog'
 import { GenerationWorks } from './GenerationWorks'
+import { useCan } from '../lib/session'
 import { Button, Dialog } from './ui'
 
 const PAGE_SIZE = 24
@@ -52,6 +53,8 @@ export function GenerationWorkspace({ kind }: { kind: 'image' | 'video' }) {
     onError: (caught) => notifyBad(errorMessage(caught, '删除失败')),
   })
 
+  const canCreate = useCan(`${kind}_gen:task_create`)
+  const canConfig = useCan('generation:settings')
   const title = kind === 'image' ? '图片生成' : '视频生成'
   const data = tasksQuery.data
   const tasks = data?.items ?? []
@@ -97,15 +100,19 @@ export function GenerationWorkspace({ kind }: { kind: 'image' | 'video' }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">{title}</h1>
         <div className="flex gap-2">
+          {canCreate ? (
           <Button type="button" onClick={() => openCreate()}>
             <Plus size={15} /> 生成{kind === 'image' ? '图片' : '视频'}
           </Button>
+          ) : null}
           <Button type="button" variant="line" onClick={() => void tasksQuery.refetch()}>
             <RefreshCw size={15} /> 刷新
           </Button>
+          {canConfig ? (
           <Button type="button" variant="line" onClick={() => setConfigOpen(true)}>
             <Cog size={15} /> 生成配置
           </Button>
+          ) : null}
         </div>
       </div>
 

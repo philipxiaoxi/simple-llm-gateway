@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import { ItemPickDialog } from '../components/ItemPickDialog'
 import { Badge, Button, Card, Select } from '../components/ui'
 import { api, type McpIntegrationCapability } from '../lib/api'
+import { useCan } from '../lib/session'
 import {
   buildCapabilityReference,
   buildMcpClientConfig,
@@ -63,7 +64,9 @@ export function McpDocsPage() {
   const [method, setMethod] = useState<MethodId>('mcp')
   const [dialog, setDialog] = useState<null | 'mcp' | 'rest'>(null)
 
-  const keys = useQuery({ queryKey: ['mcp-keys'], queryFn: () => api.mcpKeys() })
+  const canListKeys = useCan('mcp_keys:view')
+  const canReveal = useCan('mcp_keys:reveal')
+  const keys = useQuery({ queryKey: ['mcp-keys'], queryFn: () => api.mcpKeys(), enabled: canListKeys })
   const keyId = useMemo(() => {
     if (queryKeyId) return Number(queryKeyId)
     return keys.data?.[0]?.id
@@ -85,7 +88,7 @@ export function McpDocsPage() {
   const reveal = useQuery({
     queryKey: ['mcp-key-reveal', keyId],
     queryFn: () => api.revealMcpKey(keyId as number),
-    enabled: Boolean(keyId),
+    enabled: canReveal && Boolean(keyId),
     staleTime: 5 * 60_000,
   })
 

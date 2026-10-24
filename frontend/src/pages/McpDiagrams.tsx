@@ -6,6 +6,7 @@ import { Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
+import { useCan, Can } from '../lib/session'
 
 const STATUS_LABELS: Record<string, string> = {
   active: '启用',
@@ -29,6 +30,7 @@ const TEMPLATE = `{
 }`
 
 export function McpDiagramsPage() {
+  const canGenerate = useCan('mcp_diagrams:generate')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
@@ -95,9 +97,11 @@ export function McpDiagramsPage() {
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
+<Can code="mcp_catalog:view">
       <Link to="/mcp-plaza" className="inline-flex text-sm text-mist hover:text-paper">
         ← 返回服务目录
       </Link>
+      </Can>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">图表生成</h2>
@@ -105,9 +109,11 @@ export function McpDiagramsPage() {
             提交 Archify 类型化 JSON 源，渲染为自包含交互式 HTML 并发布为可回滚、可令牌保护的图表站点。
           </p>
         </div>
+{canGenerate ? (
         <Button type="button" onClick={() => setOpen(true)}>
           <Plus size={15} /> 新建图表
         </Button>
+) : null}
       </div>
 
       <Card className="p-4">

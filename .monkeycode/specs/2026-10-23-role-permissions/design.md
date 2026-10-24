@@ -20,7 +20,7 @@ Updated: 2026-10-23
 
 | 决策项 | 结论 |
 |--------|------|
-| 权限粒度 | **页面 × 动作**，约 130 个权限点，角色编辑页按页面分组勾选 |
+| 权限粒度 | **页面 × 动作**，约 140 个权限点，角色编辑页按页面分组勾选 |
 | 账号与角色 | **一个账号绑定恰好一个角色**，不做多角色叠加 |
 | 图片 / 视频生成 | **拆成两个资源**，按请求体 `kind` 与任务自身 `kind` 校验；配置与参考素材共用一套接口，归到共享的 `generation` 资源 |
 | 数据级权限 | 不纳入本轮，只做功能级 |
@@ -43,6 +43,18 @@ graph TD
 ```
 
 判定链路：请求进入 `/api/admin/*` → `get_current_admin` 解出 `Admin`（`deps.py:30`）→ `Permission_Guard` 依据该路由的 `Resource` 与覆盖表得到 Route_Permission → 角色持有通配 `*` 或包含该 Permission 即放行，否则 403。
+
+### 页面依赖的只读接口
+
+页面进入时会加载筛选器、分组、供应商等只读数据，这些查询不能要求用户具备对应的管理权限，否则只读角色会在页面加载时收到 403。`ROUTE_ANY_CODES` 为这类接口登记「任一命中即可」的权限集合，例如：
+
+- `GET /api/admin/accounts`：`accounts:view` / `benchmark:view` / `logs:view` / `keys:view` 等（列表不含密钥明文）；
+- `GET /api/admin/keys`：`keys:view` / `logs:view`；
+- `GET /api/admin/benchmark/groups`：`benchmark_groups:view` / `benchmark:view` / `benchmark_history:view`；
+- `GET /api/admin/generation/settings`：`generation:settings` 或对应 kind 的查看/创建权限；
+- `GET /api/admin/integrations/tikhub`：`integrations:view` / `info:view` / `mcp_douyin:view`。
+
+写入仍走原权限码；`resolve_permission` 返回集合首项作为主权限，供目录覆盖测试使用。涉及密钥明文的读取（如 `accounts?reveal=1`）额外要求 `accounts:update`。
 
 ## Components and Interfaces
 
@@ -93,9 +105,9 @@ def require_route_permission(resource: str) -> Callable: ...  # 生成 FastAPI �
 ```
 
 - 依赖实现：从 `request.scope["route"]` 取 `path` 与 `methods`，先查 `ROUTE_OVERRIDES`，未命中则用 `DEFAULT_ACTIONS[method]` 拼 `f"{resource}:{action}"`；再取 `admin` 的权限集合判定。
-- 挂载方式：每个 router 一处 `dependencies=[Depends(require_route_permission("accounts"))]`（约 40 处），不逐个函数写装饰器。
-- 需要读请求体的接口（生成任务）用同一模块的 `require_body_kind_permission(kind_field="kind", mapping={"image": "image_gen", "video": "video_gen"})`：依赖内 `await request.json()`（FastAPI 已缓存 `_body`，不会二次读取流）。
-- 需要按资源自身 kind 校验的接口（任务的读/删/重试）用 `require_task_kind_permission()`：依赖内按路径参数查一次 `GenerationTask.kind`，再判定对应资源。
+- 挂载方式：所有需要登录的管理 router 统一挂到一个 `APIRouter(dependencies=[Depends(require_admin_permission)])` 父路由下（`main.py`），登录、`/me`、OAuth 回调与签名令牌资产路由不挂；权限按“路由前缀 → 资源 + HTTP 方法 → 默认动作”推导，不逐个函数写装饰器。
+- 需要读请求体的接口（生成任务创建）用 `require_generation_task_create`：依赖内 `await request.json()`（FastAPI 已缓存 `_body`，不会二次读取流），按 `kind` 映射到 `image_gen` / `video_gen`。
+- 需要按资源自身 kind 校验的接口（任务的读/删/重试）用 `require_generation_task_access(action)`：依赖内按路径参数查一次 `GenerationTask.kind`，再判定对应资源；列表接口按可授权的 kind 过滤。
 - 放行清单（不装 Guard）：`/api/admin/login`、`/api/admin/me`、`/api/admin/security/beacon`、`/api/admin/generation` 的资产路由（签名令牌鉴权，见 `admin_generation.py:19`）。
 - 测试保障：`test_permission_catalog.py` 遍历 `app.routes`，断言每个 `/api/admin/*` 路由（除放行清单）都能解析出 Permission，且解析结果都在 `CATALOG` 内；新增接口忘记登记时测试失败。
 
@@ -165,15 +177,15 @@ admins（新增列）
 | 网关代理 `agents` | view, create, update, delete, route_bind |
 | API Key `keys` | view, create, update, delete, reveal, aliases_manage, cc_switch |
 | 记录审计 `logs` | view, detail, messages, export |
-| 模型测速 `benchmark` | view, run, export |
-| 测速分组 `benchmark_groups` | manage |
+| 模型测速 `benchmark` | view（仅页面入口）, run |
+| 测速分组 `benchmark_groups` | view, manage |
 | 测速历史 `benchmark_history` | view, detail, export |
 | 模型榜 `leaderboard` | view |
 | 资讯收集 `info` | view, source_create, source_update, source_delete, collect, preview, article_create, article_update, article_delete, favorite, hidden, featured, ai_skip, ai_settings, rescore |
 | 图片生成 `image_gen` | view, task_create, task_retry, task_delete, settings |
 | 视频生成 `video_gen` | view, task_create, task_retry, task_delete, settings |
 | 生成配置（共享）`generation` | settings, upload |
-| 离线下载 `offline` | view, task_create, task_delete, retry |
+| 离线下载 `offline` | view, resolve（解析上游）, task_create, task_delete, retry |
 | Skills `skills` | view, upload, update, delete, category_manage, analysis, download |
 | Skills 组合包 `skill_bundles` | manage |
 | 安全中心 `security` | view, event_detail, settings |
@@ -191,14 +203,14 @@ admins（新增列）
 | 第三方集成 `integrations` | view, update |
 | 公开门禁 `public_gate` | view, update |
 | 用户管理 `users` | view, create, update, delete, reset_password, toggle_status |
-| 角色管理 `roles` | view, create, update, delete, assign_permissions |
+| 角色管理 `roles` | view, create, update, delete |
 
 ## Correctness Properties
 
 1. 通配持有者对任一 `/api/admin/*` 接口都放行；升级后现有账号行为与升级前逐接口一致。
 2. 不存在任何可编辑或删除内置「管理员」角色的路径（需求 2.2）。
-3. 系统始终保留至少一个通配持有者账号（需求 4.2 / 4.3）。
-4. 每个 `/api/admin/*` 接口都解析出确定且合法的 Route_Permission；覆盖表中每个 code 都存在于 `CATALOG`。
+3. 系统始终保留至少一个**启用中**的通配持有者账号（需求 4.2 / 4.3）；非通配持有者不能改密、停用或删除权限高于自己的账号。
+4. 每个 `/api/admin/*` 接口都解析出确定且合法的 Route_Permission；覆盖表与「任一命中」集合中的每个 code 都存在于 `CATALOG`。
 5. 非通配持有者创建/更新的角色权限、分配的角色权限，均为其自身权限的子集。
 6. 生成的列表接口只返回请求者被授权的 kind。
 7. 权限校验结论只依赖「当前角色权限集合」与「路由」，不依赖请求体中的其他字段。

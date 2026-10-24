@@ -4,10 +4,13 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api, type SkillBundleItem } from '../lib/api'
+import { useCan } from '../lib/session'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
 
 export function SkillBundlesPage() {
+  const canManage = useCan('skill_bundles:manage')
+  const canSkills = useCan('skills:view')
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -32,19 +35,23 @@ export function SkillBundlesPage() {
 
   return (
     <div className="space-y-5">
+{canSkills ? (
       <Link to="/skills" className="inline-flex items-center gap-1.5 text-sm text-mist hover:text-paper">
         <ArrowLeft size={16} /> 返回 Skills
       </Link>
+      ) : null}
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Skills 组合</h1>
           <p className="mt-1 text-sm text-mist">把已入库的多个 Skill 编成组合包，支持整包下载与复制安装指令。</p>
         </div>
+        {canManage ? (
         <Button onClick={() => setCreateOpen(true)}>
           <Plus size={16} />
           新建组合包
         </Button>
+        ) : null}
       </div>
 
       <Card className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">

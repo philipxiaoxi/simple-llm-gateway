@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api, type SkillBundleDetail, type SkillItem } from '../lib/api'
+import { useCan } from '../lib/session'
 import { buildBundleInstallText } from '../lib/skillInstall'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { copyText, errorMessage, formatBytes, formatTime } from '../lib/utils'
@@ -20,6 +21,8 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 export function SkillBundleDetailPage() {
+  const canManage = useCan('skill_bundles:manage')
+  const canSkills = useCan('skills:view')
   const { bundleId } = useParams()
   const id = Number(bundleId)
   const navigate = useNavigate()
@@ -111,10 +114,12 @@ export function SkillBundleDetailPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canManage ? (
           <Button variant="line" onClick={() => setEditing(true)}>
             <Pencil size={16} />
             编辑
           </Button>
+          ) : null}
           <Button variant="line" onClick={() => void copyInstall()}>
             <Copy size={16} />
             复制安装指令
@@ -123,6 +128,7 @@ export function SkillBundleDetailPage() {
             <Download size={16} />
             打包下载
           </Button>
+          {canManage ? (
           <Button
             variant="danger"
             onClick={() => {
@@ -134,15 +140,18 @@ export function SkillBundleDetailPage() {
             <Trash2 size={16} />
             删除
           </Button>
+          ) : null}
         </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-medium">成员</h2>
+        {canManage ? (
         <Button variant="line" onClick={() => setAdding(true)}>
           <Plus size={16} />
           添加 Skill
         </Button>
+        ) : null}
       </div>
 
       <div className="grid gap-3">
@@ -159,6 +168,7 @@ export function SkillBundleDetailPage() {
                 </>
               ) : (
                 <>
+                  {canSkills ? (
                   <Link
                     to={`/skills/${member.skill.id}`}
                     title={member.skill.name}
@@ -166,6 +176,14 @@ export function SkillBundleDetailPage() {
                   >
                     {member.skill.name}
                   </Link>
+                  ) : (
+                  <span
+                    title={member.skill.name}
+                    className="block break-all font-medium [overflow-wrap:anywhere] line-clamp-2"
+                  >
+                    {member.skill.name}
+                  </span>
+                  )}
                   <code title={member.skill.slug} className="mt-1 block truncate text-xs text-mist">
                     {member.skill.slug}
                   </code>
@@ -175,6 +193,7 @@ export function SkillBundleDetailPage() {
                 </>
               )}
             </div>
+            {canManage ? (
             <Button
               type="button"
               variant="line"
@@ -184,6 +203,7 @@ export function SkillBundleDetailPage() {
             >
               移除
             </Button>
+            ) : null}
           </Card>
         ))}
       </div>

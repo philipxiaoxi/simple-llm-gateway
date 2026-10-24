@@ -12,6 +12,7 @@ import { api, type LogMessageItem, type LogTurn } from '../lib/api'
 import { accountText, formatLogTime, messageCountText, protocolLabel, statusMeta } from '../lib/logView'
 import { cn, errorMessage, formatTokenCount } from '../lib/utils'
 import { notifyBad } from '../lib/toast'
+import { useCan } from '../lib/session'
 
 type TabKey = 'conversation' | 'trajectory' | 'content'
 
@@ -31,23 +32,26 @@ export function LogDetailPage() {
   const params = useParams()
   const id = Number(params.id)
   const ready = Number.isFinite(id)
-  const [tab, setTab] = useState<TabKey>('conversation')
+  const canViewList = useCan('logs:view')
+  const canMessages = useCan('logs:messages')
+  const [tab, setTab] = useState<TabKey>(canMessages ? 'conversation' : 'content')
   const [messages, setMessages] = useState<LogMessageItem[] | null>(null)
   const [total, setTotal] = useState(0)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [previewTurn, setPreviewTurn] = useState<{ anchor: number; to: number | null; index: number | null } | null>(null)
   const queryClient = useQueryClient()
 
-  const { data, isPending, isFetching, refetch } = useQuery({
+  const { data, isPending, isFetching, error, refetch } = useQuery({
     queryKey: ['log', id],
     queryFn: () => api.log(id, false),
     enabled: ready,
+    retry: false,
   })
 
   const { data: turnsData } = useQuery({
     queryKey: ['log-turns', id],
     queryFn: () => api.logTurns(id),
-    enabled: ready,
+    enabled: ready && canMessages,
   })
   const turnsOutline = turnsData?.items ?? []
 
@@ -92,7 +96,7 @@ export function LogDetailPage() {
   }, [])
 
   useEffect(() => {
-    if (!ready) return
+    if (!ready || !canMessages) return
     let cancelled = false
     setMessages(null)
     setTotal(0)
@@ -110,7 +114,7 @@ export function LogDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [id, ready, loadWindow])
+  }, [id, ready, canMessages, loadWindow])
 
   const loadOlder = () => {
     if (loadingOlder || !messages?.length) return
@@ -128,6 +132,21 @@ export function LogDetailPage() {
     setPreviewTurn({ anchor, to, index })
   }
 
+  if (error) {
+    return (
+      <div className="space-y-3">
+        {canViewList ? (
+        <Link to="/logs" className="inline-flex items-center gap-1 text-sm text-mist hover:text-signal">
+          <ArrowLeft size={14} />
+          返回列表
+        </Link>
+        ) : null}
+        <div className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-6 text-sm text-danger">
+          {errorMessage(error, '加载记录失败')}
+        </div>
+      </div>
+    )
+  }
   if (isPending || !data || data.id !== id) {
     return <div className="text-mist">加载中…</div>
   }
@@ -136,15 +155,18 @@ export function LogDetailPage() {
   const totalTokens = data.total_tokens ?? (data.prompt_tokens ?? 0) + (data.completion_tokens ?? 0)
   const loaded = messages ?? []
   const hasOlder = loaded.length > 0 && loaded.length < total
-  const messagesReady = messages !== null
+  const messagesReady = !canMessages || messages !== null
+  const visibleTabs = canMessages ? TABS : TABS.filter((item) => item.key === 'content')
 
   return (
     <div className="min-w-0 max-w-full space-y-5 overflow-x-hidden">
       <div className="flex items-center justify-between gap-3">
+        {canViewList ? (
         <Link to="/logs" className="inline-flex items-center gap-1 text-sm text-mist hover:text-signal">
           <ArrowLeft size={14} />
           返回列表
         </Link>
+        ) : null}
         <Button variant="line" onClick={() => void refetch()}>
           <RefreshCw size={14} className={cn(isFetching && 'animate-spin')} />
           刷新
@@ -224,7 +246,7 @@ export function LogDetailPage() {
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b border-line">
-        {TABS.map((item) => (
+        {visibleTabs.map((item) => (
           <button
             key={item.key}
             type="button"

@@ -285,7 +285,7 @@ function aiConfigText(lookup: ShareLookup, apiKey: string, modelIds: string[]) {
   const models =
     modelIds.length > 0
       ? modelIds.map((modelName) => modelDetailLine(modelName, lookup)).join('\n')
-      : '- （暂无模型列表，请联系管理员先获取模型）'
+      : '- （暂无模型列表，请联系平台维护人员先获取模型）'
   return [
     `请先询问我希望为这项配置使用什么名称；默认建议名称是「${lookup.name}」，确认或修改名称后，再将以下 AI 服务接入我正在使用的客户端。根据客户端协议选择对应的 Base URL，不要混用。`,
     '',
@@ -395,7 +395,7 @@ export function SharePage() {
       return
     }
     if (lookup.models.length === 0) {
-      notifyBad('这个 Key 绑定的账号还没有模型列表，请联系管理员先「获取模型」。')
+      notifyBad('这个 Key 绑定的账号还没有模型列表，请联系平台维护人员先「获取模型」。')
       return
     }
     setDialog({
@@ -411,7 +411,7 @@ export function SharePage() {
       return
     }
     if (lookup.models.length === 0) {
-      notifyBad('这个 Key 绑定的账号还没有模型列表，请联系管理员先「获取模型」。')
+      notifyBad('这个 Key 绑定的账号还没有模型列表，请联系平台维护人员先「获取模型」。')
       return
     }
     setVscodeDialog(true)
@@ -420,7 +420,7 @@ export function SharePage() {
   function openAiConfig() {
     if (!lookup) return
     if (lookup.models.length === 0) {
-      notifyBad('这个 Key 绑定的账号还没有模型列表，请联系管理员先「获取模型」。')
+      notifyBad('这个 Key 绑定的账号还没有模型列表，请联系平台维护人员先「获取模型」。')
       return
     }
     setAiConfigDialog(true)
@@ -484,7 +484,7 @@ export function SharePage() {
           <div className="font-mono text-xs tracking-[0.28em] text-signal">PIVOT DESK</div>
           <h1 className="mt-2 text-2xl font-semibold">API Key 自助查询</h1>
           <p className="mt-1 text-sm text-mist">
-            把管理员发给你的完整 API Key 粘贴进来，查询绑定账号、可用情况和用量。
+            把你收到的完整 API Key 粘贴进来，查询绑定账号、可用情况和用量。
           </p>
         </div>
 
@@ -561,7 +561,7 @@ export function SharePage() {
               {lookup.models.length > 0 ? (
                 <AccountModelGroups lookup={lookup} />
               ) : (
-                <div className="mt-2 text-sm text-warn">还没有模型列表，请让管理员先在上游账号里点「获取模型」。</div>
+                <div className="mt-2 text-sm text-warn">还没有模型列表，请让维护人员先在上游账号里点「获取模型」。</div>
               )}
             </div>
           </Card>
@@ -610,7 +610,7 @@ export function SharePage() {
               {lookup.models.length > 0 ? (
                 <AccountModelGroups lookup={lookup} onModelClick={(modelName) => void copyModel(modelName)} />
               ) : (
-                <div className="mt-2 text-sm text-warn">还没有模型列表，请让管理员先在上游账号里点「获取模型」。</div>
+                <div className="mt-2 text-sm text-warn">还没有模型列表，请让维护人员先在上游账号里点「获取模型」。</div>
               )}
             </div>
             <div className="grid gap-4 md:grid-cols-2">

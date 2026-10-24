@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { Pagination } from '../components/Pagination'
 import { Badge, Button, Card, Field, Input, Select } from '../components/ui'
 import { api, type LogItem } from '../lib/api'
+import { useCan } from '../lib/session'
 import {
   accountText,
   formatClock,
@@ -45,17 +46,15 @@ function StatusIndicator({ status }: { status: string }) {
 }
 
 function SessionRow({ item }: { item: LogItem }) {
+  const canDetail = useCan('logs:detail')
   const turns = item.turn_count ?? 0
   const merged = turns > 1
   const callLatency = item.last_latency_ms ?? item.latency_ms
   const title = sessionTitle(item)
   const time = formatClock(item.updated_at || item.created_at)
   const fullTime = formatTime(item.updated_at || item.created_at)
-  return (
-    <Link
-      to={`/logs/${item.id}`}
-      className="block px-4 py-3 transition hover:bg-white/[0.03] lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start lg:gap-x-5"
-    >
+  const body = (
+    <>
       <div className="flex items-center justify-between gap-3 lg:block lg:pt-1">
         <StatusIndicator status={item.status} />
         <time className="font-mono text-xs text-mist lg:hidden" title={fullTime}>
@@ -109,6 +108,16 @@ function SessionRow({ item }: { item: LogItem }) {
       <time className="hidden text-right font-mono text-xs text-mist lg:block" title={fullTime}>
         {time}
       </time>
+    </>
+  )
+  const className =
+    'block px-4 py-3 lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start lg:gap-x-5'
+  if (!canDetail) {
+    return <div className={cn(className, 'cursor-default')}>{body}</div>
+  }
+  return (
+    <Link to={`/logs/${item.id}`} className={cn(className, 'transition hover:bg-white/[0.03]')}>
+      {body}
     </Link>
   )
 }

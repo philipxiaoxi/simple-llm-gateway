@@ -6,10 +6,10 @@ from sqlalchemy.orm import Session
 from app.clock import utcnow
 from app.crypto import hash_password, verify_password
 from app.db import get_db
-from app.deps import create_access_token, get_current_admin
+from app.deps import admin_role_view, create_access_token, get_current_admin
 from app.login_gate import LoginLocked, login_gate
 from app.models import Admin
-from app.schemas import AdminUpdateRequest, LoginRequest, LoginResponse
+from app.schemas import AdminUpdateRequest, LoginRequest, LoginResponse, MeOut, MeRoleOut
 from app.services.client_meta import client_meta
 from app.services.security_audit import enqueue_login_event, record_auth_failure
 
@@ -41,6 +41,12 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
             headers={"Retry-After": str(error.retry_after)},
         ) from error
     admin = db.scalar(select(Admin).where(Admin.username == payload.username))
+    if admin is not None and not bool(admin.is_enabled):
+        enqueue_login_event(
+            "login_disabled", payload.username, meta,
+            severity="warn", attempted_password=payload.password, headers=headers, status=403,
+        )
+        raise HTTPException(status_code=403, detail="账号已停用")
     if admin is None or not verify_password(payload.password, admin.password_hash):
         login_gate.fail(client)
         enqueue_login_event(
@@ -55,9 +61,14 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
     return LoginResponse(token=create_access_token(admin), username=admin.username)
 
 
-@router.get("/me")
-def me(admin: Admin = Depends(get_current_admin)) -> dict[str, str]:
-    return {"username": admin.username}
+@router.get("/me", response_model=MeOut)
+def me(admin: Admin = Depends(get_current_admin), db: Session = Depends(get_db)) -> MeOut:
+    role, permissions = admin_role_view(db, admin)
+    return MeOut(
+        username=admin.username,
+        role=MeRoleOut(**role) if role else None,
+        permissions=permissions,
+    )
 
 
 @router.patch("/me", response_model=LoginResponse)

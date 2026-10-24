@@ -4,6 +4,7 @@ import { api, type GenerationTask } from '../lib/api'
 import { formatBytes, formatTime, isTaskActive, statusLabel, statusTone, taskModelLabel, taskParamSummary } from '../lib/generation'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage } from '../lib/utils'
+import { useCan } from '../lib/session'
 import { Badge, Button, Dialog } from './ui'
 
 export function GenerationTaskDialog({
@@ -25,6 +26,10 @@ export function GenerationTaskDialog({
     refetchInterval: (q) => (q.state.data && isTaskActive(q.state.data.status) ? 2500 : false),
   })
   const task = query.data
+  const kindResource = task?.kind === 'video' ? 'video_gen' : 'image_gen'
+  const canCreate = useCan(`${kindResource}:task_create`)
+  const canRetry = useCan(`${kindResource}:task_retry`)
+  const canDelete = useCan(`${kindResource}:task_delete`)
 
   const remove = useMutation({
     mutationFn: () => api.generationDelete(taskId as string),
@@ -139,6 +144,7 @@ export function GenerationTaskDialog({
 
           <div className="flex flex-wrap justify-between gap-2 border-t border-line pt-3">
             <div className="flex flex-wrap gap-2">
+              {canCreate ? (
               <Button
                 type="button"
                 variant="line"
@@ -150,14 +156,17 @@ export function GenerationTaskDialog({
               >
                 <Wand2 size={14} /> 复用参数
               </Button>
-              {task.status === 'failed' || task.status === 'violation' ? (
+              ) : null}
+              {(task.status === 'failed' || task.status === 'violation') && canRetry ? (
                 <Button type="button" variant="line" disabled={pending} onClick={() => retry.mutate()}>
                   <RotateCcw size={14} /> 重试
                 </Button>
               ) : null}
+              {canDelete ? (
               <Button type="button" variant="danger" disabled={pending} onClick={() => remove.mutate()}>
                 <Trash2 size={14} /> 删除
               </Button>
+              ) : null}
             </div>
             <Button type="button" variant="ghost" disabled={pending} onClick={onClose}>
               关闭

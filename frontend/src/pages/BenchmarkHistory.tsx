@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Pagination } from '../components/Pagination'
 import { Button, Card, Dialog, Select } from '../components/ui'
 import { api, type BenchmarkLeaderboardItem, type BenchmarkResult, type BenchmarkRun } from '../lib/api'
+import { useCan } from '../lib/session'
 import { notifyBad } from '../lib/toast'
 import { cn, errorMessage, formatTime, shanghaiDateStamp } from '../lib/utils'
 
@@ -87,6 +88,8 @@ function rankedResults(results: BenchmarkResult[]) {
 }
 
 function ExportMenu() {
+  const canExportHistory = useCan('benchmark_history:export')
+  const canExportLeaderboard = useCan('leaderboard:export')
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const stamp = shanghaiDateStamp()
@@ -102,6 +105,7 @@ function ExportMenu() {
       setBusy(false)
     }
   }
+  if (!canExportHistory && !canExportLeaderboard) return null
   return (
     <div className="relative shrink-0">
       <Button type="button" variant="line" className="w-full sm:w-auto" disabled={busy} onClick={() => setOpen((value) => !value)}>
@@ -112,12 +116,16 @@ function ExportMenu() {
         <>
           <button type="button" aria-label="关闭导出菜单" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
           <div className="absolute right-0 z-50 mt-1 w-44 border border-line bg-panel-2 py-1 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
+            {canExportHistory ? (
             <button type="button" className="block w-full px-3 py-2 text-left text-sm text-paper hover:bg-white/5" onClick={() => void run('history')}>
               导出测速历史
             </button>
+            ) : null}
+            {canExportLeaderboard ? (
             <button type="button" className="block w-full px-3 py-2 text-left text-sm text-paper hover:bg-white/5" onClick={() => void run('leaderboard')}>
               导出速度排行榜
             </button>
+            ) : null}
           </div>
         </>
       ) : null}

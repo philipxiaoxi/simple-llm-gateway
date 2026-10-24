@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import type { GenerationTask } from '../lib/api'
 import { formatTime, isTaskActive, resultThumb, statusLabel, statusTone, taskModelLabel, taskParamSummary } from '../lib/generation'
 import { cn } from '../lib/utils'
+import { useCan } from '../lib/session'
 import { Badge, Button } from './ui'
 
 function ActionButton({
@@ -171,6 +172,8 @@ export function GenerationWorks({
   onCreate: () => void
 }) {
   const [preview, setPreview] = useState<{ url: string; alt: string } | null>(null)
+  const canCreate = useCan(`${tasks[0]?.kind === 'video' ? 'video_gen' : 'image_gen'}:task_create`)
+  const canDelete = useCan(`${tasks[0]?.kind === 'video' ? 'video_gen' : 'image_gen'}:task_delete`)
 
   if (!tasks.length) {
     return (
@@ -178,9 +181,11 @@ export function GenerationWorks({
         <ImageIcon size={26} className="text-mist" />
         <div className="text-sm text-mist">还没有作品</div>
         <div className="text-xs text-mist-strong">点击下方按钮开始生成，结果会出现在这里。</div>
+        {canCreate ? (
         <Button type="button" onClick={onCreate}>
           <Plus size={15} /> 开始生成
         </Button>
+        ) : null}
       </div>
     )
   }
@@ -234,9 +239,11 @@ export function GenerationWorks({
               </button>
 
               <div className="absolute right-2 top-2 flex gap-1 opacity-100 transition lg:opacity-0 lg:group-hover:opacity-100">
+                {canCreate ? (
                 <ActionButton title="复用参数" onClick={() => onReuse(task)}>
                   <RotateCcw size={14} />
                 </ActionButton>
+                ) : null}
                 {canDownload && thumb?.url ? (
                   <a
                     href={thumb.url}
@@ -249,9 +256,11 @@ export function GenerationWorks({
                     <Download size={14} />
                   </a>
                 ) : null}
+                {canDelete ? (
                 <ActionButton title="删除" tone="danger" onClick={() => onDelete(task)}>
                   <Trash2 size={14} />
                 </ActionButton>
+                ) : null}
               </div>
             </div>
           )

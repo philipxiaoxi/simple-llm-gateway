@@ -16,12 +16,17 @@ import {
 } from '../lib/info'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, copyText, errorMessage, formatTime } from '../lib/utils'
+import { useCan } from '../lib/session'
 
 const LINE_BUTTON =
   'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md border border-line bg-panel-2 px-3 py-2 text-xs text-paper transition hover:border-mist/40'
 
 /** 详情浮层：覆盖在瀑布流之上，路由切换驱动，支持浏览器/手势返回 */
 export function InfoItemPage() {
+  const canFavorite = useCan('info:favorite')
+  const canFeatured = useCan('info:featured')
+  const canHidden = useCan('info:hidden')
+  const canDelete = useCan('info:article_delete')
   const { itemId = '' } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -267,6 +272,7 @@ export function InfoItemPage() {
               {item.media_count > 1 ? ` · ${media.length} 项媒体` : ''}
             </span>
           ) : null}
+{canFavorite ? (
           <Button
             type="button"
             variant="ghost"
@@ -277,6 +283,8 @@ export function InfoItemPage() {
             <Heart size={14} className={cn(item?.is_favorite && 'fill-signal')} />
             {item?.is_favorite ? '已收藏' : '收藏'}
           </Button>
+) : null}
+{canFeatured ? (
           <Button
             type="button"
             variant="ghost"
@@ -287,6 +295,8 @@ export function InfoItemPage() {
             <Star size={14} className={cn(item?.is_featured && 'fill-amber-300')} />
             {item?.is_featured ? '已精选' : '精选'}
           </Button>
+) : null}
+{canHidden ? (
           <Button
             type="button"
             variant="ghost"
@@ -297,6 +307,8 @@ export function InfoItemPage() {
             {item?.is_hidden ? <Eye size={14} /> : <EyeOff size={14} />}
             {item?.is_hidden ? '取消隐藏' : '隐藏'}
           </Button>
+) : null}
+{canDelete ? (
           <Button
             type="button"
             variant="ghost"
@@ -310,6 +322,7 @@ export function InfoItemPage() {
             <Trash2 size={14} />
             <span className="hidden sm:inline">删除</span>
           </Button>
+) : null}
         </div>
       </div>
 

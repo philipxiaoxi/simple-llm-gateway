@@ -86,6 +86,78 @@ class AdminUpdateRequest(BaseModel):
     password: str | None = None
 
 
+class RoleOut(BaseModel):
+    id: int
+    name: str
+    builtin: bool
+    permissions: list[str]
+    admin_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class RoleCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    permissions: list[str] = Field(default_factory=list)
+
+
+class RoleUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    permissions: list[str] | None = None
+
+
+class AdminUserOut(BaseModel):
+    id: int
+    username: str
+    role_id: int | None = None
+    role_name: str = ""
+    role_builtin: bool = False
+    is_enabled: bool = True
+    created_at: datetime
+    last_login_at: datetime | None = None
+
+
+class AdminUserCreate(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1)
+    role_id: int
+    is_enabled: bool = True
+
+
+class AdminUserUpdate(BaseModel):
+    username: str | None = Field(default=None, min_length=1, max_length=64)
+    role_id: int | None = None
+    is_enabled: bool | None = None
+
+
+class AdminPasswordReset(BaseModel):
+    password: str = Field(min_length=1)
+
+
+class PermissionCatalogActionOut(BaseModel):
+    code: str
+    action: str
+    label: str
+
+
+class PermissionCatalogResourceOut(BaseModel):
+    resource: str
+    label: str
+    permissions: list[PermissionCatalogActionOut]
+
+
+class MeRoleOut(BaseModel):
+    id: int
+    name: str
+    builtin: bool
+
+
+class MeOut(BaseModel):
+    username: str
+    role: MeRoleOut | None = None
+    permissions: list[str] = Field(default_factory=list)
+
+
 class AccountCreate(BaseModel):
     name: str
     provider: str

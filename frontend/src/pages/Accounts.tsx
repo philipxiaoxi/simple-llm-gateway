@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import { ActionSheet, type ActionSheetAction, Badge, Button, Card, Dialog, Field, IconButton, Input, Select, Sheet, Switch } from '../components/ui'
 import { api, type Account, type AccountUsage, type ModelCaps, type Provider, type QuotaItem } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
+import { Can, useCan } from '../lib/session'
 import { MIN_PASSWORD_LENGTH, RISK_LEVELS, cn, errorMessage, formatEmbeddedTimes, formatTime, modelCapsHint } from '../lib/utils'
 import { FilterBar } from '../components/filter-bar'
 
@@ -580,6 +581,7 @@ function ModelList({
                 enabled ? 'border-line bg-ink/40' : 'border-dashed border-line/80 bg-ink/20',
               )}
             >
+              <Can code="accounts:models_manage">
               <button
                 type="button"
                 onClick={() => onEdit(model)}
@@ -614,7 +616,10 @@ function ModelList({
                   )}
                 </span>
               </button>
+              </Can>
+              <Can code="accounts:models_manage">
               <Switch checked={enabled} onCheckedChange={() => onToggleEnabled(model)} />
+              </Can>
             </div>
           )
         })}
@@ -972,6 +977,10 @@ function CustomModelDialog({
 }
 
 export function AccountsPage() {
+  const canQuota = useCan('accounts:quota')
+  const canModels = useCan('accounts:models_manage')
+  const canUpdate = useCan('accounts:update')
+  const canDelete = useCan('accounts:delete')
   const queryClient = useQueryClient()
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: api.providers })
   const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: api.accounts })
@@ -1113,19 +1122,26 @@ export function AccountsPage() {
     setDeletingAccount(account)
   }
 
+  const hasAccountActions = canQuota || canModels || canUpdate || canDelete
   const actionSheetActions: ActionSheetAction[] = actionAccount
     ? [
-        { label: '刷新额度', onSelect: () => void runQuota(actionAccount.id) },
-        { label: '获取模型', onSelect: () => void runModels(actionAccount.id) },
-        ...(actionAccount.auth_type === 'oauth'
+        ...(canQuota ? [{ label: '刷新额度', onSelect: () => void runQuota(actionAccount.id) }] : []),
+        ...(canModels ? [{ label: '获取模型', onSelect: () => void runModels(actionAccount.id) }] : []),
+        ...(actionAccount.auth_type === 'oauth' && canUpdate
           ? [{ label: '去授权', onSelect: () => void startOauth(actionAccount.id) }]
           : []),
-        { label: '编辑账号', onSelect: () => setEditor(actionAccount) },
-        {
-          label: actionAccount.status === 'active' ? '停用账号' : '启用账号',
-          onSelect: () => void toggle(actionAccount),
-        },
-        { label: '删除账号', tone: 'danger' as const, onSelect: () => setDeletingAccount(actionAccount) },
+        ...(canUpdate ? [{ label: '编辑账号', onSelect: () => setEditor(actionAccount) }] : []),
+        ...(canUpdate
+          ? [
+              {
+                label: actionAccount.status === 'active' ? '停用账号' : '启用账号',
+                onSelect: () => void toggle(actionAccount),
+              },
+            ]
+          : []),
+        ...(canDelete
+          ? [{ label: '删除账号', tone: 'danger' as const, onSelect: () => setDeletingAccount(actionAccount) }]
+          : []),
       ]
     : []
 
@@ -1139,20 +1155,28 @@ export function AccountsPage() {
               预设 OpenCode Go、Grok、DeepSeek，也可选通用 OpenAI / Anthropic。探测只在你点的时候发生。
             </p>
           </div>
+<Can code="accounts:create">
           <Button type="button" className="shrink-0 lg:hidden" onClick={() => setEditor('new')}>
             新建账号
           </Button>
+</Can>
         </div>
         <div className="grid grid-cols-2 items-end gap-2 lg:flex lg:shrink-0 lg:flex-nowrap">
+<Can code="accounts:export">
           <Button type="button" variant="line" className="w-full lg:w-auto" onClick={() => setTransfer('export')}>
             导出
           </Button>
+</Can>
+<Can code="accounts:import">
           <Button type="button" variant="line" className="w-full lg:w-auto" onClick={() => setTransfer('import')}>
             导入
           </Button>
+</Can>
+<Can code="accounts:create">
           <Button type="button" className="hidden lg:inline-flex" onClick={() => setEditor('new')}>
             新建账号
           </Button>
+</Can>
         </div>
       </div>
       <FilterBar
@@ -1219,6 +1243,7 @@ export function AccountsPage() {
                 <Badge tone={account.status === 'active' ? 'ok' : 'mist'}>
                   {account.status === 'active' ? '启用' : '停用'}
                 </Badge>
+                {hasAccountActions ? (
                 <IconButton
                   label={`${account.name} 更多操作`}
                   className="md:hidden"
@@ -1227,6 +1252,7 @@ export function AccountsPage() {
                 >
                   <MoreHorizontal size={18} />
                 </IconButton>
+                ) : null}
               </span>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1253,6 +1279,7 @@ export function AccountsPage() {
               </div>
               <div className="space-y-2 border-t border-line pt-3">
                 <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
+<Can code="accounts:probe">
                   <Button
                     variant="line"
                     className="w-full md:w-auto"
@@ -1261,6 +1288,8 @@ export function AccountsPage() {
                   >
                     探测
                   </Button>
+</Can>
+<Can code="accounts:quota">
                   <Button
                     variant="line"
                     className="w-full md:w-auto"
@@ -1269,6 +1298,8 @@ export function AccountsPage() {
                   >
                     刷新额度
                   </Button>
+</Can>
+<Can code="accounts:models_manage">
                   <Button
                     type="button"
                     variant="line"
@@ -1278,7 +1309,9 @@ export function AccountsPage() {
                   >
                     获取模型
                   </Button>
+</Can>
                   {account.auth_type === 'oauth' ? (
+                    <Can code="accounts:update">
                     <Button
                       type="button"
                       variant="line"
@@ -1288,15 +1321,21 @@ export function AccountsPage() {
                     >
                       去授权
                     </Button>
+                    </Can>
                   ) : null}
+<Can code="accounts:update">
                   <Button variant="line" className="w-full md:w-auto" onClick={() => setEditor(account)}>
                     编辑
                   </Button>
+</Can>
                 </div>
                 <div className="grid grid-cols-2 gap-2 md:flex">
+<Can code="accounts:update">
                   <Button variant="line" className="w-full md:w-auto" onClick={() => toggle(account)}>
                     {account.status === 'active' ? '停用' : '启用'}
                   </Button>
+</Can>
+<Can code="accounts:delete">
                   <Button
                     variant="danger"
                     className="w-full md:w-auto"
@@ -1305,6 +1344,7 @@ export function AccountsPage() {
                   >
                     删除
                   </Button>
+</Can>
                 </div>
               </div>
               <div>
@@ -1322,6 +1362,7 @@ export function AccountsPage() {
                   <div className="text-xs uppercase tracking-[0.16em] text-mist">
                     模型{account.models_updated_at ? ` · ${formatTime(account.models_updated_at)}` : ''}
                   </div>
+                  <Can code="accounts:models_manage">
                   <button
                     type="button"
                     onClick={() => setCustomModelAccountId(account.id)}
@@ -1329,6 +1370,7 @@ export function AccountsPage() {
                   >
                     添加模型
                   </button>
+                  </Can>
                 </div>
                 {account.models?.length ? (
                   <ModelList

@@ -6,6 +6,7 @@ import { Button, Card, Field, Input } from '../components/ui'
 import { api, getToken, type DocParseJob } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage, formatTime } from '../lib/utils'
+import { useCan, Can } from '../lib/session'
 
 const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.html,.htm'
 
@@ -48,6 +49,8 @@ function formatSize(size: number) {
 }
 
 export function McpDocParsePage() {
+  const canCreate = useCan('mcp_docparse:job_create')
+  const canIngest = useCan('mcp_docparse:ingest')
   const queryClient = useQueryClient()
   const [params, setParams] = useSearchParams()
   const status = params.get('status') || ''
@@ -174,9 +177,11 @@ export function McpDocParsePage() {
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
+<Can code="mcp_catalog:view">
       <Link to="/mcp-plaza" className="inline-flex text-sm text-mist hover:text-paper">
         ← 返回服务目录
       </Link>
+      </Can>
       <div>
         <h2 className="text-xl font-semibold">转换任务</h2>
         <p className="mt-1 text-sm text-mist">
@@ -185,6 +190,7 @@ export function McpDocParsePage() {
         </p>
       </div>
 
+      {canCreate ? (
       <Card className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-end">
         <Field label="上传文件（可多选）">
           <input
@@ -202,6 +208,7 @@ export function McpDocParsePage() {
         </Field>
         <p className="text-xs text-mist">单文件 30MB，PDF 最多 200 页。旧版 .doc/.xls/.ppt 需要部署环境安装 LibreOffice。</p>
       </Card>
+      ) : null}
 
       {uploads.length ? (
         <div className="space-y-2">
@@ -312,6 +319,7 @@ export function McpDocParsePage() {
                 ))}
               </select>
             </Field>
+            {canIngest ? (
             <Button
               type="button"
               variant="line"
@@ -320,6 +328,7 @@ export function McpDocParsePage() {
             >
               送入
             </Button>
+            ) : null}
           </div>
         </Card>
       ) : null}
@@ -344,6 +353,10 @@ function JobRow({
   onDownload: () => void
   onDelete: () => void
 }) {
+  const canDownload = useCan('mcp_docparse:download')
+  const canRetry = useCan('mcp_docparse:job_retry')
+  const canCancel = useCan('mcp_docparse:job_cancel')
+  const canDelete = useCan('mcp_docparse:job_delete')
   const active = job.status === 'queued' || job.status === 'running'
   const failed = job.status === 'failed'
   return (
@@ -371,20 +384,22 @@ function JobRow({
           <Button type="button" variant="line" disabled={job.status !== 'succeeded'} onClick={onPreview}>
             预览
           </Button>
+          {canDownload ? (
           <Button type="button" variant="line" disabled={!job.download_ready} onClick={onDownload}>
             下载
           </Button>
-          {failed ? (
+          ) : null}
+          {failed && canRetry ? (
             <Button type="button" variant="line" disabled={pending} onClick={onRetry}>
               <RotateCcw size={14} /> 重试
             </Button>
           ) : null}
-          {job.status === 'queued' ? (
+          {job.status === 'queued' && canCancel ? (
             <Button type="button" variant="ghost" disabled={pending} onClick={onCancel}>
               <X size={14} /> 取消
             </Button>
           ) : null}
-          {!active ? (
+          {!active && canDelete ? (
             <Button type="button" variant="ghost" disabled={pending} onClick={onDelete}>
               <Trash2 size={14} />
             </Button>

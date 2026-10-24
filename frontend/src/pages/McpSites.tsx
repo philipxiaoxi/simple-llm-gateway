@@ -6,6 +6,7 @@ import { Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
+import { useCan, Can } from '../lib/session'
 
 const STATUS_LABELS: Record<string, string> = {
   active: '启用',
@@ -13,6 +14,7 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 export function McpSitesPage() {
+  const canCreate = useCan('mcp_sites:site_create')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
@@ -72,17 +74,21 @@ export function McpSitesPage() {
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
+<Can code="mcp_catalog:view">
       <Link to="/mcp-plaza" className="inline-flex text-sm text-mist hover:text-paper">
         ← 返回服务目录
       </Link>
+      </Can>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">站点部署</h2>
           <p className="mt-1 text-sm text-mist">上传前端静态资源 zip（构建产物），生成可访问、可回滚的预览站点。</p>
         </div>
+{canCreate ? (
         <Button type="button" onClick={() => setOpen(true)}>
           <Upload size={15} /> 部署新站点
         </Button>
+) : null}
       </div>
 
       <Card className="p-4">

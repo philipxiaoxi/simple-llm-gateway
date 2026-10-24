@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, Card, Dialog, Field, Input, Switch } from '../components/ui'
 import { api, type McpSite, type McpSiteVersion } from '../lib/api'
+import { useCan } from '../lib/session'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage, formatBytes, formatTime } from '../lib/utils'
 
@@ -34,6 +35,10 @@ export function McpSiteDetailPage() {
   const [previewing, setPreviewing] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
 
+  const canToken = useCan('mcp_sites:token_manage')
+  const canDeploy = useCan('mcp_sites:version_create')
+  const canUpdate = useCan('mcp_sites:site_update')
+  const canDeleteSite = useCan('mcp_sites:site_delete')
   const site = useQuery({
     queryKey: ['mcp-site', siteId],
     queryFn: () => api.mcpSite(siteId),
@@ -46,7 +51,7 @@ export function McpSiteDetailPage() {
   const siteToken = useQuery({
     queryKey: ['mcp-site-token', siteId],
     queryFn: () => api.revealMcpSiteToken(siteId),
-    enabled: Boolean(site.data && site.data.access_mode === 'token' && site.data.has_token),
+    enabled: Boolean(canToken && site.data && site.data.access_mode === 'token' && site.data.has_token),
   })
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['mcp-site', siteId] })
@@ -183,12 +188,17 @@ export function McpSiteDetailPage() {
             </a>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
+            {canDeploy ? (
             <Button type="button" onClick={() => setOpen(true)}>
               <Upload size={15} /> 部署新版本
             </Button>
+            ) : null}
+            {canUpdate ? (
             <Button type="button" variant="line" onClick={() => setEditOpen(true)}>
               <Pencil size={14} /> 编辑信息
             </Button>
+            ) : null}
+            {canUpdate ? (
             <Button
               type="button"
               variant="line"
@@ -197,6 +207,8 @@ export function McpSiteDetailPage() {
             >
               {data.status === 'active' ? '停用' : '启用'}
             </Button>
+            ) : null}
+            {canDeleteSite ? (
             <Button
               type="button"
               variant="danger"
@@ -207,6 +219,7 @@ export function McpSiteDetailPage() {
             >
               <Trash2 size={14} /> 删除站点
             </Button>
+            ) : null}
           </div>
         </div>
       </Card>
@@ -214,6 +227,8 @@ export function McpSiteDetailPage() {
       <Card className="min-w-0 space-y-3 overflow-hidden p-4">
         <h3 className="text-sm font-medium text-paper">访问控制</h3>
         <div className="flex flex-wrap gap-2">
+          {canUpdate ? (
+          <>
           <Button
             type="button"
             variant={data.access_mode === 'public' ? 'primary' : 'line'}
@@ -230,9 +245,13 @@ export function McpSiteDetailPage() {
           >
             令牌保护
           </Button>
+          </>
+          ) : null}
+          {canToken ? (
           <Button type="button" variant="line" disabled={generateToken.isPending} onClick={() => generateToken.mutate()}>
             {data.has_token ? '重置令牌' : '生成令牌'}
           </Button>
+          ) : null}
         </div>
         {issuedToken ? (
           <div className="rounded-md border border-warn/40 bg-warn/10 p-3 text-xs text-warn">
@@ -407,8 +426,11 @@ function VersionRow({
 }) {
   const active = version.status === 'unpacking'
   const failed = version.status === 'failed'
-  const canActivate = version.status === 'ready' && !version.is_current && !version.purged
-  const canDelete = !version.is_current && !version.purged && version.status !== 'unpacking'
+  const canActivatePerm = useCan('mcp_sites:version_activate')
+  const canRetryPerm = useCan('mcp_sites:version_retry')
+  const canDeletePerm = useCan('mcp_sites:version_delete')
+  const canActivate = canActivatePerm && version.status === 'ready' && !version.is_current && !version.purged
+  const canDelete = canDeletePerm && !version.is_current && !version.purged && version.status !== 'unpacking'
   return (
     <Card className="min-w-0 space-y-2 overflow-hidden p-3">
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -436,7 +458,7 @@ function VersionRow({
               设为当前
             </Button>
           ) : null}
-          {failed ? (
+          {failed && canRetryPerm ? (
             <Button type="button" variant="line" disabled={busy} onClick={onRetry}>
               <RotateCcw size={14} /> 重试
             </Button>
