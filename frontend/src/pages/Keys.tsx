@@ -434,7 +434,7 @@ function KeyAliasesDialog({ keyId, keyName, onClose }: { keyId: number; keyName:
 
 function shareText(shareUrl: string, apiKey: string) {
   return [
-    '管理员通过AI一体化服务平台给你下发了 新的api-key：',
+    '平台给你下发了新的 API Key：',
     '------',
     `使用链接：${shareUrl}`,
     `api-key：${apiKey}`,

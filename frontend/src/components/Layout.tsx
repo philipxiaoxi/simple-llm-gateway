@@ -68,7 +68,7 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
       })
       setToken(result.token)
       await queryClient.invalidateQueries({ queryKey: ['me'] })
-      notifyOk('管理员账号已更新')
+      notifyOk('账号已更新')
       onClose()
     } catch (caught) {
       setError(errorMessage(caught, '更新失败'))
@@ -79,7 +79,7 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Dialog title="修改管理员账号" onClose={onClose}>
+    <Dialog title="账号设置" onClose={onClose}>
       <div className="grid gap-3">
         <Field label="新用户名（不改请留空）">
           <Input
@@ -510,8 +510,8 @@ export function Layout() {
             variant="ghost"
             className="h-10 w-10 shrink-0 justify-center p-0 text-mist"
             onClick={() => setProfile(true)}
-            title="修改账号"
-            aria-label="修改账号"
+            title="账号设置"
+            aria-label="账号设置"
           >
             <UserRoundPen size={16} />
           </Button>
