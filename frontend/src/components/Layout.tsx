@@ -470,7 +470,7 @@ export function Layout() {
 
         <div
           className={cn(
-            'flex shrink-0 items-center justify-between gap-1 border-t border-line bg-ink/40 px-3 py-2 md:flex-col md:items-center md:justify-center lg:border-t-0',
+            'flex shrink-0 items-center justify-between gap-1 border-t border-line bg-ink/40 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 md:flex-col md:items-center md:justify-center lg:border-t-0',
             collapsed ? 'lg:flex-col lg:justify-center' : 'lg:flex-row lg:justify-between',
           )}
         >
