@@ -247,7 +247,7 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("DELETE", "/api/admin/skill-bundles/{bundle_id}"): "skill_bundles:manage",
     ("POST", "/api/admin/skill-bundles/{bundle_id}/members"): "skill_bundles:manage",
     ("DELETE", "/api/admin/skill-bundles/{bundle_id}/members/{skill_id}"): "skill_bundles:manage",
-    ("POST", "/api/admin/skill-bundles/{bundle_id}/download-url"): "skill_bundles:manage",
+    ("POST", "/api/admin/skill-bundles/{bundle_id}/download-url"): "skill_bundles:view",
     ("GET", "/api/admin/skill-bundles/{bundle_id}/download"): "skill_bundles:view",
     # 安全中心
     ("GET", "/api/admin/security/events"): "security:view",
