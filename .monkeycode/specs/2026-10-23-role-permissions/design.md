@@ -20,7 +20,7 @@ Updated: 2026-10-23
 
 | 决策项 | 结论 |
 |--------|------|
-| 权限粒度 | **页面 × 动作**，约 130 个权限点，角色编辑页按页面分组勾选 |
+| 权限粒度 | **页面 × 动作**，约 140 个权限点，角色编辑页按页面分组勾选 |
 | 账号与角色 | **一个账号绑定恰好一个角色**，不做多角色叠加 |
 | 图片 / 视频生成 | **拆成两个资源**，按请求体 `kind` 与任务自身 `kind` 校验；配置与参考素材共用一套接口，归到共享的 `generation` 资源 |
 | 数据级权限 | 不纳入本轮，只做功能级 |
@@ -185,7 +185,7 @@ admins（新增列）
 | 图片生成 `image_gen` | view, task_create, task_retry, task_delete, settings |
 | 视频生成 `video_gen` | view, task_create, task_retry, task_delete, settings |
 | 生成配置（共享）`generation` | settings, upload |
-| 离线下载 `offline` | view, task_create, task_delete, retry |
+| 离线下载 `offline` | view, resolve（解析上游）, task_create, task_delete, retry |
 | Skills `skills` | view, upload, update, delete, category_manage, analysis, download |
 | Skills 组合包 `skill_bundles` | manage |
 | 安全中心 `security` | view, event_detail, settings |

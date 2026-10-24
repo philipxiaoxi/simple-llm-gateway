@@ -12,7 +12,10 @@ import { createOfflineApi, formatBytes, type OfflineApi, type OfflineCacheItem, 
 import { ChromePanel, DockerPanel, EdgePanel, MsStorePanel, VSCodePanel } from './panels'
 import { EmptyNote } from './shared'
 
-const PANELS: Record<string, ComponentType<{ api: OfflineApi; onQueued: () => void; canQueue?: boolean }>> = {
+const PANELS: Record<
+  string,
+  ComponentType<{ api: OfflineApi; onQueued: () => void; canQueue?: boolean; canResolve?: boolean }>
+> = {
   vscode: VSCodePanel,
   chrome: ChromePanel,
   edge: EdgePanel,
@@ -224,6 +227,7 @@ export function OfflineTool({ base }: { base: string }) {
   const items = useMemo(() => cacheQuery.data?.items ?? [], [cacheQuery.data])
   const adminScope = base.startsWith('/api/admin')
   const canCreate = useCan('offline:task_create')
+  const canResolvePerm = useCan('offline:resolve')
   const canRetryPerm = useCan('offline:retry')
   const canDeletePerm = useCan('offline:task_delete')
   const hasActive = useMemo(
@@ -293,7 +297,12 @@ export function OfflineTool({ base }: { base: string }) {
         <div className="rounded-2xl border border-line bg-panel/60 p-4 sm:p-5">
           <p className="mb-3 text-xs text-mist">{current.description}</p>
           {Panel ? (
-            <Panel api={api} onQueued={refreshCache} canQueue={adminScope ? canCreate : true} />
+            <Panel
+              api={api}
+              onQueued={refreshCache}
+              canQueue={adminScope ? canCreate : true}
+              canResolve={adminScope ? canResolvePerm : true}
+            />
           ) : (
             <div className="text-sm text-mist">该来源暂未实现</div>
           )}

@@ -13,7 +13,7 @@ import type {
 import { EmptyNote, ErrorNote, HistoryInput, ResultCard } from './shared'
 import { useHistory } from './useHistory'
 
-type PanelProps = { api: OfflineApi; onQueued: () => void; canQueue?: boolean }
+type PanelProps = { api: OfflineApi; onQueued: () => void; canQueue?: boolean; canResolve?: boolean }
 
 const CHROME_ID_RE = /[a-z]{32}/
 
@@ -33,7 +33,7 @@ function isDockerManifestList(value: DockerManifest | DockerManifestList): value
 }
 
 /* ------------------------------ VSCode ------------------------------ */
-export function VSCodePanel({ api, onQueued, canQueue = true }: PanelProps) {
+export function VSCodePanel({ api, onQueued, canQueue = true, canResolve = true }: PanelProps) {
   const { history, remember } = useHistory('vscode')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
@@ -62,6 +62,7 @@ export function VSCodePanel({ api, onQueued, canQueue = true }: PanelProps) {
 
   return (
     <div className="space-y-4">
+{canResolve ? (
       <HistoryInput
         value={query}
         onChange={setQuery}
@@ -71,6 +72,9 @@ export function VSCodePanel({ api, onQueued, canQueue = true }: PanelProps) {
         busy={busy}
         listId="offline-vscode-history"
       />
+      ) : (
+        <EmptyNote message="你没有「解析上游」权限，请联系管理员开通后再查询。" />
+      )}
       {error ? <ErrorNote message={error} /> : null}
       {result ? (
         <ResultCard
@@ -124,7 +128,7 @@ export function VSCodePanel({ api, onQueued, canQueue = true }: PanelProps) {
 }
 
 /* ------------------------------ Chrome ------------------------------ */
-export function ChromePanel({ api, onQueued, canQueue = true }: PanelProps) {
+export function ChromePanel({ api, onQueued, canQueue = true, canResolve = true }: PanelProps) {
   const { history, remember } = useHistory('chrome')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
@@ -154,7 +158,12 @@ export function ChromePanel({ api, onQueued, canQueue = true }: PanelProps) {
   // 输入变化后 400ms 搜索建议（仅在不像 ID/链接时）
   useEffect(() => {
     const keyword = query.trim()
-    if (keyword.length < 2 || CHROME_ID_RE.test(keyword.toLowerCase()) || /[./]/.test(keyword)) {
+    if (
+      !canResolve
+      || keyword.length < 2
+      || CHROME_ID_RE.test(keyword.toLowerCase())
+      || /[./]/.test(keyword)
+    ) {
       setSuggestions([])
       return
     }
@@ -165,10 +174,11 @@ export function ChromePanel({ api, onQueued, canQueue = true }: PanelProps) {
         .catch(() => setSuggestions([]))
     }, 400)
     return () => clearTimeout(timer)
-  }, [api, query])
+  }, [api, canResolve, query])
 
   return (
     <div className="space-y-4">
+{canResolve ? (
       <HistoryInput
         value={query}
         onChange={(value) => {
@@ -181,6 +191,9 @@ export function ChromePanel({ api, onQueued, canQueue = true }: PanelProps) {
         busy={busy}
         listId="offline-chrome-history"
       />
+      ) : (
+        <EmptyNote message="你没有「解析上游」权限，请联系管理员开通后再查询。" />
+      )}
       {suggestions.length ? (
         <div className="flex flex-wrap gap-2">
           {suggestions.map((item) => (
@@ -238,7 +251,7 @@ export function ChromePanel({ api, onQueued, canQueue = true }: PanelProps) {
 }
 
 /* ------------------------------ Edge ------------------------------ */
-export function EdgePanel({ api, onQueued, canQueue = true }: PanelProps) {
+export function EdgePanel({ api, onQueued, canQueue = true, canResolve = true }: PanelProps) {
   const { history, remember } = useHistory('edge')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
@@ -284,6 +297,7 @@ export function EdgePanel({ api, onQueued, canQueue = true }: PanelProps) {
 
   return (
     <div className="space-y-4">
+{canResolve ? (
       <HistoryInput
         value={query}
         onChange={(value) => {
@@ -296,6 +310,9 @@ export function EdgePanel({ api, onQueued, canQueue = true }: PanelProps) {
         busy={busy}
         listId="offline-edge-history"
       />
+      ) : (
+        <EmptyNote message="你没有「解析上游」权限，请联系管理员开通后再查询。" />
+      )}
       {suggestions.length ? (
         <div className="flex flex-wrap gap-2">
           {suggestions.map((item) => (
@@ -372,7 +389,7 @@ function withTag(reference: string, tag: string) {
   return `${base}:${tag}`
 }
 
-export function DockerPanel({ api, onQueued, canQueue = true }: PanelProps) {
+export function DockerPanel({ api, onQueued, canQueue = true, canResolve = true }: PanelProps) {
   const { history, remember } = useHistory('docker')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
@@ -463,6 +480,7 @@ export function DockerPanel({ api, onQueued, canQueue = true }: PanelProps) {
 
   return (
     <div className="space-y-4">
+{canResolve ? (
       <HistoryInput
         value={query}
         onChange={setQuery}
@@ -472,6 +490,9 @@ export function DockerPanel({ api, onQueued, canQueue = true }: PanelProps) {
         busy={busy}
         listId="offline-docker-history"
       />
+      ) : (
+        <EmptyNote message="你没有「解析上游」权限，请联系管理员开通后再查询。" />
+      )}
       {error ? <ErrorNote message={error} /> : null}
       {tags.length ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-mist">
@@ -540,7 +561,7 @@ function detectMsStoreType(query: string): string {
   return 'url'
 }
 
-export function MsStorePanel({ api, onQueued, canQueue = true }: PanelProps) {
+export function MsStorePanel({ api, onQueued, canQueue = true, canResolve = true }: PanelProps) {
   const { history, remember } = useHistory('msstore')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
@@ -578,6 +599,7 @@ export function MsStorePanel({ api, onQueued, canQueue = true }: PanelProps) {
 
   return (
     <div className="space-y-4">
+{canResolve ? (
       <HistoryInput
         value={query}
         onChange={setQuery}
@@ -587,6 +609,9 @@ export function MsStorePanel({ api, onQueued, canQueue = true }: PanelProps) {
         busy={busy}
         listId="offline-msstore-history"
       />
+      ) : (
+        <EmptyNote message="你没有「解析上游」权限，请联系管理员开通后再查询。" />
+      )}
       {error ? <ErrorNote message={error} /> : null}
       {result ? (
         <ResultCard title={result.title || result.productId} subtitle={result.publisherName}>

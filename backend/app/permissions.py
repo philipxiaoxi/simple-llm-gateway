@@ -104,7 +104,13 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
     "generation": ("生成配置（图片/视频共用）", (("settings", "配置供应商与默认模型"), ("upload", "参考素材上传"))),
     "offline": (
         "离线下载",
-        (("view", "查看"), ("task_create", "创建任务"), ("task_delete", "删除任务"), ("retry", "重试")),
+        (
+            ("view", "查看"),
+            ("resolve", "解析上游"),
+            ("task_create", "创建任务"),
+            ("task_delete", "删除任务"),
+            ("retry", "重试"),
+        ),
     ),
     "skills": (
         "Skills",
