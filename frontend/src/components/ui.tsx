@@ -102,7 +102,11 @@ export function Badge({
   return (
     <span
       title={title}
-      className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', map[tone], className)}
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium',
+        map[tone],
+        className,
+      )}
     >
       {children}
     </span>

@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react'
 import { PageContainer, PageHeader } from '../components/layout-primitives'
 import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api } from '../lib/api'
-import { Can, useCan } from '../lib/session'
+import { Can } from '../lib/session'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage } from '../lib/utils'
 
@@ -13,10 +13,20 @@ type Draft = { id: number | null; name: string; permissions: Set<string> }
 
 const EMPTY: Draft = { id: null, name: '', permissions: new Set() }
 
+function Stat({ label, value, hint }: { label: string; value: number; hint?: string }) {
+  return (
+    <div className="rounded-xl border border-line bg-panel/60 px-3 py-2.5">
+      <div className="text-[11px] uppercase tracking-[0.14em] text-mist">{label}</div>
+      <div className="mt-1 font-mono text-xl text-paper">
+        {value}
+        {hint ? <span className="ml-1 text-xs text-mist">{hint}</span> : null}
+      </div>
+    </div>
+  )
+}
+
 export function RolesPage() {
   const queryClient = useQueryClient()
-  const canCreate = useCan('roles:create')
-  const canUpdate = useCan('roles:update')
   const [draft, setDraft] = useState<Draft | null>(null)
   const [keyword, setKeyword] = useState('')
 
@@ -26,6 +36,11 @@ export function RolesPage() {
     queryFn: api.permissionCatalog,
     staleTime: 5 * 60_000,
   })
+
+  const totalCodes = useMemo(
+    () => catalog.reduce((sum, group) => sum + group.permissions.length, 0),
+    [catalog],
+  )
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['roles'] })
@@ -61,7 +76,10 @@ export function RolesPage() {
       .map((group) => ({
         ...group,
         permissions: group.permissions.filter(
-          (item) => item.label.toLowerCase().includes(q) || item.code.toLowerCase().includes(q),
+          (item) =>
+            item.label.toLowerCase().includes(q) ||
+            item.code.toLowerCase().includes(q) ||
+            group.label.toLowerCase().includes(q),
         ),
       }))
       .filter((group) => group.permissions.length > 0)
@@ -96,37 +114,71 @@ export function RolesPage() {
         description="一个账号绑定一个角色；角色决定能看到哪些入口、能点哪些按钮。"
         actions={
           <Can code="roles:create">
-            <Button onClick={() => setDraft({ ...EMPTY, permissions: new Set() })}>
+            <Button className="w-full sm:w-auto" onClick={() => setDraft({ ...EMPTY, permissions: new Set() })}>
               <Plus size={16} /> 新增角色
             </Button>
           </Can>
         }
       />
 
-      <Card className="mt-4 divide-y divide-line">
-        {isPending ? (
-          <div className="p-6 text-sm text-mist">加载中…</div>
-        ) : roles.length === 0 ? (
-          <div className="p-6 text-sm text-mist">还没有角色</div>
-        ) : (
-          roles.map((role) => (
-            <div key={role.id} className="flex flex-wrap items-center gap-3 p-4">
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                {role.builtin ? <ShieldCheck size={16} className="text-signal" /> : null}
-                <span className="truncate text-sm font-medium text-paper">{role.name}</span>
-                {role.builtin ? <Badge tone="ok">内置 · 全部权限</Badge> : null}
+      <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
+        <Stat label="角色" value={roles.length} />
+        <Stat label="内置" value={roles.filter((role) => role.builtin).length} />
+        <Stat label="可授权限" value={totalCodes} hint="项" />
+      </div>
+
+      {isPending ? (
+        <Card className="mt-4 p-6 text-sm text-mist">加载中…</Card>
+      ) : roles.length === 0 ? (
+        <Card className="mt-4 p-6 text-sm text-mist">还没有角色</Card>
+      ) : (
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {roles.map((role) => (
+            <Card key={role.id} className="flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span
+                    className={cn(
+                      'grid h-9 w-9 shrink-0 place-items-center rounded-lg',
+                      role.builtin ? 'bg-signal/15 text-signal' : 'bg-white/5 text-mist',
+                    )}
+                  >
+                    <ShieldCheck size={16} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-base font-medium text-paper" title={role.name}>
+                      {role.name}
+                    </div>
+                    <div className="mt-0.5 truncate text-xs text-mist">
+                      {role.builtin ? '内置角色 · 固定全部权限' : `${role.permissions.length} 项权限`}
+                    </div>
+                  </div>
+                </div>
+                <Badge tone={role.builtin ? 'ok' : 'mist'}>{role.builtin ? '全部权限' : '自定义'}</Badge>
               </div>
-              <span className="text-xs text-mist">
-                {role.builtin ? '全部功能' : `${role.permissions.length} 项权限`} · {role.admin_count} 个账号
-              </span>
-              <div className="flex items-center gap-2">
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-lg border border-line bg-ink/40 px-3 py-2">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-mist">权限项</div>
+                  <div className="mt-1 font-mono text-paper">
+                    {role.builtin ? totalCodes : role.permissions.length}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-line bg-ink/40 px-3 py-2">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-mist">绑定账号</div>
+                  <div className="mt-1 font-mono text-paper">{role.admin_count}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 border-t border-line pt-3 sm:flex sm:flex-wrap sm:justify-end">
                 {role.builtin ? (
-                  <span className="text-xs text-mist">不可修改</span>
+                  <span className="col-span-2 text-xs text-mist sm:py-2">内置角色不可修改</span>
                 ) : (
                   <>
                     <Can code="roles:update">
                       <Button
-                        variant="ghost"
+                        variant="line"
+                        className="w-full sm:w-auto"
                         onClick={() =>
                           setDraft({ id: role.id, name: role.name, permissions: new Set(role.permissions) })
                         }
@@ -136,7 +188,8 @@ export function RolesPage() {
                     </Can>
                     <Can code="roles:delete">
                       <Button
-                        variant="ghost"
+                        variant="danger"
+                        className="w-full sm:w-auto"
                         onClick={() => {
                           if (window.confirm(`删除角色「${role.name}」？`)) remove.mutate(role.id)
                         }}
@@ -147,13 +200,17 @@ export function RolesPage() {
                   </>
                 )}
               </div>
-            </div>
-          ))
-        )}
-      </Card>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {draft ? (
-        <Dialog title={draft.id ? '编辑角色' : '新增角色'} onClose={() => setDraft(null)}>
+        <Dialog
+          title={draft.id ? '编辑角色' : '新增角色'}
+          onClose={() => setDraft(null)}
+          className="max-w-2xl"
+        >
           <div className="space-y-4">
             <Field label="角色名称">
               <Input
@@ -162,53 +219,83 @@ export function RolesPage() {
                 onChange={(event) => setDraft({ ...draft, name: event.target.value })}
               />
             </Field>
-            <Field label="权限">
+
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm text-paper">权限</span>
+                <span className="text-xs text-mist">
+                  已选 <span className="font-mono text-signal">{draft.permissions.size}</span> / {totalCodes} 项
+                </span>
+              </div>
               <Input
                 value={keyword}
-                placeholder="搜索页面或动作"
+                placeholder="搜索页面或动作，例如「导出」「MCP」"
                 onChange={(event) => setKeyword(event.target.value)}
               />
-            </Field>
-            <div className="max-h-[46vh] space-y-3 overflow-y-auto pr-1">
+            </div>
+
+            <div className="max-h-[46vh] space-y-2.5 overflow-y-auto pr-1">
               {filtered.map((group) => {
                 const codes = group.permissions.map((item) => item.code)
-                const allSelected = codes.every((code) => draft.permissions.has(code))
-                const locked = !canCreate && !canUpdate
+                const selectedCount = codes.filter((code) => draft.permissions.has(code)).length
+                const allSelected = selectedCount === codes.length
                 return (
-                  <div key={group.resource} className="rounded-lg border border-line p-3">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="text-sm text-paper">{group.label}</span>
+                  <div key={group.resource} className="rounded-xl border border-line bg-ink/30 p-3">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm text-paper">{group.label}</span>
+                        <span className="shrink-0 font-mono text-[11px] text-mist">
+                          {selectedCount}/{codes.length}
+                        </span>
+                      </div>
                       <button
                         type="button"
-                        disabled={locked}
-                        className={cn('text-xs', allSelected ? 'text-signal' : 'text-mist hover:text-paper')}
+                        className={cn(
+                          'shrink-0 rounded-full px-2 py-0.5 text-xs transition',
+                          allSelected ? 'bg-signal/15 text-signal' : 'text-mist hover:bg-white/5 hover:text-paper',
+                        )}
                         onClick={() => toggleGroup(codes, !allSelected)}
                       >
-                        {allSelected ? '取消全选' : '全选本页'}
+                        {allSelected ? '清空本页' : '全选本页'}
                       </button>
                     </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-2">
-                      {group.permissions.map((item) => (
-                        <label key={item.code} className="flex cursor-pointer items-center gap-1.5 text-xs text-mist">
-                          <input
-                            type="checkbox"
-                            className="accent-[var(--color-signal)]"
-                            checked={draft.permissions.has(item.code)}
-                            onChange={() => toggle(item.code)}
-                          />
-                          {item.label}
-                        </label>
-                      ))}
+                    <div className="flex flex-wrap gap-1.5">
+                      {group.permissions.map((item) => {
+                        const active = draft.permissions.has(item.code)
+                        return (
+                          <button
+                            key={item.code}
+                            type="button"
+                            title={item.code}
+                            onClick={() => toggle(item.code)}
+                            className={cn(
+                              'rounded-full border px-3 py-1.5 text-xs transition',
+                              active
+                                ? 'border-signal/60 bg-signal/12 text-signal'
+                                : 'border-line text-mist hover:border-mist/40 hover:text-paper',
+                            )}
+                          >
+                            {item.label}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 )
               })}
+              {filtered.length === 0 ? (
+                <div className="rounded-xl border border-line px-3 py-6 text-center text-xs text-mist">
+                  没有匹配的权限
+                </div>
+              ) : null}
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setDraft(null)}>
+
+            <div className="grid grid-cols-2 gap-2 border-t border-line pt-3 sm:flex sm:justify-end">
+              <Button variant="ghost" className="w-full sm:w-auto" onClick={() => setDraft(null)}>
                 取消
               </Button>
               <Button
+                className="w-full sm:w-auto"
                 disabled={save.isPending || !draft.name.trim()}
                 onClick={() => save.mutate(draft)}
               >
