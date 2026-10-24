@@ -13,7 +13,7 @@ import type {
 import { EmptyNote, ErrorNote, HistoryInput, ResultCard } from './shared'
 import { useHistory } from './useHistory'
 
-type PanelProps = { api: OfflineApi; onQueued: () => void }
+type PanelProps = { api: OfflineApi; onQueued: () => void; canQueue?: boolean }
 
 const CHROME_ID_RE = /[a-z]{32}/
 
@@ -33,7 +33,7 @@ function isDockerManifestList(value: DockerManifest | DockerManifestList): value
 }
 
 /* ------------------------------ VSCode ------------------------------ */
-export function VSCodePanel({ api, onQueued }: PanelProps) {
+export function VSCodePanel({ api, onQueued, canQueue = true }: PanelProps) {
   const { history, remember } = useHistory('vscode')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
@@ -85,6 +85,7 @@ export function VSCodePanel({ api, onQueued }: PanelProps) {
                   </option>
                 ))}
               </Select>
+              {canQueue ? (
               <Button
                 type="button"
                 disabled={!version || queuing}
@@ -104,6 +105,7 @@ export function VSCodePanel({ api, onQueued }: PanelProps) {
               >
                 <HardDriveDownload size={15} /> {queuing ? '提交中…' : '缓存到服务器'}
               </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="line"
@@ -122,7 +124,7 @@ export function VSCodePanel({ api, onQueued }: PanelProps) {
 }
 
 /* ------------------------------ Chrome ------------------------------ */
-export function ChromePanel({ api, onQueued }: PanelProps) {
+export function ChromePanel({ api, onQueued, canQueue = true }: PanelProps) {
   const { history, remember } = useHistory('chrome')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
@@ -203,7 +205,7 @@ export function ChromePanel({ api, onQueued }: PanelProps) {
           subtitle={detail.id}
           actions={
             <>
-              {(['crx', 'zip'] as const).map((format) => (
+              {(['crx', 'zip'] as const).map((format) => canQueue ? (
                 <Button
                   key={format}
                   type="button"
@@ -224,7 +226,7 @@ export function ChromePanel({ api, onQueued }: PanelProps) {
                 >
                   <HardDriveDownload size={15} /> {queuing === format ? '提交中…' : `缓存 ${format.toUpperCase()}`}
                 </Button>
-              ))}
+              ) : null)}
             </>
           }
         >
@@ -236,7 +238,7 @@ export function ChromePanel({ api, onQueued }: PanelProps) {
 }
 
 /* ------------------------------ Edge ------------------------------ */
-export function EdgePanel({ api, onQueued }: PanelProps) {
+export function EdgePanel({ api, onQueued, canQueue = true }: PanelProps) {
   const { history, remember } = useHistory('edge')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
@@ -319,7 +321,7 @@ export function EdgePanel({ api, onQueued }: PanelProps) {
           subtitle={detailId}
           actions={
             <>
-              {(['crx', 'zip'] as const).map((format) => (
+              {(['crx', 'zip'] as const).map((format) => canQueue ? (
                 <Button
                   key={format}
                   type="button"
@@ -341,7 +343,7 @@ export function EdgePanel({ api, onQueued }: PanelProps) {
                 >
                   <HardDriveDownload size={15} /> {queuing === format ? '提交中…' : `缓存 ${format.toUpperCase()}`}
                 </Button>
-              ))}
+              ) : null)}
             </>
           }
         >
@@ -370,7 +372,7 @@ function withTag(reference: string, tag: string) {
   return `${base}:${tag}`
 }
 
-export function DockerPanel({ api, onQueued }: PanelProps) {
+export function DockerPanel({ api, onQueued, canQueue = true }: PanelProps) {
   const { history, remember } = useHistory('docker')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
@@ -500,6 +502,7 @@ export function DockerPanel({ api, onQueued }: PanelProps) {
           title={withTag(query.trim(), tag)}
           subtitle={platform ? `目标架构 ${platform}` : '单一架构'}
           actions={
+            canQueue ? (
             <Button
               type="button"
               disabled={queuing}
@@ -517,6 +520,7 @@ export function DockerPanel({ api, onQueued }: PanelProps) {
             >
               <HardDriveDownload size={15} /> {queuing ? '提交中…' : '缓存到服务器'}
             </Button>
+            ) : null
           }
         >
           <p className="text-xs leading-5 text-mist">服务器在后台拉取各层并打包为 docker load 兼容的 .tar，完成后可在「已缓存」下载。</p>
@@ -536,7 +540,7 @@ function detectMsStoreType(query: string): string {
   return 'url'
 }
 
-export function MsStorePanel({ api, onQueued }: PanelProps) {
+export function MsStorePanel({ api, onQueued, canQueue = true }: PanelProps) {
   const { history, remember } = useHistory('msstore')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
@@ -605,9 +609,11 @@ export function MsStorePanel({ api, onQueued }: PanelProps) {
                     >
                       <Copy size={14} /> 复制
                     </Button>
+                    {canQueue ? (
                     <Button type="button" disabled={queuing !== ''} onClick={() => cacheFile(file)}>
                       <HardDriveDownload size={14} /> {queuing === file.url ? '提交中…' : '缓存到服务器'}
                     </Button>
+                    ) : null}
                   </div>
                 </div>
               ))

@@ -3,14 +3,33 @@ import { BookOpen, Download, FileText, Globe, KeyRound, Layers3, Newspaper, Scro
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
 import { cn, errorMessage } from '../lib/utils'
+import { useSession } from '../lib/session'
 import { PageHeader } from '../components/layout-primitives'
 
 const tabs = [
-  { to: '/mcp-plaza', label: '服务目录', icon: Store, end: true },
-  { to: '/mcp-plaza/keys', label: 'MCP Key', icon: KeyRound },
-  { to: '/mcp-plaza/calls', label: '调用记录', icon: ScrollText },
-  { to: '/mcp-plaza/docs', label: '接入说明', icon: Layers3 },
+  { to: '/mcp-plaza', label: '服务目录', icon: Store, end: true, perm: 'mcp_catalog:view' },
+  { to: '/mcp-plaza/keys', label: 'MCP Key', icon: KeyRound, perm: 'mcp_keys:view' },
+  { to: '/mcp-plaza/calls', label: '调用记录', icon: ScrollText, perm: 'mcp_calls:view' },
+  { to: '/mcp-plaza/docs', label: '接入说明', icon: Layers3, perm: 'mcp_catalog:view' },
 ]
+
+const APP_PATH_PERMS: { prefix: string; perm: string }[] = [
+  { prefix: '/mcp-plaza/knowledge', perm: 'mcp_knowledge:view' },
+  { prefix: '/mcp-plaza/docparse', perm: 'mcp_docparse:view' },
+  { prefix: '/mcp-plaza/sites', perm: 'mcp_sites:view' },
+  { prefix: '/mcp-plaza/douyin', perm: 'mcp_douyin:view' },
+  { prefix: '/mcp-plaza/diagrams', perm: 'mcp_diagrams:view' },
+  { prefix: '/mcp-plaza/generation', perm: 'generation:settings' },
+  { prefix: '/mcp-plaza/keys', perm: 'mcp_keys:view' },
+]
+
+function permForAppPath(path: string | null | undefined): string {
+  if (!path) return 'mcp_catalog:view'
+  const match = [...APP_PATH_PERMS].sort((a, b) => b.prefix.length - a.prefix.length).find((item) =>
+    path === item.prefix || path.startsWith(`${item.prefix}/`),
+  )
+  return match?.perm ?? 'mcp_catalog:view'
+}
 
 const iconMap: Record<string, typeof BookOpen> = {
   book: BookOpen,
@@ -24,6 +43,8 @@ const iconMap: Record<string, typeof BookOpen> = {
 }
 
 export function McpPlazaLayout() {
+  const { can } = useSession()
+  const visibleTabs = tabs.filter((tab) => can(tab.perm))
   const location = useLocation()
   const platformPaths = ['/mcp-plaza/keys', '/mcp-plaza/calls', '/mcp-plaza/docs']
   const inApp =
@@ -43,7 +64,7 @@ export function McpPlazaLayout() {
       />
       {inApp ? null : (
         <div className="flex flex-wrap gap-2 border-b border-line pb-2">
-          {tabs.map((tab) => (
+          {visibleTabs.map((tab) => (
             <NavLink
               key={tab.to}
               to={tab.to}
@@ -67,11 +88,14 @@ export function McpPlazaLayout() {
 }
 
 export function McpPlazaCatalogPage() {
+  const { can } = useSession()
   const { data, isError, error, isFetching } = useQuery({
     queryKey: ['mcp-catalog'],
     queryFn: () => api.mcpCatalog(),
   })
-  const items = (data?.items || []).filter((item) => item.status === 'enabled')
+  const items = (data?.items || []).filter(
+    (item) => item.status === 'enabled' && (!item.admin_path || can(permForAppPath(item.admin_path))),
+  )
 
   return (
     <div className="space-y-4">
