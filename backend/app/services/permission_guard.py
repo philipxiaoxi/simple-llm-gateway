@@ -74,6 +74,28 @@ RESOURCE_PREFIXES: tuple[tuple[str, str], ...] = (
 )
 
 # (方法, 路由模板) -> 权限码。仅登记「默认动作不对」或需要合并到某个动作的接口。
+# (方法, 路由模板) -> 任一命中即可的权限码。用于「页面只读依赖」：
+# 例如查看测速页需要列出分组，但修改分组仍走 benchmark_groups:manage。
+# 首个权限码是该路由的主权限（供 resolve_permission 与目录覆盖测试使用）。
+ROUTE_ANY_CODES: dict[tuple[str, str], tuple[str, ...]] = {
+    ("GET", "/api/admin/benchmark/groups"): (
+        "benchmark_groups:view",
+        "benchmark:view",
+    ),
+    ("GET", "/api/admin/generation/settings"): (
+        "generation:settings",
+        "image_gen:view",
+        "image_gen:task_create",
+        "video_gen:view",
+        "video_gen:task_create",
+    ),
+    ("GET", "/api/admin/integrations/tikhub"): (
+        "integrations:view",
+        "info:view",
+        "mcp_douyin:view",
+    ),
+}
+
 ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     # 上游账号
     ("POST", "/api/admin/accounts/export"): "accounts:export",
@@ -330,9 +352,22 @@ def resource_for_path(path: str) -> str | None:
     return None
 
 
-def resolve_permission(method: str, path: str) -> str | None:
-    """把「方法 + 路由模板」映射成权限码；无法映射时返回 None。"""
+def required_codes(method: str, path: str) -> tuple[str, ...]:
+    """路由要求的权限码集合：命中任一即可；空元组表示不校验。"""
     method = method.upper()
+    any_codes = ROUTE_ANY_CODES.get((method, path))
+    if any_codes:
+        return any_codes
+    code = resolve_permission(method, path)
+    return (code,) if code else ()
+
+
+def resolve_permission(method: str, path: str) -> str | None:
+    """把「方法 + 路由模板」映射成主权限码；无法映射时返回 None。"""
+    method = method.upper()
+    any_codes = ROUTE_ANY_CODES.get((method, path))
+    if any_codes:
+        return any_codes[0]
     override = ROUTE_OVERRIDES.get((method, path))
     if override is not None:
         return override
@@ -405,12 +440,13 @@ def require_admin_permission(
         return
     if path.startswith(KIND_AWARE_PREFIX):
         return
-    code = resolve_permission(request.method, path)
-    if code is None:
+    codes = required_codes(request.method, path)
+    if not codes:
         return
-    if has_permission(permissions_for_admin(db, admin), code):
+    permissions = permissions_for_admin(db, admin)
+    if any(has_permission(permissions, code) for code in codes):
         return
-    raise permission_denied(code)
+    raise permission_denied(codes[0])
 
 
 def require_permission(code: str) -> Callable[[Admin, Session], None]:

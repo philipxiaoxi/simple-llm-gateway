@@ -6,6 +6,7 @@ import { Button, Card, Field, Input } from '../components/ui'
 import { api, type McpKnowledgeJob } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage, formatTime } from '../lib/utils'
+import { useCan } from '../lib/session'
 
 const STATUS_LABELS: Record<string, string> = {
   queued: '排队中',
@@ -216,9 +217,11 @@ function JobRow({
   onDelete: () => void
   pending: boolean
 }) {
+  const canUpload = useCan('mcp_knowledge:doc_upload')
+  const canDeleteDoc = useCan('mcp_knowledge:doc_delete')
   const active = job.status === 'queued' || job.status === 'running'
   const failed = job.status === 'failed'
-  const canRetry = (failed || job.status === 'canceled') && job.attempts < job.max_attempts
+  const canRetry = canUpload && (failed || job.status === 'canceled') && job.attempts < job.max_attempts
   return (
     <Card className="min-w-0 space-y-2 overflow-hidden p-3">
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
@@ -248,12 +251,12 @@ function JobRow({
               <RotateCcw size={14} /> 重试
             </Button>
           ) : null}
-          {job.status === 'queued' ? (
+          {job.status === 'queued' && canUpload ? (
             <Button type="button" variant="ghost" disabled={pending} onClick={onCancel}>
               <X size={14} /> 取消
             </Button>
           ) : null}
-          {!active ? (
+          {!active && canDeleteDoc ? (
             <Button type="button" variant="ghost" disabled={pending} onClick={onDelete}>
               <Trash2 size={14} />
             </Button>

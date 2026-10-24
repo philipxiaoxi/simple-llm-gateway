@@ -371,6 +371,7 @@ export function McpKnowledgeDetailPage() {
   const canUpload = useCan('mcp_knowledge:doc_upload')
   const canReembed = useCan('mcp_knowledge:doc_reembed')
   const canDeleteDoc = useCan('mcp_knowledge:doc_delete')
+  const canSearch = useCan('mcp_knowledge:search')
   const { kbId = '' } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -674,6 +675,7 @@ export function McpKnowledgeDetailPage() {
         </p>
       </Card>
 
+      {canSearch ? (
       <Card className="grid min-w-0 gap-3 overflow-hidden p-4">
         <div className="font-medium">试检索</div>
         <Field label="查询">
@@ -708,6 +710,7 @@ export function McpKnowledgeDetailPage() {
           </div>
         ) : null}
       </Card>
+      ) : null}
 
       <div className="space-y-2">
         <div className="font-medium">文档</div>

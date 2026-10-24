@@ -142,12 +142,23 @@ function StatCard({ label, value, tone }: { label: string; value: number; tone?:
   )
 }
 
-function EventRow({ item, onOpen }: { item: SecurityEvent; onOpen: (id: number) => void }) {
+function EventRow({
+  item,
+  onOpen,
+  canOpen,
+}: {
+  item: SecurityEvent
+  onOpen: (id: number) => void
+  canOpen: boolean
+}) {
   return (
     <button
       type="button"
-      onClick={() => onOpen(item.id)}
-      className="block w-full cursor-pointer px-4 py-3 text-left transition hover:bg-white/[0.03]"
+      onClick={canOpen ? () => onOpen(item.id) : undefined}
+      className={cn(
+        'block w-full px-4 py-3 text-left transition',
+        canOpen ? 'cursor-pointer hover:bg-white/[0.03]' : 'cursor-default',
+      )}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Badge tone={SEVERITY_TONE[item.severity] ?? 'mist'}>{SEVERITY_LABEL[item.severity] ?? item.severity}</Badge>
@@ -554,6 +565,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
 
 export function SecurityPage() {
   const canSettings = useCan('security:settings')
+  const canEventDetail = useCan('security:event_detail')
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<TabKey>('all')
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -749,7 +761,7 @@ export function SecurityPage() {
 
       <div className="divide-y divide-line/60 overflow-hidden rounded-xl border border-line/70 bg-panel/40">
         {items.map((item) => (
-          <EventRow key={item.id} item={item} onOpen={setSelected} />
+          <EventRow key={item.id} item={item} onOpen={setSelected} canOpen={canEventDetail} />
         ))}
         {events.isPending && items.length === 0 ? (
           <div className="space-y-2 p-4">

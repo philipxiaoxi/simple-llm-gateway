@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Switch } from '../components/ui'
 import { api, type ModelCaps } from '../lib/api'
+import { useCan } from '../lib/session'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage, formatTime, modelCapsHint } from '../lib/utils'
 
@@ -16,6 +17,7 @@ function RoutePrefixEditor({
   initialPrefix: string
   onSaved: () => void
 }) {
+  const canUpdate = useCan('accounts:update')
   const [prefix, setPrefix] = useState(initialPrefix)
   const [pending, setPending] = useState(false)
   const [open, setOpen] = useState(false)
@@ -52,9 +54,11 @@ function RoutePrefixEditor({
           <div className="text-xs uppercase tracking-[0.12em] text-mist">模型前缀</div>
           <div className="mt-1 truncate font-mono text-xs text-paper">{initialPrefix || '自动生成'}</div>
         </div>
+        {canUpdate ? (
         <Button type="button" variant="line" className="shrink-0" onClick={() => setOpen(true)}>
           <Route size={15} /> 编辑
         </Button>
+        ) : null}
       </div>
       {open ? (
         <Dialog title="编辑模型前缀" onClose={() => setOpen(false)}>
@@ -102,6 +106,9 @@ function RoutePrefixEditor({
 }
 
 export function AgentDetailPage() {
+  const canUpdateRoute = useCan('accounts:update')
+  const canRefreshModels = useCan('agents:route_bind')
+  const canManageModels = useCan('accounts:models_manage')
   const { agentId = '' } = useParams()
   const queryClient = useQueryClient()
   const { data: agent, isLoading } = useQuery({
@@ -192,7 +199,7 @@ export function AgentDetailPage() {
                     />
                   ) : null}
                   <div className="mt-3 flex flex-wrap items-center justify-start gap-2">
-                    {route.account_id ? (
+                    {route.account_id && canUpdateRoute ? (
                       <Button
                         variant="line"
                         disabled={statusPending}
@@ -201,9 +208,11 @@ export function AgentDetailPage() {
                         {route.status === 'active' ? '停用路由' : '启用路由'}
                       </Button>
                     ) : null}
+                    {canRefreshModels ? (
                     <Button variant="line" disabled={agent.status !== 'online' || route.status !== 'active' || pending} onClick={() => refreshModels.mutate(route.id)} title={agent.status === 'online' && route.status === 'active' ? '从上游刷新模型' : '网关代理或路由停用时无法刷新模型'}>
                       <RefreshCw size={16} className={pending ? 'animate-spin' : ''} /> 刷新模型
                     </Button>
+                    ) : null}
                   </div>
                 </div>
                 <div>
@@ -231,7 +240,7 @@ export function AgentDetailPage() {
                             </span>
                             <span className="mt-0.5 block text-xs text-mist">{modelCapsHint(model) || (enabled ? '对外可见' : '已关闭，测速仍可用')}</span>
                           </span>
-                          {route.account_id ? (
+                          {route.account_id && canManageModels ? (
                             <Switch
                               checked={enabled}
                               disabled={pending}

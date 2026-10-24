@@ -76,6 +76,7 @@ export function BenchmarkPage() {
   const canRun = useCan('benchmark:run')
   const canManageGroups = useCan('benchmark_groups:manage')
   const canExport = useCan('benchmark_history:export')
+  const canManageModels = useCan('accounts:models_manage')
   const queryClient = useQueryClient()
   const { data: accounts = [], isLoading } = useQuery({ queryKey: ['key-accounts'], queryFn: api.keyAccounts })
   const { data: groupsData } = useQuery({ queryKey: ['benchmark-groups'], queryFn: api.benchmarkGroups })
@@ -358,6 +359,7 @@ export function BenchmarkPage() {
             <h2 className="font-semibold">测速结果</h2>
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-xs text-mist">{completedCount} / {visibleTargets.length} 已完成</span>
+              {canRun ? (
               <Button
                 type="button"
                 variant="line"
@@ -368,6 +370,8 @@ export function BenchmarkPage() {
                 <RotateCcw size={14} />
                 重试失败
               </Button>
+              ) : null}
+              {canManageModels ? (
               <Button
                 type="button"
                 variant="danger"
@@ -378,6 +382,7 @@ export function BenchmarkPage() {
                 <Ban size={14} />
                 一键关闭
               </Button>
+              ) : null}
             </div>
           </div>
           {visibleTargets.length > 0 && completedCount > 0 && completedCount < visibleTargets.length ? (
@@ -420,7 +425,7 @@ export function BenchmarkPage() {
                       <td className="px-4 py-4 font-mono">{formatSpeed(result?.output_tokens_per_second)}</td>
                       <td className="max-w-[260px] px-4 py-4 text-xs text-mist">
                         <div>{previewText(result)}</div>
-                        {result && !result.ok && target.enabled && !isTesting ? (
+                        {canManageModels && result && !result.ok && target.enabled && !isTesting ? (
                           <button type="button" className="mt-2 text-danger hover:underline" onClick={() => void disableTarget(target)}>
                             关闭此模型
                           </button>
@@ -475,7 +480,7 @@ export function BenchmarkPage() {
                   <div className={cn('break-all text-xs [overflow-wrap:anywhere]', result?.error ? 'text-danger' : 'text-mist')} title={preview}>
                     {preview}
                   </div>
-                  {result && !result.ok && target.enabled && !isTesting ? (
+                  {canManageModels && result && !result.ok && target.enabled && !isTesting ? (
                     <Button type="button" variant="danger" className="w-full" onClick={() => void disableTarget(target)}>
                       关闭此模型
                     </Button>

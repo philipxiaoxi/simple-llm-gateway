@@ -581,6 +581,7 @@ function ModelList({
                 enabled ? 'border-line bg-ink/40' : 'border-dashed border-line/80 bg-ink/20',
               )}
             >
+              <Can code="accounts:models_manage">
               <button
                 type="button"
                 onClick={() => onEdit(model)}
@@ -615,7 +616,10 @@ function ModelList({
                   )}
                 </span>
               </button>
+              </Can>
+              <Can code="accounts:models_manage">
               <Switch checked={enabled} onCheckedChange={() => onToggleEnabled(model)} />
+              </Can>
             </div>
           )
         })}
@@ -1294,6 +1298,7 @@ export function AccountsPage() {
                   </Button>
 </Can>
                   {account.auth_type === 'oauth' ? (
+                    <Can code="accounts:update">
                     <Button
                       type="button"
                       variant="line"
@@ -1303,6 +1308,7 @@ export function AccountsPage() {
                     >
                       去授权
                     </Button>
+                    </Can>
                   ) : null}
 <Can code="accounts:update">
                   <Button variant="line" className="w-full md:w-auto" onClick={() => setEditor(account)}>

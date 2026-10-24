@@ -7,6 +7,7 @@ import { Badge, Button, Card } from '../components/ui'
 import { api, type DouyinMedia } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { copyText, douyinShareText, elapsedSeconds, errorMessage, formatBytes, formatTime } from '../lib/utils'
+import { useCan } from '../lib/session'
 
 const STATUS: Record<string, { label: string; tone: 'ok' | 'bad' | 'warn' | 'mist' | 'info' }> = {
   queued: { label: '排队中', tone: 'mist' },
@@ -21,6 +22,8 @@ const STAGE_ORDER = ['resolving', 'downloading', 'done'] as const
 const STAGE_LABEL: Record<string, string> = { resolving: '解析中', downloading: '下载中', done: '完成' }
 
 export function McpDouyinDetailPage() {
+  const canRetry = useCan('mcp_douyin:job_retry')
+  const canDelete = useCan('mcp_douyin:job_delete')
   const { jobId = '' } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -113,14 +116,16 @@ export function McpDouyinDetailPage() {
               <Download size={15} /> 下载全部
             </Button>
           ) : null}
-          {job.status === 'failed' || job.status === 'partial' ? (
+          {(job.status === 'failed' || job.status === 'partial') && canRetry ? (
             <Button type="button" variant="line" disabled={retry.isPending} onClick={() => retry.mutate()}>
               <RefreshCw size={15} /> 重试
             </Button>
           ) : null}
+          {canDelete ? (
           <Button type="button" variant="danger" disabled={remove.isPending} onClick={() => remove.mutate()}>
             <Trash2 size={15} /> 删除
           </Button>
+          ) : null}
         </div>
       </div>
 

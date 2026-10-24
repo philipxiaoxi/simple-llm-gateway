@@ -106,6 +106,7 @@ const PAGE_PERMS: { pattern: string; perm: string }[] = [
   { pattern: '/image-gen', perm: 'image_gen:view' },
   { pattern: '/video-gen', perm: 'video_gen:view' },
   { pattern: '/offline', perm: 'offline:view' },
+  { pattern: '/skills/bundles', perm: 'skill_bundles:view' },
   { pattern: '/skills', perm: 'skills:view' },
   { pattern: '/mcp-plaza/knowledge', perm: 'mcp_knowledge:view' },
   { pattern: '/mcp-plaza/docparse', perm: 'mcp_docparse:view' },

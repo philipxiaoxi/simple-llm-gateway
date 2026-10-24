@@ -7,6 +7,7 @@ from app.permissions import PAGE_ONLY_CODES, all_codes
 from app.services.permission_guard import (
     EXEMPT_PATHS,
     KIND_AWARE_PREFIX,
+    ROUTE_ANY_CODES,
     ROUTE_OVERRIDES,
     resolve_permission,
 )
@@ -82,6 +83,12 @@ def test_every_admin_route_resolves_a_catalog_permission() -> None:
 def test_override_codes_are_all_in_catalog() -> None:
     known = all_codes()
     stray = sorted({code for code in ROUTE_OVERRIDES.values() if code not in known})
+    assert stray == []
+
+
+def test_any_codes_are_all_in_catalog() -> None:
+    known = all_codes()
+    stray = sorted({code for codes in ROUTE_ANY_CODES.values() for code in codes if code not in known})
     assert stray == []
 
 
