@@ -78,6 +78,10 @@ RESOURCE_PREFIXES: tuple[tuple[str, str], ...] = (
 # 例如查看测速页需要列出分组，但修改分组仍走 benchmark_groups:manage。
 # 首个权限码是该路由的主权限（供 resolve_permission 与目录覆盖测试使用）。
 ROUTE_ANY_CODES: dict[tuple[str, str], tuple[str, ...]] = {
+    ("GET", "/api/admin/benchmark/leaderboard"): (
+        "leaderboard:view",
+        "benchmark_history:view",
+    ),
     ("GET", "/api/admin/benchmark/groups"): (
         "benchmark_groups:view",
         "benchmark:view",

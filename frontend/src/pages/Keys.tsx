@@ -672,7 +672,7 @@ export function KeysPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5 overflow-x-hidden">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex items-start justify-between gap-3 lg:block lg:min-w-0 lg:flex-1">
           <div className="min-w-0">
