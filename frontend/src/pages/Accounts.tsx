@@ -5,7 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import { ActionSheet, type ActionSheetAction, Badge, Button, Card, Dialog, Field, IconButton, Input, Select, Sheet, Switch } from '../components/ui'
 import { api, type Account, type AccountUsage, type ModelCaps, type Provider, type QuotaItem } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { Can } from '../lib/session'
+import { Can, useCan } from '../lib/session'
 import { MIN_PASSWORD_LENGTH, RISK_LEVELS, cn, errorMessage, formatEmbeddedTimes, formatTime, modelCapsHint } from '../lib/utils'
 import { FilterBar } from '../components/filter-bar'
 
@@ -977,6 +977,10 @@ function CustomModelDialog({
 }
 
 export function AccountsPage() {
+  const canQuota = useCan('accounts:quota')
+  const canModels = useCan('accounts:models_manage')
+  const canUpdate = useCan('accounts:update')
+  const canDelete = useCan('accounts:delete')
   const queryClient = useQueryClient()
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: api.providers })
   const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: api.accounts })
@@ -1120,17 +1124,23 @@ export function AccountsPage() {
 
   const actionSheetActions: ActionSheetAction[] = actionAccount
     ? [
-        { label: '刷新额度', onSelect: () => void runQuota(actionAccount.id) },
-        { label: '获取模型', onSelect: () => void runModels(actionAccount.id) },
-        ...(actionAccount.auth_type === 'oauth'
+        ...(canQuota ? [{ label: '刷新额度', onSelect: () => void runQuota(actionAccount.id) }] : []),
+        ...(canModels ? [{ label: '获取模型', onSelect: () => void runModels(actionAccount.id) }] : []),
+        ...(actionAccount.auth_type === 'oauth' && canUpdate
           ? [{ label: '去授权', onSelect: () => void startOauth(actionAccount.id) }]
           : []),
-        { label: '编辑账号', onSelect: () => setEditor(actionAccount) },
-        {
-          label: actionAccount.status === 'active' ? '停用账号' : '启用账号',
-          onSelect: () => void toggle(actionAccount),
-        },
-        { label: '删除账号', tone: 'danger' as const, onSelect: () => setDeletingAccount(actionAccount) },
+        ...(canUpdate ? [{ label: '编辑账号', onSelect: () => setEditor(actionAccount) }] : []),
+        ...(canUpdate
+          ? [
+              {
+                label: actionAccount.status === 'active' ? '停用账号' : '启用账号',
+                onSelect: () => void toggle(actionAccount),
+              },
+            ]
+          : []),
+        ...(canDelete
+          ? [{ label: '删除账号', tone: 'danger' as const, onSelect: () => setDeletingAccount(actionAccount) }]
+          : []),
       ]
     : []
 

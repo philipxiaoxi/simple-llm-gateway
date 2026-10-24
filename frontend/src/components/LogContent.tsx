@@ -5,6 +5,7 @@ import { Badge, Button } from './ui'
 import { CopyButton } from './LogsShared'
 import { errorMessage } from '../lib/utils'
 import { notifyBad, notifyOk } from '../lib/toast'
+import { useCan } from '../lib/session'
 
 function JsonSection({
   title,
@@ -44,6 +45,7 @@ function downloadJson(payload: unknown, filename: string) {
 }
 
 export function LogContent({ log, messages }: { log: LogItem; messages: LogMessageItem[] }) {
+  const canExport = useCan('logs:export')
   const [exporting, setExporting] = useState(false)
   const meta = {
     id: log.id,
@@ -108,10 +110,12 @@ export function LogContent({ log, messages }: { log: LogItem; messages: LogMessa
           会话消息与思考内容不再内联渲染（避免超长会话拖慢页面），可下载完整 JSON 后本地查看。
           {messages.length < (log.message_count ?? 0) ? `当前页已加载 ${messages.length} 条，导出为全量。` : null}
         </div>
+        {canExport ? (
         <Button disabled={exporting} onClick={() => void handleDownload()}>
           <Download size={14} className={exporting ? 'animate-pulse' : undefined} />
           {exporting ? '导出中…' : '下载完整 JSON'}
         </Button>
+        ) : null}
       </div>
     </div>
   )
