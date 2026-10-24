@@ -1,7 +1,10 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 
 import { api, type Me } from './api'
+import { Button } from '../components/ui'
+import { NAV_GROUPS, type NavLink } from '../components/nav'
 
 /**
  * 登录会话与功能权限。
@@ -73,13 +76,32 @@ export function Can({
 }
 
 export function ForbiddenPage() {
-  const { roleName } = useSession()
+  const { roleName, can } = useSession()
+  const navigate = useNavigate()
+  const fallback = useMemo<NavLink | null>(() => {
+    for (const group of NAV_GROUPS) {
+      for (const link of group.links) {
+        if (can(link.perm)) return link
+      }
+    }
+    return null
+  }, [can])
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-2 text-center">
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
       <div className="text-lg font-medium text-paper">没有访问权限</div>
       <p className="max-w-md text-sm text-mist">
         当前角色（{roleName || '未分配'}）没有这个页面的权限，请联系管理员在「角色管理」中调整。
       </p>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <Button variant="line" onClick={() => navigate(-1)}>
+          返回上一页
+        </Button>
+        {fallback ? (
+          <Button onClick={() => navigate(fallback.to)}>前往「{fallback.label}」</Button>
+        ) : (
+          <Button onClick={() => navigate('/login')}>重新登录</Button>
+        )}
+      </div>
     </div>
   )
 }
