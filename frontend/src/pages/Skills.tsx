@@ -217,46 +217,46 @@ export function SkillsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Skills</h1>
           <p className="mt-1 text-sm text-mist">
             本地 Agent Skills 仓库。上传符合 SKILL.md 规范的目录或压缩包，再按分类浏览和下载。
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
 {canAnalysis ? (
-          <Button variant="line" onClick={() => setAiConfigOpen(true)}>
+          <Button variant="line" className="w-full whitespace-nowrap sm:w-auto" onClick={() => setAiConfigOpen(true)}>
             <Sparkles size={16} />
             AI 配置
           </Button>
 ) : null}
 {canManageCategory ? (
-          <Button variant="line" onClick={() => setManageOpen(true)}>
+          <Button variant="line" className="w-full whitespace-nowrap sm:w-auto" onClick={() => setManageOpen(true)}>
             <Tags size={16} />
             分类管理
           </Button>
 ) : null}
 {canUpload ? (
-          <Button variant="line" onClick={() => setBulkUpdateOpen(true)}>
+          <Button variant="line" className="w-full whitespace-nowrap sm:w-auto" onClick={() => setBulkUpdateOpen(true)}>
             <RefreshCw size={16} />
             批量更新
           </Button>
 ) : null}
 {canUpdate ? (
-          <Button variant="line" onClick={() => void copyUpload()}>
+          <Button variant="line" className="w-full whitespace-nowrap sm:w-auto" onClick={() => void copyUpload()}>
             <Copy size={16} />
             复制上传指令
           </Button>
 ) : null}
 {canBundles ? (
-          <Button variant="line" onClick={() => navigate('/skills/bundles')}>
+          <Button variant="line" className="w-full whitespace-nowrap sm:w-auto" onClick={() => navigate('/skills/bundles')}>
             <Layers size={16} />
             Skills 组合
           </Button>
 ) : null}
 {canUpload ? (
-          <Button onClick={() => setUploadOpen(true)}>
+          <Button className="w-full whitespace-nowrap sm:w-auto" onClick={() => setUploadOpen(true)}>
             <Upload size={16} />
             上传
           </Button>
@@ -366,20 +366,23 @@ export function SkillsPage() {
               </span>
               <span className="shrink-0">{formatTime(item.updated_at)}</span>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex items-center gap-2">
               <Button type="button" variant="line" className="min-w-0 flex-1" onClick={() => navigate(`/skills/${item.id}`)}>
                 详情
               </Button>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
 {canUpload ? (
-              <Button type="button" variant="line" title="重新上传并覆盖此 Skill" onClick={() => setReplaceSkill(item)}>
+              <Button type="button" variant="line" className="px-2.5" title="重新上传并覆盖此 Skill" onClick={() => setReplaceSkill(item)}>
                 <RefreshCw size={16} />
               </Button>
 ) : null}
-              <Button type="button" variant="line" title="复制安装指令（Claude Code）" onClick={() => void copyInstall(item)}>
+{canDownload ? (
+              <Button type="button" variant="line" className="px-2.5" title="复制安装指令（Claude Code）" onClick={() => void copyInstall(item)}>
                 <Copy size={16} />
               </Button>
+) : null}
 {canDownload ? (
-              <Button type="button" variant="line" onClick={() => void download(item)}>
+              <Button type="button" variant="line" className="whitespace-nowrap" onClick={() => void download(item)}>
                 <Download size={16} />
                 下载
               </Button>
@@ -388,6 +391,7 @@ export function SkillsPage() {
               <Button
                 type="button"
                 variant="danger"
+                className="px-2.5"
                 onClick={() => {
                   if (window.confirm(`删除 ${item.name}？`)) deleteMutation.mutate(item.id)
                 }}
@@ -395,6 +399,7 @@ export function SkillsPage() {
                 <Trash2 size={16} />
               </Button>
 ) : null}
+              </div>
             </div>
           </Card>
         ))}

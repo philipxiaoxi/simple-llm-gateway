@@ -111,7 +111,7 @@ export function SkillDetailPage() {
       <Link to="/skills" className="inline-flex items-center gap-1.5 text-sm text-mist hover:text-paper">
         <ArrowLeft size={16} /> 返回 Skills
       </Link>
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1 overflow-hidden">
           <div className="flex flex-wrap items-center gap-2">
             <h1
@@ -129,19 +129,22 @@ export function SkillDetailPage() {
           </code>
           <p className="mt-3 max-w-3xl break-words text-sm text-mist [overflow-wrap:anywhere]">{data.description}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        {canUpdate || canDownload || canDelete ? (
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
           {canUpdate ? (
-          <Button variant="line" onClick={() => setEditing(true)}>
+          <Button variant="line" className="w-full sm:w-auto" onClick={() => setEditing(true)}>
             <Pencil size={16} />
             编辑
           </Button>
           ) : null}
-          <Button variant="line" onClick={() => void copyInstall()}>
+          {canDownload ? (
+          <Button variant="line" className="w-full whitespace-nowrap sm:w-auto" onClick={() => void copyInstall()}>
             <Copy size={16} />
             复制安装指令
           </Button>
+          ) : null}
           {canDownload ? (
-          <Button onClick={() => void downloadAll()}>
+          <Button className="w-full sm:w-auto" onClick={() => void downloadAll()}>
             <Download size={16} />
             下载 zip
           </Button>
@@ -149,6 +152,7 @@ export function SkillDetailPage() {
           {canDelete ? (
           <Button
             variant="danger"
+            className="w-full sm:w-auto"
             onClick={() => {
               if (window.confirm(`删除 ${data.name}？`)) deleteMutation.mutate()
             }}
@@ -158,6 +162,7 @@ export function SkillDetailPage() {
           </Button>
           ) : null}
         </div>
+        ) : null}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-4">
@@ -192,10 +197,12 @@ export function SkillDetailPage() {
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
         <div className="grid min-w-0 gap-4">
+          {canDownload || canUpdate ? (
           <section className="overflow-hidden rounded-xl border border-line">
             <div className="border-b border-line bg-panel-2 px-4 py-3 text-xs uppercase tracking-[0.16em] text-mist">SKILL.md</div>
             <pre className="max-h-[28rem] overflow-auto px-4 py-4 text-sm leading-6 text-paper whitespace-pre-wrap">{data.skill_md || '（空）'}</pre>
           </section>
+          ) : null}
 
           <section className="overflow-hidden rounded-xl border border-line">
             <div className="border-b border-line bg-panel-2 px-4 py-3 text-xs uppercase tracking-[0.16em] text-mist">文件列表</div>
@@ -206,12 +213,19 @@ export function SkillDetailPage() {
                     <FileText size={16} className="shrink-0 text-info" />
                     <code className="truncate text-sm">{file.path}</code>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-mist">{formatBytes(file.size)}</span>
-                    <Button type="button" variant="line" onClick={() => void downloadFile(file.path)}>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span className="shrink-0 text-xs text-mist">{formatBytes(file.size)}</span>
+                    {canDownload ? (
+                    <Button
+                      type="button"
+                      variant="line"
+                      className="whitespace-nowrap"
+                      onClick={() => void downloadFile(file.path)}
+                    >
                       <Download size={14} />
                       下载
                     </Button>
+                    ) : null}
                   </div>
                 </div>
               ))}
