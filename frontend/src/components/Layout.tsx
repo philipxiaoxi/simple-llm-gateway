@@ -537,6 +537,7 @@ export function Layout() {
         </PageContainer>
       </main>
 
+      {tabLinks.length ? (
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-panel/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
         <div className="flex h-14">
           {tabLinks.map((link) => {
@@ -559,6 +560,7 @@ export function Layout() {
           })}
         </div>
       </nav>
+      ) : null}
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>

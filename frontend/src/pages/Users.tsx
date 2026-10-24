@@ -34,6 +34,7 @@ export function UsersPage() {
   const [newPassword, setNewPassword] = useState('')
 
   const { me, can } = useSession()
+  const canToggle = can('users:toggle_status')
   const { data: users = [], isPending } = useQuery({ queryKey: ['users'], queryFn: api.users })
   const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: api.roles })
   const isAdmin = me?.role?.builtin === true || (me?.permissions ?? []).includes('*')
@@ -61,14 +62,14 @@ export function UsersPage() {
         return api.updateUser(payload.id, {
           username: payload.username,
           role_id: payload.roleId ?? undefined,
-          is_enabled: payload.enabled,
+          is_enabled: canToggle ? payload.enabled : undefined,
         })
       }
       return api.createUser({
         username: payload.username,
         password: payload.password,
         role_id: payload.roleId as number,
-        is_enabled: payload.enabled,
+        is_enabled: canToggle ? payload.enabled : true,
       })
     },
     onSuccess: () => {
@@ -265,6 +266,7 @@ export function UsersPage() {
                 ))}
               </Select>
             </Field>
+            {canToggle ? (
             <label className="flex items-center gap-2 rounded-lg border border-line bg-ink/40 px-3 py-2.5 text-sm text-mist">
               <input
                 type="checkbox"
@@ -274,6 +276,7 @@ export function UsersPage() {
               />
               启用该账号
             </label>
+            ) : null}
             <div className="grid grid-cols-2 gap-2 pt-1 sm:flex sm:justify-end">
               <Button variant="ghost" className="w-full sm:w-auto" onClick={() => setDraft(null)}>
                 取消

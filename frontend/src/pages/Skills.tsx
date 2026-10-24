@@ -237,7 +237,7 @@ export function SkillsPage() {
             分类管理
           </Button>
 ) : null}
-{canUpdate ? (
+{canUpload ? (
           <Button variant="line" onClick={() => setBulkUpdateOpen(true)}>
             <RefreshCw size={16} />
             批量更新

@@ -111,6 +111,10 @@ ROUTE_ANY_CODES: dict[tuple[str, str], tuple[str, ...]] = {
         "mcp_keys:view",
         "mcp_knowledge:view",
     ),
+    ("POST", "/api/admin/info/sources/preview"): (
+        "info:preview",
+        "info:source_create",
+    ),
     ("GET", "/api/admin/mcp/knowledge/bases"): (
         "mcp_knowledge:view",
         "mcp_docparse:view",
@@ -187,6 +191,7 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("PATCH", "/api/admin/info/sources/{source_id}"): "info:source_update",
     ("DELETE", "/api/admin/info/sources/{source_id}"): "info:source_delete",
     ("POST", "/api/admin/info/sources/preview"): "info:preview",
+    ("POST", "/api/admin/info/sources/collect-batch"): "info:collect",
     ("POST", "/api/admin/info/sources/batch-interval"): "info:source_update",
     ("POST", "/api/admin/info/sources/collect-batch"): "info:collect",
     ("POST", "/api/admin/info/sources/{source_id}/collect"): "info:collect",
@@ -216,7 +221,7 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("GET", "/api/admin/skills/{skill_id}/files/{file_path:path}"): "skills:download",
     ("POST", "/api/admin/skills/{skill_id}/download-url"): "skills:download",
     ("GET", "/api/admin/skills/classification-settings"): "skills:view",
-    ("PUT", "/api/admin/skills/classification-settings"): "skills:update",
+    ("PUT", "/api/admin/skills/classification-settings"): "skills:analysis",
     ("GET", "/api/admin/skills/categories"): "skills:view",
     ("POST", "/api/admin/skills/categories"): "skills:category_manage",
     ("PATCH", "/api/admin/skills/categories/{category_id}"): "skills:category_manage",

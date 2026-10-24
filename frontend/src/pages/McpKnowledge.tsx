@@ -621,6 +621,8 @@ export function McpKnowledgeDetailPage() {
             查看采集任务 →
           </Link>
         </div>
+{canUpload ? (
+        <>
         <Field label="粘贴纯文本入库">
           <textarea
             className="min-h-28 w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm text-paper"
@@ -673,6 +675,8 @@ export function McpKnowledgeDetailPage() {
         <p className="text-xs text-mist">
           多选上传和目录入库都走同一条处理：文本直接入库，Word、PDF、Excel、PPT、HTML 先转成 Markdown 再入库。转换失败的文件记入跳过清单。文本单文件上限 2 MiB，办公文档上限 30 MiB。
         </p>
+        </>
+        ) : null}
       </Card>
 
       {canSearch ? (

@@ -148,6 +148,7 @@ export function VoiceRoomsPage() {
 }
 
 function RoomRow({ room, onDelete }: { room: VoiceRoomSummary; onDelete: () => void }) {
+  const canManage = useCan('voice:manage')
   const phoneUrl = `${window.location.origin}/voice/join?code=${room.joinCode}`
 
   async function copyPhoneLink() {
@@ -203,9 +204,11 @@ function RoomRow({ room, onDelete }: { room: VoiceRoomSummary; onDelete: () => v
             <ExternalLink size={15} />
           </Button>
         </Link>
+        {canManage ? (
         <Button variant="ghost" onClick={onDelete} title="删除房间">
           <Trash2 size={15} className="text-danger" />
         </Button>
+        ) : null}
       </div>
     </div>
   )

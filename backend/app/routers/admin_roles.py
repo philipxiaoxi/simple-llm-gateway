@@ -161,6 +161,7 @@ def delete_role(
             status_code=403,
             detail={"error": {"type": "permission_denied", "message": f"内置角色「{ADMIN_ROLE_NAME}」不可删除"}},
         )
+    _ensure_codes_assignable(db, admin, sorted(parse_permissions(role.permissions_json)))
     count = _admin_count(db, role.id)
     if count:
         raise HTTPException(status_code=409, detail=f"仍有 {count} 个账号使用该角色，请先调整后再删除")

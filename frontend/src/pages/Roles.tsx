@@ -196,6 +196,7 @@ export function RolesPage() {
                       ) : null}
                     </Can>
                     <Can code="roles:delete">
+                      {isAdmin || role.permissions.every((code) => can(code)) ? (
                       <Button
                         variant="danger"
                         className="w-full sm:w-auto"
@@ -205,6 +206,7 @@ export function RolesPage() {
                       >
                         删除
                       </Button>
+                      ) : null}
                     </Can>
                   </>
                 )}

@@ -14,7 +14,12 @@ from app.models import Admin, Role
 from app.permissions import WILDCARD
 from app.schemas import AdminPasswordReset, AdminUserCreate, AdminUserOut, AdminUserUpdate
 from app.services.client_meta import client_meta
-from app.services.permission_guard import has_permission, permissions_for_admin, parse_permissions
+from app.services.permission_guard import (
+    has_permission,
+    permission_denied,
+    permissions_for_admin,
+    parse_permissions,
+)
 from app.services.security_audit import enqueue_login_event
 
 router = APIRouter(prefix="/api/admin", tags=["admin-users"])
@@ -172,6 +177,10 @@ def update_user(
 ) -> AdminUserOut:
     target = _load_admin(db, admin_id)
     _ensure_target_within_scope(db, admin, target)
+    if payload.is_enabled is not None and not has_permission(
+        permissions_for_admin(db, admin), "users:toggle_status"
+    ):
+        raise permission_denied("users:toggle_status")
     if payload.username is not None:
         username = payload.username.strip()
         if not username:

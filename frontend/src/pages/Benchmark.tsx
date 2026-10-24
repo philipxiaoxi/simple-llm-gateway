@@ -546,6 +546,7 @@ export function BenchmarkPage() {
             setGroupSelectOpen(false)
             setGroupDialogOpen(true)
           }}
+          canManage={canManageGroups}
           onClose={() => setGroupSelectOpen(false)}
         />
       ) : null}
