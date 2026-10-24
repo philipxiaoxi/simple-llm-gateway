@@ -6,7 +6,7 @@ import { Button, Card, Field, Input } from '../components/ui'
 import { api, getToken, type DocParseJob } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage, formatTime } from '../lib/utils'
-import { useCan } from '../lib/session'
+import { useCan, Can } from '../lib/session'
 
 const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.html,.htm'
 
@@ -177,9 +177,11 @@ export function McpDocParsePage() {
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
+<Can code="mcp_catalog:view">
       <Link to="/mcp-plaza" className="inline-flex text-sm text-mist hover:text-paper">
         ← 返回服务目录
       </Link>
+      </Can>
       <div>
         <h2 className="text-xl font-semibold">转换任务</h2>
         <p className="mt-1 text-sm text-mist">

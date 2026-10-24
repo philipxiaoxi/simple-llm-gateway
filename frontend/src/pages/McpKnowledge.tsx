@@ -6,7 +6,7 @@ import { Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api, type McpKnowledgeEmbeddingAccount } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
-import { useCan } from '../lib/session'
+import { useCan, Can } from '../lib/session'
 
 const OFFICE_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'html', 'htm'])
 
@@ -248,9 +248,11 @@ export function McpKnowledgePage() {
 
   return (
     <div className="space-y-4">
+<Can code="mcp_catalog:view">
       <Link to="/mcp-plaza" className="inline-flex text-sm text-mist hover:text-paper">
         ← 返回服务目录
       </Link>
+      </Can>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold">知识库</h2>

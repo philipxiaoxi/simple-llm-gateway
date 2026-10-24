@@ -91,6 +91,7 @@ export function McpKeysPage() {
   const canUpdate = useCan('mcp_keys:update')
   const canDelete = useCan('mcp_keys:delete')
   const canReveal = useCan('mcp_keys:reveal')
+  const canDocs = useCan('mcp_catalog:view')
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -259,12 +260,14 @@ export function McpKeysPage() {
               </div>
             </div>
             <div className="flex gap-2">
+              {canDocs ? (
               <Link
                 to={`/mcp-plaza/docs?key=${item.id}`}
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-line bg-panel-2 px-3 py-2 text-sm font-medium text-paper transition hover:border-mist/40 md:min-h-9"
               >
                 接入
               </Link>
+              ) : null}
 {canUpdate ? (
               <Button type="button" variant="line" onClick={() => openEdit(item)}>
                 <Pencil size={14} /> 编辑

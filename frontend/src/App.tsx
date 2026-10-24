@@ -125,7 +125,13 @@ const PAGE_PERMS: { pattern: string; perm: string }[] = [
   { pattern: '/roles', perm: 'roles:view' },
 ]
 
+const DETAIL_PERMS: { test: (path: string) => boolean; perm: string }[] = [
+  { test: (path) => /^\/logs\/[^/]+$/.test(path), perm: 'logs:detail' },
+]
+
 function permForPath(pathname: string): string | undefined {
+  const detail = DETAIL_PERMS.find((entry) => entry.test(pathname))
+  if (detail) return detail.perm
   const ranked = [...PAGE_PERMS].sort((left, right) => right.pattern.length - left.pattern.length)
   return ranked.find((entry) =>
     entry.pattern === '/' ? pathname === '/' : pathname === entry.pattern || pathname.startsWith(`${entry.pattern}/`),

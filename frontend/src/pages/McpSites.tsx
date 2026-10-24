@@ -6,7 +6,7 @@ import { Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
-import { useCan } from '../lib/session'
+import { useCan, Can } from '../lib/session'
 
 const STATUS_LABELS: Record<string, string> = {
   active: '启用',
@@ -74,9 +74,11 @@ export function McpSitesPage() {
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
+<Can code="mcp_catalog:view">
       <Link to="/mcp-plaza" className="inline-flex text-sm text-mist hover:text-paper">
         ← 返回服务目录
       </Link>
+      </Can>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">站点部署</h2>

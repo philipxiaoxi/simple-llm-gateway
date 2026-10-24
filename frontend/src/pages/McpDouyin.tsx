@@ -7,7 +7,7 @@ import { Badge, Button, Card, Dialog, Field, Input, Switch } from '../components
 import { api, type DouyinJob } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
-import { useCan } from '../lib/session'
+import { useCan, Can } from '../lib/session'
 
 const STATUS: Record<string, { label: string; tone: 'ok' | 'bad' | 'warn' | 'mist' | 'info' }> = {
   queued: { label: '排队中', tone: 'mist' },
@@ -67,9 +67,11 @@ export function McpDouyinPage() {
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
+<Can code="mcp_catalog:view">
       <Link to="/mcp-plaza" className="inline-flex text-sm text-mist hover:text-paper">
         ← 返回服务目录
       </Link>
+      </Can>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">抖音视频下载</h2>

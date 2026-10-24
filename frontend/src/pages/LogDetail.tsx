@@ -40,10 +40,11 @@ export function LogDetailPage() {
   const [previewTurn, setPreviewTurn] = useState<{ anchor: number; to: number | null; index: number | null } | null>(null)
   const queryClient = useQueryClient()
 
-  const { data, isPending, isFetching, refetch } = useQuery({
+  const { data, isPending, isFetching, error, refetch } = useQuery({
     queryKey: ['log', id],
     queryFn: () => api.log(id, false),
     enabled: ready,
+    retry: false,
   })
 
   const { data: turnsData } = useQuery({
@@ -130,6 +131,19 @@ export function LogDetailPage() {
     setPreviewTurn({ anchor, to, index })
   }
 
+  if (error) {
+    return (
+      <div className="space-y-3">
+        <Link to="/logs" className="inline-flex items-center gap-1 text-sm text-mist hover:text-signal">
+          <ArrowLeft size={14} />
+          返回列表
+        </Link>
+        <div className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-6 text-sm text-danger">
+          {errorMessage(error, '加载记录失败')}
+        </div>
+      </div>
+    )
+  }
   if (isPending || !data || data.id !== id) {
     return <div className="text-mist">加载中…</div>
   }

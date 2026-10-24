@@ -22,6 +22,7 @@ function triggerDownload(blob: Blob, filename: string) {
 
 export function SkillBundleDetailPage() {
   const canManage = useCan('skill_bundles:manage')
+  const canSkills = useCan('skills:view')
   const { bundleId } = useParams()
   const id = Number(bundleId)
   const navigate = useNavigate()
@@ -167,6 +168,7 @@ export function SkillBundleDetailPage() {
                 </>
               ) : (
                 <>
+                  {canSkills ? (
                   <Link
                     to={`/skills/${member.skill.id}`}
                     title={member.skill.name}
@@ -174,6 +176,14 @@ export function SkillBundleDetailPage() {
                   >
                     {member.skill.name}
                   </Link>
+                  ) : (
+                  <span
+                    title={member.skill.name}
+                    className="block break-all font-medium [overflow-wrap:anywhere] line-clamp-2"
+                  >
+                    {member.skill.name}
+                  </span>
+                  )}
                   <code title={member.skill.slug} className="mt-1 block truncate text-xs text-mist">
                     {member.skill.slug}
                   </code>

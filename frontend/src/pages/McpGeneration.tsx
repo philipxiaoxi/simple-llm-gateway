@@ -3,6 +3,7 @@ import { Cog, ExternalLink, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
+import { useCan } from '../lib/session'
 import { resolveModelKey } from '../lib/generation'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage } from '../lib/utils'
@@ -33,6 +34,8 @@ const KIND_LABEL: Record<string, string> = { image: '图片', video: '视频' }
  * 供应商列表来自后端注册表（`app/generation/providers/`），新增供应商后这里会自动多出一张卡片。
  */
 export function McpGenerationPage() {
+  const canImage = useCan('image_gen:view')
+  const canVideo = useCan('video_gen:view')
   const queryClient = useQueryClient()
   const settings = useGenerationSettings()
   const [providers, setProviders] = useState<ProviderForm[]>([])
@@ -200,12 +203,16 @@ export function McpGenerationPage() {
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
               <div className="flex gap-2 text-sm">
+                {canImage ? (
                 <Link to="/image-gen" className="inline-flex items-center gap-1 text-signal hover:brightness-110">
                   图片生成页 <ExternalLink size={13} />
                 </Link>
+                ) : null}
+                {canVideo ? (
                 <Link to="/video-gen" className="inline-flex items-center gap-1 text-signal hover:brightness-110">
                   视频生成页 <ExternalLink size={13} />
                 </Link>
+                ) : null}
               </div>
               <Button type="button" disabled={pending} onClick={() => save.mutate()}>
                 {save.isPending ? '保存中…' : '保存'}
