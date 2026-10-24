@@ -572,6 +572,14 @@ def _ensure_douyin_job_columns(connection) -> None:  # type: ignore[no-untyped-d
         connection.execute(
             text("ALTER TABLE douyin_jobs ADD COLUMN expected_bytes INTEGER DEFAULT 0 NOT NULL")
         )
+    if "cover_filename" not in columns:
+        connection.execute(
+            text("ALTER TABLE douyin_jobs ADD COLUMN cover_filename VARCHAR(128) DEFAULT '' NOT NULL")
+        )
+    if "cover_content_type" not in columns:
+        connection.execute(
+            text("ALTER TABLE douyin_jobs ADD COLUMN cover_content_type VARCHAR(128) DEFAULT '' NOT NULL")
+        )
 
 
 def _ensure_generation_columns(connection) -> None:  # type: ignore[no-untyped-def]

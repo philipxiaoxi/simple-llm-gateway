@@ -171,14 +171,22 @@ export function McpDouyinPage() {
 
 function JobCard({ job }: { job: DouyinJob }) {
   const status = STATUS[job.status] || { label: job.status, tone: 'mist' as const }
+  const [coverBroken, setCoverBroken] = useState(false)
+  const showCover = Boolean(job.cover_url) && !coverBroken
   return (
     <Link
       to={`/mcp-plaza/douyin/${job.id}`}
       className="flex gap-3 rounded-xl border border-line bg-panel p-3 transition hover:border-signal/40 hover:bg-panel/80"
     >
       <div className="h-20 w-16 shrink-0 overflow-hidden rounded-md border border-line bg-ink">
-        {job.cover_url ? (
-          <img src={job.cover_url} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+        {showCover ? (
+          <img
+            src={job.cover_url}
+            alt=""
+            className="h-full w-full object-cover"
+            referrerPolicy="no-referrer"
+            onError={() => setCoverBroken(true)}
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-mist">
             <Download size={18} />
