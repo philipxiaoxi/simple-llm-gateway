@@ -140,6 +140,45 @@ def test_admin_parse_download_and_serve(
     assert no_token.status_code == 401
 
 
+def test_job_cover_rehosted_and_served(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "app.capabilities.douyin.jobs.build_extractor",
+        fake_extractor([ExtractedMedia(kind="video", url="https://v3.douyinvod.com/v.mp4")]),
+    )
+    install_downloader(monkeypatch)
+
+    created = admin_create(client, auth_headers, {"share_text": SAMPLE_SHARE})
+    job_id = created.json()["id"]
+    detail = client.get(f"/api/admin/mcp/douyin/jobs/{job_id}", headers=auth_headers).json()
+
+    # 封面改为同源本地路径，无需登录即可访问
+    assert detail["cover_url"] == f"/v1/douyin/jobs/{job_id}/cover"
+    cover = client.get(detail["cover_url"])
+    assert cover.status_code == 200, cover.text
+    assert cover.content == b"DATA:https://p3.douyinpic.com/cover.jpeg"
+    assert cover.headers["content-type"].startswith("image/jpeg")
+    assert cover.headers["x-content-type-options"] == "nosniff"
+
+
+def test_job_cover_falls_back_to_remote_on_failure(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "app.capabilities.douyin.jobs.build_extractor",
+        fake_extractor([ExtractedMedia(kind="video", url="https://v3.douyinvod.com/v.mp4")]),
+    )
+    install_downloader(monkeypatch, fail_urls={"https://p3.douyinpic.com/cover.jpeg"})
+
+    created = admin_create(client, auth_headers, {"share_text": SAMPLE_SHARE})
+    job_id = created.json()["id"]
+    detail = client.get(f"/api/admin/mcp/douyin/jobs/{job_id}", headers=auth_headers).json()
+
+    # 封面转存失败时保留远程链接，前端据此降级为图标
+    assert detail["cover_url"] == "https://p3.douyinpic.com/cover.jpeg"
+
+
 def test_public_share_meta(
     client: TestClient, auth_headers: dict[str, str], monkeypatch
 ) -> None:

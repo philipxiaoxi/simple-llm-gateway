@@ -138,6 +138,8 @@ class Settings(BaseSettings):
     douyin_media_path: str = ""
     douyin_max_media_bytes: int = 5 * 1024 * 1024 * 1024
     douyin_max_item_bytes: int = 5 * 1024 * 1024 * 1024
+    # 封面图转存大小上限（封面很小，默认 10MB 足够）
+    douyin_max_cover_bytes: int = 10 * 1024 * 1024
     douyin_max_items: int = 60
     douyin_http_timeout_seconds: int = 20
     douyin_mcp_max_wait_seconds: int = 45

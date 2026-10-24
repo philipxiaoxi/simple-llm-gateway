@@ -189,6 +189,29 @@ def _fail_job(db: Session, job: DouyinJob, message: str, *, stage_message: str =
     db.flush()
 
 
+def _download_cover(db: Session, job: DouyinJob, settings) -> None:  # type: ignore[no-untyped-def]
+    """把作品封面转存到任务目录，失败则保持远程 cover_url（前端降级为图标）。"""
+    if not job.cover_url:
+        return
+    if job.cover_filename and storage.media_path(job.id, job.cover_filename).is_file():
+        return
+    dest = storage.media_path(job.id, "cover.bin")
+    try:
+        size, content_type, _sha = downloader.fetch_to_file(
+            job.cover_url, dest, max_bytes=max(1, int(settings.douyin_max_cover_bytes)), kind="image"
+        )
+    except Exception:  # noqa: BLE001
+        dest.unlink(missing_ok=True)
+        return
+    filename = f"cover.{downloader.extension_for(content_type, 'image')}"
+    final_path = storage.media_path(job.id, filename)
+    if final_path != dest and dest.exists():
+        dest.replace(final_path)
+    job.cover_filename = filename
+    job.cover_content_type = content_type
+    db.flush()
+
+
 def run_job(
     db: Session, job: DouyinJob, *, deadline: float | None = None, persist: bool = False
 ) -> DouyinJob:
@@ -240,6 +263,11 @@ def run_job(
         if persist:
             db.commit()
         return job
+
+    # 转存时顺带把封面存到本地，避免抖音 CDN 链接失效后无法展示
+    _download_cover(db, job, settings)
+    if persist:
+        db.commit()
 
     if job.status != "downloading":
         job.status = "downloading"
@@ -524,6 +552,13 @@ def share_payload(
     }
 
 
+def cover_path(job: DouyinJob) -> str:
+    """封面展示地址：已转存用同源本地路径，否则回退远程链接。"""
+    if job.cover_filename:
+        return f"/v1/douyin/jobs/{job.id}/cover"
+    return job.cover_url or ""
+
+
 def job_payload(job: DouyinJob) -> dict[str, Any]:
     return {
         "id": job.id,
@@ -537,7 +572,7 @@ def job_payload(job: DouyinJob) -> dict[str, Any]:
         "title": job.title,
         "author_name": job.author_name,
         "author_id": job.author_id,
-        "cover_url": job.cover_url,
+        "cover_url": cover_path(job),
         "duration_ms": job.duration_ms,
         "rehost": bool(job.rehost),
         "media_count": job.media_count,
