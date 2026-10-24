@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { TikHubConfigDialog, TIKHUB_QUERY_KEY } from '../components/TikHubConfigDialog'
 import { Badge, Button, Card, Dialog, Field, Input, Select, Switch } from '../components/ui'
 import { api, type InfoSource, type InfoSourcePreview } from '../lib/api'
+import { useCan } from '../lib/session'
 import { formatCount, formatInterval, relativeTime } from '../lib/info'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
@@ -67,6 +68,11 @@ async function invalidateSources(client: ReturnType<typeof useQueryClient>) {
 }
 
 export function InfoSourcesPage() {
+  const canCreate = useCan('info:source_create')
+  const canUpdate = useCan('info:source_update')
+  const canDelete = useCan('info:source_delete')
+  const canCollect = useCan('info:collect')
+  const canArticleCreate = useCan('info:article_create')
   const queryClient = useQueryClient()
   const query = useQuery({ queryKey: ['info-sources'], queryFn: api.infoSources })
   const sources = query.data?.sources ?? []
@@ -129,6 +135,7 @@ export function InfoSourcesPage() {
           </p>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          {canCreate ? (
           <Button
             type="button"
             className="w-full sm:w-auto"
@@ -136,6 +143,8 @@ export function InfoSourcesPage() {
           >
             <Plus size={15} /> 添加渠道
           </Button>
+          ) : null}
+          {canUpdate ? (
           <Button
             type="button"
             variant="line"
@@ -144,6 +153,8 @@ export function InfoSourcesPage() {
           >
             <RefreshCw size={15} /> 批量操作
           </Button>
+          ) : null}
+          {canArticleCreate ? (
           <Button
             type="button"
             variant="line"
@@ -152,6 +163,7 @@ export function InfoSourcesPage() {
           >
             <FilePlus size={15} /> 保存单篇文章
           </Button>
+          ) : null}
           <Button
             type="button"
             variant="line"
@@ -288,6 +300,7 @@ export function InfoSourcesPage() {
 
             {source.kind !== 'manual' ? (
               <div className="mt-3 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
+                {canCollect ? (
                 <Button
                   type="button"
                   variant="line"
@@ -301,6 +314,8 @@ export function InfoSourcesPage() {
                   />
                   {collect.isPending && collectingId === source.id ? '采集中…' : '立即采集'}
                 </Button>
+                ) : null}
+                {canUpdate ? (
                 <Button
                   type="button"
                   variant="line"
@@ -309,6 +324,8 @@ export function InfoSourcesPage() {
                 >
                   <Pencil size={14} /> 编辑
                 </Button>
+                ) : null}
+                {canDelete ? (
                 <Button
                   type="button"
                   variant="danger"
@@ -317,6 +334,7 @@ export function InfoSourcesPage() {
                 >
                   <Trash2 size={14} /> 删除
                 </Button>
+                ) : null}
               </div>
             ) : null}
           </Card>

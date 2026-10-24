@@ -30,6 +30,7 @@ import {
   Sheet,
 } from "../components/ui";
 import { cn, errorMessage, formatBytes, formatTime } from "../lib/utils";
+import { useCan } from "../lib/session";
 import { notifyBad, notifyOk } from "../lib/toast";
 
 const statusText: Record<DesktopTool["status"], string> = {
@@ -386,6 +387,10 @@ function ToolCreateDialog({ onClose }: { onClose: () => void }) {
 }
 
 export function ToolsPage() {
+  const canCreate = useCan('tools:create')
+  const canUpdate = useCan('tools:update')
+  const canDelete = useCan('tools:delete')
+  const canRun = useCan('tools:run')
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [edit, setEdit] = useState<DesktopTool | null>(null);
@@ -461,10 +466,12 @@ export function ToolsPage() {
             <Terminal size={14} />
             脚本执行最长 60 分钟
           </Badge>
+{canCreate ? (
           <Button onClick={() => setCreateOpen(true)}>
             <Plus size={16} />
             登记工具
           </Button>
+) : null}
         </div>
       </div>
       {/* 宽屏时统计与搜索并作一行，避免把工具卡片挤到首屏之外 */}
@@ -567,6 +574,7 @@ export function ToolsPage() {
               {/* 一行两个按钮：窄屏也不会挤压换行 */}
               <div className="grid gap-2">
                 <div className="flex gap-2">
+{canUpdate ? (
                   <Button
                     variant="line"
                     className="min-w-0 flex-1"
@@ -575,6 +583,7 @@ export function ToolsPage() {
                     <FileCode2 size={16} className="shrink-0" />
                     <span className="truncate">编辑</span>
                   </Button>
+) : null}
                   {downloading ? (
                     <Button
                       variant="danger"
@@ -585,7 +594,7 @@ export function ToolsPage() {
                       <Square size={16} className="shrink-0" />
                       <span className="truncate">停止</span>
                     </Button>
-                  ) : (
+                  ) : canRun ? (
                     <Button
                       variant="line"
                       className="min-w-0 flex-1"
@@ -599,7 +608,7 @@ export function ToolsPage() {
                         {tool.status === "downloaded" ? "更新缓存" : "下载缓存"}
                       </span>
                     </Button>
-                  )}
+                  ) : null}
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -610,6 +619,7 @@ export function ToolsPage() {
                     <Download size={16} className="shrink-0" />
                     <span className="truncate">下载</span>
                   </Button>
+{canDelete ? (
                   <Button
                     variant="danger"
                     aria-label={`删除 ${tool.name}`}
@@ -620,6 +630,7 @@ export function ToolsPage() {
                   >
                     <Trash2 size={16} />
                   </Button>
+) : null}
                 </div>
               </div>
 

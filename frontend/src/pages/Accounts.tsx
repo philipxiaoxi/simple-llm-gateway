@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import { ActionSheet, type ActionSheetAction, Badge, Button, Card, Dialog, Field, IconButton, Input, Select, Sheet, Switch } from '../components/ui'
 import { api, type Account, type AccountUsage, type ModelCaps, type Provider, type QuotaItem } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
+import { Can } from '../lib/session'
 import { MIN_PASSWORD_LENGTH, RISK_LEVELS, cn, errorMessage, formatEmbeddedTimes, formatTime, modelCapsHint } from '../lib/utils'
 import { FilterBar } from '../components/filter-bar'
 
@@ -1139,20 +1140,28 @@ export function AccountsPage() {
               预设 OpenCode Go、Grok、DeepSeek，也可选通用 OpenAI / Anthropic。探测只在你点的时候发生。
             </p>
           </div>
+<Can code="accounts:create">
           <Button type="button" className="shrink-0 lg:hidden" onClick={() => setEditor('new')}>
             新建账号
           </Button>
+</Can>
         </div>
         <div className="grid grid-cols-2 items-end gap-2 lg:flex lg:shrink-0 lg:flex-nowrap">
+<Can code="accounts:export">
           <Button type="button" variant="line" className="w-full lg:w-auto" onClick={() => setTransfer('export')}>
             导出
           </Button>
+</Can>
+<Can code="accounts:import">
           <Button type="button" variant="line" className="w-full lg:w-auto" onClick={() => setTransfer('import')}>
             导入
           </Button>
+</Can>
+<Can code="accounts:create">
           <Button type="button" className="hidden lg:inline-flex" onClick={() => setEditor('new')}>
             新建账号
           </Button>
+</Can>
         </div>
       </div>
       <FilterBar
@@ -1253,6 +1262,7 @@ export function AccountsPage() {
               </div>
               <div className="space-y-2 border-t border-line pt-3">
                 <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
+<Can code="accounts:probe">
                   <Button
                     variant="line"
                     className="w-full md:w-auto"
@@ -1261,6 +1271,8 @@ export function AccountsPage() {
                   >
                     探测
                   </Button>
+</Can>
+<Can code="accounts:quota">
                   <Button
                     variant="line"
                     className="w-full md:w-auto"
@@ -1269,6 +1281,8 @@ export function AccountsPage() {
                   >
                     刷新额度
                   </Button>
+</Can>
+<Can code="accounts:models_manage">
                   <Button
                     type="button"
                     variant="line"
@@ -1278,6 +1292,7 @@ export function AccountsPage() {
                   >
                     获取模型
                   </Button>
+</Can>
                   {account.auth_type === 'oauth' ? (
                     <Button
                       type="button"
@@ -1289,14 +1304,19 @@ export function AccountsPage() {
                       去授权
                     </Button>
                   ) : null}
+<Can code="accounts:update">
                   <Button variant="line" className="w-full md:w-auto" onClick={() => setEditor(account)}>
                     编辑
                   </Button>
+</Can>
                 </div>
                 <div className="grid grid-cols-2 gap-2 md:flex">
+<Can code="accounts:update">
                   <Button variant="line" className="w-full md:w-auto" onClick={() => toggle(account)}>
                     {account.status === 'active' ? '停用' : '启用'}
                   </Button>
+</Can>
+<Can code="accounts:delete">
                   <Button
                     variant="danger"
                     className="w-full md:w-auto"
@@ -1305,6 +1325,7 @@ export function AccountsPage() {
                   >
                     删除
                   </Button>
+</Can>
                 </div>
               </div>
               <div>
@@ -1322,6 +1343,7 @@ export function AccountsPage() {
                   <div className="text-xs uppercase tracking-[0.16em] text-mist">
                     模型{account.models_updated_at ? ` · ${formatTime(account.models_updated_at)}` : ''}
                   </div>
+                  <Can code="accounts:models_manage">
                   <button
                     type="button"
                     onClick={() => setCustomModelAccountId(account.id)}
@@ -1329,6 +1351,7 @@ export function AccountsPage() {
                   >
                     添加模型
                   </button>
+                  </Can>
                 </div>
                 {account.models?.length ? (
                   <ModelList

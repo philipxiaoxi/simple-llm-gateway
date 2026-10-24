@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select, Sheet } from '../components/ui'
 import { api, type Account, type SkillCategoryItem, type SkillItem } from '../lib/api'
+import { useCan } from '../lib/session'
 import { buildSkillInstallText, buildSkillUploadText } from '../lib/skillInstall'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { copyText, errorMessage, formatBytes, formatTime } from '../lib/utils'
@@ -142,6 +143,13 @@ function UploadDialog({
 }
 
 export function SkillsPage() {
+  const canUpload = useCan('skills:upload')
+  const canUpdate = useCan('skills:update')
+  const canDelete = useCan('skills:delete')
+  const canDownload = useCan('skills:download')
+  const canAnalysis = useCan('skills:analysis')
+  const canManageCategory = useCan('skills:category_manage')
+  const canBundles = useCan('skill_bundles:view')
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -217,30 +225,42 @@ export function SkillsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+{canAnalysis ? (
           <Button variant="line" onClick={() => setAiConfigOpen(true)}>
             <Sparkles size={16} />
             AI 配置
           </Button>
+) : null}
+{canManageCategory ? (
           <Button variant="line" onClick={() => setManageOpen(true)}>
             <Tags size={16} />
             分类管理
           </Button>
+) : null}
+{canUpdate ? (
           <Button variant="line" onClick={() => setBulkUpdateOpen(true)}>
             <RefreshCw size={16} />
             批量更新
           </Button>
+) : null}
+{canUpdate ? (
           <Button variant="line" onClick={() => void copyUpload()}>
             <Copy size={16} />
             复制上传指令
           </Button>
+) : null}
+{canBundles ? (
           <Button variant="line" onClick={() => navigate('/skills/bundles')}>
             <Layers size={16} />
             Skills 组合
           </Button>
+) : null}
+{canUpload ? (
           <Button onClick={() => setUploadOpen(true)}>
             <Upload size={16} />
             上传
           </Button>
+) : null}
         </div>
       </div>
 
@@ -350,16 +370,21 @@ export function SkillsPage() {
               <Button type="button" variant="line" className="min-w-0 flex-1" onClick={() => navigate(`/skills/${item.id}`)}>
                 详情
               </Button>
+{canUpload ? (
               <Button type="button" variant="line" title="重新上传并覆盖此 Skill" onClick={() => setReplaceSkill(item)}>
                 <RefreshCw size={16} />
               </Button>
+) : null}
               <Button type="button" variant="line" title="复制安装指令（Claude Code）" onClick={() => void copyInstall(item)}>
                 <Copy size={16} />
               </Button>
+{canDownload ? (
               <Button type="button" variant="line" onClick={() => void download(item)}>
                 <Download size={16} />
                 下载
               </Button>
+) : null}
+{canDelete ? (
               <Button
                 type="button"
                 variant="danger"
@@ -369,6 +394,7 @@ export function SkillsPage() {
               >
                 <Trash2 size={16} />
               </Button>
+) : null}
             </div>
           </Card>
         ))}

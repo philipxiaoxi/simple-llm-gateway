@@ -7,6 +7,7 @@ import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components
 import { api, type Account, type ApiKeyItem, type ApiKeySort, type CcSwitchTarget, type GatewayAgent, type ShareAlias } from '../lib/api'
 import { openShareWithApiKey } from '../lib/shareTransfer'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
+import { Can } from '../lib/session'
 import { ALIAS_INPUT_PATTERN, cn, errorMessage, formatTime, formatTokenCount, RISK_LEVELS } from '../lib/utils'
 import { FilterBar } from '../components/filter-bar'
 
@@ -676,9 +677,11 @@ export function KeysPage() {
               创建时绑定一个或多个上游账号、网关代理账号。排第一的账号优先使用。需要时直接复制完整 Key。
             </p>
           </div>
-          <Button type="button" className="shrink-0 lg:hidden" onClick={() => setCreateDialog(true)}>
-            生成 Key
-          </Button>
+          <Can code="keys:create">
+            <Button type="button" className="shrink-0 lg:hidden" onClick={() => setCreateDialog(true)}>
+              生成 Key
+            </Button>
+          </Can>
         </div>
         <div className="grid grid-cols-2 items-end gap-2 lg:flex lg:shrink-0 lg:flex-nowrap">
           <div className="col-span-2 min-w-0 lg:w-44">
@@ -713,9 +716,11 @@ export function KeysPage() {
           >
             打开查询页
           </Button>
-          <Button type="button" className="hidden lg:inline-flex" onClick={() => setCreateDialog(true)}>
-            生成 Key
-          </Button>
+          <Can code="keys:create">
+            <Button type="button" className="hidden lg:inline-flex" onClick={() => setCreateDialog(true)}>
+              生成 Key
+            </Button>
+          </Can>
         </div>
       </div>
       <FilterBar
@@ -855,11 +860,14 @@ export function KeysPage() {
                 <Button type="button" variant="line" className="w-full md:w-auto" onClick={() => void shareKey(item.id)}>
                   分享
                 </Button>
-                <Button type="button" variant="line" className="w-full md:w-auto" onClick={() => loadImport(item.id)}>
-                  导入
-                </Button>
+                <Can code="keys:cc_switch">
+                  <Button type="button" variant="line" className="w-full md:w-auto" onClick={() => loadImport(item.id)}>
+                    导入
+                  </Button>
+                </Can>
                 <div className="col-span-2 md:col-auto md:w-auto">
                 <MoreMenu>
+                  <Can code="keys:update">
                   <MenuItem
                     onClick={() =>
                       setEditDialog({
@@ -873,36 +881,43 @@ export function KeysPage() {
                   >
                     编辑
                   </MenuItem>
-                  <MenuItem onClick={() => setAliasesDialog({ keyId: item.id, keyName: item.name })}>
-                    模型别名
-                  </MenuItem>
-                  <MenuItem
-                    onClick={async () => {
-                      try {
-                        await api.updateKey(item.id, { status: item.status === 'active' ? 'disabled' : 'active' })
-                        queryClient.invalidateQueries({ queryKey: ['keys'] })
-                      } catch (error) {
-                        notifyBad(errorMessage(error, '操作失败'))
-                      }
-                    }}
-                  >
-                    {item.status === 'active' ? '停用' : '启用'}
-                  </MenuItem>
-                  <MenuItem
-                    danger
-                    onClick={async () => {
-                      try {
-                        await api.deleteKey(item.id)
-                        queryClient.invalidateQueries({ queryKey: ['keys'] })
-                        queryClient.invalidateQueries({ queryKey: ['logs'] })
-                        notifyOk('已删除')
-                      } catch (error) {
-                        notifyBad(errorMessage(error, '删除失败'))
-                      }
-                    }}
-                  >
-                    删除
-                  </MenuItem>
+                  </Can>
+                  <Can code="keys:aliases_manage">
+                    <MenuItem onClick={() => setAliasesDialog({ keyId: item.id, keyName: item.name })}>
+                      模型别名
+                    </MenuItem>
+                  </Can>
+                  <Can code="keys:update">
+                    <MenuItem
+                      onClick={async () => {
+                        try {
+                          await api.updateKey(item.id, { status: item.status === 'active' ? 'disabled' : 'active' })
+                          queryClient.invalidateQueries({ queryKey: ['keys'] })
+                        } catch (error) {
+                          notifyBad(errorMessage(error, '操作失败'))
+                        }
+                      }}
+                    >
+                      {item.status === 'active' ? '停用' : '启用'}
+                    </MenuItem>
+                  </Can>
+                  <Can code="keys:delete">
+                    <MenuItem
+                      danger
+                      onClick={async () => {
+                        try {
+                          await api.deleteKey(item.id)
+                          queryClient.invalidateQueries({ queryKey: ['keys'] })
+                          queryClient.invalidateQueries({ queryKey: ['logs'] })
+                          notifyOk('已删除')
+                        } catch (error) {
+                          notifyBad(errorMessage(error, '删除失败'))
+                        }
+                      }}
+                    >
+                      删除
+                    </MenuItem>
+                  </Can>
                 </MoreMenu>
                 </div>
               </div>

@@ -7,6 +7,7 @@ import { Badge, Button, Card, Dialog, Field, Input, Switch } from '../components
 import { api, type DouyinJob } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
+import { useCan } from '../lib/session'
 
 const STATUS: Record<string, { label: string; tone: 'ok' | 'bad' | 'warn' | 'mist' | 'info' }> = {
   queued: { label: '排队中', tone: 'mist' },
@@ -19,6 +20,8 @@ const STATUS: Record<string, { label: string; tone: 'ok' | 'bad' | 'warn' | 'mis
 const TERMINAL = new Set(['succeeded', 'partial', 'failed'])
 
 export function McpDouyinPage() {
+  const canCreate = useCan('mcp_douyin:job_create')
+  const canProvider = useCan('mcp_douyin:provider_manage')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
@@ -72,9 +75,11 @@ export function McpDouyinPage() {
           <h2 className="text-xl font-semibold">抖音视频下载</h2>
           <p className="mt-1 text-sm text-mist">粘贴分享文案或直链，转存视频/图集并生成稳定下载地址。</p>
         </div>
+{canCreate ? (
         <Button type="button" onClick={() => setOpen(true)}>
           <Link2 size={15} /> 解析链接
         </Button>
+) : null}
       </div>
 
       <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
@@ -83,9 +88,11 @@ export function McpDouyinPage() {
           {provider.data?.configured ? <Badge tone="ok">已配置</Badge> : <Badge tone="warn">未配置</Badge>}
           <span className="text-xs text-mist">抖音下载与资讯采集共用一份</span>
         </div>
+{canProvider ? (
         <Button type="button" variant="line" onClick={() => setConfigOpen(true)}>
           配置 TikHub
         </Button>
+) : null}
       </Card>
 
       <Card className="p-4">

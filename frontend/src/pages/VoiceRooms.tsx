@@ -7,6 +7,7 @@ import { api } from '../lib/api'
 import type { VoicePolishAccount, VoicePolishMode, VoiceRoomSummary } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage } from '../lib/utils'
+import { useCan } from '../lib/session'
 
 const ASR_MODELS = [
   { value: 'qwen-audio-3.0-asr-flash-streaming', label: 'Qwen-Audio-3.0-ASR-Flash-Streaming（推荐）' },
@@ -21,6 +22,7 @@ const POLISH_MODES: { value: VoicePolishMode; label: string; hint: string }[] = 
 ]
 
 export function VoiceRoomsPage() {
+  const canManage = useCan('voice:manage')
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
 
@@ -64,10 +66,12 @@ export function VoiceRoomsPage() {
             <RefreshCw size={16} className={roomsQuery.isFetching ? 'animate-spin' : ''} />
             刷新
           </Button>
+{canManage ? (
           <Button onClick={() => setCreating(true)}>
             <Plus size={16} />
             新建房间
           </Button>
+) : null}
         </div>
       </div>
 
@@ -94,10 +98,12 @@ export function VoiceRoomsPage() {
         <Card className="flex flex-col items-center gap-3 py-10 text-center">
           <Mic size={28} className="text-mist-soft" />
           <p className="text-sm text-mist">还没有语音房。新建一个，然后让手机和电脑都加入它。</p>
+{canManage ? (
           <Button onClick={() => setCreating(true)}>
             <Plus size={16} />
             新建房间
           </Button>
+) : null}
         </Card>
       ) : (
         <div className="overflow-hidden rounded-lg border border-line">

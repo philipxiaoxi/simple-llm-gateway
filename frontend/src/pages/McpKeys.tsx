@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api, type McpKeyItem } from '../lib/api'
+import { useCan } from '../lib/session'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
 
@@ -86,6 +87,10 @@ function RateLimitFields({
 }
 
 export function McpKeysPage() {
+  const canCreate = useCan('mcp_keys:create')
+  const canUpdate = useCan('mcp_keys:update')
+  const canDelete = useCan('mcp_keys:delete')
+  const canReveal = useCan('mcp_keys:reveal')
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -222,6 +227,7 @@ export function McpKeysPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-mist">独立于聊天 sk- Key。完整密钥可随时查看并复制。</p>
+{canCreate ? (
         <Button
           type="button"
           onClick={() => {
@@ -231,6 +237,7 @@ export function McpKeysPage() {
         >
           <Plus size={16} /> 新建 MCP Key
         </Button>
+) : null}
       </div>
 
       <div className="grid gap-3">
@@ -258,9 +265,12 @@ export function McpKeysPage() {
               >
                 接入
               </Link>
+{canUpdate ? (
               <Button type="button" variant="line" onClick={() => openEdit(item)}>
                 <Pencil size={14} /> 编辑
               </Button>
+) : null}
+{canReveal ? (
               <Button
                 type="button"
                 variant="line"
@@ -269,6 +279,8 @@ export function McpKeysPage() {
               >
                 查看
               </Button>
+) : null}
+{canUpdate ? (
               <Button
                 type="button"
                 variant="line"
@@ -278,6 +290,8 @@ export function McpKeysPage() {
               >
                 {item.status === 'active' ? '停用' : '启用'}
               </Button>
+) : null}
+{canDelete ? (
               <Button
                 type="button"
                 variant="ghost"
@@ -287,6 +301,7 @@ export function McpKeysPage() {
               >
                 删除
               </Button>
+) : null}
             </div>
           </Card>
         ))}

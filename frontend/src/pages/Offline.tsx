@@ -5,11 +5,13 @@ import { InfoPublicGateDialog } from '../components/InfoPublicGateDialog'
 import { Button } from '../components/ui'
 import { notifyOk } from '../lib/toast'
 import { copyText } from '../lib/utils'
+import { useCan } from '../lib/session'
 
 const PUBLIC_OFFLINE_PATH = '/share/offline'
 
 /** 管理端离线下载页：与公开页共用同一套后端接口，走管理员鉴权。 */
 export function OfflinePage() {
+  const canGate = useCan('public_gate:update')
   const [gateOpen, setGateOpen] = useState(false)
 
   function publicUrl() {
@@ -39,9 +41,11 @@ export function OfflinePage() {
           >
             <Link2 size={15} /> 复制链接
           </Button>
+{canGate ? (
           <Button type="button" variant="line" onClick={() => setGateOpen(true)}>
             <Lock size={15} /> 门禁设置
           </Button>
+) : null}
         </div>
       </header>
       <OfflineTool base="/api/admin/offline" />

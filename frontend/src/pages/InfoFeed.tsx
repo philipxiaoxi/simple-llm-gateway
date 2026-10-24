@@ -10,6 +10,7 @@ import { InfoMasonry } from '../components/InfoMasonry'
 import { InfoTextCover } from '../components/InfoTextCover'
 import { Button, Input, Select } from '../components/ui'
 import { api, type InfoItem, type InfoSource } from '../lib/api'
+import { Can } from '../lib/session'
 import {
   formatCount,
   formatDuration,
@@ -267,9 +268,11 @@ export function InfoFeedPage() {
               </span>
             ) : null}
           </Button>
+<Can code="info:ai_settings">
           <Button type="button" variant="line" onClick={() => setAiOpen(true)}>
             <Sparkles size={15} /> AI 判定
           </Button>
+</Can>
           <Button
             type="button"
             variant="line"
@@ -280,12 +283,16 @@ export function InfoFeedPage() {
           <Button type="button" variant="line" onClick={copyPublicLink}>
             <Link2 size={15} /> 复制链接
           </Button>
+<Can code="public_gate:update">
           <Button type="button" variant="line" onClick={() => setGateOpen(true)}>
             <Lock size={15} /> 门禁设置
           </Button>
+</Can>
+<Can code="info:source_update">
           <Button type="button" onClick={() => navigate('/info/sources')}>
             <Settings size={15} /> 渠道管理
           </Button>
+</Can>
         </div>
       </div>
 
@@ -387,11 +394,14 @@ export function InfoFeedPage() {
           </p>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             {noSources ? (
+<Can code="info:source_update">
               <Button type="button" onClick={() => navigate('/info/sources')}>
                 <Settings size={15} /> 渠道管理
               </Button>
+</Can>
             ) : null}
             {!noSources && sourceId ? (
+<Can code="info:collect">
               <Button
                 type="button"
                 disabled={collect.isPending}
@@ -399,6 +409,7 @@ export function InfoFeedPage() {
               >
                 <Send size={15} /> {collect.isPending ? '采集中…' : '立即采集'}
               </Button>
+</Can>
             ) : null}
             {!noSources && filtersActive ? (
               <Button
@@ -824,6 +835,7 @@ function InfoCard({
             {time ? ` · ${time}` : ''}
           </span>
         </Link>
+<Can code="info:favorite">
         <button
           type="button"
           aria-label={item.is_favorite ? '取消收藏' : '收藏'}
@@ -833,6 +845,7 @@ function InfoCard({
         >
           <Heart size={15} className={cn(item.is_favorite && 'fill-signal text-signal')} />
         </button>
+</Can>
       </div>
     </article>
   )
