@@ -8,6 +8,7 @@ import { ChartSkeleton } from '../components/charts/chart-card'
 import { Badge, Button, Card, Field, Input, Select, Sheet, Switch } from '../components/ui'
 import { api, type SecurityEvent, type SecurityLocationEntry, type SecuritySettings } from '../lib/api'
 import { LOG_PAGE_SIZE, cn, formatTime } from '../lib/utils'
+import { useCan } from '../lib/session'
 
 // 图表按需加载：echarts 体积不小，别让安全中心的列表请求一起买单
 const SecurityCharts = lazy(() =>
@@ -552,6 +553,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
 }
 
 export function SecurityPage() {
+  const canSettings = useCan('security:settings')
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<TabKey>('all')
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -611,6 +613,7 @@ export function SecurityPage() {
             <option value={30}>近 30 天</option>
             <option value={90}>近 90 天</option>
           </Select>
+{canSettings ? (
           <Button
             variant={settingsOpen ? 'primary' : 'line'}
             aria-pressed={settingsOpen}
@@ -618,6 +621,7 @@ export function SecurityPage() {
           >
             <SettingsIcon size={14} /> 设置
           </Button>
+) : null}
           <Button
             variant="line"
             onClick={() => {
