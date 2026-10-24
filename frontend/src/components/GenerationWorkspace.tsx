@@ -149,6 +149,7 @@ export function GenerationWorkspace({ kind }: { kind: 'image' | 'video' }) {
           <div className="text-sm text-danger">{errorMessage(tasksQuery.error, '加载作品失败')}</div>
         ) : (
           <GenerationWorks
+            kind={kind}
             tasks={tasks}
             onSelect={(task) => setSelected(task.id)}
             onDelete={handleDelete}
