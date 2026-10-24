@@ -1,3 +1,5 @@
+import { notifyBad } from './toast'
+
 const TOKEN_KEY = 'gateway_token'
 
 export function getToken() {
@@ -10,6 +12,42 @@ export function setToken(token: string) {
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
+}
+
+export type MeRole = { id: number; name: string; builtin: boolean }
+
+// 当前账号与权限：permissions 为权限码列表，内置管理员返回 ["*"]
+export type Me = {
+  username: string
+  role: MeRole | null
+  permissions: string[]
+}
+
+export type RoleSummary = {
+  id: number
+  name: string
+  builtin: boolean
+  permissions: string[]
+  admin_count: number
+  created_at: string
+  updated_at: string
+}
+
+export type AdminUser = {
+  id: number
+  username: string
+  role_id: number | null
+  role_name: string
+  role_builtin: boolean
+  is_enabled: boolean
+  created_at: string
+  last_login_at: string | null
+}
+
+export type PermissionCatalogResource = {
+  resource: string
+  label: string
+  permissions: { code: string; action: string; label: string }[]
 }
 
 export class ApiError extends Error {
@@ -47,6 +85,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (!window.location.pathname.startsWith('/login')) {
       window.location.href = '/login'
     }
+  }
+  if (response.status === 403) {
+    // 按钮已按权限隐藏，走到这里说明是绕过界面直接调用；给出可读提示而不是静默失败
+    let denied = '无权限执行该操作'
+    try {
+      const body = await response.json()
+      const error = body?.detail?.error
+      if (error && typeof error.message === 'string') denied = error.message
+      else if (typeof body?.detail === 'string') denied = body.detail
+    } catch {
+      /* ignore */
+    }
+    notifyBad(denied)
+    throw new ApiError(403, denied)
   }
   if (!response.ok) {
     let message = `请求失败 (${response.status})`
@@ -780,12 +832,35 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }),
-  me: () => request<{ username: string }>('/api/admin/me'),
+  me: () => request<Me>('/api/admin/me'),
   updateMe: (payload: { current_password: string; username?: string; password?: string }) =>
     request<{ token: string; username: string }>('/api/admin/me', {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
+  roles: () => request<RoleSummary[]>('/api/admin/roles'),
+  createRole: (payload: { name: string; permissions: string[] }) =>
+    request<RoleSummary>('/api/admin/roles', { method: 'POST', body: JSON.stringify(payload) }),
+  updateRole: (roleId: number, payload: { name?: string; permissions?: string[] }) =>
+    request<RoleSummary>(`/api/admin/roles/${roleId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteRole: (roleId: number) => request<void>(`/api/admin/roles/${roleId}`, { method: 'DELETE' }),
+  permissionCatalog: () => request<PermissionCatalogResource[]>('/api/admin/permission-catalog'),
+  users: () => request<AdminUser[]>('/api/admin/users'),
+  createUser: (payload: { username: string; password: string; role_id: number; is_enabled?: boolean }) =>
+    request<AdminUser>('/api/admin/users', { method: 'POST', body: JSON.stringify(payload) }),
+  updateUser: (userId: number, payload: { username?: string; role_id?: number; is_enabled?: boolean }) =>
+    request<AdminUser>(`/api/admin/users/${userId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  resetUserPassword: (userId: number, password: string) =>
+    request<AdminUser>(`/api/admin/users/${userId}/password`, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
+  setUserStatus: (userId: number, enabled: boolean) =>
+    request<AdminUser>(`/api/admin/users/${userId}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    }),
+  deleteUser: (userId: number) => request<void>(`/api/admin/users/${userId}`, { method: 'DELETE' }),
   securityOverview: (days: number) => request<SecurityOverview>(`/api/admin/security/overview?days=${days}`),
   securityEvents: (params: SecurityEventQuery) => {
     const search = new URLSearchParams()

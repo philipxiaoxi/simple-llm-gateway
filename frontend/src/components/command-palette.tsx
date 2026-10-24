@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import { CornerDownLeft, Search } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '../lib/utils'
-import { NAV_GROUPS, NAV_LINKS } from './nav'
+import { NAV_GROUPS, filterNavGroups } from './nav'
+import { useSession } from '../lib/session'
 
 /**
  * PC 端命令面板（⌘K / Ctrl+K）：按名称、路径或关键词跳转页面。
@@ -12,6 +13,9 @@ import { NAV_GROUPS, NAV_LINKS } from './nav'
  */
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate()
+  const { can } = useSession()
+  const navGroups = useMemo(() => filterNavGroups(NAV_GROUPS, can), [can])
+  const navLinks = useMemo(() => navGroups.flatMap((group) => group.links), [navGroups])
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -19,11 +23,11 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return NAV_LINKS
-    return NAV_LINKS.filter((link) =>
+    if (!q) return navLinks
+    return navLinks.filter((link) =>
       `${link.label} ${link.to} ${link.keywords ?? ''}`.toLowerCase().includes(q),
     )
-  }, [query])
+  }, [query, navLinks])
 
   useEffect(() => {
     if (!open) return
@@ -74,7 +78,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
   if (!open) return null
 
-  const groupOf = (to: string) => NAV_GROUPS.find((group) => group.links.some((link) => link.to === to))?.label ?? ''
+  const groupOf = (to: string) => navGroups.find((group) => group.links.some((link) => link.to === to))?.label ?? ''
 
   return createPortal(
     // 遮罩点击关闭只是辅助快捷方式，键盘用户用 Esc / Enter

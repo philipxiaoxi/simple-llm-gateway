@@ -10,6 +10,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool
 
+from app.clock import utcnow
 from app.config import get_settings
 from app.models import Base
 
@@ -79,6 +80,7 @@ def init_db() -> None:
     _ensure_request_logs_have_no_parent_fks(engine)
     _ensure_knowledge_fts(engine)
     _ensure_security_tables(engine)
+    _seed_admin_roles(engine)
 
 
 def _ensure_security_tables(engine: Engine) -> None:
@@ -399,6 +401,52 @@ def _ensure_columns(engine: Engine) -> None:
         _ensure_offline_download_columns(connection)
         _ensure_api_key_accounts(connection)
         _backfill_account_model_prefixes(connection)
+        _ensure_admin_role_columns(connection)
+
+
+def _ensure_admin_role_columns(connection) -> None:  # type: ignore[no-untyped-def]
+    """admins 增量列：角色外键与启用开关（角色表由 create_all 建）。"""
+    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(admins)"))}
+    if not columns:
+        return
+    if "role_id" not in columns:
+        connection.execute(text("ALTER TABLE admins ADD COLUMN role_id INTEGER"))
+    if "is_enabled" not in columns:
+        connection.execute(
+            text("ALTER TABLE admins ADD COLUMN is_enabled BOOLEAN DEFAULT 1 NOT NULL")
+        )
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_admins_role_id ON admins (role_id)")
+    )
+
+
+def _seed_admin_roles(engine: Engine) -> None:
+    """幂等：确保存在内置「管理员」角色，并把尚未绑定角色的账号归入其中。
+
+    升级路径上必须成立，否则老库里的唯一账号会在权限模型落地后失去全部权限。
+    """
+    from app.permissions import ADMIN_ROLE_NAME, WILDCARD
+
+    with engine.begin() as connection:
+        row = connection.execute(
+            text("SELECT id FROM roles WHERE builtin = 1 ORDER BY id LIMIT 1")
+        ).first()
+        if row is None:
+            connection.execute(
+                text(
+                    "INSERT INTO roles (name, builtin, permissions_json, created_at, updated_at) "
+                    "VALUES (:name, 1, :permissions, :now, :now)"
+                ),
+                {"name": ADMIN_ROLE_NAME, "permissions": f'["{WILDCARD}"]', "now": utcnow()},
+            )
+            row = connection.execute(text("SELECT id FROM roles WHERE builtin = 1 ORDER BY id LIMIT 1")).first()
+        if row is None:
+            return
+        role_id = row[0]
+        connection.execute(
+            text("UPDATE admins SET role_id = :role_id WHERE role_id IS NULL"),
+            {"role_id": role_id},
+        )
 
 
 def _ensure_site_diagram_columns(connection) -> None:  # type: ignore[no-untyped-def]

@@ -10,7 +10,7 @@ import {
   UserRoundPen,
   X,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
 import { flush, track } from '../lib/security'
@@ -19,7 +19,8 @@ import { MIN_PASSWORD_LENGTH, cn, errorMessage } from '../lib/utils'
 import { useMediaQuery } from '../lib/useMediaQuery'
 import { CommandPalette } from './command-palette'
 import { PageContainer } from './layout-primitives'
-import { NAV_GROUPS, TAB_LINKS, currentPageLabel, isPathActive } from './nav'
+import { NAV_GROUPS, TAB_LINKS, currentPageLabel, filterNavGroups, filterNavLinks, isPathActive } from './nav'
+import { useSession } from '../lib/session'
 import { ForceUpdateButton } from './PwaUpdate'
 import { Button, Dialog, Field, Input } from './ui'
 
@@ -126,6 +127,9 @@ export function Layout() {
   const queryClient = useQueryClient()
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
+  const { can } = useSession()
+  const navGroups = useMemo(() => filterNavGroups(NAV_GROUPS, can), [can])
+  const tabLinks = useMemo(() => filterNavLinks(TAB_LINKS, can), [can])
 
   const previousPathRef = useRef<string | null>(null)
 
@@ -190,7 +194,7 @@ export function Layout() {
   }, [location.pathname])
 
   // 当前页所在分组永远保持展开（避免用户收起后找不到自己）
-  const activeGroup = NAV_GROUPS.find((group) =>
+  const activeGroup = navGroups.find((group) =>
     group.links.some((link) => isPathActive(link.to, location.pathname)),
   )?.label
   useEffect(() => {
@@ -218,7 +222,7 @@ export function Layout() {
   }
 
   const normalizedQuery = drawerQuery.trim().toLowerCase()
-  const visibleGroups = NAV_GROUPS.map((group) => ({
+  const visibleGroups = navGroups.map((group) => ({
     ...group,
     links: normalizedQuery
       ? group.links.filter((link) =>
@@ -534,8 +538,8 @@ export function Layout() {
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-panel/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
-        <div className="grid h-14 grid-cols-5">
-          {TAB_LINKS.map((link) => {
+        <div className="flex h-14">
+          {tabLinks.map((link) => {
             const active = isPathActive(link.to, location.pathname)
             return (
               <NavLink
@@ -544,7 +548,7 @@ export function Layout() {
                 end={link.to === '/'}
                 onClick={() => setOpen(false)}
                 className={cn(
-                  'flex min-h-11 flex-col items-center justify-center gap-0.5 text-xs leading-none',
+                  'flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 text-xs leading-none',
                   active ? 'text-signal' : 'text-mist',
                 )}
               >

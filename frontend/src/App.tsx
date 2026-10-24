@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Suspense, lazy } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { Layout } from './components/Layout'
 import { PwaUpdater } from './components/PwaUpdate'
 import { getToken } from './lib/api'
+import { RequirePerm, SessionProvider } from './lib/session'
 import { DashboardPage } from './pages/Dashboard'
 import { LoginPage } from './pages/Login'
 import type { ReactElement } from 'react'
@@ -87,6 +88,54 @@ const McpDiagramsPage = lazy(() =>
 const McpDiagramDetailPage = lazy(() =>
   import('./pages/McpDiagramDetail').then((m) => ({ default: m.McpDiagramDetailPage })),
 )
+const UsersPage = lazy(() => import('./pages/Users').then((m) => ({ default: m.UsersPage })))
+const RolesPage = lazy(() => import('./pages/Roles').then((m) => ({ default: m.RolesPage })))
+
+/** 页面 -> 进入所需权限（与 components/nav.ts 的 perm 对应） */
+const PAGE_PERMS: { pattern: string; perm: string }[] = [
+  { pattern: '/', perm: 'dashboard:view' },
+  { pattern: '/accounts', perm: 'accounts:view' },
+  { pattern: '/agents', perm: 'agents:view' },
+  { pattern: '/keys', perm: 'keys:view' },
+  { pattern: '/logs', perm: 'logs:view' },
+  { pattern: '/benchmark/history', perm: 'benchmark_history:view' },
+  { pattern: '/benchmark', perm: 'benchmark:view' },
+  { pattern: '/leaderboard', perm: 'leaderboard:view' },
+  { pattern: '/info/sources', perm: 'info:view' },
+  { pattern: '/info', perm: 'info:view' },
+  { pattern: '/image-gen', perm: 'image_gen:view' },
+  { pattern: '/video-gen', perm: 'video_gen:view' },
+  { pattern: '/offline', perm: 'offline:view' },
+  { pattern: '/skills', perm: 'skills:view' },
+  { pattern: '/mcp-plaza/knowledge', perm: 'mcp_knowledge:view' },
+  { pattern: '/mcp-plaza/docparse', perm: 'mcp_docparse:view' },
+  { pattern: '/mcp-plaza/sites', perm: 'mcp_sites:view' },
+  { pattern: '/mcp-plaza/douyin', perm: 'mcp_douyin:view' },
+  { pattern: '/mcp-plaza/diagrams', perm: 'mcp_diagrams:view' },
+  { pattern: '/mcp-plaza/generation', perm: 'generation:settings' },
+  { pattern: '/mcp-plaza/keys', perm: 'mcp_keys:view' },
+  { pattern: '/mcp-plaza/calls', perm: 'mcp_calls:view' },
+  { pattern: '/mcp-plaza', perm: 'mcp_catalog:view' },
+  { pattern: '/tools', perm: 'tools:view' },
+  { pattern: '/jobs', perm: 'jobs:view' },
+  { pattern: '/security', perm: 'security:view' },
+  { pattern: '/voice', perm: 'voice:view' },
+  { pattern: '/users', perm: 'users:view' },
+  { pattern: '/roles', perm: 'roles:view' },
+]
+
+function permForPath(pathname: string): string | undefined {
+  const ranked = [...PAGE_PERMS].sort((left, right) => right.pattern.length - left.pattern.length)
+  return ranked.find((entry) =>
+    entry.pattern === '/' ? pathname === '/' : pathname === entry.pattern || pathname.startsWith(`${entry.pattern}/`),
+  )?.perm
+}
+
+function Guarded({ children }: { children: ReactElement }) {
+  const perm = permForPath(useLocation().pathname)
+  if (!perm) return children
+  return <RequirePerm code={perm}>{children}</RequirePerm>
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -142,7 +191,11 @@ export default function App() {
             <Route
               element={
                 <Guard>
-                  <Layout />
+                  <SessionProvider>
+                    <Guarded>
+                      <Layout />
+                    </Guarded>
+                  </SessionProvider>
                 </Guard>
               }
             >
@@ -190,6 +243,8 @@ export default function App() {
               <Route path="/security" element={<SecurityPage />} />
               <Route path="/voice" element={<VoiceRoomsPage />} />
               <Route path="/voice/rooms/:roomId" element={<VoiceRoomDetailPage />} />
+              <Route path="/users" element={<UsersPage />} />
+              <Route path="/roles" element={<RolesPage />} />
             </Route>
           </Routes>
         </Suspense>

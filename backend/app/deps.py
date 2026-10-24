@@ -46,10 +46,29 @@ def get_current_admin(
     admin = db.scalar(select(Admin).where(Admin.username == username))
     if admin is None:
         raise _unauthorized("账号不存在")
+    if not bool(admin.is_enabled):
+        raise _unauthorized("账号已停用")
     token_version = int(payload.get("ver") or 0)
     if token_version != int(admin.token_version or 0):
         raise _unauthorized("登录已失效")
     return admin
+
+
+def admin_role_view(db: Session, admin: Admin) -> tuple[dict[str, object] | None, list[str]]:
+    """当前账号的角色信息与权限列表（`/api/admin/me` 使用）。"""
+    from app.models import Role
+    from app.permissions import WILDCARD
+    from app.services.permission_guard import parse_permissions
+
+    if not admin.role_id:
+        return None, [WILDCARD]
+    role = db.get(Role, admin.role_id)
+    if role is None:
+        return None, []
+    permissions = parse_permissions(role.permissions_json)
+    if role.builtin:
+        permissions = {WILDCARD}
+    return {"id": role.id, "name": role.name, "builtin": bool(role.builtin)}, sorted(permissions)
 
 
 def extract_raw_api_key(

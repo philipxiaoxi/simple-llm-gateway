@@ -93,9 +93,9 @@ def require_route_permission(resource: str) -> Callable: ...  # 生成 FastAPI �
 ```
 
 - 依赖实现：从 `request.scope["route"]` 取 `path` 与 `methods`，先查 `ROUTE_OVERRIDES`，未命中则用 `DEFAULT_ACTIONS[method]` 拼 `f"{resource}:{action}"`；再取 `admin` 的权限集合判定。
-- 挂载方式：每个 router 一处 `dependencies=[Depends(require_route_permission("accounts"))]`（约 40 处），不逐个函数写装饰器。
-- 需要读请求体的接口（生成任务）用同一模块的 `require_body_kind_permission(kind_field="kind", mapping={"image": "image_gen", "video": "video_gen"})`：依赖内 `await request.json()`（FastAPI 已缓存 `_body`，不会二次读取流）。
-- 需要按资源自身 kind 校验的接口（任务的读/删/重试）用 `require_task_kind_permission()`：依赖内按路径参数查一次 `GenerationTask.kind`，再判定对应资源。
+- 挂载方式：所有需要登录的管理 router 统一挂到一个 `APIRouter(dependencies=[Depends(require_admin_permission)])` 父路由下（`main.py`），登录、`/me`、OAuth 回调与签名令牌资产路由不挂；权限按“路由前缀 → 资源 + HTTP 方法 → 默认动作”推导，不逐个函数写装饰器。
+- 需要读请求体的接口（生成任务创建）用 `require_generation_task_create`：依赖内 `await request.json()`（FastAPI 已缓存 `_body`，不会二次读取流），按 `kind` 映射到 `image_gen` / `video_gen`。
+- 需要按资源自身 kind 校验的接口（任务的读/删/重试）用 `require_generation_task_access(action)`：依赖内按路径参数查一次 `GenerationTask.kind`，再判定对应资源；列表接口按可授权的 kind 过滤。
 - 放行清单（不装 Guard）：`/api/admin/login`、`/api/admin/me`、`/api/admin/security/beacon`、`/api/admin/generation` 的资产路由（签名令牌鉴权，见 `admin_generation.py:19`）。
 - 测试保障：`test_permission_catalog.py` 遍历 `app.routes`，断言每个 `/api/admin/*` 路由（除放行清单）都能解析出 Permission，且解析结果都在 `CATALOG` 内；新增接口忘记登记时测试失败。
 
@@ -165,8 +165,8 @@ admins（新增列）
 | 网关代理 `agents` | view, create, update, delete, route_bind |
 | API Key `keys` | view, create, update, delete, reveal, aliases_manage, cc_switch |
 | 记录审计 `logs` | view, detail, messages, export |
-| 模型测速 `benchmark` | view, run, export |
-| 测速分组 `benchmark_groups` | manage |
+| 模型测速 `benchmark` | view（仅页面入口）, run |
+| 测速分组 `benchmark_groups` | view, manage |
 | 测速历史 `benchmark_history` | view, detail, export |
 | 模型榜 `leaderboard` | view |
 | 资讯收集 `info` | view, source_create, source_update, source_delete, collect, preview, article_create, article_update, article_delete, favorite, hidden, featured, ai_skip, ai_settings, rescore |
@@ -191,7 +191,7 @@ admins（新增列）
 | 第三方集成 `integrations` | view, update |
 | 公开门禁 `public_gate` | view, update |
 | 用户管理 `users` | view, create, update, delete, reset_password, toggle_status |
-| 角色管理 `roles` | view, create, update, delete, assign_permissions |
+| 角色管理 `roles` | view, create, update, delete |
 
 ## Correctness Properties
 

@@ -154,6 +154,6 @@ Updated: 2026-10-23
 
 #### Acceptance Criteria
 
-1. The system SHALL define a Resource for 用户管理 carrying the actions view, create, update, delete, reset_password, and toggle_status, and a Resource for 角色管理 carrying the actions view, create, update, delete, and assign_permissions.
+1. The system SHALL define a Resource for 用户管理 carrying the actions view, create, update, delete, reset_password, and toggle_status, and a Resource for 角色管理 carrying the actions view, create, update, and delete.
 2. WHEN an Admin_User without the Wildcard_Grant creates or updates a Role, the system SHALL reject permission codes absent from its own Permission list with a 403 Permission_Denied_Response.
 3. WHEN an Admin_User without the Wildcard_Grant assigns a Role to an Admin_User, the system SHALL restrict the assignment to Roles whose permission lists are subsets of its own Permission list.

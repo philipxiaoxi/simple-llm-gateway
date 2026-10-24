@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy import text
@@ -44,10 +44,12 @@ from app.routers import (
     admin_mcp_knowledge_jobs,
     admin_mcp_sites,
     admin_public_gate,
+    admin_roles,
     admin_security,
     admin_skill_bundles,
     admin_skills,
     admin_tools,
+    admin_users,
     capabilities_public,
     diagrams_public,
     douyin_public,
@@ -76,6 +78,7 @@ from app.services.knowledge_jobs import reconcile_stuck_jobs as reconcile_stuck_
 from app.services.knowledge_jobs import start_knowledge_job_workers
 from app.services.knowledge_retention import retention_loop as knowledge_retention_loop
 from app.services.gateway_rate_limit import GatewayRateLimitMiddleware
+from app.services.permission_guard import require_admin_permission
 from app.services.security_audit import SecurityAuditMiddleware, audit_worker
 from app.services.security_retention import retention_loop as security_retention_loop
 from app.services.site_retention import retention_loop as site_retention_loop
@@ -190,21 +193,29 @@ app = FastAPI(
 app.include_router(health.router)
 app.include_router(local_agent.router)
 app.include_router(admin_auth.router)
-app.include_router(admin_accounts.router)
-app.include_router(admin_benchmark.router)
-app.include_router(admin_benchmark_groups.router)
-app.include_router(admin_benchmark_history.router)
-app.include_router(admin_keys.router)
-app.include_router(admin_leaderboard.router)
-app.include_router(admin_jobs.router)
-app.include_router(admin_logs.router)
-app.include_router(admin_dashboard.router)
-app.include_router(admin_info.router)
-app.include_router(admin_public_gate.router, dependencies=[Depends(get_current_admin)])
-app.include_router(admin_security.router)
+# 管理接口统一挂在带功能权限守卫的父路由下。`/api/admin/login`、`/api/admin/me` 与签名令牌
+# 资产路由（图片/视频素材、资讯媒体）不在此列，见下方单独挂载的 router。
+admin_guard = APIRouter(dependencies=[Depends(require_admin_permission)])
+for admin_router in (
+    admin_users.router,
+    admin_roles.router,
+    admin_accounts.router,
+    admin_benchmark.router,
+    admin_benchmark_groups.router,
+    admin_benchmark_history.router,
+    admin_keys.router,
+    admin_leaderboard.router,
+    admin_jobs.router,
+    admin_logs.router,
+    admin_dashboard.router,
+    admin_info.router,
+    admin_public_gate.router,
+    admin_security.router,
+    admin_integrations.router,
+    admin_generation.router,
+):
+    admin_guard.include_router(admin_router)
 app.include_router(admin_info.media_router)
-app.include_router(admin_integrations.router)
-app.include_router(admin_generation.router)
 app.include_router(admin_generation.asset_router)
 
 
@@ -231,22 +242,24 @@ async def log_slow_requests(request: Request, call_next):
     return response
 
 
-app.include_router(admin_skills.router)
+for admin_router in (
+    admin_skills.router,
+    admin_skill_bundles.router,
+    admin_tools.router,
+    admin_mcp_keys.router,
+    admin_mcp_catalog.router,
+    admin_mcp_docparse.router,
+    admin_mcp_sites.router,
+    admin_mcp_douyin.router,
+    admin_mcp_diagrams.router,
+    admin_mcp_knowledge.router,
+    admin_mcp_knowledge_jobs.router,
+    admin_mcp_calls.router,
+):
+    admin_guard.include_router(admin_router)
 app.include_router(admin_skills.download_router)
-app.include_router(admin_skill_bundles.router)
 app.include_router(admin_skill_bundles.download_router)
-app.include_router(admin_tools.router)
 app.include_router(admin_tools.download_router)
-app.include_router(admin_tools.download_router)
-app.include_router(admin_mcp_keys.router)
-app.include_router(admin_mcp_catalog.router)
-app.include_router(admin_mcp_docparse.router)
-app.include_router(admin_mcp_sites.router)
-app.include_router(admin_mcp_douyin.router)
-app.include_router(admin_mcp_diagrams.router)
-app.include_router(admin_mcp_knowledge.router)
-app.include_router(admin_mcp_knowledge_jobs.router)
-app.include_router(admin_mcp_calls.router)
 app.include_router(capabilities_public.router)
 app.include_router(info_report_public.router)
 app.include_router(oauth.router)
@@ -258,23 +271,17 @@ app.include_router(douyin_public.router)
 app.include_router(diagrams_public.router)
 app.include_router(info_public.router)
 app.include_router(public_gate.router)
-app.include_router(
-    offline.router,
-    prefix="/api/admin/offline",
-    dependencies=[Depends(get_current_admin)],
-)
-app.include_router(
-    offline.admin_router,
-    prefix="/api/admin/offline",
-    dependencies=[Depends(get_current_admin)],
-)
+admin_guard.include_router(offline.router, prefix="/api/admin/offline")
+admin_guard.include_router(offline.admin_router, prefix="/api/admin/offline")
+admin_guard.include_router(voice_rooms.admin_router)
+# 所有管理路由登记完毕后统一挂载（父路由在 include 时复制当前路由表）
+app.include_router(admin_guard)
 app.include_router(
     offline.router,
     prefix="/api/public/offline",
     dependencies=[Depends(build_gate_dependency("offline"))],
 )
 app.include_router(offline.icon_router, prefix="/api/public/offline")
-app.include_router(voice_rooms.admin_router)
 app.include_router(voice_rooms.public_router)
 app.include_router(voice_rooms.router)
 _mcp_asgi_app = build_mcp_app()

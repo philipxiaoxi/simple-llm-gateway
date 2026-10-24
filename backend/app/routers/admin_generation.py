@@ -17,7 +17,13 @@ from app.db import get_db
 from app.deps import get_current_admin
 from app.generation import service, storage
 from app.info.tokens import media_id_from_token
-from app.models import GenerationAsset, GenerationTask
+from app.models import Admin, GenerationAsset, GenerationTask
+from app.services.permission_guard import (
+    allowed_generation_kinds,
+    require_generation_task_access,
+    require_generation_task_create,
+    require_generation_view,
+)
 
 router = APIRouter(
     prefix="/api/admin/generation",
@@ -72,7 +78,7 @@ def delete_upload(asset_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="参考文件不存在")
 
 
-@router.post("/tasks", status_code=201)
+@router.post("/tasks", status_code=201, dependencies=[Depends(require_generation_task_create)])
 def create_task(payload: dict, db: Session = Depends(get_db)):
     try:
         task = service.create_task(
@@ -89,18 +95,22 @@ def create_task(payload: dict, db: Session = Depends(get_db)):
     return service.task_to_dict(task, service.task_assets(db, task.id))
 
 
-@router.get("/tasks")
+@router.get("/tasks", dependencies=[Depends(require_generation_view)])
 def list_tasks(
     kind: str = "",
     status: str = "",
     page: int = 1,
     page_size: int = Query(default=20, le=100),
+    admin: Admin = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return service.list_tasks(db, kind=kind, status=status, page=page, page_size=page_size)
+    allowed = allowed_generation_kinds(db, admin)
+    return service.list_tasks(
+        db, kind=kind, status=status, page=page, page_size=page_size, kinds=allowed
+    )
 
 
-@router.get("/tasks/{task_id}")
+@router.get("/tasks/{task_id}", dependencies=[Depends(require_generation_task_access("view"))])
 def get_task(task_id: str, db: Session = Depends(get_db)):
     task = service.get_task(db, task_id)
     if task is None:
@@ -108,13 +118,15 @@ def get_task(task_id: str, db: Session = Depends(get_db)):
     return service.task_to_dict(task, service.task_assets(db, task_id))
 
 
-@router.delete("/tasks/{task_id}", status_code=204)
+@router.delete(
+    "/tasks/{task_id}", status_code=204, dependencies=[Depends(require_generation_task_access("task_delete"))]
+)
 def delete_task(task_id: str, db: Session = Depends(get_db)):
     if not service.delete_task(db, task_id):
         raise HTTPException(status_code=404, detail="任务不存在")
 
 
-@router.post("/tasks/{task_id}/retry")
+@router.post("/tasks/{task_id}/retry", dependencies=[Depends(require_generation_task_access("task_retry"))])
 def retry_task(task_id: str, db: Session = Depends(get_db)):
     task = db.get(GenerationTask, task_id)
     if task is None:

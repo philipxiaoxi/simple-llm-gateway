@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.config import get_settings, validate_bootstrap_admin_password
 from app.crypto import hash_password
 from app.db import get_session_factory
-from app.models import Admin, DesktopTool
+from app.models import Admin, DesktopTool, Role
 from app.services.skills import ensure_skill_categories
 
 
@@ -19,10 +19,13 @@ def seed_admin() -> None:
         if existing is not None:
             return
         validate_bootstrap_admin_password(settings.admin_password)
+        # 首次启动：把引导账号绑定到内置「管理员」角色（init_db 已建好该角色）
+        builtin = session.scalar(select(Role).where(Role.builtin.is_(True)).limit(1))
         session.add(
             Admin(
                 username=settings.admin_username,
                 password_hash=hash_password(settings.admin_password),
+                role_id=builtin.id if builtin is not None else None,
             )
         )
         session.commit()
