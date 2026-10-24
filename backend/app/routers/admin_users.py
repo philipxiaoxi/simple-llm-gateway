@@ -44,15 +44,40 @@ def _wildcard_holders(db: Session) -> list[Admin]:
     return [item for item in admins if _is_wildcard_holder(db, item)]
 
 
-def _count_wildcard_holders(db: Session) -> int:
-    return len(_wildcard_holders(db))
+def _count_enabled_wildcard_holders(db: Session) -> int:
+    return len([item for item in _wildcard_holders(db) if item.is_enabled])
 
 
 def _ensure_not_last_wildcard(db: Session, target: Admin, reason: str) -> None:
-    if not _is_wildcard_holder(db, target):
+    if not _is_wildcard_holder(db, target) or not target.is_enabled:
         return
-    if _count_wildcard_holders(db) <= 1:
-        raise HTTPException(status_code=409, detail=f"{reason}：系统需要至少保留一个管理员")
+    if _count_enabled_wildcard_holders(db) <= 1:
+        raise HTTPException(status_code=409, detail=f"{reason}：系统需要至少保留一个启用中的管理员")
+
+
+def _ensure_target_within_scope(db: Session, actor: Admin, target: Admin) -> None:
+    """非管理员只能管理权限不超出自己的账号，避免改密/停用/删除提权。"""
+    actor_permissions = permissions_for_admin(db, actor)
+    if WILDCARD in actor_permissions:
+        return
+    target_permissions = permissions_for_admin(db, target)
+    if WILDCARD in target_permissions:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": {"type": "permission_denied", "message": "只有管理员可以管理管理员账号"}},
+        )
+    over = sorted(code for code in target_permissions if not has_permission(actor_permissions, code))
+    if over:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": {
+                    "type": "permission_denied",
+                    "message": f"不能管理权限高于自己的账号：{'、'.join(over)}",
+                    "permissions": over,
+                }
+            },
+        )
 
 
 def _ensure_role_assignable(db: Session, actor: Admin, role: Role) -> None:
@@ -146,6 +171,7 @@ def update_user(
     db: Session = Depends(get_db),
 ) -> AdminUserOut:
     target = _load_admin(db, admin_id)
+    _ensure_target_within_scope(db, admin, target)
     if payload.username is not None:
         username = payload.username.strip()
         if not username:
@@ -188,6 +214,7 @@ def reset_password(
     db: Session = Depends(get_db),
 ) -> AdminUserOut:
     target = _load_admin(db, admin_id)
+    _ensure_target_within_scope(db, admin, target)
     _validate_password(payload.password)
     target.password_hash = hash_password(payload.password)
     target.token_version = int(target.token_version or 0) + 1
@@ -225,6 +252,7 @@ def delete_user(
     target = _load_admin(db, admin_id)
     if target.id == admin.id:
         raise HTTPException(status_code=409, detail="不能删除当前登录账号")
+    _ensure_target_within_scope(db, admin, target)
     _ensure_not_last_wildcard(db, target, "不能删除最后一个管理员")
     db.delete(target)
     db.commit()

@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import { PageContainer, PageHeader } from '../components/layout-primitives'
 import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api } from '../lib/api'
+import { useSession } from '../lib/session'
 import { Can } from '../lib/session'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage } from '../lib/utils'
@@ -27,6 +28,9 @@ function Stat({ label, value, hint }: { label: string; value: number; hint?: str
 
 export function RolesPage() {
   const queryClient = useQueryClient()
+  const { me, can } = useSession()
+  const isAdmin = me?.role?.builtin === true || (me?.permissions ?? []).includes('*')
+  const grantable = (code: string) => isAdmin || can(code)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [keyword, setKeyword] = useState('')
 
@@ -86,6 +90,7 @@ export function RolesPage() {
   }, [catalog, keyword])
 
   function toggle(code: string) {
+    if (!grantable(code)) return
     setDraft((current) => {
       if (!current) return current
       const next = new Set(current.permissions)
@@ -96,10 +101,12 @@ export function RolesPage() {
   }
 
   function toggleGroup(codes: string[], selected: boolean) {
+    const allowed = codes.filter(grantable)
+    if (!allowed.length) return
     setDraft((current) => {
       if (!current) return current
       const next = new Set(current.permissions)
-      for (const code of codes) {
+      for (const code of allowed) {
         if (selected) next.add(code)
         else next.delete(code)
       }
@@ -176,6 +183,7 @@ export function RolesPage() {
                 ) : (
                   <>
                     <Can code="roles:update">
+                      {isAdmin || role.permissions.every((code) => can(code)) ? (
                       <Button
                         variant="line"
                         className="w-full sm:w-auto"
@@ -185,6 +193,7 @@ export function RolesPage() {
                       >
                         编辑
                       </Button>
+                      ) : null}
                     </Can>
                     <Can code="roles:delete">
                       <Button
@@ -262,17 +271,20 @@ export function RolesPage() {
                     <div className="flex flex-wrap gap-1.5">
                       {group.permissions.map((item) => {
                         const active = draft.permissions.has(item.code)
+                        const allowed = grantable(item.code)
                         return (
                           <button
                             key={item.code}
                             type="button"
-                            title={item.code}
+                            title={allowed ? item.code : `${item.code}（超出你的权限，无法授予）`}
+                            disabled={!allowed}
                             onClick={() => toggle(item.code)}
                             className={cn(
                               'rounded-full border px-3 py-1.5 text-xs transition',
                               active
                                 ? 'border-signal/60 bg-signal/12 text-signal'
                                 : 'border-line text-mist hover:border-mist/40 hover:text-paper',
+                              !allowed && 'cursor-not-allowed opacity-35 hover:border-line hover:text-mist',
                             )}
                           >
                             {item.label}

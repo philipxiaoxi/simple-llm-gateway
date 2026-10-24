@@ -254,6 +254,42 @@ def test_last_admin_cannot_be_removed_or_demoted(client: TestClient, auth_header
     assert me["username"]
 
 
+def test_non_admin_cannot_manage_stronger_accounts(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    role = _create_role(
+        client,
+        auth_headers,
+        "用户运维(受限)",
+        [
+            "users:view",
+            "users:update",
+            "users:delete",
+            "users:reset_password",
+            "users:toggle_status",
+        ],
+    )
+    _create_user(client, auth_headers, "user-ops", role["id"])
+    ops = _login(client, "user-ops")
+
+    users = client.get("/api/admin/users", headers=auth_headers).json()
+    admin_id = next(user["id"] for user in users if user["role_builtin"])
+
+    assert client.post(
+        f"/api/admin/users/{admin_id}/password", headers=ops, json={"password": "hacked-pass-1"}
+    ).status_code == 403
+    assert client.post(
+        f"/api/admin/users/{admin_id}/status", headers=ops, json={"enabled": False}
+    ).status_code == 403
+    assert client.delete(f"/api/admin/users/{admin_id}", headers=ops).status_code == 403
+
+    stronger = _create_role(client, auth_headers, "更强角色", ["users:view", "roles:view"])
+    stronger_user = _create_user(client, auth_headers, "stronger-user", stronger["id"])
+    assert client.post(
+        f"/api/admin/users/{stronger_user['id']}/password", headers=ops, json={"password": "hacked-pass-2"}
+    ).status_code == 403
+
+
 def test_disabled_user_session_is_rejected(client: TestClient, auth_headers: dict[str, str]) -> None:
     role = _create_role(client, auth_headers, "待停用", ["logs:view"])
     user = _create_user(client, auth_headers, "disable-me", role["id"])

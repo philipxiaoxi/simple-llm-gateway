@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import { PageContainer, PageHeader } from '../components/layout-primitives'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type AdminUser } from '../lib/api'
+import { useSession } from '../lib/session'
 import { Can } from '../lib/session'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
@@ -32,8 +33,13 @@ export function UsersPage() {
   const [resetFor, setResetFor] = useState<AdminUser | null>(null)
   const [newPassword, setNewPassword] = useState('')
 
+  const { me, can } = useSession()
   const { data: users = [], isPending } = useQuery({ queryKey: ['users'], queryFn: api.users })
   const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: api.roles })
+  const isAdmin = me?.role?.builtin === true || (me?.permissions ?? []).includes('*')
+  const assignableRoles = roles.filter((role) =>
+    role.builtin ? isAdmin : role.permissions.every((code) => can(code)),
+  )
 
   const stats = useMemo(
     () => ({
@@ -111,7 +117,13 @@ export function UsersPage() {
             <Button
               className="w-full sm:w-auto"
               onClick={() =>
-                setDraft({ id: null, username: '', password: '', roleId: roles[0]?.id ?? null, enabled: true })
+                setDraft({
+                  id: null,
+                  username: '',
+                  password: '',
+                  roleId: assignableRoles[0]?.id ?? null,
+                  enabled: true,
+                })
               }
             >
               <Plus size={16} /> 新增账号
@@ -245,7 +257,7 @@ export function UsersPage() {
                 onChange={(event) => setDraft({ ...draft, roleId: Number(event.target.value) })}
               >
                 <option value="">请选择角色</option>
-                {roles.map((role) => (
+                {assignableRoles.map((role) => (
                   <option key={role.id} value={role.id}>
                     {role.name}
                     {role.builtin ? '（全部权限）' : `（${role.permissions.length} 项权限）`}

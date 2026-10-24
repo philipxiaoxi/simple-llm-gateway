@@ -1122,6 +1122,7 @@ export function AccountsPage() {
     setDeletingAccount(account)
   }
 
+  const hasAccountActions = canQuota || canModels || canUpdate || canDelete
   const actionSheetActions: ActionSheetAction[] = actionAccount
     ? [
         ...(canQuota ? [{ label: '刷新额度', onSelect: () => void runQuota(actionAccount.id) }] : []),
@@ -1242,6 +1243,7 @@ export function AccountsPage() {
                 <Badge tone={account.status === 'active' ? 'ok' : 'mist'}>
                   {account.status === 'active' ? '启用' : '停用'}
                 </Badge>
+                {hasAccountActions ? (
                 <IconButton
                   label={`${account.name} 更多操作`}
                   className="md:hidden"
@@ -1250,6 +1252,7 @@ export function AccountsPage() {
                 >
                   <MoreHorizontal size={18} />
                 </IconButton>
+                ) : null}
               </span>
             </div>
             <div className="flex flex-wrap gap-2">

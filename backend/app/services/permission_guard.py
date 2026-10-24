@@ -94,6 +94,16 @@ ROUTE_ANY_CODES: dict[tuple[str, str], tuple[str, ...]] = {
         "info:view",
         "mcp_douyin:view",
     ),
+    ("PUT", "/api/admin/integrations/tikhub"): (
+        "integrations:update",
+        "info:source_update",
+        "mcp_douyin:provider_manage",
+    ),
+    ("DELETE", "/api/admin/integrations/tikhub"): (
+        "integrations:update",
+        "info:source_update",
+        "mcp_douyin:provider_manage",
+    ),
 }
 
 ROUTE_OVERRIDES: dict[tuple[str, str], str] = {

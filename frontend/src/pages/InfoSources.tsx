@@ -73,6 +73,8 @@ export function InfoSourcesPage() {
   const canDelete = useCan('info:source_delete')
   const canCollect = useCan('info:collect')
   const canArticleCreate = useCan('info:article_create')
+  const canIntegrationsUpdate = useCan('integrations:update')
+  const canIntegration = canIntegrationsUpdate || canUpdate
   const queryClient = useQueryClient()
   const query = useQuery({ queryKey: ['info-sources'], queryFn: api.infoSources })
   const sources = query.data?.sources ?? []
@@ -164,6 +166,7 @@ export function InfoSourcesPage() {
             <FilePlus size={15} /> 保存单篇文章
           </Button>
           ) : null}
+          {canIntegration ? (
           <Button
             type="button"
             variant="line"
@@ -172,6 +175,7 @@ export function InfoSourcesPage() {
           >
             TikHub 凭据
           </Button>
+          ) : null}
         </div>
       </div>
 
@@ -181,6 +185,7 @@ export function InfoSourcesPage() {
             <CircleAlert size={14} className="mt-0.5 shrink-0" />
             TikHub 凭据未配置：资讯采集与抖音下载共用同一份 TikHub API Key，配置后才能拉取频道内容。
           </span>
+          {canIntegration ? (
           <button
             type="button"
             className="inline-flex shrink-0 items-center gap-1 rounded-md border border-warn/40 px-2 py-1 text-warn transition hover:bg-warn/15"
@@ -188,6 +193,7 @@ export function InfoSourcesPage() {
           >
             配置 TikHub 凭据
           </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -654,6 +660,7 @@ function BatchOpsDialog({
   onApplied: () => void
   onClose: () => void
 }) {
+  const canCollect = useCan('info:collect')
   const queryClient = useQueryClient()
 
   const active = sources.filter((source) => source.kind !== 'manual')
@@ -735,6 +742,7 @@ function BatchOpsDialog({
 
         <div className="border-t border-line" />
 
+        {canCollect ? (
         <section className="space-y-2">
           <div className="text-sm font-medium text-paper">立即采集</div>
           <p className="text-xs text-mist">
@@ -771,6 +779,7 @@ function BatchOpsDialog({
             />
           </div>
         </section>
+        ) : null}
 
         <div className="flex justify-end">
           <Button type="button" variant="ghost" disabled={busy} onClick={onClose}>

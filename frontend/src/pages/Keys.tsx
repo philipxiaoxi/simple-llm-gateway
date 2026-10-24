@@ -7,7 +7,7 @@ import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components
 import { api, type Account, type ApiKeyItem, type ApiKeySort, type CcSwitchTarget, type GatewayAgent, type ShareAlias } from '../lib/api'
 import { openShareWithApiKey } from '../lib/shareTransfer'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
-import { Can } from '../lib/session'
+import { Can, useCan } from '../lib/session'
 import { ALIAS_INPUT_PATTERN, cn, errorMessage, formatTime, formatTokenCount, RISK_LEVELS } from '../lib/utils'
 import { FilterBar } from '../components/filter-bar'
 
@@ -444,6 +444,10 @@ function shareText(shareUrl: string, apiKey: string) {
 }
 
 export function KeysPage() {
+  const canKeyUpdate = useCan('keys:update')
+  const canKeyAliases = useCan('keys:aliases_manage')
+  const canKeyDelete = useCan('keys:delete')
+  const canMoreActions = canKeyUpdate || canKeyAliases || canKeyDelete
   const queryClient = useQueryClient()
   const { data: accounts = [] } = useQuery({ queryKey: ['key-accounts'], queryFn: api.keyAccounts })
   const { data: agentData } = useQuery({ queryKey: ['agents'], queryFn: api.agents })
@@ -865,6 +869,7 @@ export function KeysPage() {
                     导入
                   </Button>
                 </Can>
+                {canMoreActions ? (
                 <div className="col-span-2 md:col-auto md:w-auto">
                 <MoreMenu>
                   <Can code="keys:update">
@@ -920,6 +925,7 @@ export function KeysPage() {
                   </Can>
                 </MoreMenu>
                 </div>
+                ) : null}
               </div>
               {ccPanel[item.id] ? (
                 <div className="space-y-2">
