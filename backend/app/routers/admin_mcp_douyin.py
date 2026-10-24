@@ -92,6 +92,31 @@ def admin_detail(job_id: str, db: Session = Depends(get_db)):
     return jobs.job_result_payload(db, job)
 
 
+@router.post("/jobs/{job_id}/media/{media_id}/share")
+def admin_share_media(
+    job_id: str,
+    media_id: str,
+    payload: dict[str, Any] | None = None,
+    db: Session = Depends(get_db),
+):
+    body = payload or {}
+    raw_ttl = body.get("expires_in_seconds")
+    ttl: int | None = None
+    if raw_ttl is not None:
+        try:
+            ttl = int(raw_ttl)
+        except (TypeError, ValueError) as error:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": {"type": "invalid_request", "message": "expires_in_seconds 必须是整数秒"}},
+            ) from error
+    try:
+        job = jobs.get_job(db, job_id, None)
+        return jobs.share_payload(db, job, media_id, ttl_seconds=ttl)
+    except DouyinError as error:
+        raise _http(error) from error
+
+
 @router.post("/jobs/{job_id}/retry", status_code=202)
 def admin_retry(
     job_id: str, background: BackgroundTasks, db: Session = Depends(get_db)

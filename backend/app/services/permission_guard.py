@@ -315,6 +315,7 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("PUT", "/api/admin/mcp/douyin/provider"): "mcp_douyin:provider_manage",
     ("DELETE", "/api/admin/mcp/douyin/provider"): "mcp_douyin:provider_manage",
     ("POST", "/api/admin/mcp/douyin/jobs"): "mcp_douyin:job_create",
+    ("POST", "/api/admin/mcp/douyin/jobs/{job_id}/media/{media_id}/share"): "mcp_douyin:view",
     ("POST", "/api/admin/mcp/douyin/jobs/{job_id}/retry"): "mcp_douyin:job_retry",
     ("DELETE", "/api/admin/mcp/douyin/jobs/{job_id}"): "mcp_douyin:job_delete",
     # MCP 图表

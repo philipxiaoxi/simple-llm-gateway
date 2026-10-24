@@ -499,6 +499,31 @@ def media_payload(media: DouyinMedia) -> dict[str, Any]:
     }
 
 
+def share_payload(
+    db: Session, job: DouyinJob, media_id: str, ttl_seconds: int | None = None
+) -> dict[str, Any]:
+    """按指定有效期签发分享令牌，返回自包含 media_id 的分享链接信息。"""
+    media = db.get(DouyinMedia, media_id)
+    if media is None or media.job_id != job.id:
+        raise DouyinError("媒体不存在", status_code=404, error_type="not_found")
+    if media.status != "ready" or media.purged or not job.rehost:
+        raise DouyinError("媒体尚未转存完成，暂不可分享", status_code=409, error_type="not_ready")
+    settings = get_settings()
+    requested = settings.douyin_download_token_ttl_seconds if ttl_seconds is None else int(ttl_seconds)
+    low = max(1, int(settings.douyin_share_token_min_ttl_seconds))
+    high = max(low, int(settings.douyin_share_token_max_ttl_seconds))
+    ttl = max(low, min(high, requested))
+    token = tokens.make_token(media.id, ttl_seconds=ttl)
+    return {
+        "id": media.id,
+        "token": token,
+        "expires_in_seconds": ttl,
+        "expires_at": int(time.time()) + ttl,
+        "download_url": tokens.download_path(media.id, token),
+        "absolute_download_url": tokens.download_url(media.id, token),
+    }
+
+
 def job_payload(job: DouyinJob) -> dict[str, Any]:
     return {
         "id": job.id,

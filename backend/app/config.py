@@ -142,7 +142,11 @@ class Settings(BaseSettings):
     douyin_http_timeout_seconds: int = 20
     douyin_mcp_max_wait_seconds: int = 45
     douyin_max_redirects: int = 5
-    douyin_download_token_ttl_seconds: int = 3600
+    # 分享/下载令牌默认有效期（秒），默认 1 天
+    douyin_download_token_ttl_seconds: int = 86400
+    # 分享时可选过期时间的上下限（秒）
+    douyin_share_token_min_ttl_seconds: int = 300
+    douyin_share_token_max_ttl_seconds: int = 30 * 86400
     # 0 表示永久保留，不做自动清理
     douyin_retention_days: int = 0
     douyin_max_concurrent_per_key: int = 2

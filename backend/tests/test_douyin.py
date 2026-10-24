@@ -457,4 +457,51 @@ def test_catalog_lists_douyin(client: TestClient, auth_headers: dict[str, str]) 
     assert "douyin" in ids
 
 
+def test_admin_share_media_configurable_expiry(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    import time as time_module
+
+    monkeypatch.setattr(
+        "app.capabilities.douyin.jobs.build_extractor",
+        fake_extractor([ExtractedMedia(kind="video", url="https://v3.douyinvod.com/share.mp4")]),
+    )
+    install_downloader(monkeypatch)
+
+    created = admin_create(client, auth_headers, {"share_text": SAMPLE_SHARE})
+    job_id = created.json()["id"]
+    detail = client.get(f"/api/admin/mcp/douyin/jobs/{job_id}", headers=auth_headers).json()
+    media_id = detail["media"][0]["id"]
+    url = f"/api/admin/mcp/douyin/jobs/{job_id}/media/{media_id}/share"
+
+    def ttl_in_token(token: str) -> int:
+        return int(token.split(".")[1]) - int(time_module.time())
+
+    # 不传有效期时默认 1 天
+    default_share = client.post(url, headers=auth_headers, json={})
+    assert default_share.status_code == 200, default_share.text
+    default_body = default_share.json()
+    assert default_body["expires_in_seconds"] == 86400
+    assert abs(ttl_in_token(default_body["token"]) - 86400) <= 5
+
+    # 自定义有效期
+    custom = client.post(url, headers=auth_headers, json={"expires_in_seconds": 7 * 86400})
+    assert custom.status_code == 200, custom.text
+    assert custom.json()["expires_in_seconds"] == 7 * 86400
+    assert abs(ttl_in_token(custom.json()["token"]) - 7 * 86400) <= 5
+
+    # 超出上限裁剪到 30 天，低于下限裁剪到 5 分钟
+    capped = client.post(url, headers=auth_headers, json={"expires_in_seconds": 999 * 86400})
+    assert capped.json()["expires_in_seconds"] == 30 * 86400
+    floored = client.post(url, headers=auth_headers, json={"expires_in_seconds": 1})
+    assert floored.json()["expires_in_seconds"] == 300
+
+    # 非法值拒绝
+    assert client.post(url, headers=auth_headers, json={"expires_in_seconds": "abc"}).status_code == 400
+
+    # 签发的令牌可直接打开公开分享页
+    token = custom.json()["token"]
+    assert client.get(f"/v1/douyin/share?token={token}").status_code == 200
+
+
 
