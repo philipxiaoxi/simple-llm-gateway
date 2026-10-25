@@ -16,7 +16,7 @@ ADMIN_ROLE_NAME = "管理员"
 WILDCARD = "*"
 
 # 仅用于控制页面入口、没有对应管理接口的权限码（覆盖率测试会放行这些）
-PAGE_ONLY_CODES = frozenset({"benchmark:view"})
+PAGE_ONLY_CODES: frozenset[str] = frozenset()
 
 # 资源 -> (页面名, ((动作, 动作名), ...))
 CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
@@ -39,7 +39,8 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
     "keys": (
         "API Key",
         (
-            ("view", "查看"),
+            ("view", "查看列表"),
+            ("reveal", "查看/复制密钥明文"),
             ("create", "新增"),
             ("update", "编辑"),
             ("delete", "删除"),
@@ -56,8 +57,8 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
             ("export", "导出"),
         ),
     ),
-    # 模型测速页只做「发起测速」；测速结果查看走测速历史页的权限
-    "benchmark": ("模型测速", (("view", "进入页面"), ("run", "发起测速"))),
+    # 模型测速页单一权限：进入即具备测速能力；测速结果查看走测速历史页的权限
+    "benchmark": ("模型测速", (("view", "进入并测速"),)),
     "benchmark_groups": ("测速分组", (("view", "查看"), ("manage", "维护分组"))),
     "benchmark_history": (
         "测速历史",
@@ -124,7 +125,15 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
             ("download", "下载"),
         ),
     ),
-    "skill_bundles": ("Skills 组合包", (("view", "查看与下载"), ("manage", "维护组合包"))),
+    "skill_bundles": (
+        "Skills 组合包",
+        (
+            ("view", "查看"),
+            ("download", "下载"),
+            ("delete", "删除"),
+            ("manage", "维护组合包"),
+        ),
+    ),
     "security": (
         "安全中心",
         (("view", "查看"), ("event_detail", "查看事件详情"), ("settings", "安全设置")),

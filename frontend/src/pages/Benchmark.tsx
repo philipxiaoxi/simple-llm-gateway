@@ -73,7 +73,8 @@ function ResultBadge({ result, isTesting }: { result?: BenchmarkResult; isTestin
 }
 
 export function BenchmarkPage() {
-  const canRun = useCan('benchmark:run')
+  // 进得来页面即具备测速能力（页面入口权限 = benchmark:view）
+  const canRun = useCan('benchmark:view')
   const canManageGroups = useCan('benchmark_groups:manage')
   const canExport = useCan('benchmark_history:export')
   const canManageModels = useCan('accounts:models_manage')

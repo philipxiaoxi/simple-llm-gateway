@@ -10,6 +10,7 @@ import { errorMessage, formatTime } from '../lib/utils'
 
 export function SkillBundlesPage() {
   const canManage = useCan('skill_bundles:manage')
+  const canDelete = useCan('skill_bundles:delete')
   const canSkills = useCan('skills:view')
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -80,11 +81,15 @@ export function SkillBundlesPage() {
             key={item.id}
             item={item}
             onOpen={() => navigate(`/skills/bundles/${item.id}`)}
-            onDelete={() => {
-              if (window.confirm(`删除组合包「${item.name}」？不会删除其中的 Skill。`)) {
-                deleteMutation.mutate(item.id)
-              }
-            }}
+            onDelete={
+              canDelete
+                ? () => {
+                    if (window.confirm(`删除组合包「${item.name}」？不会删除其中的 Skill。`)) {
+                      deleteMutation.mutate(item.id)
+                    }
+                  }
+                : undefined
+            }
           />
         ))}
       </div>
@@ -102,9 +107,11 @@ export function SkillBundlesPage() {
         <div className="rounded-xl border border-dashed border-line px-6 py-16 text-center">
           <Layers className="mx-auto text-mist" />
           <div className="mt-3 text-sm text-mist">还没有组合包。先创建一个，再添加已入库的 Skill。</div>
-          <Button type="button" className="mt-4" onClick={() => setCreateOpen(true)}>
-            <Plus size={16} /> 新建组合包
-          </Button>
+          {canManage ? (
+            <Button type="button" className="mt-4" onClick={() => setCreateOpen(true)}>
+              <Plus size={16} /> 新建组合包
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -129,7 +136,7 @@ function BundleCard({
 }: {
   item: SkillBundleItem
   onOpen: () => void
-  onDelete: () => void
+  onDelete?: () => void
 }) {
   return (
     <Card className="flex min-w-0 flex-col gap-3 overflow-hidden">
@@ -154,9 +161,11 @@ function BundleCard({
         <Button type="button" variant="line" className="min-w-0 flex-1" onClick={onOpen}>
           详情
         </Button>
-        <Button type="button" variant="danger" onClick={onDelete}>
-          <Trash2 size={16} />
-        </Button>
+        {onDelete ? (
+          <Button type="button" variant="danger" onClick={onDelete}>
+            <Trash2 size={16} />
+          </Button>
+        ) : null}
       </div>
     </Card>
   )

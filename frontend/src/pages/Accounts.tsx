@@ -564,6 +564,7 @@ function ModelList({
   onEdit: (model: ModelCaps) => void
   onToggleEnabled: (model: ModelCaps) => void
 }) {
+  const canManage = useCan('accounts:models_manage')
   const visible = expanded ? models : models.slice(0, MODELS_COLLAPSED_COUNT)
   const hasMore = models.length > MODELS_COLLAPSED_COUNT
   const enabledCount = models.filter((model) => model.enabled !== false).length
@@ -573,6 +574,40 @@ function ModelList({
       <div className="flex flex-col gap-1.5">
         {visible.map((model) => {
           const enabled = model.enabled !== false
+          const content = (
+            <>
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5 lg:flex-row lg:items-center lg:gap-2">
+                <span
+                  className={cn(
+                    'block min-w-0 truncate font-mono text-xs',
+                    enabled ? 'text-paper' : 'text-mist',
+                  )}
+                  title={model.id}
+                >
+                  {model.id}
+                </span>
+                {modelCapsHint(model) || canManage ? (
+                  <span
+                    className="block min-w-0 truncate text-[11px] leading-4 text-mist lg:shrink-0"
+                    title={modelCapsHint(model) || undefined}
+                  >
+                    {modelCapsHint(model) || '点击修改能力'}
+                  </span>
+                ) : null}
+              </span>
+              <span className="flex shrink-0 items-center gap-1">
+                {model.overridden?.length ? (
+                  <Badge tone="warn">已覆盖</Badge>
+                ) : model.source === 'custom' ? (
+                  <Badge tone="info" title="上游 /models 未返回，手工添加">
+                    自定义
+                  </Badge>
+                ) : (
+                  <Badge tone="info">识别</Badge>
+                )}
+              </span>
+            </>
+          )
           return (
             <div
               key={model.id}
@@ -581,45 +616,18 @@ function ModelList({
                 enabled ? 'border-line bg-ink/40' : 'border-dashed border-line/80 bg-ink/20',
               )}
             >
-              <Can code="accounts:models_manage">
-              <button
-                type="button"
-                onClick={() => onEdit(model)}
-                className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left hover:text-paper"
-              >
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5 lg:flex-row lg:items-center lg:gap-2">
-                  <span
-                    className={cn(
-                      'block min-w-0 truncate font-mono text-xs',
-                      enabled ? 'text-paper' : 'text-mist',
-                    )}
-                    title={model.id}
-                  >
-                    {model.id}
-                  </span>
-                  <span
-                    className="block min-w-0 truncate text-[11px] leading-4 text-mist lg:shrink-0"
-                    title={modelCapsHint(model) || undefined}
-                  >
-                    {modelCapsHint(model) || '点击修改能力'}
-                  </span>
-                </span>
-                <span className="flex shrink-0 items-center gap-1">
-                  {model.overridden?.length ? (
-                    <Badge tone="warn">已覆盖</Badge>
-                  ) : model.source === 'custom' ? (
-                    <Badge tone="info" title="上游 /models 未返回，手工添加">
-                      自定义
-                    </Badge>
-                  ) : (
-                    <Badge tone="info">识别</Badge>
-                  )}
-                </span>
-              </button>
-              </Can>
-              <Can code="accounts:models_manage">
-              <Switch checked={enabled} onCheckedChange={() => onToggleEnabled(model)} />
-              </Can>
+              {canManage ? (
+                <button
+                  type="button"
+                  onClick={() => onEdit(model)}
+                  className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left hover:text-paper"
+                >
+                  {content}
+                </button>
+              ) : (
+                <div className="flex min-w-0 flex-1 items-center justify-between gap-2">{content}</div>
+              )}
+              {canManage ? <Switch checked={enabled} onCheckedChange={() => onToggleEnabled(model)} /> : null}
             </div>
           )
         })}

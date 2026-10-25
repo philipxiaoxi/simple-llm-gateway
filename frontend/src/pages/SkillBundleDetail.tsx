@@ -22,6 +22,8 @@ function triggerDownload(blob: Blob, filename: string) {
 
 export function SkillBundleDetailPage() {
   const canManage = useCan('skill_bundles:manage')
+  const canDownload = useCan('skill_bundles:download')
+  const canDelete = useCan('skill_bundles:delete')
   const canSkills = useCan('skills:view')
   const { bundleId } = useParams()
   const id = Number(bundleId)
@@ -120,15 +122,19 @@ export function SkillBundleDetailPage() {
             编辑
           </Button>
           ) : null}
-          <Button variant="line" className="w-full whitespace-nowrap sm:w-auto" onClick={() => void copyInstall()}>
-            <Copy size={16} />
-            复制安装指令
-          </Button>
-          <Button className="w-full sm:w-auto" onClick={() => void downloadZip()}>
-            <Download size={16} />
-            打包下载
-          </Button>
-          {canManage ? (
+          {canDownload ? (
+            <>
+              <Button variant="line" className="w-full whitespace-nowrap sm:w-auto" onClick={() => void copyInstall()}>
+                <Copy size={16} />
+                复制安装指令
+              </Button>
+              <Button className="w-full sm:w-auto" onClick={() => void downloadZip()}>
+                <Download size={16} />
+                打包下载
+              </Button>
+            </>
+          ) : null}
+          {canDelete ? (
           <Button
             variant="danger"
             className="w-full sm:w-auto"
