@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi.testclient import TestClient
+
+from app.clock import utcnow
 
 
 def _account(client: TestClient, auth_headers: dict[str, str], name: str = "A", provider: str = "deepseek") -> int:
@@ -145,3 +149,28 @@ def test_history_list_include_results(client: TestClient, auth_headers: dict[str
         "/api/admin/benchmark/history?include_results=true", headers=auth_headers
     ).json()["items"]
     assert all(len(item["results"]) == 1 for item in with_results)
+
+
+def test_leaderboard_only_last_month(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from sqlalchemy import select
+
+    from app.db import get_session_factory
+    from app.models import BenchmarkRun
+
+    account_id = _account(client, auth_headers)
+    _add_model(client, auth_headers, account_id, "m1")
+    _add_model(client, auth_headers, account_id, "m2")
+    _save(client, auth_headers, account_id=account_id, model="m1", speed=10.0)
+    _save(client, auth_headers, account_id=account_id, model="m2", speed=90.0)
+
+    # 把最近一次（m2）测速回拨到 45 天前，它不应再进入排行榜
+    session = get_session_factory()()
+    try:
+        run = session.scalar(select(BenchmarkRun).order_by(BenchmarkRun.id.desc()).limit(1))
+        assert run is not None
+        run.created_at = utcnow() - timedelta(days=45)
+        session.commit()
+    finally:
+        session.close()
+
+    assert [item["model"] for item in _items(client, auth_headers)] == ["m1"]
