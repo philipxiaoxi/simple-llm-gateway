@@ -334,15 +334,27 @@ export function McpDocsPage() {
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
       <Card className="min-w-0 space-y-3 overflow-hidden p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
             <h2 className="text-lg font-medium">接入中心</h2>
             <p className="mt-1 text-sm text-mist">按 Key 生成接入配置与文档，只包含该 Key 已授权的能力。</p>
           </div>
           <div className="flex items-center gap-2">
+            <Select
+              className="min-w-0 flex-1 lg:w-72 lg:flex-none"
+              value={keyId ? String(keyId) : ''}
+              onChange={(event) => selectKey(event.target.value)}
+            >
+              {(keys.data || []).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} · {item.key_prefix} · {item.status}
+                </option>
+              ))}
+            </Select>
             <Button
               type="button"
               variant="ghost"
+              className="shrink-0"
               title="刷新"
               onClick={() => {
                 void integration.refetch()
@@ -351,13 +363,6 @@ export function McpDocsPage() {
             >
               <RefreshCw size={15} />
             </Button>
-            <Select value={keyId ? String(keyId) : ''} onChange={(event) => selectKey(event.target.value)}>
-              {(keys.data || []).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} · {item.key_prefix} · {item.status}
-                </option>
-              ))}
-            </Select>
           </div>
         </div>
 
