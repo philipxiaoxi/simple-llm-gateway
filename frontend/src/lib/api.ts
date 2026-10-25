@@ -1305,7 +1305,8 @@ export const api = {
     }),
 
   // ---- MCP 广场 ----
-  mcpCatalog: () => request<{ items: McpCatalogItem[] }>('/api/admin/mcp/catalog'),
+  mcpCatalog: (scope: 'plaza' | 'all' = 'plaza') =>
+    request<{ items: McpCatalogItem[] }>(`/api/admin/mcp/catalog?scope=${scope}`),
   docparseJobs: (query: { status?: string; q?: string } = {}) => {
     const params = new URLSearchParams()
     if (query.status) params.set('status', query.status)
@@ -2182,6 +2183,7 @@ export type McpCatalogItem = {
   category: string
   status: string
   admin_path: string
+  permissions?: string[]
   icon: string
   input_schema: Record<string, unknown>
   tools: { name: string; description: string; operation: string; input_schema: Record<string, unknown>; returns?: string }[]
