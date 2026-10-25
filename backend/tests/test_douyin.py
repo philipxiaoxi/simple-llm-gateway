@@ -140,6 +140,45 @@ def test_admin_parse_download_and_serve(
     assert no_token.status_code == 401
 
 
+def test_job_cover_rehosted_and_served(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "app.capabilities.douyin.jobs.build_extractor",
+        fake_extractor([ExtractedMedia(kind="video", url="https://v3.douyinvod.com/v.mp4")]),
+    )
+    install_downloader(monkeypatch)
+
+    created = admin_create(client, auth_headers, {"share_text": SAMPLE_SHARE})
+    job_id = created.json()["id"]
+    detail = client.get(f"/api/admin/mcp/douyin/jobs/{job_id}", headers=auth_headers).json()
+
+    # 封面改为同源本地路径，无需登录即可访问
+    assert detail["cover_url"] == f"/v1/douyin/jobs/{job_id}/cover"
+    cover = client.get(detail["cover_url"])
+    assert cover.status_code == 200, cover.text
+    assert cover.content == b"DATA:https://p3.douyinpic.com/cover.jpeg"
+    assert cover.headers["content-type"].startswith("image/jpeg")
+    assert cover.headers["x-content-type-options"] == "nosniff"
+
+
+def test_job_cover_falls_back_to_remote_on_failure(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "app.capabilities.douyin.jobs.build_extractor",
+        fake_extractor([ExtractedMedia(kind="video", url="https://v3.douyinvod.com/v.mp4")]),
+    )
+    install_downloader(monkeypatch, fail_urls={"https://p3.douyinpic.com/cover.jpeg"})
+
+    created = admin_create(client, auth_headers, {"share_text": SAMPLE_SHARE})
+    job_id = created.json()["id"]
+    detail = client.get(f"/api/admin/mcp/douyin/jobs/{job_id}", headers=auth_headers).json()
+
+    # 封面转存失败时保留远程链接，前端据此降级为图标
+    assert detail["cover_url"] == "https://p3.douyinpic.com/cover.jpeg"
+
+
 def test_public_share_meta(
     client: TestClient, auth_headers: dict[str, str], monkeypatch
 ) -> None:
@@ -455,6 +494,53 @@ def test_catalog_lists_douyin(client: TestClient, auth_headers: dict[str, str]) 
     assert catalog.status_code == 200
     ids = {item["capability_id"] for item in catalog.json()["items"]}
     assert "douyin" in ids
+
+
+def test_admin_share_media_configurable_expiry(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    import time as time_module
+
+    monkeypatch.setattr(
+        "app.capabilities.douyin.jobs.build_extractor",
+        fake_extractor([ExtractedMedia(kind="video", url="https://v3.douyinvod.com/share.mp4")]),
+    )
+    install_downloader(monkeypatch)
+
+    created = admin_create(client, auth_headers, {"share_text": SAMPLE_SHARE})
+    job_id = created.json()["id"]
+    detail = client.get(f"/api/admin/mcp/douyin/jobs/{job_id}", headers=auth_headers).json()
+    media_id = detail["media"][0]["id"]
+    url = f"/api/admin/mcp/douyin/jobs/{job_id}/media/{media_id}/share"
+
+    def ttl_in_token(token: str) -> int:
+        return int(token.split(".")[1]) - int(time_module.time())
+
+    # 不传有效期时默认 1 天
+    default_share = client.post(url, headers=auth_headers, json={})
+    assert default_share.status_code == 200, default_share.text
+    default_body = default_share.json()
+    assert default_body["expires_in_seconds"] == 86400
+    assert abs(ttl_in_token(default_body["token"]) - 86400) <= 5
+
+    # 自定义有效期
+    custom = client.post(url, headers=auth_headers, json={"expires_in_seconds": 7 * 86400})
+    assert custom.status_code == 200, custom.text
+    assert custom.json()["expires_in_seconds"] == 7 * 86400
+    assert abs(ttl_in_token(custom.json()["token"]) - 7 * 86400) <= 5
+
+    # 超出上限裁剪到 30 天，低于下限裁剪到 5 分钟
+    capped = client.post(url, headers=auth_headers, json={"expires_in_seconds": 999 * 86400})
+    assert capped.json()["expires_in_seconds"] == 30 * 86400
+    floored = client.post(url, headers=auth_headers, json={"expires_in_seconds": 1})
+    assert floored.json()["expires_in_seconds"] == 300
+
+    # 非法值拒绝
+    assert client.post(url, headers=auth_headers, json={"expires_in_seconds": "abc"}).status_code == 400
+
+    # 签发的令牌可直接打开公开分享页
+    token = custom.json()["token"]
+    assert client.get(f"/v1/douyin/share?token={token}").status_code == 200
 
 
 

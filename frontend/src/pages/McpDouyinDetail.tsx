@@ -3,7 +3,7 @@ import { Copy, Download, ExternalLink, Play, RefreshCw, Share2, Trash2 } from 'l
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { DouyinPlayer } from '../components/DouyinPlayer'
-import { Badge, Button, Card } from '../components/ui'
+import { Badge, Button, Card, Dialog, Field, Select } from '../components/ui'
 import { api, type DouyinMedia } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { copyText, douyinShareText, elapsedSeconds, errorMessage, formatBytes, formatTime } from '../lib/utils'
@@ -20,6 +20,19 @@ const STATUS: Record<string, { label: string; tone: 'ok' | 'bad' | 'warn' | 'mis
 const TERMINAL = new Set(['succeeded', 'partial', 'failed'])
 const STAGE_ORDER = ['resolving', 'downloading', 'done'] as const
 const STAGE_LABEL: Record<string, string> = { resolving: '解析中', downloading: '下载中', done: '完成' }
+
+const SHARE_TTL_OPTIONS = [
+  { label: '1 小时', value: 3600 },
+  { label: '3 小时', value: 3 * 3600 },
+  { label: '6 小时', value: 6 * 3600 },
+  { label: '1 天', value: 86400 },
+  { label: '2 天', value: 2 * 86400 },
+  { label: '3 天', value: 3 * 86400 },
+  { label: '7 天', value: 7 * 86400 },
+  { label: '15 天', value: 15 * 86400 },
+  { label: '30 天', value: 30 * 86400 },
+]
+const DEFAULT_SHARE_TTL = 86400
 
 export function McpDouyinDetailPage() {
   const canRetry = useCan('mcp_douyin:job_retry')
@@ -194,7 +207,13 @@ export function McpDouyinDetailPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {media.map((item) => (
-          <MediaCard key={item.id} media={item} title={job.title || job.aweme_id} kind={job.kind} />
+          <MediaCard
+            key={item.id}
+            jobId={job.id}
+            media={item}
+            title={job.title || job.aweme_id}
+            kind={job.kind}
+          />
         ))}
       </div>
     </div>
@@ -217,15 +236,18 @@ function mediaUrl(media: DouyinMedia): string | undefined {
 }
 
 function MediaCard({
+  jobId,
   media,
   title,
   kind,
 }: {
+  jobId: string
   media: DouyinMedia
   title?: string | null
   kind?: string | null
 }) {
   const [previewing, setPreviewing] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const url = mediaUrl(media)
   const playable = media.status === 'ready' && Boolean(url)
 
@@ -239,17 +261,8 @@ function MediaCard({
     }
   }
 
-  async function onShare() {
-    const link = `${window.location.origin}/share/douyin?token=${encodeURIComponent(media.token || '')}`
-    try {
-      await copyText(douyinShareText(link, { title, kind }))
-      notifyOk('分享文案已复制，可在微信中打开')
-    } catch {
-      notifyBad('复制失败')
-    }
-  }
-
   return (
+    <>
     <div className="overflow-hidden rounded-xl border border-line bg-panel">
       <div className="flex h-44 items-center justify-center bg-ink">
         {playable && previewing && media.kind === 'video' ? (
@@ -296,7 +309,12 @@ function MediaCard({
             </Button>
           ) : null}
           {url ? (
-            <Button type="button" variant="line" className="min-h-9 px-2 py-1 text-xs md:min-h-8" onClick={onShare}>
+            <Button
+              type="button"
+              variant="line"
+              className="min-h-9 px-2 py-1 text-xs md:min-h-8"
+              onClick={() => setShareOpen(true)}
+            >
               <Share2 size={14} /> 分享
             </Button>
           ) : null}
@@ -322,6 +340,76 @@ function MediaCard({
         </div>
       </div>
     </div>
+    {shareOpen ? (
+      <ShareDialog
+        jobId={jobId}
+        media={media}
+        title={title}
+        kind={kind}
+        onClose={() => setShareOpen(false)}
+      />
+    ) : null}
+    </>
+  )
+}
+
+function ShareDialog({
+  jobId,
+  media,
+  title,
+  kind,
+  onClose,
+}: {
+  jobId: string
+  media: DouyinMedia
+  title?: string | null
+  kind?: string | null
+  onClose: () => void
+}) {
+  const [ttl, setTtl] = useState(DEFAULT_SHARE_TTL)
+
+  const share = useMutation({
+    mutationFn: () => api.shareMcpDouyinMedia(jobId, media.id, ttl),
+    onSuccess: async (result) => {
+      const link = `${window.location.origin}/share/douyin?token=${encodeURIComponent(result.token)}`
+      try {
+        await copyText(douyinShareText(link, { title, kind }))
+        notifyOk('分享文案已复制，可在微信中打开')
+        onClose()
+      } catch {
+        notifyBad('复制失败')
+      }
+    },
+    onError: (caught) => notifyBad(errorMessage(caught, '生成分享链接失败')),
+  })
+
+  return (
+    <Dialog title="分享作品" onClose={() => (share.isPending ? null : onClose())}>
+      <div className="space-y-3">
+        <Field label="链接有效期">
+          <Select
+            value={ttl}
+            disabled={share.isPending}
+            onChange={(event) => setTtl(Number(event.target.value))}
+          >
+            {SHARE_TTL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <p className="text-xs text-mist">过期后链接将无法打开，已复制的分享文案不受影响。</p>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" disabled={share.isPending} onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" disabled={share.isPending} onClick={() => share.mutate()}>
+            {share.isPending ? '生成中…' : '生成并复制'}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   )
 }
 

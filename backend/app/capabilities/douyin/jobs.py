@@ -189,6 +189,29 @@ def _fail_job(db: Session, job: DouyinJob, message: str, *, stage_message: str =
     db.flush()
 
 
+def _download_cover(db: Session, job: DouyinJob, settings) -> None:  # type: ignore[no-untyped-def]
+    """把作品封面转存到任务目录，失败则保持远程 cover_url（前端降级为图标）。"""
+    if not job.cover_url:
+        return
+    if job.cover_filename and storage.media_path(job.id, job.cover_filename).is_file():
+        return
+    dest = storage.media_path(job.id, "cover.bin")
+    try:
+        size, content_type, _sha = downloader.fetch_to_file(
+            job.cover_url, dest, max_bytes=max(1, int(settings.douyin_max_cover_bytes)), kind="image"
+        )
+    except Exception:  # noqa: BLE001
+        dest.unlink(missing_ok=True)
+        return
+    filename = f"cover.{downloader.extension_for(content_type, 'image')}"
+    final_path = storage.media_path(job.id, filename)
+    if final_path != dest and dest.exists():
+        dest.replace(final_path)
+    job.cover_filename = filename
+    job.cover_content_type = content_type
+    db.flush()
+
+
 def run_job(
     db: Session, job: DouyinJob, *, deadline: float | None = None, persist: bool = False
 ) -> DouyinJob:
@@ -240,6 +263,11 @@ def run_job(
         if persist:
             db.commit()
         return job
+
+    # 转存时顺带把封面存到本地，避免抖音 CDN 链接失效后无法展示
+    _download_cover(db, job, settings)
+    if persist:
+        db.commit()
 
     if job.status != "downloading":
         job.status = "downloading"
@@ -499,6 +527,38 @@ def media_payload(media: DouyinMedia) -> dict[str, Any]:
     }
 
 
+def share_payload(
+    db: Session, job: DouyinJob, media_id: str, ttl_seconds: int | None = None
+) -> dict[str, Any]:
+    """按指定有效期签发分享令牌，返回自包含 media_id 的分享链接信息。"""
+    media = db.get(DouyinMedia, media_id)
+    if media is None or media.job_id != job.id:
+        raise DouyinError("媒体不存在", status_code=404, error_type="not_found")
+    if media.status != "ready" or media.purged or not job.rehost:
+        raise DouyinError("媒体尚未转存完成，暂不可分享", status_code=409, error_type="not_ready")
+    settings = get_settings()
+    requested = settings.douyin_download_token_ttl_seconds if ttl_seconds is None else int(ttl_seconds)
+    low = max(1, int(settings.douyin_share_token_min_ttl_seconds))
+    high = max(low, int(settings.douyin_share_token_max_ttl_seconds))
+    ttl = max(low, min(high, requested))
+    token = tokens.make_token(media.id, ttl_seconds=ttl)
+    return {
+        "id": media.id,
+        "token": token,
+        "expires_in_seconds": ttl,
+        "expires_at": int(time.time()) + ttl,
+        "download_url": tokens.download_path(media.id, token),
+        "absolute_download_url": tokens.download_url(media.id, token),
+    }
+
+
+def cover_path(job: DouyinJob) -> str:
+    """封面展示地址：已转存用同源本地路径，否则回退远程链接。"""
+    if job.cover_filename:
+        return f"/v1/douyin/jobs/{job.id}/cover"
+    return job.cover_url or ""
+
+
 def job_payload(job: DouyinJob) -> dict[str, Any]:
     return {
         "id": job.id,
@@ -512,7 +572,7 @@ def job_payload(job: DouyinJob) -> dict[str, Any]:
         "title": job.title,
         "author_name": job.author_name,
         "author_id": job.author_id,
-        "cover_url": job.cover_url,
+        "cover_url": cover_path(job),
         "duration_ms": job.duration_ms,
         "rehost": bool(job.rehost),
         "media_count": job.media_count,

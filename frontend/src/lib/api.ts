@@ -1412,6 +1412,16 @@ export const api = {
     }),
   deleteMcpDouyinJob: (id: string) =>
     request<void>(`/api/admin/mcp/douyin/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  shareMcpDouyinMedia: (jobId: string, mediaId: string, expiresInSeconds?: number) =>
+    request<DouyinShareToken>(
+      `/api/admin/mcp/douyin/jobs/${encodeURIComponent(jobId)}/media/${encodeURIComponent(mediaId)}/share`,
+      {
+        method: 'POST',
+        body: JSON.stringify(
+          expiresInSeconds === undefined ? {} : { expires_in_seconds: expiresInSeconds },
+        ),
+      },
+    ),
   mcpDouyinProvider: () => request<DouyinProviderStatus>('/api/admin/mcp/douyin/provider'),
   saveMcpDouyinProvider: (payload: { base_url?: string; api_key?: string }) =>
     request<DouyinProviderStatus>('/api/admin/mcp/douyin/provider', {
@@ -2025,6 +2035,15 @@ export type DouyinShareMeta = {
   content_type: string
   size_bytes: number
   download_url: string
+}
+
+export type DouyinShareToken = {
+  id: string
+  token: string
+  expires_in_seconds: number
+  expires_at: number
+  download_url: string
+  absolute_download_url: string
 }
 
 export type DouyinProviderStatus = {
