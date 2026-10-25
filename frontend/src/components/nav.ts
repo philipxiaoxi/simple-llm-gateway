@@ -114,6 +114,14 @@ export function isPathActive(to: string, pathname: string) {
   return pathname === to || pathname.startsWith(`${to}/`)
 }
 
+/**
+ * 当前账号有权限访问的第一个页面（按导航顺序，默认落到「概览」）。
+ * 用于：访问无权限页面时自动跳转，而不是展示无权限页。
+ */
+export function firstAccessiblePath(can: (code?: string) => boolean): string | null {
+  return NAV_LINKS.find((link) => can(link.perm))?.to ?? null
+}
+
 export function currentPageLabel(pathname: string) {
   const ranked = [...NAV_LINKS].sort((left, right) => right.to.length - left.to.length)
   const match = ranked.find((link) => isPathActive(link.to, pathname))
