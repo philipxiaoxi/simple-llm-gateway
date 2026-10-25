@@ -139,6 +139,7 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
         (("view", "查看"), ("event_detail", "查看事件详情"), ("settings", "安全设置")),
     ),
     "mcp_calls": ("MCP 调用日志", (("view", "查看"),)),
+    "mcp_info": ("MCP 资讯上报", (("view", "查看上报历史"),)),
     "mcp_keys": (
         "MCP Key",
         (
@@ -266,8 +267,8 @@ CAPABILITY_VIEW_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "douyin": ("mcp_douyin:view",),
     "browser": ("mcp_browser:view",),
     "diagram": ("mcp_diagrams:view",),
-    "info": ("info:view",),
-    "generation": ("generation:settings", "image_gen:view", "video_gen:view"),
+    "info": ("mcp_info:view",),
+    "generation": ("generation:settings",),
 }
 
 
