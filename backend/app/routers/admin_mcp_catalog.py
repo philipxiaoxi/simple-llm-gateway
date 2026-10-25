@@ -18,14 +18,14 @@ router = APIRouter(
 
 @router.get("")
 def list_catalog(
-    scope: str = Query(default="plaza", pattern="^(plaza|all)$"),
+    scope: str = Query(default="all", pattern="^(plaza|all)$"),
     admin: Admin = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     """广场服务目录与 MCP Key 可授权能力列表的唯一数据源。
 
-    - scope=plaza（默认）：只返回当前账号按功能有权限的能力，用于 MCP 广场；
-    - scope=all：返回全部能力，用于 MCP Key 能力授权与管理端筛选。
+    - scope=all（默认）：返回全部能力。MCP Key 的能力绑定独立于角色权限，必须拿到全量；
+    - scope=plaza：只返回当前账号按功能有权限的能力，仅用于 MCP 广场入口展示。
     """
     ensure_defaults()
     rows = catalog_payload(only_enabled=False)

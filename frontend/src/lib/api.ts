@@ -1305,7 +1305,7 @@ export const api = {
     }),
 
   // ---- MCP 广场 ----
-  mcpCatalog: (scope: 'plaza' | 'all' = 'plaza') =>
+  mcpCatalog: (scope: 'plaza' | 'all' = 'all') =>
     request<{ items: McpCatalogItem[] }>(`/api/admin/mcp/catalog?scope=${scope}`),
   docparseJobs: (query: { status?: string; q?: string } = {}) => {
     const params = new URLSearchParams()
