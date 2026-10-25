@@ -19,8 +19,9 @@ const APP_PATH_PERMS: { prefix: string; perm: string }[] = [
   { prefix: '/mcp-plaza/sites', perm: 'mcp_sites:view' },
   { prefix: '/mcp-plaza/douyin', perm: 'mcp_douyin:view' },
   { prefix: '/mcp-plaza/diagrams', perm: 'mcp_diagrams:view' },
-  { prefix: '/mcp-plaza/generation', perm: 'generation:settings' },
+  { prefix: '/mcp-plaza/generation', perm: 'mcp_generation:view' },
   { prefix: '/mcp-plaza/keys', perm: 'mcp_keys:view' },
+  { prefix: '/info', perm: 'info:view' },
 ]
 
 function permForAppPath(path: string | null | undefined): string {
