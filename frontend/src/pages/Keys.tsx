@@ -444,6 +444,7 @@ function shareText(shareUrl: string, apiKey: string) {
 }
 
 export function KeysPage() {
+  const canKeyReveal = useCan('keys:reveal')
   const canKeyUpdate = useCan('keys:update')
   const canKeyAliases = useCan('keys:aliases_manage')
   const canKeyDelete = useCan('keys:delete')
@@ -855,15 +856,19 @@ export function KeysPage() {
                 <span>创建时间：{formatTime(item.created_at)}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 border-t border-line pt-3 md:flex md:flex-wrap md:items-center">
-                <Button type="button" variant="line" className="w-full md:w-auto" onClick={() => void queryKey(item.id)}>
-                  查询
-                </Button>
-                <Button variant="line" className="w-full md:w-auto" onClick={() => void copyKey(item.id)}>
-                  复制 Key
-                </Button>
-                <Button type="button" variant="line" className="w-full md:w-auto" onClick={() => void shareKey(item.id)}>
-                  分享
-                </Button>
+                {canKeyReveal ? (
+                  <>
+                    <Button type="button" variant="line" className="w-full md:w-auto" onClick={() => void queryKey(item.id)}>
+                      查询
+                    </Button>
+                    <Button variant="line" className="w-full md:w-auto" onClick={() => void copyKey(item.id)}>
+                      复制 Key
+                    </Button>
+                    <Button type="button" variant="line" className="w-full md:w-auto" onClick={() => void shareKey(item.id)}>
+                      分享
+                    </Button>
+                  </>
+                ) : null}
                 <Can code="keys:cc_switch">
                   <Button type="button" variant="line" className="w-full md:w-auto" onClick={() => loadImport(item.id)}>
                     导入
