@@ -138,7 +138,6 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
         "安全中心",
         (("view", "查看"), ("event_detail", "查看事件详情"), ("settings", "安全设置")),
     ),
-    "mcp_catalog": ("MCP 目录", (("view", "查看"),)),
     "mcp_calls": ("MCP 调用日志", (("view", "查看"),)),
     "mcp_keys": (
         "MCP Key",

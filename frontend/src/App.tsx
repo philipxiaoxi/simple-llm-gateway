@@ -115,7 +115,7 @@ const PAGE_PERMS: { pattern: string; perm: string }[] = [
   { pattern: '/mcp-plaza/douyin', perm: 'mcp_douyin:view' },
   { pattern: '/mcp-plaza/browser', perm: 'mcp_browser:view' },
   { pattern: '/mcp-plaza/diagrams', perm: 'mcp_diagrams:view' },
-  { pattern: '/mcp-plaza/generation', perm: 'generation:settings' },
+  { pattern: '/mcp-plaza/generation', perm: 'mcp_generation:view' },
   { pattern: '/mcp-plaza/keys', perm: 'mcp_keys:view' },
   { pattern: '/mcp-plaza/calls', perm: 'mcp_calls:view' },
   { pattern: '/mcp-plaza', perm: 'mcp_catalog:view' },

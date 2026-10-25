@@ -55,7 +55,6 @@ RESOURCE_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/api/admin/skills", "skills"),
     ("/api/admin/skill-bundles", "skill_bundles"),
     ("/api/admin/security", "security"),
-    ("/api/admin/mcp/catalog", "mcp_catalog"),
     ("/api/admin/mcp/calls", "mcp_calls"),
     ("/api/admin/mcp/keys", "mcp_keys"),
     ("/api/admin/mcp/knowledge", "mcp_knowledge"),
@@ -107,10 +106,6 @@ ROUTE_ANY_CODES: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", "/api/admin/keys"): (
         "keys:view",
         "logs:view",
-    ),
-    ("GET", "/api/admin/mcp/catalog"): (
-        "mcp_catalog:view",
-        "mcp_keys:view",
     ),
     ("GET", "/api/admin/mcp/keys"): (
         "mcp_keys:view",
@@ -400,6 +395,8 @@ EXEMPT_PATHS = frozenset(
         "/api/admin/me",
         "/api/admin/oauth/grok/callback",
         "/api/admin/security/beacon",
+        # 服务目录只返回能力元数据，供广场与 MCP Key 授权页使用；可见性由前端按各能力权限过滤
+        "/api/admin/mcp/catalog",
     }
 )
 
