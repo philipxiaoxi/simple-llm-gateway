@@ -351,3 +351,10 @@ def test_mcp_catalog_plaza_scope_follows_capability_permissions(
         for row in client.get("/api/admin/mcp/catalog?scope=all", headers=reader).json()["items"]
     }
     assert {"douyin", "knowledge", "diagram"} <= everything
+
+    # 默认返回全量：MCP Key 能力绑定独立于角色权限
+    default = {
+        row["capability_id"]
+        for row in client.get("/api/admin/mcp/catalog", headers=reader).json()["items"]
+    }
+    assert {"douyin", "knowledge", "diagram"} <= default
