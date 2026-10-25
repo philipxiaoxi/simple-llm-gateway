@@ -75,6 +75,9 @@ const McpSiteDetailPage = lazy(() =>
   import('./pages/McpSiteDetail').then((m) => ({ default: m.McpSiteDetailPage })),
 )
 const McpDouyinPage = lazy(() => import('./pages/McpDouyin').then((m) => ({ default: m.McpDouyinPage })))
+const McpInfoReportsPage = lazy(() =>
+  import('./pages/McpInfoReports').then((m) => ({ default: m.McpInfoReportsPage })),
+)
 const McpGenerationPage = lazy(() => import('./pages/McpGeneration').then((m) => ({ default: m.McpGenerationPage })))
 const McpDouyinDetailPage = lazy(() =>
   import('./pages/McpDouyinDetail').then((m) => ({ default: m.McpDouyinDetailPage })),
@@ -112,6 +115,7 @@ const PAGE_PERMS: { pattern: string; perm: string }[] = [
   { pattern: '/mcp-plaza/docparse', perm: 'mcp_docparse:view' },
   { pattern: '/mcp-plaza/sites', perm: 'mcp_sites:view' },
   { pattern: '/mcp-plaza/douyin', perm: 'mcp_douyin:view' },
+  { pattern: '/mcp-plaza/info-report', perm: 'info:view' },
   { pattern: '/mcp-plaza/diagrams', perm: 'mcp_diagrams:view' },
   { pattern: '/mcp-plaza/generation', perm: 'mcp_generation:view' },
   { pattern: '/mcp-plaza/keys', perm: 'mcp_keys:view' },
@@ -224,6 +228,7 @@ export default function App() {
                 <Route path="sites" element={<McpSitesPage />} />
                 <Route path="sites/:siteId" element={<McpSiteDetailPage />} />
                 <Route path="douyin" element={<McpDouyinPage />} />
+                <Route path="info-report" element={<McpInfoReportsPage />} />
                 <Route path="douyin/:jobId" element={<McpDouyinDetailPage />} />
                 <Route path="diagrams" element={<McpDiagramsPage />} />
                 <Route path="diagrams/:siteId" element={<McpDiagramDetailPage />} />

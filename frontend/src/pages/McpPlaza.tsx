@@ -21,6 +21,7 @@ const APP_PATH_PERMS: { prefix: string; perm: string }[] = [
   { prefix: '/mcp-plaza/diagrams', perm: 'mcp_diagrams:view' },
   { prefix: '/mcp-plaza/generation', perm: 'mcp_generation:view' },
   { prefix: '/mcp-plaza/keys', perm: 'mcp_keys:view' },
+  { prefix: '/mcp-plaza/info-report', perm: 'info:view' },
   { prefix: '/info', perm: 'info:view' },
 ]
 

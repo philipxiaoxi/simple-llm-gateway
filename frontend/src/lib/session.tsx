@@ -19,6 +19,7 @@ const MCP_PLAZA_GRANTS = [
   'mcp_douyin:view',
   'mcp_browser:view',
   'mcp_diagrams:view',
+  'info:view',
   'image_gen:view',
   'video_gen:view',
   'generation:settings',
