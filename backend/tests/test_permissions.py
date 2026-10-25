@@ -358,3 +358,34 @@ def test_mcp_catalog_plaza_scope_follows_capability_permissions(
         for row in client.get("/api/admin/mcp/catalog", headers=reader).json()["items"]
     }
     assert {"douyin", "knowledge", "diagram"} <= default
+
+    # 资讯收集 / 图片视频生成页面权限不再带出对应 MCP 能力卡片
+    page_role = _create_role(
+        client,
+        auth_headers,
+        "页面只读",
+        ["dashboard:view", "info:view", "image_gen:view", "video_gen:view"],
+    )
+    _create_user(client, auth_headers, "page-reader", page_role["id"])
+    page_reader = _login(client, "page-reader")
+    page_plaza = {
+        row["capability_id"]
+        for row in client.get("/api/admin/mcp/catalog?scope=plaza", headers=page_reader).json()["items"]
+    }
+    assert "info" not in page_plaza
+    assert "generation" not in page_plaza
+
+    # 专属权限才控制对应能力入口
+    cap_role = _create_role(
+        client,
+        auth_headers,
+        "MCP 资讯与生成",
+        ["dashboard:view", "mcp_info:view", "generation:settings"],
+    )
+    _create_user(client, auth_headers, "mcp-cap", cap_role["id"])
+    cap_reader = _login(client, "mcp-cap")
+    cap_plaza = {
+        row["capability_id"]
+        for row in client.get("/api/admin/mcp/catalog?scope=plaza", headers=cap_reader).json()["items"]
+    }
+    assert {"info", "generation"} <= cap_plaza

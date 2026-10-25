@@ -19,15 +19,11 @@ const MCP_PLAZA_GRANTS = [
   'mcp_douyin:view',
   'mcp_browser:view',
   'mcp_diagrams:view',
-  'info:view',
-  'image_gen:view',
-  'video_gen:view',
   'generation:settings',
+  'mcp_info:view',
   'mcp_keys:view',
   'mcp_calls:view',
 ] as const
-
-const MCP_GENERATION_GRANTS = ['generation:settings', 'image_gen:view', 'video_gen:view'] as const
 
 /**
  * 登录会话与功能权限。
@@ -71,7 +67,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const can = (code?: string) => {
       if (!code) return true
       if (code === 'mcp_catalog:view') return MCP_PLAZA_GRANTS.some(has)
-      if (code === 'mcp_generation:view') return MCP_GENERATION_GRANTS.some(has)
       return has(code)
     }
     return { me: data, isLoading: isPending, roleName: data?.role?.name ?? '', can }
