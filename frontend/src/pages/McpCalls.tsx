@@ -1,12 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { api, type McpCallLogItem } from '../lib/api'
+import { api, type McpCallLogDetail, type McpCallLogItem } from '../lib/api'
 import { errorMessage, formatTime } from '../lib/utils'
 import { type Column, DataView, EmptyState } from '../components/data-view'
-import { Badge, Button, Card, Field, Input, Select } from '../components/ui'
+import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { FilterBar } from '../components/filter-bar'
 
 const PAGE_SIZES = [25, 50, 100]
+
+function transportLabel(value: string | null | undefined) {
+  if (value === 'mcp') return 'MCP'
+  if (value === 'rest') return 'REST'
+  return '—'
+}
 
 const COLUMNS: Column<McpCallLogItem>[] = [
   { key: 'time', header: '时间', className: 'whitespace-nowrap', cell: (item) => formatTime(item.created_at) },
@@ -20,19 +26,59 @@ const COLUMNS: Column<McpCallLogItem>[] = [
       </div>
     ),
   },
-  { key: 'capability', header: '能力', cell: (item) => item.capability_id },
-  { key: 'operation', header: '操作', className: 'font-mono text-xs', cell: (item) => item.operation },
+  {
+    key: 'capability',
+    header: '能力 / 操作',
+    cell: (item) => (
+      <div className="min-w-0">
+        <div className="text-paper">{item.capability_id}</div>
+        <div className="font-mono text-xs text-mist">{item.operation}</div>
+      </div>
+    ),
+  },
+  {
+    key: 'transport',
+    header: '来源',
+    className: 'whitespace-nowrap text-mist',
+    cell: (item) => transportLabel(item.transport),
+  },
   {
     key: 'result',
     header: '结果',
-    cell: (item) => <Badge tone={item.success ? 'ok' : 'bad'}>{item.success ? '成功' : '失败'}</Badge>,
+    className: 'whitespace-nowrap',
+    cell: (item) => (
+      <div className="flex flex-col items-start gap-1">
+        <Badge tone={item.success ? 'ok' : 'bad'}>{item.success ? '成功' : '失败'}</Badge>
+        {item.http_status != null ? <span className="font-mono text-xs text-mist">HTTP {item.http_status}</span> : null}
+      </div>
+    ),
   },
   { key: 'latency', header: '耗时', className: 'whitespace-nowrap', cell: (item) => `${item.latency_ms} ms` },
   {
+    key: 'client',
+    header: '客户端',
+    cell: (item) =>
+      item.client_ip || item.client_name ? (
+        <div className="min-w-0">
+          <div className="font-mono text-xs text-paper">{item.client_ip || '—'}</div>
+          <div className="text-xs text-mist">{item.client_name || '—'}</div>
+        </div>
+      ) : (
+        <span className="text-mist">—</span>
+      ),
+  },
+  {
     key: 'error',
     header: '错误',
-    className: 'max-w-lg whitespace-pre-wrap break-words text-mist',
-    cell: (item) => item.error_message || '-',
+    className: 'max-w-[18rem]',
+    cell: (item) =>
+      item.error_message ? (
+        <div className="line-clamp-2 break-words text-mist [overflow-wrap:anywhere]" title={item.error_message}>
+          {item.error_message}
+        </div>
+      ) : (
+        <span className="text-mist">-</span>
+      ),
   },
 ]
 
@@ -44,6 +90,7 @@ export function McpCallsPage() {
   const [keyword, setKeyword] = useState('')
   const [limit, setLimit] = useState(50)
   const [page, setPage] = useState(0)
+  const [detailId, setDetailId] = useState<number | null>(null)
 
   const catalog = useQuery({ queryKey: ['mcp-catalog'], queryFn: api.mcpCatalog })
   const keys = useQuery({ queryKey: ['mcp-keys'], queryFn: api.mcpKeys })
@@ -84,7 +131,9 @@ export function McpCallsPage() {
 
   return (
     <div className="space-y-3" aria-busy={calls.isFetching}>
-      <p className="text-sm text-mist">授权通过后的能力调用都会记录，成功与失败均可查。当前共 {total} 条。</p>
+      <p className="text-sm text-mist">
+        授权通过后的能力调用都会记录，成功与失败均可查，点击任意一行查看请求与响应详情。当前共 {total} 条。
+      </p>
 
       <FilterBar activeCount={hasFilter ? 1 : 0} onReset={clearFilters} desktopClassName="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="能力">
@@ -205,6 +254,7 @@ export function McpCallsPage() {
         columns={COLUMNS}
         keyOf={(item) => String(item.id)}
         loading={calls.isFetching && !items.length}
+        onRowClick={(item) => setDetailId(item.id)}
         empty={
           <EmptyState
             title={hasFilter ? '没有符合条件的记录' : '暂无调用记录'}
@@ -225,6 +275,8 @@ export function McpCallsPage() {
               <span aria-hidden="true">·</span>
               <span className="font-mono">{item.operation}</span>
               <span aria-hidden="true">·</span>
+              <span>{transportLabel(item.transport)}</span>
+              <span aria-hidden="true">·</span>
               <span>{item.latency_ms} ms</span>
             </div>
             <div className="text-xs text-mist">{formatTime(item.created_at)}</div>
@@ -236,6 +288,126 @@ export function McpCallsPage() {
           </Card>
         )}
       />
+
+      {detailId != null ? <CallDetailDialog id={detailId} onClose={() => setDetailId(null)} /> : null}
+    </div>
+  )
+}
+
+function pretty(text: string | null | undefined): string {
+  if (!text) return ''
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2)
+  } catch {
+    return text
+  }
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <div className="text-xs uppercase tracking-[0.12em] text-mist">{title}</div>
+      {children}
+    </div>
+  )
+}
+
+function CallDetailDialog({ id, onClose }: { id: number; onClose: () => void }) {
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['mcp-call', id],
+    queryFn: () => api.mcpCall(id),
+  })
+
+  return (
+    <Dialog title="调用详情" onClose={onClose} className="max-w-3xl">
+      {isLoading ? <div className="text-sm text-mist">加载中…</div> : null}
+      {isError ? <div className="text-sm text-danger">{errorMessage(error, '加载失败')}</div> : null}
+      {data ? <CallDetailBody detail={data} /> : null}
+    </Dialog>
+  )
+}
+
+function CallDetailBody({ detail }: { detail: McpCallLogDetail }) {
+  const hasDetail = Boolean(
+    detail.request_body || detail.response_body || detail.request_headers || detail.client_ip || detail.user_agent,
+  )
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Meta label="结果" value={detail.success ? '成功' : '失败'} />
+        <Meta label="来源" value={transportLabel(detail.transport)} />
+        <Meta label="HTTP" value={detail.http_status != null ? String(detail.http_status) : '—'} />
+        <Meta label="耗时" value={`${detail.latency_ms} ms`} />
+        <Meta label="能力" value={detail.capability_id} />
+        <Meta label="操作" value={detail.operation} />
+        <Meta label="Key" value={detail.mcp_key_name || '—'} />
+        <Meta label="时间" value={formatTime(detail.created_at)} />
+      </div>
+
+      {detail.error_message ? (
+        <Section title="错误">
+          <div className="space-y-1 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+            {detail.error_type ? <div className="font-mono text-xs">{detail.error_type}</div> : null}
+            <div className="break-words [overflow-wrap:anywhere]">{detail.error_message}</div>
+          </div>
+        </Section>
+      ) : null}
+
+      {!hasDetail ? (
+        <div className="rounded-md border border-line bg-ink/40 px-3 py-2 text-xs text-mist">
+          该记录为较早的历史数据，未采集请求与响应详情（从本次升级后的调用起开始记录）。
+        </div>
+      ) : (
+        <>
+          <Section title="客户端">
+            <div className="grid grid-cols-1 gap-2 rounded-md border border-line bg-ink/40 px-3 py-2 text-sm sm:grid-cols-3">
+              <div>
+                <div className="text-xs text-mist">IP</div>
+                <div className="break-all font-mono text-xs text-paper [overflow-wrap:anywhere]">{detail.client_ip || '—'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-mist">客户端</div>
+                <div className="text-paper">{detail.client_name || '—'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-mist">User-Agent</div>
+                <div className="break-all text-xs text-paper [overflow-wrap:anywhere]">{detail.user_agent || '—'}</div>
+              </div>
+            </div>
+          </Section>
+
+          {detail.request_headers ? (
+            <Section title="请求头（已脱敏）">
+              <pre className="max-h-48 overflow-auto rounded-md border border-line bg-ink p-3 font-mono text-xs text-paper [overflow-wrap:anywhere]">
+                {pretty(detail.request_headers)}
+              </pre>
+            </Section>
+          ) : null}
+
+          <Section title="请求体">
+            <pre className="max-h-64 overflow-auto rounded-md border border-line bg-ink p-3 font-mono text-xs text-paper [overflow-wrap:anywhere]">
+              {detail.request_body ? pretty(detail.request_body) : '（无请求体）'}
+            </pre>
+          </Section>
+
+          <Section title="响应体">
+            <pre className="max-h-80 overflow-auto rounded-md border border-line bg-ink p-3 font-mono text-xs text-paper [overflow-wrap:anywhere]">
+              {detail.response_body ? pretty(detail.response_body) : '（无响应体）'}
+            </pre>
+          </Section>
+        </>
+      )}
+    </div>
+  )
+}
+
+function Meta({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-line px-3 py-2">
+      <div className="text-xs uppercase tracking-[0.14em] text-mist">{label}</div>
+      <div className="mt-1 truncate text-paper" title={value}>
+        {value}
+      </div>
     </div>
   )
 }

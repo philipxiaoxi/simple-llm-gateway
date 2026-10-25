@@ -1655,6 +1655,7 @@ export const api = {
     const suffix = params.toString() ? `?${params}` : ''
     return request<McpCallLogList>(`/api/admin/mcp/calls${suffix}`)
   },
+  mcpCall: (id: number) => request<McpCallLogDetail>(`/api/admin/mcp/calls/${id}`),
 
   // ---- 资讯收集（独立功能，非 MCP 能力）----
   infoSources: () => request<InfoSourceList>('/api/admin/info/sources'),
@@ -2288,6 +2289,18 @@ export type McpCallLogItem = {
   success: boolean
   latency_ms: number
   error_message: string | null
+  error_type: string | null
+  transport: string | null
+  http_status: number | null
+  client_ip: string | null
+  client_name: string | null
+}
+
+export type McpCallLogDetail = McpCallLogItem & {
+  user_agent: string | null
+  request_headers: string | null
+  request_body: string | null
+  response_body: string | null
 }
 
 export type McpCallLogList = {

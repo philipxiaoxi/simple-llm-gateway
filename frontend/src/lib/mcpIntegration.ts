@@ -55,35 +55,60 @@ function schemaType(schema: ToolSchema | undefined): string {
   return type
 }
 
-/** 逐行渲染参数：名称、类型、必填/可选、说明（含枚举值）。 */
-function paramLines(schema: ToolSchema | undefined): string[] {
-  const properties = schema?.properties || {}
-  const required = new Set(schema?.required || [])
-  return Object.entries(properties).map(([key, value]) => {
-    const head = `${key}: ${schemaType(value)}，${required.has(key) ? '必填' : '可选'}`
-    const detail =
-      typeof value?.description === 'string' && value.description
-        ? value.description
-        : Array.isArray(value?.enum)
-          ? `可选值：${value.enum.join(' / ')}`
-          : ''
-    return `    - ${head}${detail ? `：${detail}` : ''}`
-  })
+export type ToolParamRow = {
+  name: string
+  type: string
+  required: boolean
+  description: string
 }
 
-/** 单个工具的参数与返回说明块。 */
-function toolBlock(tool: IntegrationTool): string[] {
-  const lines = [`- ${tool.name}：${tool.description}`]
-  const params = paramLines(tool.input_schema as ToolSchema)
-  if (params.length) lines.push('  参数：', ...params)
-  if (tool.returns) lines.push(`  返回：${tool.returns}`)
+function paramDescription(value: ToolSchema | undefined): string {
+  if (value && typeof value.description === 'string' && value.description) return value.description
+  if (value && Array.isArray(value.enum) && value.enum.length) return `可选值：${value.enum.join(' / ')}`
+  return '—'
+}
+
+/** 结构化工具参数：界面表格与 markdown 生成共用同一份数据。 */
+export function toolParams(tool: IntegrationTool): ToolParamRow[] {
+  const schema = tool.input_schema as ToolSchema
+  const properties = schema?.properties || {}
+  const required = new Set(schema?.required || [])
+  return Object.entries(properties).map(([name, value]) => ({
+    name,
+    type: schemaType(value),
+    required: required.has(name),
+    description: paramDescription(value),
+  }))
+}
+
+function markdownTable(header: string[], rows: string[][]): string[] {
+  return [
+    `| ${header.join(' | ')} |`,
+    `| ${header.map(() => '---').join(' | ')} |`,
+    ...rows.map((row) => `| ${row.join(' | ')} |`),
+  ]
+}
+
+/** 单个工具的请求参数与返回，输出 markdown（参数用表格）。 */
+function toolBlock(tool: IntegrationTool, capabilityId?: string): string[] {
+  const title = capabilityId ? `[${capabilityId}] ${tool.name}` : tool.name
+  const lines = [`#### ${title}`, tool.description || '（无描述）', '', '请求参数：']
+  const params = toolParams(tool)
+  if (params.length) {
+    lines.push(
+      ...markdownTable(
+        ['参数', '类型', '必填', '说明'],
+        params.map((param) => [param.name, param.type, param.required ? '是' : '否', param.description]),
+      ),
+    )
+  } else {
+    lines.push('无。')
+  }
+  if (tool.returns) lines.push('', `返回：${tool.returns}`)
   return lines
 }
 
-/** 供界面展示：工具的参数与返回说明（多行）。 */
-export function describeTool(tool: IntegrationTool): string {
-  return toolBlock(tool).join('\n')
-}
+
 
 function notesLines(selected: IntegrationCapability[]): string[] {
   const notes: string[] = []
@@ -100,9 +125,7 @@ export function buildMcpPrompt(input: IntegrationInput, selectedIds: string[]): 
   const tools: string[] = []
   for (const capability of selected) {
     for (const tool of capability.tools) {
-      const block = toolBlock(tool)
-      block[0] = `- [${capability.capability_id}] ${tool.name}：${tool.description}`
-      tools.push(...block)
+      tools.push(...toolBlock(tool, capability.capability_id))
     }
   }
   const notes = notesLines(selected)
@@ -181,28 +204,63 @@ export function buildMcpClientConfig(input: IntegrationInput, selectedIds: strin
   )
 }
 
-export function buildCapabilityReference(input: IntegrationInput, capabilityId: string): string {
+/**
+ * 单个能力的自包含 Skill 文档：接入信息（含密钥）、接口、参数表、返回与使用说明。
+ * 复制出去即可直接交给 AI 使用，无需再补充上下文。
+ */
+export function buildCapabilitySkill(input: IntegrationInput, capabilityId: string): string {
   const capability = input.capabilities.find((item) => item.capability_id === capabilityId)
   if (!capability) return ''
-  const lines: string[] = [`# ${capability.name}（${capability.capability_id}）`, capability.description, '']
-  const tools = capability.tools || []
-  if (tools.length) {
-    lines.push('MCP tools：')
-    for (const tool of tools) lines.push(...toolBlock(tool))
-    lines.push('')
-  }
   const endpoints = capability.integration?.rest_endpoints || []
-  if (endpoints.length) {
-    lines.push('REST：')
-    for (const endpoint of endpoints) {
-      lines.push(`- ${endpoint.method} ${input.restBaseUrl}${endpoint.path}  ${endpoint.summary || ''}`.trimEnd())
-    }
-    lines.push('')
-  }
   const notes = capability.integration?.notes || []
+  const lines: string[] = [
+    `# ${capability.name}（${capability.capability_id}）`,
+    capability.description || '（无描述）',
+    '',
+    '## 接入信息',
+    `- Base URL：${input.restBaseUrl}`,
+    `- 鉴权：Authorization: Bearer ${input.keyValue}`,
+    '- 请求体：application/json',
+    '- 错误体：{"error":{"type","message"}}，失败时读取 message',
+    '',
+  ]
+  if (endpoints.length) {
+    lines.push('## REST 接口', '')
+    lines.push(
+      ...markdownTable(
+        ['方法', '路径', '说明'],
+        endpoints.map((endpoint) => [
+          endpoint.method,
+          `${input.restBaseUrl}${endpoint.path}`,
+          endpoint.summary || '—',
+        ]),
+      ),
+      '',
+    )
+  }
+  if (capability.tools.length) {
+    lines.push('## 工具与参数', '')
+    for (const tool of capability.tools) lines.push(...toolBlock(tool), '')
+  }
   if (notes.length) {
-    lines.push('约束：')
-    for (const note of notes) lines.push(`- ${note}`)
+    lines.push('## 约束', ...notes.map((note) => `- ${note}`), '')
+  }
+  lines.push('## 使用说明')
+  lines.push('1. 把上面的 Base URL 与 Bearer 密钥配置到 HTTP 工具或代码中。')
+  lines.push('2. 按「REST 接口」选择路径，请求体为 JSON，字段见「工具与参数」的请求参数表。')
+  lines.push('3. 解析响应结果；失败时读取错误体的 message 并重试。')
+  const example = endpoints[0]
+  if (example) {
+    lines.push(
+      '',
+      '示例：',
+      '```bash',
+      `curl -sS -X ${example.method} "${input.restBaseUrl}${example.path}" \\`,
+      `  -H "Authorization: Bearer ${input.keyValue}" \\`,
+      '  -H "Content-Type: application/json" \\',
+      "  -d '<按请求参数表填写 JSON>'",
+      '```',
+    )
   }
   return lines.join('\n').trim()
 }

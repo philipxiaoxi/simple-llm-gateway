@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRound, Pencil, Plus } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ExternalLink, Eye, KeyRound, MoreHorizontal, Pencil, Plus, Power, PowerOff, Trash2 } from 'lucide-react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Button, Card, Dialog, Field, Input } from '../components/ui'
+import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api, type McpKeyItem } from '../lib/api'
 import { useCan } from '../lib/session'
 import { notifyBad, notifyOk } from '../lib/toast'
@@ -82,6 +82,108 @@ function RateLimitFields({
         />
       </Field>
       <div className="col-span-2 text-xs text-mist">每分钟请求数与同时在途请求数，0 表示不限</div>
+    </div>
+  )
+}
+
+type ActionItem = { key: string; inline: ReactNode; menu: ReactNode }
+
+/**
+ * 单行操作区：尽量多地放按钮，放不下的收进「更多」。
+ * 仅用于移动端（容器占满整行）；桌面端直接平铺全部按钮。
+ */
+function OverflowActions({ actions }: { actions: ActionItem[] }) {
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const measureRef = useRef<HTMLDivElement | null>(null)
+  const [count, setCount] = useState(actions.length)
+  const [open, setOpen] = useState(false)
+  const signature = actions.map((action) => action.key).join(',')
+
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current
+    const measure = measureRef.current
+    if (!wrap || !measure) return
+    const compute = () => {
+      const available = wrap.clientWidth - 4
+      if (available <= 0) return
+      const nodes = Array.from(measure.children) as HTMLElement[]
+      const moreWidth = nodes[nodes.length - 1]?.offsetWidth ?? 0
+      const widths = nodes.slice(0, actions.length).map((node) => node.offsetWidth)
+      const gap = 8
+      const total = widths.reduce((sum, width) => sum + width, 0) + gap * Math.max(0, widths.length - 1)
+      if (total <= available) {
+        setCount(actions.length)
+        return
+      }
+      let used = 0
+      let fits = 0
+      for (let index = 0; index < widths.length; index += 1) {
+        const next = used + (index > 0 ? gap : 0) + widths[index]
+        if (next + gap + moreWidth <= available) {
+          used = next
+          fits = index + 1
+        } else {
+          break
+        }
+      }
+      setCount(fits)
+    }
+    compute()
+    const observer = new ResizeObserver(compute)
+    observer.observe(wrap)
+    return () => observer.disconnect()
+    // 只在动作集合变化时重新测量；宽度变化由 ResizeObserver 处理
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature])
+
+  const visible = actions.slice(0, count)
+  const overflow = actions.slice(count)
+
+  return (
+    <div className="relative min-w-0">
+      <div ref={wrapRef} className="flex flex-nowrap gap-2 overflow-hidden">
+        {visible.map((action) => (
+          <div key={action.key} className="shrink-0">
+            {action.inline}
+          </div>
+        ))}
+        {overflow.length ? (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-line bg-panel-2 px-3 py-2 text-sm font-medium text-paper transition hover:border-mist/40 md:min-h-9"
+          >
+            <MoreHorizontal size={16} /> 更多
+          </button>
+        ) : null}
+      </div>
+
+      <div
+        ref={measureRef}
+        aria-hidden="true"
+        className="pointer-events-none invisible absolute left-0 top-0 flex gap-2 overflow-hidden"
+      >
+        {actions.map((action) => (
+          <div key={action.key} className="shrink-0">
+            {action.inline}
+          </div>
+        ))}
+        <div className="shrink-0">
+          <span className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-md border border-line px-3 py-2 text-sm font-medium md:min-h-9">
+            <MoreHorizontal size={16} /> 更多
+          </span>
+        </div>
+      </div>
+
+      {open ? (
+        <Dialog title="更多操作" onClose={() => setOpen(false)}>
+          <div className="grid gap-2">
+            {overflow.map((action) => (
+              <div key={action.key}>{action.menu}</div>
+            ))}
+          </div>
+        </Dialog>
+      ) : null}
     </div>
   )
 }
@@ -241,15 +343,154 @@ export function McpKeysPage() {
 ) : null}
       </div>
 
-      <div className="grid gap-3">
-        {data.map((item) => (
-          <Card key={item.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <div>
-              <div className="flex items-center gap-2 font-medium">
-                <KeyRound size={15} /> {item.name}
+      <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+        {data.map((item) => {
+          const actions = ([
+            canDocs
+              ? {
+                  key: 'docs',
+                  inline: (
+                    <Link
+                      to={`/mcp-plaza/docs?key=${item.id}`}
+                      className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-line bg-panel-2 px-3 py-2 text-sm font-medium text-paper transition hover:border-mist/40 md:min-h-9"
+                    >
+                      <ExternalLink size={14} /> 接入
+                    </Link>
+                  ),
+                  menu: (
+                    <Link
+                      to={`/mcp-plaza/docs?key=${item.id}`}
+                      className="inline-flex min-h-11 w-full items-center gap-2 rounded-md border border-line bg-panel-2 px-3 py-2 text-sm font-medium text-paper transition hover:border-mist/40"
+                    >
+                      <ExternalLink size={15} /> 接入说明
+                    </Link>
+                  ),
+                }
+              : null,
+            canUpdate
+              ? {
+                  key: 'edit',
+                  inline: (
+                    <Button
+                      type="button"
+                      variant="line"
+                      className="shrink-0 whitespace-nowrap"
+                      onClick={() => openEdit(item)}
+                    >
+                      <Pencil size={14} /> 编辑
+                    </Button>
+                  ),
+                  menu: (
+                    <Button type="button" variant="line" className="w-full justify-start" onClick={() => openEdit(item)}>
+                      <Pencil size={15} /> 编辑
+                    </Button>
+                  ),
+                }
+              : null,
+            canReveal
+              ? {
+                  key: 'reveal',
+                  inline: (
+                    <Button
+                      type="button"
+                      variant="line"
+                      className="shrink-0 whitespace-nowrap"
+                      disabled={reveal.isPending}
+                      onClick={() => reveal.mutate(item.id)}
+                    >
+                      <Eye size={14} /> 查看
+                    </Button>
+                  ),
+                  menu: (
+                    <Button
+                      type="button"
+                      variant="line"
+                      className="w-full justify-start"
+                      disabled={reveal.isPending}
+                      onClick={() => reveal.mutate(item.id)}
+                    >
+                      <Eye size={15} /> 查看密钥
+                    </Button>
+                  ),
+                }
+              : null,
+            canUpdate
+              ? {
+                  key: 'toggle',
+                  inline: (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleStatus.mutate({ id: item.id, status: item.status === 'active' ? 'disabled' : 'active' })
+                      }
+                      className={
+                        item.status === 'active'
+                          ? 'inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-warn/40 bg-warn/10 px-3 py-1.5 text-sm font-medium text-warn transition hover:bg-warn/20 md:min-h-9'
+                          : 'inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-signal/40 bg-signal/10 px-3 py-1.5 text-sm font-medium text-signal transition hover:bg-signal/20 md:min-h-9'
+                      }
+                    >
+                      {item.status === 'active' ? <PowerOff size={14} /> : <Power size={14} />}
+                      {item.status === 'active' ? '停用' : '启用'}
+                    </button>
+                  ),
+                  menu: (
+                    <Button
+                      type="button"
+                      variant="line"
+                      className={item.status === 'active' ? 'w-full justify-start text-warn' : 'w-full justify-start text-signal'}
+                      onClick={() =>
+                        toggleStatus.mutate({ id: item.id, status: item.status === 'active' ? 'disabled' : 'active' })
+                      }
+                    >
+                      {item.status === 'active' ? <PowerOff size={15} /> : <Power size={15} />}
+                      {item.status === 'active' ? '停用' : '启用'}
+                    </Button>
+                  ),
+                }
+              : null,
+            canDelete
+              ? {
+                  key: 'delete',
+                  inline: (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      className="shrink-0 whitespace-nowrap"
+                      onClick={() => {
+                        if (window.confirm(`删除 ${item.name}？`)) remove.mutate(item.id)
+                      }}
+                    >
+                      <Trash2 size={14} /> 删除
+                    </Button>
+                  ),
+                  menu: (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      className="w-full justify-start"
+                      onClick={() => {
+                        if (window.confirm(`删除 ${item.name}？`)) remove.mutate(item.id)
+                      }}
+                    >
+                      <Trash2 size={15} /> 删除
+                    </Button>
+                  ),
+                }
+              : null,
+          ] as (ActionItem | null)[]).filter((action): action is ActionItem => action !== null)
+
+          return (
+          <Card key={item.id} className="flex flex-col gap-3 p-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 font-medium">
+                <KeyRound size={15} />
+                <span className="min-w-0 break-words">{item.name}</span>
+                <Badge tone={item.status === 'active' ? 'ok' : 'warn'}>
+                  {item.status === 'active' ? '已启用' : '已停用'}
+                </Badge>
               </div>
               <div className="mt-1 text-xs text-mist">
-                {item.key_prefix}… · {item.status} · 能力 [{item.capability_ids.join(', ')}] · 创建{' '}
+                {item.key_prefix}… · 能力 [{item.capability_ids.join(', ')}] · 创建{' '}
                 {formatTime(item.created_at)}
               </div>
               <div className="mt-1 font-mono text-xs text-mist">
@@ -259,55 +500,10 @@ export function McpKeysPage() {
                 {item.concurrency_limit > 0 ? item.concurrency_limit : '不限'}
               </div>
             </div>
-            <div className="flex gap-2">
-              {canDocs ? (
-              <Link
-                to={`/mcp-plaza/docs?key=${item.id}`}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-line bg-panel-2 px-3 py-2 text-sm font-medium text-paper transition hover:border-mist/40 md:min-h-9"
-              >
-                接入
-              </Link>
-              ) : null}
-{canUpdate ? (
-              <Button type="button" variant="line" onClick={() => openEdit(item)}>
-                <Pencil size={14} /> 编辑
-              </Button>
-) : null}
-{canReveal ? (
-              <Button
-                type="button"
-                variant="line"
-                disabled={reveal.isPending}
-                onClick={() => reveal.mutate(item.id)}
-              >
-                查看
-              </Button>
-) : null}
-{canUpdate ? (
-              <Button
-                type="button"
-                variant="line"
-                onClick={() =>
-                  toggleStatus.mutate({ id: item.id, status: item.status === 'active' ? 'disabled' : 'active' })
-                }
-              >
-                {item.status === 'active' ? '停用' : '启用'}
-              </Button>
-) : null}
-{canDelete ? (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  if (window.confirm(`删除 ${item.name}？`)) remove.mutate(item.id)
-                }}
-              >
-                删除
-              </Button>
-) : null}
-            </div>
+            <OverflowActions actions={actions} />
           </Card>
-        ))}
+          )
+        })}
       </div>
       {isError ? <div className="text-sm text-danger">{errorMessage(error, '加载失败')}</div> : null}
       {!data.length ? (

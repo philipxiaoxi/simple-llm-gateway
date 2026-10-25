@@ -392,6 +392,7 @@ def _ensure_columns(engine: Engine) -> None:
         _ensure_site_diagram_columns(connection)
         _ensure_douyin_columns(connection)
         _ensure_douyin_job_columns(connection)
+        _ensure_mcp_call_log_columns(connection)
         _ensure_info_item_ai_columns(connection)
         _ensure_info_source_columns(connection)
         _ensure_generation_columns(connection)
@@ -580,6 +581,27 @@ def _ensure_douyin_job_columns(connection) -> None:  # type: ignore[no-untyped-d
         connection.execute(
             text("ALTER TABLE douyin_jobs ADD COLUMN cover_content_type VARCHAR(128) DEFAULT '' NOT NULL")
         )
+
+
+def _ensure_mcp_call_log_columns(connection) -> None:  # type: ignore[no-untyped-def]
+    """mcp_call_logs 增量列：详情字段。历史行为 NULL，界面按「未采集」处理。"""
+    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(mcp_call_logs)"))}
+    if not columns:
+        return
+    additions = {
+        "transport": "VARCHAR(16)",
+        "http_status": "INTEGER",
+        "error_type": "VARCHAR(64)",
+        "request_body": "TEXT",
+        "response_body": "TEXT",
+        "request_headers": "TEXT",
+        "client_ip": "VARCHAR(64)",
+        "user_agent": "VARCHAR(512)",
+        "client_name": "VARCHAR(64)",
+    }
+    for name, ddl in additions.items():
+        if name not in columns:
+            connection.execute(text(f"ALTER TABLE mcp_call_logs ADD COLUMN {name} {ddl}"))
 
 
 def _ensure_generation_columns(connection) -> None:  # type: ignore[no-untyped-def]

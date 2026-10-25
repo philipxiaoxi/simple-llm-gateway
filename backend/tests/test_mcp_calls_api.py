@@ -118,6 +118,88 @@ def test_diagram_rest_writes_call_logs(client: TestClient, auth_headers: dict[st
     assert all(item["capability_id"] == "diagram" for item in logs["items"])
 
 
+def test_call_detail_captures_request_and_response(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _create_key(client, auth_headers, "detail")
+    auth = {"Authorization": f"Bearer {key}"}
+    ok = client.post("/v1/capabilities/knowledge/list", headers=auth, json={})
+    assert ok.status_code == 200, ok.text
+
+    listed = client.get("/api/admin/mcp/calls?capability_id=knowledge&success=true", headers=auth_headers).json()
+    item = listed["items"][0]
+    assert item["transport"] == "rest"
+    assert item["http_status"] == 200
+
+    detail = client.get(f"/api/admin/mcp/calls/{item['id']}", headers=auth_headers)
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["id"] == item["id"]
+    assert body["request_body"] == "{}"
+    assert body["response_body"]
+    assert body["request_headers"]
+    assert body["user_agent"]
+
+    missing = client.get("/api/admin/mcp/calls/999999", headers=auth_headers)
+    assert missing.status_code == 404
+
+
+def test_call_detail_handles_legacy_rows(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from app.db import get_session_factory
+    from app.models import McpCallLog
+
+    session = get_session_factory()()
+    try:
+        row = McpCallLog(capability_id="knowledge", operation="list", success=True, latency_ms=5)
+        session.add(row)
+        session.commit()
+        call_id = row.id
+    finally:
+        session.close()
+
+    detail = client.get(f"/api/admin/mcp/calls/{call_id}", headers=auth_headers)
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    # 历史记录未采集详情，字段为 null，前端据此降级展示
+    assert body["transport"] is None
+    assert body["request_body"] is None
+    assert body["response_body"] is None
+    assert body["client_ip"] is None
+
+
+def test_mcp_tool_failure_is_logged(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _create_key(client, auth_headers, "mcp-fail")
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+    }
+    response = client.post(
+        "/mcp/",
+        headers=headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "knowledge_search",
+                "arguments": {"kb_id": "missing", "query": "hello", "mode": "fulltext"},
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    logs = client.get(
+        "/api/admin/mcp/calls?capability_id=knowledge&success=false", headers=auth_headers
+    ).json()
+    assert logs["total"] >= 1
+    item = logs["items"][0]
+    assert item["transport"] == "mcp"
+    assert item["error_type"]
+    assert item["http_status"] == 404
+
+    detail = client.get(f"/api/admin/mcp/calls/{item['id']}", headers=auth_headers).json()
+    assert detail["request_body"] and "missing" in detail["request_body"]
+
+
 def test_call_logs_filters(client: TestClient, auth_headers: dict[str, str]):
     _seed_calls(client, auth_headers)
 

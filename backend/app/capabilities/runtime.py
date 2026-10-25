@@ -51,6 +51,7 @@ async def invoke_capability(
     body = payload or {}
     try:
         result = await ensure_provider.dispatch(operation, body, CallContext(db=db, mcp_key=mcp_key))
+        normalized = result if isinstance(result, dict) else {"result": result}
         record_mcp_call(
             db,
             mcp_key=mcp_key,
@@ -58,8 +59,11 @@ async def invoke_capability(
             operation=operation,
             success=True,
             latency_ms=int((time.perf_counter() - started) * 1000),
+            http_status=200,
+            request_body=body,
+            response_body=normalized,
         )
-        return result if isinstance(result, dict) else {"result": result}
+        return normalized
     except Exception as error:
         cap_error = _normalize_error(error)
         record_mcp_call(
@@ -70,6 +74,9 @@ async def invoke_capability(
             success=False,
             latency_ms=int((time.perf_counter() - started) * 1000),
             error_message=cap_error.message,
+            error_type=cap_error.error_type,
+            http_status=cap_error.status_code,
+            request_body=body,
         )
         raise cap_error from error
 

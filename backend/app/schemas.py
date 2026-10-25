@@ -1008,6 +1008,18 @@ class McpCallLogOut(BaseModel):
     success: bool
     latency_ms: int
     error_message: str | None = None
+    error_type: str | None = None
+    transport: str | None = None
+    http_status: int | None = None
+    client_ip: str | None = None
+    client_name: str | None = None
+
+
+class McpCallLogDetailOut(McpCallLogOut):
+    user_agent: str | None = None
+    request_headers: str | None = None
+    request_body: str | None = None
+    response_body: str | None = None
 
 
 class McpCallLogListOut(BaseModel):
