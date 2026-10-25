@@ -530,6 +530,7 @@ export function Layout() {
 
       <main
         ref={mainRef}
+        data-app-scroll
         className="bg-ink px-4 pb-[calc(var(--app-tab)+env(safe-area-inset-bottom)+0.75rem)] pt-[calc(var(--app-header)+env(safe-area-inset-top)+0.75rem)] md:h-svh md:overflow-y-auto md:px-6 md:pb-6 md:pt-6 lg:px-8"
       >
         <PageContainer>
