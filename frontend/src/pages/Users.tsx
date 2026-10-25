@@ -8,7 +8,7 @@ import { api, type AdminUser } from '../lib/api'
 import { useSession } from '../lib/session'
 import { Can } from '../lib/session'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { errorMessage, formatTime } from '../lib/utils'
+import { cn, errorMessage, formatTime } from '../lib/utils'
 
 type Draft = { id: number | null; username: string; password: string; roleId: number | null; enabled: boolean }
 
@@ -35,8 +35,14 @@ export function UsersPage() {
 
   const { me, can } = useSession()
   const canToggle = can('users:toggle_status')
+  // 角色信息依赖角色管理的查看权限：没有该权限时不请求角色、也不展示角色信息
+  const canSeeRoles = can('roles:view')
   const { data: users = [], isPending } = useQuery({ queryKey: ['users'], queryFn: api.users })
-  const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: api.roles })
+  const { data: roles = [] } = useQuery({
+    queryKey: ['roles'],
+    queryFn: api.roles,
+    enabled: canSeeRoles,
+  })
   const isAdmin = me?.role?.builtin === true || (me?.permissions ?? []).includes('*')
   const assignableRoles = roles.filter((role) =>
     role.builtin ? isAdmin : role.permissions.every((code) => can(code)),
@@ -112,31 +118,37 @@ export function UsersPage() {
     <PageContainer>
       <PageHeader
         title="用户管理"
-        description="管理后台账号：每个账号绑定一个角色，权限由角色决定。"
+        description={
+          canSeeRoles
+            ? '管理后台账号：每个账号绑定一个角色，权限由角色决定。'
+            : '管理后台账号。'
+        }
         actions={
-          <Can code="users:create">
-            <Button
-              className="w-full sm:w-auto"
-              onClick={() =>
-                setDraft({
-                  id: null,
-                  username: '',
-                  password: '',
-                  roleId: assignableRoles[0]?.id ?? null,
-                  enabled: true,
-                })
-              }
-            >
-              <Plus size={16} /> 新增账号
-            </Button>
-          </Can>
+          canSeeRoles ? (
+            <Can code="users:create">
+              <Button
+                className="w-full sm:w-auto"
+                onClick={() =>
+                  setDraft({
+                    id: null,
+                    username: '',
+                    password: '',
+                    roleId: assignableRoles[0]?.id ?? null,
+                    enabled: true,
+                  })
+                }
+              >
+                <Plus size={16} /> 新增账号
+              </Button>
+            </Can>
+          ) : null
         }
       />
 
-      <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
+      <div className={cn('mt-4 grid gap-2 sm:gap-3', canSeeRoles ? 'grid-cols-3' : 'grid-cols-2')}>
         <Stat label="账号" value={stats.total} />
         <Stat label="启用" value={stats.enabled} />
-        <Stat label="管理员" value={stats.admins} />
+        {canSeeRoles ? <Stat label="管理员" value={stats.admins} /> : null}
       </div>
 
       {isPending ? (
@@ -156,24 +168,28 @@ export function UsersPage() {
                     <div className="truncate text-base font-medium text-paper" title={user.username}>
                       {user.username}
                     </div>
-                    <div className="mt-0.5 truncate text-xs text-mist" title={user.role_name || '未分配角色'}>
-                      {user.role_name || '未分配角色'}
-                    </div>
+                    {canSeeRoles ? (
+                      <div className="mt-0.5 truncate text-xs text-mist" title={user.role_name || '未分配角色'}>
+                        {user.role_name || '未分配角色'}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  {user.role_builtin ? <Badge tone="ok">管理员</Badge> : null}
+                  {canSeeRoles && user.role_builtin ? <Badge tone="ok">管理员</Badge> : null}
                   {user.is_enabled ? <Badge tone="info">启用</Badge> : <Badge tone="bad">已停用</Badge>}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-lg border border-line bg-ink/40 px-3 py-2">
-                  <div className="text-[11px] uppercase tracking-[0.12em] text-mist">角色</div>
-                  <div className="mt-1 truncate text-paper" title={user.role_name || '未分配角色'}>
-                    {user.role_name || '未分配'}
+              <div className={cn('grid gap-2 text-xs', canSeeRoles ? 'grid-cols-2' : 'grid-cols-1')}>
+                {canSeeRoles ? (
+                  <div className="rounded-lg border border-line bg-ink/40 px-3 py-2">
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-mist">角色</div>
+                    <div className="mt-1 truncate text-paper" title={user.role_name || '未分配角色'}>
+                      {user.role_name || '未分配'}
+                    </div>
                   </div>
-                </div>
+                ) : null}
                 <div className="rounded-lg border border-line bg-ink/40 px-3 py-2">
                   <div className="text-[11px] uppercase tracking-[0.12em] text-mist">最近登录</div>
                   <div className="mt-1 truncate text-paper" title={formatTime(user.last_login_at)}>
@@ -192,7 +208,7 @@ export function UsersPage() {
                         id: user.id,
                         username: user.username,
                         password: '',
-                        roleId: user.role_id,
+                        roleId: canSeeRoles ? user.role_id : null,
                         enabled: user.is_enabled,
                       })
                     }
@@ -252,20 +268,22 @@ export function UsersPage() {
                 />
               </Field>
             )}
-            <Field label="角色">
-              <Select
-                value={draft.roleId ?? ''}
-                onChange={(event) => setDraft({ ...draft, roleId: Number(event.target.value) })}
-              >
-                <option value="">请选择角色</option>
-                {assignableRoles.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.name}
-                    {role.builtin ? '（全部权限）' : `（${role.permissions.length} 项权限）`}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            {canSeeRoles ? (
+              <Field label="角色">
+                <Select
+                  value={draft.roleId ?? ''}
+                  onChange={(event) => setDraft({ ...draft, roleId: Number(event.target.value) })}
+                >
+                  <option value="">请选择角色</option>
+                  {assignableRoles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                      {role.builtin ? '（全部权限）' : `（${role.permissions.length} 项权限）`}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : null}
             {canToggle ? (
             <label className="flex items-center gap-2 rounded-lg border border-line bg-ink/40 px-3 py-2.5 text-sm text-mist">
               <input
@@ -286,7 +304,7 @@ export function UsersPage() {
                 disabled={
                   save.isPending ||
                   !draft.username.trim() ||
-                  draft.roleId === null ||
+                  (!draft.id && draft.roleId === null) ||
                   (!draft.id && draft.password.length < 8)
                 }
                 onClick={() => save.mutate(draft)}
