@@ -139,11 +139,14 @@ def test_builtin_admin_role_is_listed_and_locked(client: TestClient, auth_header
 
 
 def test_role_validation_and_references(client: TestClient, auth_headers: dict[str, str]) -> None:
-    bad = client.post(
-        "/api/admin/roles", headers=auth_headers, json={"name": "坏角色", "permissions": ["accounts:nope"]}
+    # 历史/未知权限码直接忽略，只保留目录内的码
+    legacy = client.post(
+        "/api/admin/roles",
+        headers=auth_headers,
+        json={"name": "带历史码", "permissions": ["accounts:nope", "logs:view"]},
     )
-    assert bad.status_code == 400
-    assert "accounts:nope" in bad.text
+    assert legacy.status_code == 201, legacy.text
+    assert legacy.json()["permissions"] == ["logs:view"]
 
     role = _create_role(client, auth_headers, "运维只读", ["logs:view"])
     _create_user(client, auth_headers, "ops-reader", role["id"])
