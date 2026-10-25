@@ -97,7 +97,7 @@ export function SkillBundleDetailPage() {
         <ArrowLeft size={16} /> 返回组合列表
       </Link>
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1 overflow-hidden">
           <h1
             title={data.name}
@@ -113,24 +113,25 @@ export function SkillBundleDetailPage() {
             <span>更新于 {formatTime(data.updated_at)}</span>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
           {canManage ? (
-          <Button variant="line" onClick={() => setEditing(true)}>
+          <Button variant="line" className="w-full sm:w-auto" onClick={() => setEditing(true)}>
             <Pencil size={16} />
             编辑
           </Button>
           ) : null}
-          <Button variant="line" onClick={() => void copyInstall()}>
+          <Button variant="line" className="w-full whitespace-nowrap sm:w-auto" onClick={() => void copyInstall()}>
             <Copy size={16} />
             复制安装指令
           </Button>
-          <Button onClick={() => void downloadZip()}>
+          <Button className="w-full sm:w-auto" onClick={() => void downloadZip()}>
             <Download size={16} />
             打包下载
           </Button>
           {canManage ? (
           <Button
             variant="danger"
+            className="w-full sm:w-auto"
             onClick={() => {
               if (window.confirm(`删除组合包「${data.name}」？不会删除其中的 Skill。`)) {
                 deleteMutation.mutate()

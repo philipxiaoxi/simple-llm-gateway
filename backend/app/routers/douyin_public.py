@@ -150,6 +150,27 @@ def delete_job(job_id: str, db: Session = Depends(get_db), mcp_key=Depends(_mcp_
     db.commit()
 
 
+@router.get("/jobs/{job_id}/cover")
+def job_cover(job_id: str, db: Session = Depends(get_db)):
+    """公开封面：任务转存的封面图，供列表/分享页直接以 <img> 展示。"""
+    from app.models import DouyinJob
+
+    job = db.get(DouyinJob, job_id)
+    if job is None or not job.cover_filename:
+        return _error(404, "not_found", "封面不存在")
+    path = storage.media_path(job.id, job.cover_filename)
+    if not path.is_file():
+        return _error(404, "not_found", "封面不存在")
+    return FileResponse(
+        path,
+        media_type=job.cover_content_type or "image/jpeg",
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
 @router.get("/share")
 def share_meta(token: str | None = Query(default=None), db: Session = Depends(get_db)):
     """公开分享元数据：仅凭签名令牌返回标题与播放所需信息，无需登录。"""
@@ -166,7 +187,7 @@ def share_meta(token: str | None = Query(default=None), db: Session = Depends(ge
         "id": media.id,
         "kind": media.kind,
         "title": (job.title if job else "") or "",
-        "cover_url": (job.cover_url if job else "") or "",
+        "cover_url": jobs.cover_path(job) if job else "",
         "filename": media.filename,
         "content_type": media.content_type,
         "size_bytes": media.size_bytes,

@@ -64,7 +64,7 @@ export function McpPlazaLayout() {
         }
       />
       {inApp ? null : (
-        <div className="flex flex-wrap gap-2 border-b border-line pb-2">
+        <div className="flex gap-2 overflow-x-auto border-b border-line pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {visibleTabs.map((tab) => (
             <NavLink
               key={tab.to}
@@ -72,7 +72,7 @@ export function McpPlazaLayout() {
               end={tab.end}
               className={({ isActive }) =>
                 cn(
-                  'inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm',
+                  'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-2 text-sm',
                   isActive ? 'bg-signal/15 text-signal' : 'text-mist hover:text-paper',
                 )
               }

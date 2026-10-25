@@ -1412,6 +1412,16 @@ export const api = {
     }),
   deleteMcpDouyinJob: (id: string) =>
     request<void>(`/api/admin/mcp/douyin/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  shareMcpDouyinMedia: (jobId: string, mediaId: string, expiresInSeconds?: number) =>
+    request<DouyinShareToken>(
+      `/api/admin/mcp/douyin/jobs/${encodeURIComponent(jobId)}/media/${encodeURIComponent(mediaId)}/share`,
+      {
+        method: 'POST',
+        body: JSON.stringify(
+          expiresInSeconds === undefined ? {} : { expires_in_seconds: expiresInSeconds },
+        ),
+      },
+    ),
   mcpDouyinProvider: () => request<DouyinProviderStatus>('/api/admin/mcp/douyin/provider'),
   saveMcpDouyinProvider: (payload: { base_url?: string; api_key?: string }) =>
     request<DouyinProviderStatus>('/api/admin/mcp/douyin/provider', {
@@ -1645,6 +1655,7 @@ export const api = {
     const suffix = params.toString() ? `?${params}` : ''
     return request<McpCallLogList>(`/api/admin/mcp/calls${suffix}`)
   },
+  mcpCall: (id: number) => request<McpCallLogDetail>(`/api/admin/mcp/calls/${id}`),
 
   // ---- 在线浏览器（browser 能力）----
   browserStatus: () => request<BrowserStatus>('/api/admin/mcp/browser/status'),
@@ -2052,6 +2063,15 @@ export type DouyinShareMeta = {
   download_url: string
 }
 
+export type DouyinShareToken = {
+  id: string
+  token: string
+  expires_in_seconds: number
+  expires_at: number
+  download_url: string
+  absolute_download_url: string
+}
+
 export type DouyinProviderStatus = {
   base_url: string
   configured: boolean
@@ -2294,6 +2314,18 @@ export type McpCallLogItem = {
   success: boolean
   latency_ms: number
   error_message: string | null
+  error_type: string | null
+  transport: string | null
+  http_status: number | null
+  client_ip: string | null
+  client_name: string | null
+}
+
+export type McpCallLogDetail = McpCallLogItem & {
+  user_agent: string | null
+  request_headers: string | null
+  request_body: string | null
+  response_body: string | null
 }
 
 export type McpCallLogList = {

@@ -159,12 +159,14 @@ function WorkMedia({ task, onPreview }: { task: GenerationTask; onPreview: (url:
 }
 
 export function GenerationWorks({
+  kind,
   tasks,
   onSelect,
   onDelete,
   onReuse,
   onCreate,
 }: {
+  kind: string
   tasks: GenerationTask[]
   onSelect: (task: GenerationTask) => void
   onDelete: (task: GenerationTask) => void
@@ -172,8 +174,9 @@ export function GenerationWorks({
   onCreate: () => void
 }) {
   const [preview, setPreview] = useState<{ url: string; alt: string } | null>(null)
-  const canCreate = useCan(`${tasks[0]?.kind === 'video' ? 'video_gen' : 'image_gen'}:task_create`)
-  const canDelete = useCan(`${tasks[0]?.kind === 'video' ? 'video_gen' : 'image_gen'}:task_delete`)
+  const kindResource = kind === 'video' ? 'video_gen' : 'image_gen'
+  const canCreate = useCan(`${kindResource}:task_create`)
+  const canDelete = useCan(`${kindResource}:task_delete`)
 
   if (!tasks.length) {
     return (

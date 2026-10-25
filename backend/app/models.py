@@ -666,6 +666,16 @@ class McpCallLog(Base):
     latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
     request_meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 以下为详情字段：历史记录为 NULL，界面按「未采集」降级展示
+    transport: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    request_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    request_headers: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    client_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class BrowserSession(Base):
@@ -912,6 +922,9 @@ class DouyinJob(Base):
     author_name: Mapped[str] = mapped_column(String(128), default="", nullable=False)
     author_id: Mapped[str] = mapped_column(String(64), default="", nullable=False)
     cover_url: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
+    # 转存到本地的封面文件名与类型（历史任务为空，回退到远程 cover_url）
+    cover_filename: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    cover_content_type: Mapped[str] = mapped_column(String(128), default="", nullable=False)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     rehost: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True, nullable=False)
