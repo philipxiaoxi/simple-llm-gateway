@@ -4,6 +4,11 @@ import { createPortal } from 'react-dom'
 import type { ButtonHTMLAttributes, ComponentPropsWithRef, ReactNode, SelectHTMLAttributes } from 'react'
 import { cn } from '../lib/utils'
 
+// 弹层打开期间统一锁定滚动：body（移动端）+ 桌面端主内容滚动区（[data-app-scroll]）。
+// 用计数兼容嵌套弹层，避免内层关闭时提前解锁外层。
+let openSheetCount = 0
+let savedBodyOverflow: string | null = null
+
 export function Switch({
   checked,
   onCheckedChange,
@@ -205,12 +210,19 @@ export function Sheet({
     }
 
     document.addEventListener('keydown', onKey, true)
-    const body = document.body
-    const previousOverflow = body.style.overflow
-    body.style.overflow = 'hidden'
+    if (openSheetCount === 0) {
+      savedBodyOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      document.documentElement.dataset.modalOpen = 'true'
+    }
+    openSheetCount += 1
     return () => {
       document.removeEventListener('keydown', onKey, true)
-      body.style.overflow = previousOverflow
+      openSheetCount = Math.max(0, openSheetCount - 1)
+      if (openSheetCount === 0) {
+        document.body.style.overflow = savedBodyOverflow ?? ''
+        delete document.documentElement.dataset.modalOpen
+      }
       previous?.focus?.()
     }
   }, [])
