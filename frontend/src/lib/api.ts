@@ -1657,6 +1657,16 @@ export const api = {
   },
   mcpCall: (id: number) => request<McpCallLogDetail>(`/api/admin/mcp/calls/${id}`),
 
+  // ---- 资讯上报历史 ----
+  infoReports: (query: { limit?: number; offset?: number; q?: string } = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<InfoReportList>(`/api/admin/mcp/info-reports${suffix}`)
+  },
+
   // ---- 资讯收集（独立功能，非 MCP 能力）----
   infoSources: () => request<InfoSourceList>('/api/admin/info/sources'),
   infoSourcePreview: (raw: string, kind = 'telegram') =>
@@ -2305,6 +2315,29 @@ export type McpCallLogDetail = McpCallLogItem & {
 
 export type McpCallLogList = {
   items: McpCallLogItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export type InfoReportItem = {
+  id: string
+  title: string
+  excerpt: string
+  author_name: string
+  kind: string
+  status: string
+  media_count: number
+  is_featured: boolean
+  is_hidden: boolean
+  ai_status: string
+  ai_label: string
+  permalink: string
+  created_at: string | null
+}
+
+export type InfoReportList = {
+  items: InfoReportItem[]
   total: number
   limit: number
   offset: number

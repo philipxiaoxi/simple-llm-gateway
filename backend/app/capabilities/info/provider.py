@@ -16,7 +16,7 @@ class InfoReportProvider:
         version="1.0.0",
         category="content",
         status="enabled",
-        admin_path="/info",
+        admin_path="/mcp-plaza/info-report",
         icon="newspaper",
         input_schema={
             "report": {
