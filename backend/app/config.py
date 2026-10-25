@@ -165,6 +165,26 @@ class Settings(BaseSettings):
     diagram_render_concurrency: int = 2
     diagram_max_source_bytes: int = 256 * 1024
     diagram_default_quality: str = "showcase"
+    # ---- 在线浏览器（browser 能力）----
+    browser_enabled: bool = False
+    browser_media_path: str = ""
+    browser_headless: bool = True
+    browser_max_sessions: int = 10
+    browser_max_sessions_per_key: int = 2
+    browser_idle_ttl_seconds: int = 900
+    browser_nav_timeout_ms: int = 30000
+    browser_viewport_width: int = 1280
+    browser_viewport_height: int = 720
+    browser_max_screenshot_bytes: int = 5 * 1024 * 1024
+    browser_screenshot_ttl_seconds: int = 86400
+    # 空表示允许任意公网主机；配置后仅允许列表内主机及其子域
+    browser_allowed_hosts: str = ""
+    browser_blocked_hosts: str = ""
+    browser_worker_url: str = ""
+    browser_user_agent: str = (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    )
     # ---- 资讯收集（Telegram 等公开渠道 → 瀑布流浏览）----
     # 媒体目录留空时与数据库同级（Docker 下即 /data/info，已被 ./data 卷覆盖）
     info_media_path: str = ""
@@ -326,6 +346,10 @@ class Settings(BaseSettings):
     @property
     def resolved_info_media_path(self) -> Path:
         return self._resolve_data_path(self.info_media_path, "info")
+
+    @property
+    def resolved_browser_media_path(self) -> Path:
+        return self._resolve_data_path(self.browser_media_path, "browser")
 
     @property
     def resolved_offline_cache_path(self) -> Path:

@@ -62,6 +62,7 @@ RESOURCE_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/api/admin/mcp/docparse", "mcp_docparse"),
     ("/api/admin/mcp/sites", "mcp_sites"),
     ("/api/admin/mcp/douyin", "mcp_douyin"),
+    ("/api/admin/mcp/browser", "mcp_browser"),
     ("/api/admin/mcp/diagrams", "mcp_diagrams"),
     ("/api/admin/tools", "tools"),
     ("/api/admin/jobs", "jobs"),
@@ -308,6 +309,11 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("POST", "/api/admin/mcp/sites/{site_id}/versions/{version_id}/retry"): "mcp_sites:version_retry",
     ("DELETE", "/api/admin/mcp/sites/{site_id}/versions/{version_id}"): "mcp_sites:version_delete",
     ("POST", "/api/admin/mcp/sites/{site_id}/token"): "mcp_sites:token_manage",
+    # MCP 在线浏览器
+    ("GET", "/api/admin/mcp/browser/status"): "mcp_browser:view",
+    ("GET", "/api/admin/mcp/browser/sessions"): "mcp_browser:view",
+    ("GET", "/api/admin/mcp/browser/sessions/{session_id}"): "mcp_browser:view",
+    ("POST", "/api/admin/mcp/browser/sessions/{session_id}/close"): "mcp_browser:close",
     # MCP 抖音
     ("GET", "/api/admin/mcp/douyin/jobs"): "mcp_douyin:view",
     ("GET", "/api/admin/mcp/douyin/jobs/{job_id}"): "mcp_douyin:view",
