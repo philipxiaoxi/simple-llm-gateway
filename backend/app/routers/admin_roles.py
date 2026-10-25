@@ -10,7 +10,7 @@ from app.clock import utcnow
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import Admin, Role
-from app.permissions import ADMIN_ROLE_NAME, WILDCARD, catalog_payload, validate_codes
+from app.permissions import ADMIN_ROLE_NAME, WILDCARD, all_codes, catalog_payload
 from app.schemas import (
     PermissionCatalogResourceOut,
     RoleCreate,
@@ -44,11 +44,16 @@ def _admin_count(db: Session, role_id: int) -> int:
 
 
 def _role_out(db: Session, role: Role) -> RoleOut:
+    # 历史遗留/未知权限码对前端不可见，避免旧码被再次提交
+    known = all_codes()
+    codes = sorted(code for code in parse_permissions(role.permissions_json) if code in known)
+    if not codes and role.builtin:
+        codes = [WILDCARD]
     return RoleOut(
         id=role.id,
         name=role.name,
         builtin=bool(role.builtin),
-        permissions=sorted(parse_permissions(role.permissions_json)) or ([WILDCARD] if role.builtin else []),
+        permissions=codes,
         admin_count=_admin_count(db, role.id),
         created_at=role.created_at,
         updated_at=role.updated_at or role.created_at,
@@ -87,6 +92,12 @@ def list_roles(db: Session = Depends(get_db)) -> list[RoleOut]:
     return [_role_out(db, role) for role in roles]
 
 
+def _known_codes(codes: list[str]) -> list[str]:
+    """忽略历史遗留/未知权限码，只保留当前目录内的码。"""
+    known = all_codes()
+    return [code for code in codes if code == WILDCARD or code in known]
+
+
 @router.post("/roles", response_model=RoleOut, status_code=201)
 def create_role(
     payload: RoleCreate,
@@ -97,13 +108,11 @@ def create_role(
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="角色名不能为空")
-    unknown = validate_codes(payload.permissions)
-    if unknown:
-        raise HTTPException(status_code=400, detail=f"未知权限码：{'、'.join(unknown)}")
-    _ensure_codes_assignable(db, admin, payload.permissions)
+    codes = _known_codes(payload.permissions)
+    _ensure_codes_assignable(db, admin, codes)
     if db.scalar(select(Role).where(func.lower(Role.name) == name.lower())) is not None:
         raise HTTPException(status_code=409, detail="角色名已存在")
-    role = Role(name=name, builtin=False, permissions_json=_dump(payload.permissions))
+    role = Role(name=name, builtin=False, permissions_json=_dump(codes))
     db.add(role)
     db.commit()
     db.refresh(role)
@@ -136,11 +145,9 @@ def update_role(
             raise HTTPException(status_code=409, detail="角色名已存在")
         role.name = name
     if payload.permissions is not None:
-        unknown = validate_codes(payload.permissions)
-        if unknown:
-            raise HTTPException(status_code=400, detail=f"未知权限码：{'、'.join(unknown)}")
-        _ensure_codes_assignable(db, admin, payload.permissions)
-        role.permissions_json = _dump(payload.permissions)
+        codes = _known_codes(payload.permissions)
+        _ensure_codes_assignable(db, admin, codes)
+        role.permissions_json = _dump(codes)
     role.updated_at = utcnow()
     db.commit()
     db.refresh(role)
