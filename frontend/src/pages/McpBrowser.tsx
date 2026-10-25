@@ -186,7 +186,7 @@ export function McpBrowserPage() {
 
               <div className="overflow-hidden rounded-lg border border-line bg-black">
                 {screenshot ? (
-                  <a href={screenshot.absolute_url} target="_blank" rel="noreferrer" className="block">
+                  <a href={screenshot.screenshot_url} target="_blank" rel="noreferrer" className="block">
                     <img
                       src={screenshot.screenshot_url}
                       alt="当前页面截图"
@@ -207,7 +207,7 @@ export function McpBrowserPage() {
                   <span>
                     {screenshot.width}×{screenshot.height} · {Math.max(1, Math.round(screenshot.bytes / 1024))} KB
                   </span>
-                  <a href={screenshot.absolute_url} target="_blank" rel="noreferrer" className="text-signal hover:underline">
+                  <a href={screenshot.screenshot_url} target="_blank" rel="noreferrer" className="text-signal hover:underline">
                     打开原图
                   </a>
                 </div>
