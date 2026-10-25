@@ -3,7 +3,7 @@ import { Plus, ShieldCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { PageContainer, PageHeader } from '../components/layout-primitives'
-import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
+import { Badge, Button, Card, Field, Input, Sheet } from '../components/ui'
 import { api } from '../lib/api'
 import { useSession } from '../lib/session'
 import { Can } from '../lib/session'
@@ -217,12 +217,27 @@ export function RolesPage() {
       )}
 
       {draft ? (
-        <Dialog
+        <Sheet
           title={draft.id ? '编辑角色' : '新增角色'}
           onClose={() => setDraft(null)}
-          className="max-w-2xl"
+          size="lg:max-w-2xl"
+          bodyClassName="flex min-h-0 flex-col gap-4 overflow-hidden"
+          footer={
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+              <Button variant="ghost" className="w-full sm:w-auto" onClick={() => setDraft(null)}>
+                取消
+              </Button>
+              <Button
+                className="w-full sm:w-auto"
+                disabled={save.isPending || !draft.name.trim()}
+                onClick={() => save.mutate(draft)}
+              >
+                保存
+              </Button>
+            </div>
+          }
         >
-          <div className="space-y-4">
+          <div className="shrink-0 space-y-4">
             <Field label="角色名称">
               <Input
                 value={draft.name}
@@ -244,80 +259,67 @@ export function RolesPage() {
                 onChange={(event) => setKeyword(event.target.value)}
               />
             </div>
-
-            <div className="max-h-[46vh] space-y-2.5 overflow-y-auto pr-1">
-              {filtered.map((group) => {
-                const codes = group.permissions.map((item) => item.code)
-                const selectedCount = codes.filter((code) => draft.permissions.has(code)).length
-                const allSelected = selectedCount === codes.length
-                return (
-                  <div key={group.resource} className="rounded-xl border border-line bg-ink/30 p-3">
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-sm text-paper">{group.label}</span>
-                        <span className="shrink-0 font-mono text-[11px] text-mist">
-                          {selectedCount}/{codes.length}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        className={cn(
-                          'shrink-0 rounded-full px-2 py-0.5 text-xs transition',
-                          allSelected ? 'bg-signal/15 text-signal' : 'text-mist hover:bg-white/5 hover:text-paper',
-                        )}
-                        onClick={() => toggleGroup(codes, !allSelected)}
-                      >
-                        {allSelected ? '清空本页' : '全选本页'}
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {group.permissions.map((item) => {
-                        const active = draft.permissions.has(item.code)
-                        const allowed = grantable(item.code)
-                        return (
-                          <button
-                            key={item.code}
-                            type="button"
-                            title={allowed ? item.code : `${item.code}（超出你的权限，无法授予）`}
-                            disabled={!allowed}
-                            onClick={() => toggle(item.code)}
-                            className={cn(
-                              'rounded-full border px-3 py-1.5 text-xs transition',
-                              active
-                                ? 'border-signal/60 bg-signal/12 text-signal'
-                                : 'border-line text-mist hover:border-mist/40 hover:text-paper',
-                              !allowed && 'cursor-not-allowed opacity-35 hover:border-line hover:text-mist',
-                            )}
-                          >
-                            {item.label}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-              {filtered.length === 0 ? (
-                <div className="rounded-xl border border-line px-3 py-6 text-center text-xs text-mist">
-                  没有匹配的权限
-                </div>
-              ) : null}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 border-t border-line pt-3 sm:flex sm:justify-end">
-              <Button variant="ghost" className="w-full sm:w-auto" onClick={() => setDraft(null)}>
-                取消
-              </Button>
-              <Button
-                className="w-full sm:w-auto"
-                disabled={save.isPending || !draft.name.trim()}
-                onClick={() => save.mutate(draft)}
-              >
-                保存
-              </Button>
-            </div>
           </div>
-        </Dialog>
+
+          <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
+            {filtered.map((group) => {
+              const codes = group.permissions.map((item) => item.code)
+              const selectedCount = codes.filter((code) => draft.permissions.has(code)).length
+              const allSelected = selectedCount === codes.length
+              return (
+                <div key={group.resource} className="rounded-xl border border-line bg-ink/30 p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-sm text-paper">{group.label}</span>
+                      <span className="shrink-0 font-mono text-[11px] text-mist">
+                        {selectedCount}/{codes.length}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className={cn(
+                        'shrink-0 rounded-full px-2 py-0.5 text-xs transition',
+                        allSelected ? 'bg-signal/15 text-signal' : 'text-mist hover:bg-white/5 hover:text-paper',
+                      )}
+                      onClick={() => toggleGroup(codes, !allSelected)}
+                    >
+                      {allSelected ? '清空本页' : '全选本页'}
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.permissions.map((item) => {
+                      const active = draft.permissions.has(item.code)
+                      const allowed = grantable(item.code)
+                      return (
+                        <button
+                          key={item.code}
+                          type="button"
+                          title={allowed ? item.code : `${item.code}（超出你的权限，无法授予）`}
+                          disabled={!allowed}
+                          onClick={() => toggle(item.code)}
+                          className={cn(
+                            'rounded-full border px-3 py-1.5 text-xs transition',
+                            active
+                              ? 'border-signal/60 bg-signal/12 text-signal'
+                              : 'border-line text-mist hover:border-mist/40 hover:text-paper',
+                            !allowed && 'cursor-not-allowed opacity-35 hover:border-line hover:text-mist',
+                          )}
+                        >
+                          {item.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+            {filtered.length === 0 ? (
+              <div className="rounded-xl border border-line px-3 py-6 text-center text-xs text-mist">
+                没有匹配的权限
+              </div>
+            ) : null}
+          </div>
+        </Sheet>
       ) : null}
     </PageContainer>
   )
