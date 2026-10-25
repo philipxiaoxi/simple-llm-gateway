@@ -1,7 +1,8 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 
+import { firstAccessiblePath } from '../components/nav'
 import { api, type Me } from './api'
 import { Button } from '../components/ui'
 import { NAV_GROUPS, type NavLink } from '../components/nav'
@@ -106,9 +107,14 @@ export function ForbiddenPage() {
   )
 }
 
-/** 页面级路由守卫：无权限时展示无权限页，避免直接输 URL 进入。 */
+/**
+ * 页面级路由守卫：无权限时自动跳到该账号有权限的第一个页面（按导航顺序），
+ * 避免直接输 URL 进入无权限页。仅当账号一个页面权限都没有时才展示无权限页。
+ */
 export function RequirePerm({ code, children }: { code: string; children: ReactNode }) {
   const { can, isLoading } = useSession()
+  const location = useLocation()
+
   if (isLoading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -116,5 +122,11 @@ export function RequirePerm({ code, children }: { code: string; children: ReactN
       </div>
     )
   }
-  return can(code) ? <>{children}</> : <ForbiddenPage />
+  if (can(code)) return <>{children}</>
+
+  const fallback = firstAccessiblePath(can)
+  if (fallback && fallback !== location.pathname) {
+    return <Navigate to={fallback} replace />
+  }
+  return <ForbiddenPage />
 }
