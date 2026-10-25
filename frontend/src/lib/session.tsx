@@ -8,6 +8,27 @@ import { Button } from '../components/ui'
 import { NAV_GROUPS, type NavLink } from '../components/nav'
 
 /**
+ * 前端派生权限码（不在后端权限目录内）：
+ * - mcp_catalog:view：具备任一 MCP 能力权限即可进入广场，不再单独授权「MCP 目录」
+ * - mcp_generation:view：图片/视频生成或生成配置任一权限即可进入生成能力页
+ */
+const MCP_PLAZA_GRANTS = [
+  'mcp_knowledge:view',
+  'mcp_docparse:view',
+  'mcp_sites:view',
+  'mcp_douyin:view',
+  'mcp_browser:view',
+  'mcp_diagrams:view',
+  'image_gen:view',
+  'video_gen:view',
+  'generation:settings',
+  'mcp_keys:view',
+  'mcp_calls:view',
+] as const
+
+const MCP_GENERATION_GRANTS = ['generation:settings', 'image_gen:view', 'video_gen:view'] as const
+
+/**
  * 登录会话与功能权限。
  *
  * - 启动时拉一次 `/api/admin/me`，得到当前账号的角色与权限码列表；
@@ -40,12 +61,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const value = useMemo<SessionValue>(() => {
     const permissions = data?.permissions ?? []
     const wildcard = permissions.includes('*') || data?.role?.builtin === true
-    const can = (code?: string) => {
-      if (!code) return true
+    const has = (code: string) => {
       if (wildcard) return true
       if (permissions.includes(code)) return true
       const [resource] = code.split(':')
       return permissions.includes(`${resource}:*`)
+    }
+    const can = (code?: string) => {
+      if (!code) return true
+      if (code === 'mcp_catalog:view') return MCP_PLAZA_GRANTS.some(has)
+      if (code === 'mcp_generation:view') return MCP_GENERATION_GRANTS.some(has)
+      return has(code)
     }
     return { me: data, isLoading: isPending, roleName: data?.role?.name ?? '', can }
   }, [data, isPending])
