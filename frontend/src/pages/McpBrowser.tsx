@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Camera, ExternalLink, MonitorPlay, RefreshCw, XCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { Badge, Button, Card } from '../components/ui'
 import { api, type BrowserSession } from '../lib/api'
@@ -20,6 +21,7 @@ export function McpBrowserPage() {
   const canCapture = useCan('mcp_browser:screenshot')
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<string | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
 
   const status = useQuery({ queryKey: ['browser-status'], queryFn: api.browserStatus })
   const sessions = useQuery({
@@ -186,14 +188,19 @@ export function McpBrowserPage() {
 
               <div className="overflow-hidden rounded-lg border border-line bg-black">
                 {screenshot ? (
-                  <a href={screenshot.screenshot_url} target="_blank" rel="noreferrer" className="block">
+                  <button
+                    type="button"
+                    onClick={() => setPreview(screenshot.screenshot_url)}
+                    className="block w-full cursor-zoom-in"
+                    aria-label="查看大图"
+                  >
                     <img
                       src={screenshot.screenshot_url}
                       alt="当前页面截图"
                       className="max-h-[70vh] w-full object-contain"
                       referrerPolicy="no-referrer"
                     />
-                  </a>
+                  </button>
                 ) : (
                   <div className="flex h-64 flex-col items-center justify-center gap-2 text-mist">
                     <MonitorPlay size={28} />
@@ -207,16 +214,61 @@ export function McpBrowserPage() {
                   <span>
                     {screenshot.width}×{screenshot.height} · {Math.max(1, Math.round(screenshot.bytes / 1024))} KB
                   </span>
-                  <a href={screenshot.screenshot_url} target="_blank" rel="noreferrer" className="text-signal hover:underline">
+                  <button
+                    type="button"
+                    onClick={() => setPreview(screenshot.screenshot_url)}
+                    className="text-signal hover:underline"
+                  >
                     打开原图
-                  </a>
+                  </button>
                 </div>
               ) : null}
             </>
           )}
         </Card>
       </div>
+      {preview ? <ScreenshotLightbox url={preview} onClose={() => setPreview(null)} /> : null}
     </div>
+  )
+}
+
+function ScreenshotLightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    const body = document.body
+    const previousOverflow = body.style.overflow
+    body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      body.style.overflow = previousOverflow
+    }
+  }, [onClose])
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="截图预览"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-4"
+    >
+      <button type="button" aria-label="关闭预览" onClick={onClose} className="absolute inset-0 h-full w-full cursor-default" />
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute right-3 top-3 inline-flex h-9 items-center rounded-md bg-white/10 px-3 text-xs text-white backdrop-blur transition hover:bg-white/20"
+      >
+        关闭
+      </button>
+      <img
+        src={url}
+        alt="截图大图"
+        className="relative max-h-[88vh] max-w-[92vw] rounded-lg border border-line object-contain shadow-2xl"
+      />
+    </div>,
+    document.body,
   )
 }
 
