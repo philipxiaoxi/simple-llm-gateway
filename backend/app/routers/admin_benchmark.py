@@ -4,7 +4,7 @@ import asyncio
 import csv
 import io
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.clock import utcnow
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import Admin, BenchmarkResult, BenchmarkRun, UpstreamAccount
@@ -31,6 +32,8 @@ from app.services.model_caps import parse_model_records
 router = APIRouter(prefix="/api/admin/benchmark", tags=["admin-benchmark"], dependencies=[Depends(get_current_admin)])
 
 TOTAL_TIMEOUT_SECONDS = 60
+# 速度排行榜只看最近一个月的测速结果，避免太久远的数据长期占据排名
+LEADERBOARD_WINDOW_DAYS = 30
 
 
 class BenchmarkRequest(BaseModel):
@@ -139,6 +142,7 @@ async def benchmark(payload: BenchmarkRequest, db: Session = Depends(get_db), _:
 
 def _leaderboard_rows(db: Session, limit: int) -> list[Any]:
     avg_speed = func.avg(BenchmarkResult.output_tokens_per_second)
+    cutoff = utcnow() - timedelta(days=LEADERBOARD_WINDOW_DAYS)
     return list(
         db.execute(
             select(
@@ -154,7 +158,11 @@ def _leaderboard_rows(db: Session, limit: int) -> list[Any]:
                 func.max(BenchmarkRun.created_at).label("last_tested_at"),
             )
             .join(BenchmarkRun, BenchmarkResult.run_id == BenchmarkRun.id)
-            .where(BenchmarkResult.ok.is_(True), BenchmarkResult.output_tokens_per_second.is_not(None))
+            .where(
+                BenchmarkResult.ok.is_(True),
+                BenchmarkResult.output_tokens_per_second.is_not(None),
+                BenchmarkRun.created_at >= cutoff,
+            )
             .group_by(
                 BenchmarkResult.account_id,
                 BenchmarkResult.account_name,
