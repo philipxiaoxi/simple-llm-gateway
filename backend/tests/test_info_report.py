@@ -252,3 +252,29 @@ def test_mcp_tools_list_includes_info(client: TestClient, auth_headers: dict[str
     assert response.status_code == 200, response.text
     names = {tool["name"] for tool in response.json()["result"]["tools"]}
     assert "info_report" in names
+
+
+def test_admin_info_report_history(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _create_key(client, auth_headers, name="reporter-history")
+    created = client.post(
+        "/v1/info/report",
+        headers=_auth(key),
+        json={"text": "上报历史正文", "title": "历史标题", "url": "https://example.com/h"},
+    )
+    assert created.status_code == 200, created.text
+    item_id = created.json()["id"]
+
+    listing = client.get("/api/admin/mcp/info-reports", headers=auth_headers)
+    assert listing.status_code == 200, listing.text
+    body = listing.json()
+    assert body["total"] >= 1
+    row = next(item for item in body["items"] if item["id"] == item_id)
+    assert row["title"] == "历史标题"
+    assert row["author_name"] == "reporter-history"
+    assert row["permalink"] == "https://example.com/h"
+    assert row["created_at"]
+
+    filtered = client.get(
+        "/api/admin/mcp/info-reports", params={"q": "历史标题"}, headers=auth_headers
+    ).json()
+    assert any(item["id"] == item_id for item in filtered["items"])

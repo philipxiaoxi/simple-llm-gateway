@@ -55,6 +55,7 @@ RESOURCE_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/api/admin/skills", "skills"),
     ("/api/admin/skill-bundles", "skill_bundles"),
     ("/api/admin/security", "security"),
+    ("/api/admin/mcp/info-reports", "info"),
     ("/api/admin/mcp/calls", "mcp_calls"),
     ("/api/admin/mcp/keys", "mcp_keys"),
     ("/api/admin/mcp/knowledge", "mcp_knowledge"),
