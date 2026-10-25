@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import time
 from contextvars import ContextVar
 from typing import Any
 
@@ -18,6 +19,7 @@ from app.capabilities.base import CapabilityError
 from app.db import get_session_factory
 from app.deps import extract_raw_api_key
 from app.services.mcp_auth import allowed_capability_ids, resolve_mcp_key
+from app.services.mcp_logs import record_mcp_call
 
 _current_mcp_key_id: ContextVar[int | None] = ContextVar("current_mcp_key_id", default=None)
 
@@ -73,10 +75,35 @@ def _load_mcp_key(db, key_id: int | None):
     return db.scalar(select(McpKey).where(McpKey.id == key_id).options(selectinload(McpKey.capabilities)))
 
 
+def _record_mcp_failure(
+    session, tool_name: str, error: CapabilityError, latency_ms: int, request_body: Any = None
+) -> None:
+    """回滚会丢弃 runtime 写入的失败日志，这里在回滚后补写一条并提交。"""
+    resolved = resolve_tool(tool_name)
+    if resolved is None:
+        return
+    capability_id, operation = resolved
+    mcp_key = _load_mcp_key(session, _current_mcp_key_id.get())
+    record_mcp_call(
+        session,
+        mcp_key=mcp_key,
+        capability_id=capability_id,
+        operation=operation,
+        success=False,
+        latency_ms=latency_ms,
+        error_message=error.message,
+        error_type=error.error_type,
+        http_status=error.status_code,
+        request_body=request_body,
+    )
+    session.commit()
+
+
 async def _run_registered_tool(tool_name: str, arguments: dict[str, Any]) -> str:
     ensure_defaults()
     key_id = _current_mcp_key_id.get()
     session = get_session_factory()()
+    started = time.perf_counter()
     try:
         mcp_key = _load_mcp_key(session, key_id)
         if mcp_key is None or mcp_key.status != "active":
@@ -89,6 +116,7 @@ async def _run_registered_tool(tool_name: str, arguments: dict[str, Any]) -> str
         return json.dumps(result, ensure_ascii=False, default=str)
     except CapabilityError as error:
         session.rollback()
+        _record_mcp_failure(session, tool_name, error, int((time.perf_counter() - started) * 1000), arguments)
         payload: dict[str, Any] = {"error": {"type": error.error_type, "message": error.message}}
         if error.diagnostics:
             payload["error"]["diagnostics"] = error.diagnostics

@@ -77,6 +77,7 @@ export function DataView<T>({
   loading,
   empty,
   className,
+  onRowClick,
 }: {
   items: T[]
   columns: Column<T>[]
@@ -85,6 +86,7 @@ export function DataView<T>({
   loading?: boolean
   empty?: ReactNode
   className?: string
+  onRowClick?: (item: T) => void
 }) {
   if (loading) {
     return (
@@ -113,7 +115,14 @@ export function DataView<T>({
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={keyOf(item)} className="border-t border-line align-top transition hover:bg-white/[0.03]">
+              <tr
+                key={keyOf(item)}
+                onClick={onRowClick ? () => onRowClick(item) : undefined}
+                className={cn(
+                  'border-t border-line align-top transition hover:bg-white/[0.03]',
+                  onRowClick && 'cursor-pointer',
+                )}
+              >
                 {columns.map((column) => (
                   <td key={column.key} className={cn('dense-row px-3', column.className)}>
                     {column.cell(item)}
@@ -126,7 +135,23 @@ export function DataView<T>({
       </div>
       <div className="grid min-w-0 gap-3 md:grid-cols-2 lg:hidden">
         {items.map((item) => (
-          <div key={keyOf(item)} className="min-w-0">
+          <div
+            key={keyOf(item)}
+            role={onRowClick ? 'button' : undefined}
+            tabIndex={onRowClick ? 0 : undefined}
+            onClick={onRowClick ? () => onRowClick(item) : undefined}
+            onKeyDown={
+              onRowClick
+                ? (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      onRowClick(item)
+                    }
+                  }
+                : undefined
+            }
+            className={cn('min-w-0', onRowClick && 'cursor-pointer')}
+          >
             {renderCard(item)}
           </div>
         ))}

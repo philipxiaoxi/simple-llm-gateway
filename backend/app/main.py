@@ -77,7 +77,9 @@ from app.services.jobs import start_job_loops
 from app.services.knowledge_jobs import reconcile_stuck_jobs as reconcile_stuck_knowledge_jobs
 from app.services.knowledge_jobs import start_knowledge_job_workers
 from app.services.knowledge_retention import retention_loop as knowledge_retention_loop
+from app.services.client_meta import client_meta
 from app.services.gateway_rate_limit import GatewayRateLimitMiddleware
+from app.services.mcp_logs import CallMeta, reset_call_meta, set_call_meta
 from app.services.permission_guard import require_admin_permission
 from app.services.security_audit import SecurityAuditMiddleware, audit_worker
 from app.services.security_retention import retention_loop as security_retention_loop
@@ -329,6 +331,43 @@ class RedactMcpQueryMiddleware:
         await self.app(scope, receive, send)
 
 
+class McpCallContextMiddleware:
+    """把调用来源（传输方式、客户端 IP/UA、请求头）写入上下文，供 MCP 调用日志落库。
+
+    只做廉价的信息提取（不发外呼），请求头在真正落库时才脱敏。
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path = scope.get("path", "")
+        headers = {
+            key.decode("latin-1"): value.decode("latin-1")
+            for key, value in scope.get("headers", [])
+        }
+        client = scope.get("client")
+        peer = client[0] if client else None
+        info = client_meta(headers, peer=peer)
+        transport = "mcp" if path == "/mcp" or path.startswith("/mcp/") else "rest"
+        token = set_call_meta(
+            CallMeta(
+                transport=transport,
+                client_ip=info.get("client_ip"),
+                user_agent=info.get("user_agent"),
+                client_name=info.get("client_name"),
+                headers=headers,
+            )
+        )
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            reset_call_meta(token)
+
+
 class DisableApiCacheMiddleware:
     def __init__(self, app):
         self.app = app
@@ -352,6 +391,7 @@ class DisableApiCacheMiddleware:
         await self.app(scope, receive, send_wrapper)
 
 
+app.add_middleware(McpCallContextMiddleware)
 app.add_middleware(RedactMcpQueryMiddleware)
 app.add_middleware(DisableApiCacheMiddleware)
 app.add_middleware(SecurityAuditMiddleware)
