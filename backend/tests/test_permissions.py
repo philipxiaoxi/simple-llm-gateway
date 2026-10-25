@@ -326,3 +326,28 @@ def test_generation_tasks_split_by_kind(client: TestClient, auth_headers: dict[s
 
     tasks = client.get("/api/admin/generation/tasks", headers=painter).json()
     assert all(item["kind"] == "image" for item in tasks["items"])
+
+
+# ---------------------------------------------------------------- MCP 广场按功能分权
+
+
+def test_mcp_catalog_plaza_scope_follows_capability_permissions(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    role = _create_role(client, auth_headers, "广场只读", ["dashboard:view", "mcp_douyin:view"])
+    _create_user(client, auth_headers, "plaza-reader", role["id"])
+    reader = _login(client, "plaza-reader")
+
+    plaza = {
+        row["capability_id"]
+        for row in client.get("/api/admin/mcp/catalog?scope=plaza", headers=reader).json()["items"]
+    }
+    assert "douyin" in plaza
+    assert "knowledge" not in plaza
+    assert "diagram" not in plaza
+
+    everything = {
+        row["capability_id"]
+        for row in client.get("/api/admin/mcp/catalog?scope=all", headers=reader).json()["items"]
+    }
+    assert {"douyin", "knowledge", "diagram"} <= everything

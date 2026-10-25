@@ -249,6 +249,20 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
 }
 
 
+# 能力 -> 进入该能力所需的查看权限（任一命中即可）。
+# MCP 广场按此按功能划分：目录接口按当前账号权限过滤，前端只渲染返回的卡片。
+CAPABILITY_VIEW_PERMISSIONS: dict[str, tuple[str, ...]] = {
+    "knowledge": ("mcp_knowledge:view",),
+    "docparse": ("mcp_docparse:view",),
+    "site": ("mcp_sites:view",),
+    "douyin": ("mcp_douyin:view",),
+    "browser": ("mcp_browser:view",),
+    "diagram": ("mcp_diagrams:view",),
+    "info": ("info:view",),
+    "generation": ("generation:settings", "image_gen:view", "video_gen:view"),
+}
+
+
 def iter_catalog() -> Iterator[tuple[str, str, str, str]]:
     """展开为 (资源, 页面名, 动作, 动作名)。"""
     for resource, (label, actions) in CATALOG.items():
