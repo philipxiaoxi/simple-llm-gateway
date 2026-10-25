@@ -193,6 +193,8 @@ export function McpKeysPage() {
   const canUpdate = useCan('mcp_keys:update')
   const canDelete = useCan('mcp_keys:delete')
   const canReveal = useCan('mcp_keys:reveal')
+  // 能力绑定由角色权限单独控制；更高级管理员（*）天然具备
+  const canCapabilities = useCan('mcp_keys:capabilities_manage')
   const canDocs = useCan('mcp_catalog:view')
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -297,7 +299,7 @@ export function McpKeysPage() {
           ...(limitsChanged ? { rpm_limit: rpmValue, concurrency_limit: concurrencyValue } : {}),
         })
       }
-      if (capsChanged) {
+      if (capsChanged && canCapabilities) {
         await api.updateMcpKeyCapabilities(editing.id, editSelected)
       }
     },
@@ -330,7 +332,7 @@ export function McpKeysPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-mist">独立于聊天 sk- Key。完整密钥可随时查看并复制。</p>
-{canCreate ? (
+{canCreate && canCapabilities ? (
         <Button
           type="button"
           onClick={() => {
@@ -571,10 +573,14 @@ export function McpKeysPage() {
                 disabled={saveEdit.isPending}
               />
             </Field>
-            <Field label="授权能力">
-              <CapabilityPicker options={capabilityOptions} selected={editSelected} onChange={setEditSelected} />
-            </Field>
-            <p className="text-xs text-mist">取消勾选即收回该能力授权；至少保留一项。</p>
+            {canCapabilities ? (
+              <>
+                <Field label="授权能力">
+                  <CapabilityPicker options={capabilityOptions} selected={editSelected} onChange={setEditSelected} />
+                </Field>
+                <p className="text-xs text-mist">取消勾选即收回该能力授权；至少保留一项。</p>
+              </>
+            ) : null}
             <RateLimitFields
               rpm={editRpm}
               concurrency={editConcurrency}
@@ -588,7 +594,7 @@ export function McpKeysPage() {
               </Button>
               <Button
                 type="button"
-                disabled={!editName.trim() || !editSelected.length || saveEdit.isPending}
+                disabled={!editName.trim() || (canCapabilities && !editSelected.length) || saveEdit.isPending}
                 onClick={() => saveEdit.mutate()}
               >
                 {saveEdit.isPending ? '保存中…' : '保存'}
