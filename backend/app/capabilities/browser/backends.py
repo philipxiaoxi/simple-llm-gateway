@@ -125,17 +125,32 @@ class LocalPageSession:
     async def click(
         self, *, ref: str | None, selector: str | None, button: str, double: bool
     ) -> None:
-        await self._target(ref, selector).click(
-            button=button or "left", click_count=2 if double else 1, timeout=self._timeout
-        )
+        target = self._target(ref, selector)
+        count = 2 if double else 1
+        try:
+            await target.click(button=button or "left", click_count=count, timeout=self._timeout)
+        except Exception:  # noqa: BLE001 - 覆盖层/动画导致可交互性判定失败时强制点击
+            await target.click(
+                button=button or "left", click_count=count, timeout=self._timeout, force=True
+            )
 
     async def type_text(
         self, *, ref: str | None, selector: str | None, text: str, submit: bool
     ) -> None:
         target = self._target(ref, selector)
-        await target.fill(text or "", timeout=self._timeout)
+        value = text or ""
+        try:
+            await target.fill(value, timeout=self._timeout)
+        except Exception:  # noqa: BLE001 - 覆盖层/动画导致 fill 判定失败时退化为真实键盘输入
+            await target.click(timeout=self._timeout, force=True)
+            await self._page.keyboard.press("Control+a")
+            await self._page.keyboard.press("Delete")
+            await self._page.keyboard.insert_text(value)
         if submit:
-            await target.press("Enter", timeout=self._timeout)
+            try:
+                await target.press("Enter", timeout=self._timeout)
+            except Exception:  # noqa: BLE001
+                await self._page.keyboard.press("Enter")
 
     async def press(self, *, key: str) -> None:
         await self._page.keyboard.press(key)
