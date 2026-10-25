@@ -1658,6 +1658,14 @@ export const api = {
   },
   browserSession: (id: string) =>
     request<BrowserSession>(`/api/admin/mcp/browser/sessions/${encodeURIComponent(id)}`),
+  captureBrowserScreenshot: (
+    id: string,
+    body: { full_page?: boolean; selector?: string; format?: 'png' | 'jpeg' } = {},
+  ) =>
+    request<BrowserScreenshot>(`/api/admin/mcp/browser/sessions/${encodeURIComponent(id)}/screenshot`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   closeBrowserSession: (id: string) =>
     request<BrowserSession>(`/api/admin/mcp/browser/sessions/${encodeURIComponent(id)}/close`, {
       method: 'POST',

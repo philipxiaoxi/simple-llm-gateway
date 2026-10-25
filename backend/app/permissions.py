@@ -195,6 +195,7 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
         "MCP 在线浏览器",
         (
             ("view", "查看"),
+            ("screenshot", "主动截图"),
             ("close", "关闭会话"),
         ),
     ),

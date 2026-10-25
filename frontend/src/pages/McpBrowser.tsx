@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, MonitorPlay, RefreshCw, XCircle } from 'lucide-react'
+import { Camera, ExternalLink, MonitorPlay, RefreshCw, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Button, Card } from '../components/ui'
@@ -17,6 +17,7 @@ const STATUS: Record<string, { label: string; tone: 'ok' | 'bad' | 'warn' | 'mis
 
 export function McpBrowserPage() {
   const canClose = useCan('mcp_browser:close')
+  const canCapture = useCan('mcp_browser:screenshot')
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<string | null>(null)
 
@@ -33,6 +34,16 @@ export function McpBrowserPage() {
     queryFn: () => api.browserSession(activeId as string),
     enabled: Boolean(activeId),
     refetchInterval: (query) => (query.state.data?.status === 'active' ? 4000 : false),
+  })
+
+  const capture = useMutation({
+    mutationFn: (id: string) => api.captureBrowserScreenshot(id, { full_page: true }),
+    onSuccess: async () => {
+      notifyOk('已截图')
+      await queryClient.invalidateQueries({ queryKey: ['browser-session'] })
+      await queryClient.invalidateQueries({ queryKey: ['browser-sessions'] })
+    },
+    onError: (caught) => notifyBad(errorMessage(caught, '截图失败')),
   })
 
   const close = useMutation({
@@ -126,6 +137,17 @@ export function McpBrowserPage() {
                   </a>
                 </div>
                 <div className="flex shrink-0 gap-2">
+                  {canCapture && session.status === 'active' ? (
+                    <Button
+                      type="button"
+                      className="px-2 py-1 text-xs"
+                      disabled={capture.isPending}
+                      onClick={() => capture.mutate(session.id)}
+                    >
+                      <Camera size={14} className={cn(capture.isPending && 'animate-pulse')} />
+                      {capture.isPending ? '截图中' : '主动截图'}
+                    </Button>
+                  ) : null}
                   {session.current_url ? (
                     <a
                       href={session.current_url}
@@ -176,7 +198,7 @@ export function McpBrowserPage() {
                   <div className="flex h-64 flex-col items-center justify-center gap-2 text-mist">
                     <MonitorPlay size={28} />
                     <span className="text-sm">暂无截图</span>
-                    <span className="text-xs">AI 调用 browser_screenshot 后可在此查看</span>
+                    <span className="text-xs">点击「主动截图」，或等待 AI 调用 browser_screenshot</span>
                   </div>
                 )}
               </div>

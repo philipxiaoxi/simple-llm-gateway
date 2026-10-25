@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -107,6 +109,30 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
         )
     names = _key_names(db, [row])
     return _payload(db, row, names)
+
+
+@router.post("/sessions/{session_id}/screenshot")
+async def capture_screenshot(
+    session_id: str,
+    payload: dict[str, Any] | None = None,
+    db: Session = Depends(get_db),
+):
+    body = payload or {}
+    try:
+        row, page = manager.require_page(db, session_id, None)
+        data, content_type, width, height = await page.screenshot(
+            full_page=bool(body.get("full_page")),
+            selector=body.get("selector") or None,
+            fmt=body.get("format") or "png",
+        )
+        shot = screenshots.save_screenshot(
+            db, row, data=data, content_type=content_type, width=width, height=height
+        )
+        manager.touch(db, row)
+    except BrowserError as error:
+        raise _http(error) from error
+    db.commit()
+    return {"session_id": row.id, **shot}
 
 
 @router.post("/sessions/{session_id}/close")

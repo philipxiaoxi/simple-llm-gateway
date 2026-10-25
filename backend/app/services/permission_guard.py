@@ -313,6 +313,7 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("GET", "/api/admin/mcp/browser/status"): "mcp_browser:view",
     ("GET", "/api/admin/mcp/browser/sessions"): "mcp_browser:view",
     ("GET", "/api/admin/mcp/browser/sessions/{session_id}"): "mcp_browser:view",
+    ("POST", "/api/admin/mcp/browser/sessions/{session_id}/screenshot"): "mcp_browser:screenshot",
     ("POST", "/api/admin/mcp/browser/sessions/{session_id}/close"): "mcp_browser:close",
     # MCP 抖音
     ("GET", "/api/admin/mcp/douyin/jobs"): "mcp_douyin:view",
