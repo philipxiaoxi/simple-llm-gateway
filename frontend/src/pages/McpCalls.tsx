@@ -92,7 +92,7 @@ export function McpCallsPage() {
   const [page, setPage] = useState(0)
   const [detailId, setDetailId] = useState<number | null>(null)
 
-  const catalog = useQuery({ queryKey: ['mcp-catalog'], queryFn: api.mcpCatalog })
+  const catalog = useQuery({ queryKey: ['mcp-catalog', 'all'], queryFn: () => api.mcpCatalog('all') })
   const keys = useQuery({ queryKey: ['mcp-keys'], queryFn: api.mcpKeys })
 
   const offset = page * limit

@@ -92,12 +92,16 @@ export function McpPlazaLayout() {
 export function McpPlazaCatalogPage() {
   const { can } = useSession()
   const { data, isError, error, isFetching } = useQuery({
-    queryKey: ['mcp-catalog'],
-    queryFn: () => api.mcpCatalog(),
+    queryKey: ['mcp-catalog', 'plaza'],
+    queryFn: () => api.mcpCatalog('plaza'),
   })
-  const items = (data?.items || []).filter(
-    (item) => item.status === 'enabled' && (!item.admin_path || can(permForAppPath(item.admin_path))),
-  )
+  const items = (data?.items || []).filter((item) => {
+    if (item.status !== 'enabled') return false
+    if (!item.admin_path) return true
+    // 优先用后端下发的各能力权限；旧后端没有该字段时回退到按路径推导
+    if (item.permissions?.length) return item.permissions.some((code) => can(code))
+    return can(permForAppPath(item.admin_path))
+  })
 
   return (
     <div className="space-y-4">

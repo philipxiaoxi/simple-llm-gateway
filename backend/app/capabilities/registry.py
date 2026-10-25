@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.capabilities.base import CapabilitySpec, McpToolDef, Provider
+from app.permissions import CAPABILITY_VIEW_PERMISSIONS
 
 _providers: dict[str, Provider] = {}
 # tool_name -> (capability_id, operation)
@@ -57,6 +58,7 @@ def catalog_payload(*, only_enabled: bool = True) -> list[dict]:
                 "category": spec.category,
                 "status": spec.status,
                 "admin_path": spec.admin_path,
+                "permissions": list(CAPABILITY_VIEW_PERMISSIONS.get(spec.capability_id, ())),
                 "icon": spec.icon,
                 "input_schema": spec.input_schema,
                 "integration": spec.integration,

@@ -209,8 +209,8 @@ export function McpKeysPage() {
   const [editConcurrency, setEditConcurrency] = useState('200')
 
   const catalog = useQuery({
-    queryKey: ['mcp-catalog'],
-    queryFn: () => api.mcpCatalog(),
+    queryKey: ['mcp-catalog', 'all'],
+    queryFn: () => api.mcpCatalog('all'),
   })
   const capabilityOptions = (catalog.data?.items || [])
     .filter((item) => item.status === 'enabled')
