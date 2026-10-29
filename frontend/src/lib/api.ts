@@ -1658,6 +1658,31 @@ export const api = {
   },
   mcpCall: (id: number) => request<McpCallLogDetail>(`/api/admin/mcp/calls/${id}`),
 
+  // ---- 在线浏览器（browser 能力）----
+  browserStatus: () => request<BrowserStatus>('/api/admin/mcp/browser/status'),
+  browserSessions: (query: { limit?: number; offset?: number; status?: string } = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<BrowserSessionList>(`/api/admin/mcp/browser/sessions${suffix}`)
+  },
+  browserSession: (id: string) =>
+    request<BrowserSession>(`/api/admin/mcp/browser/sessions/${encodeURIComponent(id)}`),
+  captureBrowserScreenshot: (
+    id: string,
+    body: { full_page?: boolean; selector?: string; format?: 'png' | 'jpeg' } = {},
+  ) =>
+    request<BrowserScreenshot>(`/api/admin/mcp/browser/sessions/${encodeURIComponent(id)}/screenshot`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  closeBrowserSession: (id: string) =>
+    request<BrowserSession>(`/api/admin/mcp/browser/sessions/${encodeURIComponent(id)}/close`, {
+      method: 'POST',
+    }),
+
   // ---- 资讯上报历史 ----
   infoReports: (query: { limit?: number; offset?: number; q?: string } = {}) => {
     const params = new URLSearchParams()
@@ -2320,6 +2345,53 @@ export type McpCallLogList = {
   total: number
   limit: number
   offset: number
+}
+
+export type BrowserScreenshot = {
+  screenshot_id: string
+  screenshot_url: string
+  absolute_url: string
+  content_type: string
+  width: number
+  height: number
+  bytes: number
+  created_at: string | null
+  expires_at: string | null
+}
+
+export type BrowserSession = {
+  id: string
+  mcp_key_id: number | null
+  mcp_key_name?: string | null
+  status: string
+  current_url: string
+  title: string
+  viewport: { width: number; height: number }
+  backend: string
+  error_message: string | null
+  created_at: string | null
+  last_used_at: string | null
+  closed_at: string | null
+  screenshot: BrowserScreenshot | null
+}
+
+export type BrowserSessionList = {
+  items: BrowserSession[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export type BrowserStatus = {
+  enabled: boolean
+  backend: string
+  active_sessions: number
+  max_sessions: number
+  max_sessions_per_key: number
+  idle_ttl_seconds: number
+  screenshot_ttl_seconds: number
+  allowed_hosts: string
+  blocked_hosts: string
 }
 
 export type InfoReportItem = {

@@ -34,6 +34,7 @@ from app.routers import (
     admin_keys,
     admin_leaderboard,
     admin_logs,
+    admin_mcp_browser,
     admin_mcp_calls,
     admin_mcp_catalog,
     admin_mcp_diagrams,
@@ -51,6 +52,7 @@ from app.routers import (
     admin_skills,
     admin_tools,
     admin_users,
+    browser_public,
     capabilities_public,
     diagrams_public,
     douyin_public,
@@ -69,6 +71,7 @@ from app.routers import (
 from app.seed import seed_admin, seed_desktop_tools, seed_skill_categories
 from app.services.desktop_tools import reconcile_stuck_downloads
 from app.services.docparse_retention import retention_loop as docparse_retention_loop
+from app.services.browser_retention import retention_loop as browser_retention_loop
 from app.services.douyin_retention import retention_loop as douyin_retention_loop
 from app.services.grok_oauth import cleanup_expired_oauth_states
 from app.services.info_loop import start_info_workers
@@ -166,6 +169,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         background_tasks.append(asyncio.create_task(docparse_retention_loop()))
         background_tasks.append(asyncio.create_task(site_retention_loop()))
         background_tasks.append(asyncio.create_task(douyin_retention_loop()))
+        if get_settings().browser_enabled:
+            background_tasks.append(asyncio.create_task(browser_retention_loop()))
         # 资讯收集：定时采集 + 媒体转存 worker + 保留清理
         background_tasks.extend(start_info_workers())
         background_tasks.append(asyncio.create_task(info_retention_loop()))
@@ -254,6 +259,7 @@ for admin_router in (
     admin_mcp_docparse.router,
     admin_mcp_sites.router,
     admin_mcp_douyin.router,
+    admin_mcp_browser.router,
     admin_mcp_info_reports.router,
     admin_mcp_diagrams.router,
     admin_mcp_knowledge.router,
@@ -272,6 +278,7 @@ app.include_router(share.router)
 app.include_router(sites_public.router)
 app.include_router(sites_public.hosting_router)
 app.include_router(douyin_public.router)
+app.include_router(browser_public.router)
 app.include_router(diagrams_public.router)
 app.include_router(info_public.router)
 app.include_router(public_gate.router)

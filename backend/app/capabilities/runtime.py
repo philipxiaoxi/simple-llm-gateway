@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.capabilities.base import CallContext, CapabilityError, Provider
+from app.capabilities.browser.errors import BrowserError
 from app.capabilities.registry import get_provider, resolve_tool
 from app.models import McpKey
 from app.capabilities.diagram.errors import DiagramError
@@ -28,7 +29,9 @@ def _normalize_error(error: Exception) -> CapabilityError:
             error_type=error.error_type,
             diagnostics=error.diagnostics,
         )
-    if isinstance(error, (KnowledgeError, DocParseError, SiteError, DouyinError, InfoError)):
+    if isinstance(
+        error, (KnowledgeError, DocParseError, SiteError, DouyinError, InfoError, BrowserError)
+    ):
         return CapabilityError(error.message, status_code=error.status_code, error_type=error.error_type)
     return CapabilityError(str(error), status_code=500, error_type="internal_error")
 

@@ -18,6 +18,7 @@ const APP_PATH_PERMS: { prefix: string; perm: string }[] = [
   { prefix: '/mcp-plaza/docparse', perm: 'mcp_docparse:view' },
   { prefix: '/mcp-plaza/sites', perm: 'mcp_sites:view' },
   { prefix: '/mcp-plaza/douyin', perm: 'mcp_douyin:view' },
+  { prefix: '/mcp-plaza/browser', perm: 'mcp_browser:view' },
   { prefix: '/mcp-plaza/diagrams', perm: 'mcp_diagrams:view' },
   { prefix: '/mcp-plaza/generation', perm: 'generation:settings' },
   { prefix: '/mcp-plaza/keys', perm: 'mcp_keys:view' },

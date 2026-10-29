@@ -678,6 +678,44 @@ class McpCallLog(Base):
     client_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class BrowserSession(Base):
+    """在线浏览器会话：一个会话对应一个隔离的浏览器上下文。"""
+
+    __tablename__ = "browser_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mcp_key_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True, nullable=False)
+    current_url: Mapped[str] = mapped_column(String(2048), default="", nullable=False)
+    title: Mapped[str] = mapped_column(String(512), default="", nullable=False)
+    viewport_width: Mapped[int] = mapped_column(Integer, default=1280, nullable=False)
+    viewport_height: Mapped[int] = mapped_column(Integer, default=720, nullable=False)
+    backend: Mapped[str] = mapped_column(String(16), default="local", nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class BrowserScreenshot(Base):
+    """会话截图：文件落在 BROWSER_MEDIA_PATH，记录用于签名访问与过期清理。"""
+
+    __tablename__ = "browser_screenshots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("browser_sessions.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    mcp_key_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    filename: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    content_type: Mapped[str] = mapped_column(String(64), default="image/png", nullable=False)
+    width: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True, nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, index=True, nullable=True)
+
+
 class KnowledgeBase(Base):
     __tablename__ = "knowledge_bases"
 

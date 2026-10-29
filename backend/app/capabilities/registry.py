@@ -110,6 +110,13 @@ def ensure_defaults() -> None:
             from app.capabilities.diagram.provider import DiagramProvider
 
             register(DiagramProvider())
+    if "browser" not in _providers:
+        from app.config import get_settings
+
+        if get_settings().browser_enabled:
+            from app.capabilities.browser.provider import BrowserProvider
+
+            register(BrowserProvider())
 
 
 def reset_registry_for_tests() -> None:

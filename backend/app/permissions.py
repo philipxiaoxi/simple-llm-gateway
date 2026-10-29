@@ -200,6 +200,14 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
             ("job_delete", "删除任务"),
         ),
     ),
+    "mcp_browser": (
+        "MCP 在线浏览器",
+        (
+            ("view", "查看"),
+            ("screenshot", "主动截图"),
+            ("close", "关闭会话"),
+        ),
+    ),
     "mcp_diagrams": (
         "MCP 图表",
         (
