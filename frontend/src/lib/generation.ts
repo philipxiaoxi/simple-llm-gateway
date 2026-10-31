@@ -172,6 +172,8 @@ export type GenerationPreset = {
   provider: string
   prompt: string
   params: Record<string, unknown>
+  // 作品用到的参考素材；复用时由后端复制成新的待提交素材
+  inputAssetIds: string[]
 }
 
 export function presetFromTask(task: GenerationTask): GenerationPreset {
@@ -186,6 +188,7 @@ export function presetFromTask(task: GenerationTask): GenerationPreset {
     provider: task.provider,
     prompt: task.prompt,
     params,
+    inputAssetIds: task.inputs.filter((asset) => asset.status === 'ready').map((asset) => asset.id),
   }
 }
 

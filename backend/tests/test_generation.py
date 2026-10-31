@@ -192,3 +192,62 @@ def test_asset_token_required(client: TestClient, auth_headers: dict[str, str]) 
         assert session.get(GenerationAsset, asset_id) is not None
     finally:
         session.close()
+
+
+def _fetch_asset(client: TestClient, url: str):
+    parsed = urlparse(url)
+    token = parse_qs(parsed.query)["token"][0]
+    return client.get(parsed.path, params={"token": token})
+
+
+def test_clone_inputs_for_reuse(client: TestClient, auth_headers: dict[str, str]) -> None:
+    upload = client.post(
+        "/api/admin/generation/uploads",
+        headers=auth_headers,
+        files={"file": ("ref.png", PNG_BYTES, "image/png")},
+    ).json()
+
+    pending = client.post(
+        "/api/admin/generation/uploads/clone",
+        headers=auth_headers,
+        json={"asset_ids": [upload["id"]]},
+    )
+    assert pending.status_code == 201, pending.text
+    pending_clone = pending.json()["items"][0]
+    assert pending_clone["id"] != upload["id"]
+    assert pending_clone["kind"] == "image"
+    assert pending_clone["status"] == "ready"
+    assert _fetch_asset(client, pending_clone["url"]).content == PNG_BYTES
+
+    task = client.post(
+        "/api/admin/generation/tasks",
+        headers=auth_headers,
+        json={
+            "kind": "image",
+            "model": "nano-banana-2",
+            "prompt": "复用参考图",
+            "params": {"aspectRatio": "1:1", "imageSize": "1K"},
+            "input_asset_ids": [upload["id"]],
+        },
+    )
+    assert task.status_code == 201, task.text
+
+    cloned = client.post(
+        "/api/admin/generation/uploads/clone",
+        headers=auth_headers,
+        json={"asset_ids": [upload["id"]]},
+    )
+    assert cloned.status_code == 201, cloned.text
+    clone = cloned.json()["items"][0]
+    assert clone["kind"] == "image"
+
+    # 删除源任务后，复用出来的副本仍然可用
+    assert client.delete(f"/api/admin/generation/tasks/{task.json()['id']}", headers=auth_headers).status_code == 204
+    assert _fetch_asset(client, clone["url"]).content == PNG_BYTES
+
+    missing = client.post(
+        "/api/admin/generation/uploads/clone",
+        headers=auth_headers,
+        json={"asset_ids": ["nope"]},
+    )
+    assert missing.status_code == 400

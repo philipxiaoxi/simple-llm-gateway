@@ -45,6 +45,7 @@ from app.routers import (
     admin_mcp_knowledge_jobs,
     admin_mcp_sites,
     admin_public_gate,
+    admin_references,
     admin_roles,
     admin_security,
     admin_skill_bundles,
@@ -256,6 +257,9 @@ for admin_router in (
     admin_mcp_douyin.router,
     admin_mcp_info_reports.router,
     admin_mcp_diagrams.router,
+    admin_references.portrait_router,
+    admin_references.pose_router,
+    admin_references.costume_router,
     admin_mcp_knowledge.router,
     admin_mcp_knowledge_jobs.router,
     admin_mcp_calls.router,
@@ -416,6 +420,7 @@ FRONTEND_DIST = _frontend_dist()
 SPA_SEGMENTS = frozenset(
     {
         "",
+        "index.html",
         "login",
         "share",
         "voice",

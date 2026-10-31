@@ -1,5 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
-import { BookOpen, Download, FileText, Globe, KeyRound, Layers3, Newspaper, ScrollText, Shapes, Sparkles, Store } from 'lucide-react'
+import {
+  BookOpen,
+  Download,
+  FileText,
+  Globe,
+  Image as ImageIcon,
+  KeyRound,
+  Layers3,
+  Newspaper,
+  ScrollText,
+  Shapes,
+  Shirt,
+  Sparkles,
+  Store,
+  UserRound,
+} from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
 import { cn, errorMessage } from '../lib/utils'
@@ -18,6 +33,9 @@ const APP_PATH_PERMS: { prefix: string; perm: string }[] = [
   { prefix: '/mcp-plaza/docparse', perm: 'mcp_docparse:view' },
   { prefix: '/mcp-plaza/sites', perm: 'mcp_sites:view' },
   { prefix: '/mcp-plaza/douyin', perm: 'mcp_douyin:view' },
+  { prefix: '/mcp-plaza/portraits', perm: 'mcp_portraits:view' },
+  { prefix: '/mcp-plaza/poses', perm: 'mcp_poses:view' },
+  { prefix: '/mcp-plaza/costumes', perm: 'mcp_costumes:view' },
   { prefix: '/mcp-plaza/diagrams', perm: 'mcp_diagrams:view' },
   { prefix: '/mcp-plaza/generation', perm: 'generation:settings' },
   { prefix: '/mcp-plaza/keys', perm: 'mcp_keys:view' },
@@ -42,6 +60,9 @@ const iconMap: Record<string, typeof BookOpen> = {
   shapes: Shapes,
   newspaper: Newspaper,
   sparkles: Sparkles,
+  image: ImageIcon,
+  user: UserRound,
+  shirt: Shirt,
 }
 
 export function McpPlazaLayout() {

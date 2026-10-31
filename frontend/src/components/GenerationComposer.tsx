@@ -1,7 +1,13 @@
 import { useMutation } from '@tanstack/react-query'
-import { Dices, ImagePlus, Music, Sparkles, Trash2, X } from 'lucide-react'
+import { Dices, ImagePlus, Music, Sparkles, Trash2, Users, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { api, type GenerationAsset, type GenerationModel, type GenerationSettings } from '../lib/api'
+import {
+  api,
+  type GenerationAsset,
+  type GenerationModel,
+  type GenerationSettings,
+  type ReferenceItem,
+} from '../lib/api'
 import { useCan } from '../lib/session'
 import type { GenerationPreset } from '../lib/generation'
 import {
@@ -13,6 +19,7 @@ import {
   resolvePresetTarget,
 } from '../lib/generation'
 import { GenerationModelSelect } from './GenerationModelSelect'
+import { ReferencePickerDialog } from './ReferenceGallery'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage } from '../lib/utils'
 import { Button, Field, Input, Select } from './ui'
@@ -61,14 +68,16 @@ export function GenerationComposer({
   const canConfig = useCan('generation:settings')
   const canUpload = useCan('generation:upload')
   const [uploading, setUploading] = useState(false)
+  const [referenceOpen, setReferenceOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const cloneSeq = useRef(0)
 
   const model = findModel(models, targetKey) ?? models[0]
   // 目录里有多家供应商时，只认「当前模型所属那家」是否可用
   const providerSetting = settings.providers.find((item) => item.provider === model?.provider)
   const configured = Boolean(providerSetting?.configured && providerSetting.enabled)
 
-  // 复用某个作品的参数：一次性填充模型/提示词/参数（不改动已上传的参考素材）
+  // 复用某个作品：一次性填充模型/提示词/参数，并复制回参考素材
   useEffect(() => {
     if (!preset) return
     // 以作品自己的供应商为准，避免同名模型被填成另一家
@@ -81,6 +90,39 @@ export function GenerationComposer({
     setTargetKey(modelKey(target))
     setPrompt(preset.prompt)
     setParams(merged)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset?.nonce])
+
+  // 参考素材由后端复制成新的待提交文件；没有素材时清空，保证和原作品一致
+  useEffect(() => {
+    const seq = cloneSeq.current + 1
+    cloneSeq.current = seq
+    if (!preset) return
+    const assetIds = preset.inputAssetIds ?? []
+    if (!assetIds.length) {
+      setInputs([])
+      setUploading(false)
+      return
+    }
+    if (!canUpload) {
+      setInputs([])
+      setUploading(false)
+      notifyBad('当前账号没有上传参考素材的权限，无法复用参考图')
+      return
+    }
+    setInputs([])
+    setUploading(true)
+    void api
+      .generationCloneUploads(assetIds)
+      .then((result) => {
+        if (seq === cloneSeq.current) setInputs(result.items)
+      })
+      .catch((caught) => {
+        if (seq === cloneSeq.current) notifyBad(errorMessage(caught, '复用参考图失败'))
+      })
+      .finally(() => {
+        if (seq === cloneSeq.current) setUploading(false)
+      })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preset?.nonce])
 
@@ -104,7 +146,7 @@ export function GenerationComposer({
   })
 
   async function handleFiles(files: FileList | null) {
-    if (!files || !model) return
+    if (!files || !model || uploading) return
     const imageLimit = model.supports_images ? model.max_images : 0
     const audioLimit = model.supports_audios ? model.max_audios : 0
     setUploading(true)
@@ -139,6 +181,31 @@ export function GenerationComposer({
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  async function importReference(item: ReferenceItem) {
+    if (uploading) return
+    if (!model || !model.supports_images) {
+      notifyBad('当前模型不支持参考图片')
+      return
+    }
+    const imageCount = inputs.filter((asset) => asset.kind !== 'audio').length
+    if (imageCount >= model.max_images) {
+      notifyBad(`参考图片最多 ${model.max_images} 张`)
+      return
+    }
+    try {
+      const blob = await fetchReferenceBlob(item)
+      const subtype = blob.type.split('/')[1] || 'webp'
+      const file = new File([blob], `portrait-${item.id}.${subtype === 'jpeg' ? 'jpg' : subtype}`, {
+        type: blob.type || 'image/webp',
+      })
+      const asset = await api.generationUpload(file)
+      setInputs((current) => [...current, asset])
+      notifyOk('已添加参考图')
+    } catch (caught) {
+      notifyBad(errorMessage(caught, '添加参考图失败'))
     }
   }
 
@@ -247,9 +314,20 @@ export function GenerationComposer({
               <input ref={fileRef} type="file" multiple accept={accept} className="hidden" onChange={(event) => void handleFiles(event.target.files)} />
             </label>
             ) : null}
+            {canUpload && model.supports_images ? (
+              <button
+                type="button"
+                onClick={() => setReferenceOpen(true)}
+                disabled={uploading}
+                className="flex h-16 w-16 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-line text-[10px] text-mist transition hover:border-signal/60 hover:text-paper disabled:opacity-40"
+              >
+                <Users size={16} />
+                参考库
+              </button>
+            ) : null}
           </div>
           <div className="text-[11px] text-mist">
-            仅支持本地上传
+            支持本地上传与参考图库（人像 / 姿势 / 服装）
             {model.supports_images ? `，参考图最多 ${model.max_images} 张` : ''}
             {model.supports_audios ? `，参考音频最多 ${model.max_audios} 个` : ''}
           </div>
@@ -322,8 +400,27 @@ export function GenerationComposer({
           {create.isPending ? '提交中…' : kind === 'image' ? '生成图片' : '生成视频'}
         </Button>
       </div>
+
+      {referenceOpen ? (
+        <ReferencePickerDialog onClose={() => setReferenceOpen(false)} onPick={importReference} />
+      ) : null}
     </div>
   )
+}
+
+async function fetchReferenceBlob(item: ReferenceItem): Promise<Blob> {
+  const urls = [item.image_url, item.thumb_url].filter(Boolean)
+  let lastError: unknown = null
+  for (const url of urls) {
+    try {
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      return await response.blob()
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError ?? new Error('图片下载失败')
 }
 
 export default GenerationComposer

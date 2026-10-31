@@ -103,13 +103,20 @@ def ensure_defaults() -> None:
         from app.capabilities.generation.provider import GenerationProvider
 
         register(GenerationProvider())
-    if "diagram" not in _providers:
-        from app.config import get_settings
+    from app.config import get_settings
 
-        if get_settings().diagram_enabled:
-            from app.capabilities.diagram.provider import DiagramProvider
+    settings = get_settings()
+    if settings.references_enabled:
+        from app.capabilities.reference.provider import ReferenceProvider
+        from app.capabilities.reference.specs import SPECS
 
-            register(DiagramProvider())
+        for kind, spec in SPECS.items():
+            if kind not in _providers:
+                register(ReferenceProvider(spec))
+    if "diagram" not in _providers and settings.diagram_enabled:
+        from app.capabilities.diagram.provider import DiagramProvider
+
+        register(DiagramProvider())
 
 
 def reset_registry_for_tests() -> None:

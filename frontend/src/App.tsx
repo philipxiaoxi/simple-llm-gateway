@@ -79,6 +79,7 @@ const McpInfoReportsPage = lazy(() =>
   import('./pages/McpInfoReports').then((m) => ({ default: m.McpInfoReportsPage })),
 )
 const McpGenerationPage = lazy(() => import('./pages/McpGeneration').then((m) => ({ default: m.McpGenerationPage })))
+const McpReferencePage = lazy(() => import('./pages/McpReference').then((m) => ({ default: m.McpReferencePage })))
 const McpDouyinDetailPage = lazy(() =>
   import('./pages/McpDouyinDetail').then((m) => ({ default: m.McpDouyinDetailPage })),
 )
@@ -117,6 +118,9 @@ const PAGE_PERMS: { pattern: string; perm: string }[] = [
   { pattern: '/mcp-plaza/douyin', perm: 'mcp_douyin:view' },
   { pattern: '/mcp-plaza/info-report', perm: 'mcp_info:view' },
   { pattern: '/mcp-plaza/diagrams', perm: 'mcp_diagrams:view' },
+  { pattern: '/mcp-plaza/portraits', perm: 'mcp_portraits:view' },
+  { pattern: '/mcp-plaza/poses', perm: 'mcp_poses:view' },
+  { pattern: '/mcp-plaza/costumes', perm: 'mcp_costumes:view' },
   { pattern: '/mcp-plaza/generation', perm: 'generation:settings' },
   { pattern: '/mcp-plaza/keys', perm: 'mcp_keys:view' },
   { pattern: '/mcp-plaza/calls', perm: 'mcp_calls:view' },
@@ -232,6 +236,9 @@ export default function App() {
                 <Route path="douyin/:jobId" element={<McpDouyinDetailPage />} />
                 <Route path="diagrams" element={<McpDiagramsPage />} />
                 <Route path="diagrams/:siteId" element={<McpDiagramDetailPage />} />
+                <Route path="portraits" element={<McpReferencePage kind="portrait" />} />
+                <Route path="poses" element={<McpReferencePage kind="pose" />} />
+                <Route path="costumes" element={<McpReferencePage kind="costume" />} />
                 <Route path="generation" element={<McpGenerationPage />} />
                 <Route path="keys" element={<McpKeysPage />} />
                 <Route path="calls" element={<McpCallsPage />} />

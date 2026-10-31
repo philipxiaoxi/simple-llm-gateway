@@ -15,9 +15,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
+import shutil
 import time
 import uuid
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
 
@@ -376,6 +379,68 @@ def create_upload(db: Session, *, filename: str, content_type: str, data: bytes)
     db.add(asset)
     db.flush()
     return asset
+
+
+_MAX_CLONE_INPUTS = 20
+
+
+def clone_inputs(db: Session, asset_ids: list[str]) -> list[GenerationAsset]:
+    """把已有参考文件复制成新的待提交素材，供「复用作品」直接带回参考图。
+
+    源文件可能在任务目录（已提交过）或 pending 目录（尚未提交）。优先硬链接，
+    跨文件系统时回退到复制；新旧素材互不影响，删除旧任务不会破坏复用出来的副本。
+    """
+    unique = list(dict.fromkeys(str(item).strip() for item in asset_ids if str(item).strip()))
+    if not unique:
+        raise GenerationError("没有可复用的参考文件")
+    if len(unique) > _MAX_CLONE_INPUTS:
+        raise GenerationError(f"一次最多复用 {_MAX_CLONE_INPUTS} 个参考文件")
+    sources: list[tuple[GenerationAsset, Path]] = []
+    for asset_id in unique:
+        asset = db.get(GenerationAsset, asset_id)
+        if asset is None or asset.role != "input" or asset.status != "ready" or not asset.filename:
+            raise GenerationError("参考文件不存在或不可复用")
+        if asset.task_id:
+            source = storage.task_dir(asset.task_id) / asset.filename
+        else:
+            source = storage.pending_dir() / asset.id / asset.filename
+        if not source.is_file():
+            raise GenerationError("参考文件已失效，无法复用")
+        sources.append((asset, source))
+
+    clones: list[GenerationAsset] = []
+    for asset, source in sources:
+        new_id = str(uuid.uuid4())
+        ext = Path(asset.filename).suffix or storage.guess_extension(asset.content_type, asset.kind)
+        stored_name = f"{new_id}{ext}"
+        folder = storage.pending_dir() / new_id
+        folder.mkdir(parents=True, exist_ok=True)
+        destination = folder / stored_name
+        try:
+            os.link(source, destination)
+        except OSError:
+            try:
+                shutil.copyfile(source, destination)
+            except OSError as error:
+                raise GenerationError(f"参考文件复制失败：{error}") from error
+        clone = GenerationAsset(
+            id=new_id,
+            task_id=None,
+            role="input",
+            index_no=0,
+            kind=asset.kind,
+            remote_url="",
+            filename=stored_name,
+            content_type=asset.content_type,
+            size_bytes=asset.size_bytes,
+            width=asset.width,
+            height=asset.height,
+            status="ready",
+        )
+        db.add(clone)
+        db.flush()
+        clones.append(clone)
+    return clones
 
 
 def _attach_inputs(db: Session, task: GenerationTask, asset_ids: list[str], spec: catalog.ModelSpec) -> None:

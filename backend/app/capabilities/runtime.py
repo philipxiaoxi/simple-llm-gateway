@@ -6,13 +6,14 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.capabilities.base import CallContext, CapabilityError, Provider
-from app.capabilities.registry import get_provider, resolve_tool
-from app.models import McpKey
 from app.capabilities.diagram.errors import DiagramError
 from app.capabilities.docparse.errors import DocParseError
 from app.capabilities.douyin.errors import DouyinError
+from app.capabilities.reference.errors import ReferenceError
+from app.capabilities.registry import get_provider, resolve_tool
 from app.capabilities.site.errors import SiteError
 from app.info.errors import InfoError
+from app.models import McpKey
 from app.services.knowledge import KnowledgeError
 from app.services.mcp_auth import allowed_capability_ids
 from app.services.mcp_logs import record_mcp_call
@@ -28,7 +29,10 @@ def _normalize_error(error: Exception) -> CapabilityError:
             error_type=error.error_type,
             diagnostics=error.diagnostics,
         )
-    if isinstance(error, (KnowledgeError, DocParseError, SiteError, DouyinError, InfoError)):
+    if isinstance(
+        error,
+        KnowledgeError | DocParseError | SiteError | DouyinError | InfoError | ReferenceError,
+    ):
         return CapabilityError(error.message, status_code=error.status_code, error_type=error.error_type)
     return CapabilityError(str(error), status_code=500, error_type="internal_error")
 
