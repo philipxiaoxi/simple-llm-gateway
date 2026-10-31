@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -70,6 +70,18 @@ async def upload_input(file: UploadFile = File(...), db: Session = Depends(get_d
     except service.GenerationError as error:
         raise HTTPException(status_code=error.status_code, detail=_detail({"message": error.message})) from error
     return service.asset_to_dict(asset)
+
+
+@router.post("/uploads/clone", status_code=201)
+def clone_uploads(payload: dict = Body(...), db: Session = Depends(get_db)):
+    asset_ids = payload.get("asset_ids")
+    if not isinstance(asset_ids, list):
+        raise HTTPException(status_code=400, detail=_detail({"message": "asset_ids 必须是数组"}))
+    try:
+        assets = service.clone_inputs(db, [str(item) for item in asset_ids])
+    except service.GenerationError as error:
+        raise HTTPException(status_code=error.status_code, detail=_detail({"message": error.message})) from error
+    return {"items": [service.asset_to_dict(asset) for asset in assets]}
 
 
 @router.delete("/uploads/{asset_id}", status_code=204)

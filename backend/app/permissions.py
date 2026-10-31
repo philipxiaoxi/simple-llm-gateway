@@ -200,6 +200,27 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
             ("job_delete", "删除任务"),
         ),
     ),
+    "mcp_portraits": (
+        "MCP 人像参考库",
+        (
+            ("view", "查看"),
+            ("sync", "同步数据"),
+        ),
+    ),
+    "mcp_poses": (
+        "MCP 姿势参考库",
+        (
+            ("view", "查看"),
+            ("sync", "同步数据"),
+        ),
+    ),
+    "mcp_costumes": (
+        "MCP 服装参考库",
+        (
+            ("view", "查看"),
+            ("sync", "同步数据"),
+        ),
+    ),
     "mcp_diagrams": (
         "MCP 图表",
         (
@@ -258,6 +279,9 @@ CAPABILITY_VIEW_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "site": ("mcp_sites:view",),
     "douyin": ("mcp_douyin:view",),
     "browser": ("mcp_browser:view",),
+    "portrait": ("mcp_portraits:view",),
+    "pose": ("mcp_poses:view",),
+    "costume": ("mcp_costumes:view",),
     "diagram": ("mcp_diagrams:view",),
     "info": ("mcp_info:view",),
     "generation": ("generation:settings",),

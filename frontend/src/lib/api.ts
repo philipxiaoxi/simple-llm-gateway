@@ -1307,6 +1307,28 @@ export const api = {
   // ---- MCP 广场 ----
   mcpCatalog: (scope: 'plaza' | 'all' = 'all') =>
     request<{ items: McpCatalogItem[] }>(`/api/admin/mcp/catalog?scope=${scope}`),
+  referenceList: (kind: ReferenceKind, query: ReferenceQuery = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value === undefined || value === '') return
+      if (typeof value === 'boolean' && !value) return
+      params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<ReferenceList>(`/api/admin/mcp/${kind}s${suffix}`)
+  },
+  referenceMeta: (kind: ReferenceKind, query: { include_adult?: boolean } = {}) => {
+    const params = new URLSearchParams()
+    if (query.include_adult) params.set('include_adult', 'true')
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<ReferenceMeta>(`/api/admin/mcp/${kind}s/meta${suffix}`)
+  },
+  referenceRefresh: (kind: ReferenceKind, query: { include_adult?: boolean } = {}) => {
+    const params = new URLSearchParams()
+    if (query.include_adult) params.set('include_adult', 'true')
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<ReferenceMeta>(`/api/admin/mcp/${kind}s/refresh${suffix}`, { method: 'POST' })
+  },
   docparseJobs: (query: { status?: string; q?: string } = {}) => {
     const params = new URLSearchParams()
     if (query.status) params.set('status', query.status)
@@ -1863,6 +1885,11 @@ export const api = {
     form.set('file', file)
     return request<GenerationAsset>('/api/admin/generation/uploads', { method: 'POST', body: form })
   },
+  generationCloneUploads: (assetIds: string[]) =>
+    request<{ items: GenerationAsset[] }>('/api/admin/generation/uploads/clone', {
+      method: 'POST',
+      body: JSON.stringify({ asset_ids: assetIds }),
+    }),
   generationDeleteUpload: (assetId: string) =>
     request<void>(`/api/admin/generation/uploads/${encodeURIComponent(assetId)}`, { method: 'DELETE' }),
 }
@@ -2167,6 +2194,77 @@ export type McpCatalogItem = {
 export type McpCapabilityIntegration = {
   rest_endpoints?: { method: string; path: string; summary?: string; content_type?: string }[]
   notes?: string[]
+}
+
+export type ReferenceKind = 'portrait' | 'pose' | 'costume'
+
+export type ReferenceItem = {
+  id: string
+  kind: ReferenceKind
+  title: string
+  group: string
+  category: string
+  detail: string
+  tags: string[]
+  keywords: string
+  width: number
+  height: number
+  thumb_url: string
+  image_url: string
+  curated: boolean
+  hot: boolean
+  adult: boolean
+  prompt: string
+}
+
+export type ReferenceQuery = {
+  q?: string
+  group?: string
+  category?: string
+  tag?: string
+  detail?: string
+  scope?: 'all' | 'featured' | 'curated' | 'hot'
+  include_adult?: boolean
+  limit?: number
+  offset?: number
+}
+
+export type ReferenceLabels = { group: string; category: string; detail: string; tag: string }
+
+export type ReferenceFacets = {
+  groups: string[]
+  categories: string[]
+  details: string[]
+  tags: string[]
+}
+
+export type ReferenceList = {
+  kind: ReferenceKind
+  name: string
+  labels: ReferenceLabels
+  items: ReferenceItem[]
+  total: number
+  hidden_adult: number
+  limit: number
+  offset: number
+  facets: ReferenceFacets
+  attribution: string
+  source: string
+  synced_at: string
+  stale: boolean
+}
+
+export type ReferenceMeta = {
+  kind: ReferenceKind
+  name: string
+  labels: ReferenceLabels
+  total: number
+  hidden_adult: number
+  facets: ReferenceFacets
+  attribution: string
+  source: string
+  synced_at: string
+  stale: boolean
 }
 
 export type McpIntegrationCapability = {

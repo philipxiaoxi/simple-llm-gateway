@@ -62,6 +62,9 @@ RESOURCE_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/api/admin/mcp/docparse", "mcp_docparse"),
     ("/api/admin/mcp/sites", "mcp_sites"),
     ("/api/admin/mcp/douyin", "mcp_douyin"),
+    ("/api/admin/mcp/portraits", "mcp_portraits"),
+    ("/api/admin/mcp/poses", "mcp_poses"),
+    ("/api/admin/mcp/costumes", "mcp_costumes"),
     ("/api/admin/mcp/diagrams", "mcp_diagrams"),
     ("/api/admin/tools", "tools"),
     ("/api/admin/jobs", "jobs"),
@@ -201,6 +204,7 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("PUT", "/api/admin/generation/settings"): "generation:settings",
     ("POST", "/api/admin/generation/providers/{provider}/key"): "generation:settings",
     ("POST", "/api/admin/generation/uploads"): "generation:upload",
+    ("POST", "/api/admin/generation/uploads/clone"): "generation:upload",
     ("DELETE", "/api/admin/generation/uploads/{asset_id}"): "generation:upload",
     # 离线下载
     ("POST", "/api/admin/offline/cache/{item_id}/refresh"): "offline:retry",
@@ -315,6 +319,10 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("POST", "/api/admin/mcp/douyin/jobs/{job_id}/media/{media_id}/share"): "mcp_douyin:view",
     ("POST", "/api/admin/mcp/douyin/jobs/{job_id}/retry"): "mcp_douyin:job_retry",
     ("DELETE", "/api/admin/mcp/douyin/jobs/{job_id}"): "mcp_douyin:job_delete",
+    # MCP 参考图库
+    ("POST", "/api/admin/mcp/portraits/refresh"): "mcp_portraits:sync",
+    ("POST", "/api/admin/mcp/poses/refresh"): "mcp_poses:sync",
+    ("POST", "/api/admin/mcp/costumes/refresh"): "mcp_costumes:sync",
     # MCP 图表
     ("GET", "/api/admin/mcp/diagrams"): "mcp_diagrams:view",
     ("GET", "/api/admin/mcp/diagrams/{site_id}"): "mcp_diagrams:view",
