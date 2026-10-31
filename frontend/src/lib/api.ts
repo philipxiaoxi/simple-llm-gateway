@@ -1679,6 +1679,22 @@ export const api = {
     return request<McpCallLogList>(`/api/admin/mcp/calls${suffix}`)
   },
   mcpCall: (id: number) => request<McpCallLogDetail>(`/api/admin/mcp/calls/${id}`),
+  mcpCallStats: (
+    query: {
+      days?: number
+      capability_id?: string
+      mcp_key_id?: number
+      success?: boolean
+      q?: string
+    } = {},
+  ) => {
+    const params = new URLSearchParams()
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    })
+    const suffix = params.toString() ? `?${params}` : ''
+    return request<McpCallStats>(`/api/admin/mcp/calls/summary${suffix}`)
+  },
 
   // ---- 资讯上报历史 ----
   infoReports: (query: { limit?: number; offset?: number; q?: string } = {}) => {
@@ -2418,6 +2434,30 @@ export type McpCallLogList = {
   total: number
   limit: number
   offset: number
+}
+
+export type McpCallStatsBucket = {
+  key: string
+  label: string
+  total: number
+  success: number
+  failed: number
+  avg_latency_ms: number
+}
+
+export type McpCallStats = {
+  days: number
+  total: number
+  success: number
+  failed: number
+  success_rate: number
+  avg_latency_ms: number
+  p95_latency_ms: number
+  capabilities: McpCallStatsBucket[]
+  operations: McpCallStatsBucket[]
+  keys: McpCallStatsBucket[]
+  daily: McpCallStatsBucket[]
+  hourly: McpCallStatsBucket[]
 }
 
 export type InfoReportItem = {

@@ -19,7 +19,7 @@ import { MIN_PASSWORD_LENGTH, cn, errorMessage } from '../lib/utils'
 import { useMediaQuery } from '../lib/useMediaQuery'
 import { CommandPalette } from './command-palette'
 import { PageContainer } from './layout-primitives'
-import { NAV_GROUPS, TAB_LINKS, currentPageLabel, filterNavGroups, filterNavLinks, isPathActive } from './nav'
+import { NAV_GROUPS, PLAZA_APP_LINKS, TAB_LINKS, currentPageLabel, filterNavGroups, filterNavLinks, isPathActive } from './nav'
 import { useSession } from '../lib/session'
 import { ForceUpdateButton } from './PwaUpdate'
 import { Button, Dialog, Field, Input } from './ui'
@@ -129,6 +129,7 @@ export function Layout() {
   const mainRef = useRef<HTMLElement>(null)
   const { can } = useSession()
   const navGroups = useMemo(() => filterNavGroups(NAV_GROUPS, can), [can])
+  const plazaLinks = useMemo(() => filterNavLinks(PLAZA_APP_LINKS, can), [can])
   const tabLinks = useMemo(() => filterNavLinks(TAB_LINKS, can), [can])
 
   const previousPathRef = useRef<string | null>(null)
@@ -222,14 +223,13 @@ export function Layout() {
   }
 
   const normalizedQuery = drawerQuery.trim().toLowerCase()
+  const matchesQuery = (link: { label: string; to: string; keywords?: string }) =>
+    `${link.label} ${link.to} ${link.keywords ?? ''}`.toLowerCase().includes(normalizedQuery)
   const visibleGroups = navGroups.map((group) => ({
     ...group,
-    links: normalizedQuery
-      ? group.links.filter((link) =>
-          `${link.label} ${link.to} ${link.keywords ?? ''}`.toLowerCase().includes(normalizedQuery),
-        )
-      : group.links,
+    links: normalizedQuery ? group.links.filter(matchesQuery) : group.links,
   })).filter((group) => group.links.length > 0)
+  const visiblePlazaLinks = normalizedQuery ? plazaLinks.filter(matchesQuery) : []
 
   function toggleGroup(label: string) {
     setClosedGroups((previous) => {
@@ -465,7 +465,25 @@ export function Layout() {
               </div>
             )
           })}
-          {!visibleGroups.length ? <div className="px-3 py-6 text-center text-sm text-mist">没有匹配的功能</div> : null}
+          {visiblePlazaLinks.length ? (
+            <div className="mt-2 flex flex-col gap-1 md:hidden">
+              <div className="px-2.5 pb-1 pt-3 text-[11px] uppercase tracking-[0.16em] text-mist-soft">MCP 广场</div>
+              {visiblePlazaLinks.map((link) => (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-mist transition-colors hover:bg-white/[0.06] hover:text-paper"
+                >
+                  <link.icon size={18} className="shrink-0" />
+                  <span className="truncate">{link.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          ) : null}
+          {!visibleGroups.length && !visiblePlazaLinks.length ? (
+            <div className="px-3 py-6 text-center text-sm text-mist">没有匹配的功能</div>
+          ) : null}
         </nav>
 
         <div

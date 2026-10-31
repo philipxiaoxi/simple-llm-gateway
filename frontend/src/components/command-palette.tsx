@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { CornerDownLeft, Search } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '../lib/utils'
-import { NAV_GROUPS, filterNavGroups } from './nav'
+import { NAV_GROUPS, SEARCH_LINKS, filterNavGroups, filterNavLinks } from './nav'
 import { useSession } from '../lib/session'
 
 /**
@@ -15,7 +15,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const navigate = useNavigate()
   const { can } = useSession()
   const navGroups = useMemo(() => filterNavGroups(NAV_GROUPS, can), [can])
-  const navLinks = useMemo(() => navGroups.flatMap((group) => group.links), [navGroups])
+  const navLinks = useMemo(() => filterNavLinks(SEARCH_LINKS, can), [can])
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -78,7 +78,11 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
   if (!open) return null
 
-  const groupOf = (to: string) => navGroups.find((group) => group.links.some((link) => link.to === to))?.label ?? ''
+  const groupOf = (to: string) => {
+    const group = navGroups.find((item) => item.links.some((link) => link.to === to))
+    if (group) return group.label
+    return to.startsWith('/mcp-plaza') ? 'MCP 广场' : ''
+  }
 
   return createPortal(
     // 遮罩点击关闭只是辅助快捷方式，键盘用户用 Esc / Enter

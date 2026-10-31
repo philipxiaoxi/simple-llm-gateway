@@ -222,3 +222,58 @@ def test_call_logs_filters(client: TestClient, auth_headers: dict[str, str]):
     none = client.get("/api/admin/mcp/calls?capability_id=not-exists", headers=auth_headers).json()
     assert none["total"] == 0
     assert none["items"] == []
+
+
+def test_call_stats_summary(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from app.clock import utcnow
+    from app.db import get_session_factory
+    from app.models import McpCallLog
+
+    session = get_session_factory()()
+    try:
+        now = utcnow()
+        session.add_all(
+            [
+                McpCallLog(
+                    capability_id="pose",
+                    operation="search",
+                    success=True,
+                    latency_ms=20,
+                    mcp_key_name="pose-key",
+                    created_at=now,
+                ),
+                McpCallLog(
+                    capability_id="pose",
+                    operation="get",
+                    success=False,
+                    latency_ms=80,
+                    mcp_key_name="pose-key",
+                    error_message="missing",
+                    created_at=now,
+                ),
+                McpCallLog(
+                    capability_id="costume",
+                    operation="search",
+                    success=True,
+                    latency_ms=10,
+                    mcp_key_name="costume-key",
+                    created_at=now,
+                ),
+            ]
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    stats = client.get("/api/admin/mcp/calls/summary?days=7&capability_id=pose", headers=auth_headers)
+    assert stats.status_code == 200, stats.text
+    body = stats.json()
+    assert body["total"] == 2
+    assert body["success"] == 1
+    assert body["failed"] == 1
+    assert body["success_rate"] == 0.5
+    assert body["avg_latency_ms"] == 50
+    assert body["capabilities"][0]["key"] == "pose"
+    assert len(body["daily"]) == 7
+    assert body["daily"][-1]["total"] == 2
+    assert len(body["hourly"]) == 24

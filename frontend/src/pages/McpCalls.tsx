@@ -5,6 +5,7 @@ import { errorMessage, formatTime } from '../lib/utils'
 import { type Column, DataView, EmptyState } from '../components/data-view'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { FilterBar } from '../components/filter-bar'
+import { McpCallStatsPanel } from '../components/McpCallStats'
 
 const PAGE_SIZES = [25, 50, 100]
 
@@ -91,6 +92,7 @@ export function McpCallsPage() {
   const [limit, setLimit] = useState(50)
   const [page, setPage] = useState(0)
   const [detailId, setDetailId] = useState<number | null>(null)
+  const [days, setDays] = useState(7)
 
   const catalog = useQuery({ queryKey: ['mcp-catalog', 'all'], queryFn: () => api.mcpCatalog('all') })
   const keys = useQuery({ queryKey: ['mcp-keys'], queryFn: api.mcpKeys })
@@ -102,6 +104,19 @@ export function McpCallsPage() {
       api.mcpCalls({
         limit,
         offset,
+        capability_id: capabilityId || undefined,
+        mcp_key_id: keyId ? Number(keyId) : undefined,
+        success: result === '' ? undefined : result === 'ok',
+        q: keyword || undefined,
+      }),
+    refetchInterval: 15_000,
+  })
+
+  const stats = useQuery({
+    queryKey: ['mcp-call-stats', { days, capabilityId, keyId, result, keyword }],
+    queryFn: () =>
+      api.mcpCallStats({
+        days,
         capability_id: capabilityId || undefined,
         mcp_key_id: keyId ? Number(keyId) : undefined,
         success: result === '' ? undefined : result === 'ok',
@@ -132,8 +147,9 @@ export function McpCallsPage() {
   return (
     <div className="space-y-3" aria-busy={calls.isFetching}>
       <p className="text-sm text-mist">
-        授权通过后的能力调用都会记录，成功与失败均可查，点击任意一行查看请求与响应详情。当前共 {total} 条。
+        授权通过后的能力调用都会记录，成功与失败均可查，点击任意一行查看请求与响应详情。当前筛选共 {total} 条。
       </p>
+      <McpCallStatsPanel stats={stats.data} days={days} onDays={setDays} loading={stats.isPending} />
 
       <FilterBar activeCount={hasFilter ? 1 : 0} onReset={clearFilters} desktopClassName="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="能力">
