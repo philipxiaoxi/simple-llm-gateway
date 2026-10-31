@@ -1029,6 +1029,30 @@ class McpCallLogListOut(BaseModel):
     offset: int = 0
 
 
+class McpCallStatsBucket(BaseModel):
+    key: str
+    label: str
+    total: int = 0
+    success: int = 0
+    failed: int = 0
+    avg_latency_ms: int = 0
+
+
+class McpCallStatsOut(BaseModel):
+    days: int
+    total: int = 0
+    success: int = 0
+    failed: int = 0
+    success_rate: float = 0
+    avg_latency_ms: int = 0
+    p95_latency_ms: int = 0
+    capabilities: list[McpCallStatsBucket] = Field(default_factory=list)
+    operations: list[McpCallStatsBucket] = Field(default_factory=list)
+    keys: list[McpCallStatsBucket] = Field(default_factory=list)
+    daily: list[McpCallStatsBucket] = Field(default_factory=list)
+    hourly: list[McpCallStatsBucket] = Field(default_factory=list)
+
+
 class KnowledgeBaseCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     description: str = Field(default="", max_length=2000)
