@@ -11,14 +11,22 @@ from app.crypto import hash_password
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import Admin, Role
+from app.nav_tabs import resolve_for_admin, save_default
 from app.permissions import WILDCARD
-from app.schemas import AdminPasswordReset, AdminUserCreate, AdminUserOut, AdminUserUpdate
+from app.schemas import (
+    AdminPasswordReset,
+    AdminUserCreate,
+    AdminUserOut,
+    AdminUserUpdate,
+    NavTabsOut,
+    NavTabsUpdate,
+)
 from app.services.client_meta import client_meta
 from app.services.permission_guard import (
     has_permission,
+    parse_permissions,
     permission_denied,
     permissions_for_admin,
-    parse_permissions,
 )
 from app.services.security_audit import enqueue_login_event
 
@@ -266,3 +274,18 @@ def delete_user(
     db.delete(target)
     db.commit()
     _audit(request, "admin_user_deleted", admin.username, f"/api/admin/users/{admin_id}", 204)
+
+
+@router.get("/settings/nav-tabs", response_model=NavTabsOut)
+def default_nav_tabs(admin: Admin = Depends(get_current_admin), db: Session = Depends(get_db)) -> NavTabsOut:
+    return NavTabsOut(**resolve_for_admin(db, admin))
+
+
+@router.put("/settings/nav-tabs", response_model=NavTabsOut)
+def update_default_nav_tabs(
+    payload: NavTabsUpdate,
+    admin: Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> NavTabsOut:
+    save_default(db, payload.paths)
+    return NavTabsOut(**resolve_for_admin(db, admin))

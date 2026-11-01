@@ -78,6 +78,7 @@ class DesktopToolCreate(BaseModel):
 class LoginResponse(BaseModel):
     token: str
     username: str
+    home_path: str | None = None
 
 
 class AdminUpdateRequest(BaseModel):
@@ -156,6 +157,26 @@ class MeOut(BaseModel):
     username: str
     role: MeRoleOut | None = None
     permissions: list[str] = Field(default_factory=list)
+
+
+class NavTabItemOut(BaseModel):
+    path: str
+    label: str
+    perm: str = ""
+
+
+class NavTabsOut(BaseModel):
+    catalog: list[NavTabItemOut]
+    default_paths: list[str]
+    custom_paths: list[str] | None = None
+    effective_paths: list[str]
+    source: str
+    max_tabs: int
+    home_path: str | None = None
+
+
+class NavTabsUpdate(BaseModel):
+    paths: list[str]
 
 
 class AccountCreate(BaseModel):
