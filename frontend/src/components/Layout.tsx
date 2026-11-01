@@ -348,6 +348,14 @@ export function Layout() {
   }, [can, navTabs.data])
 
   const previousPathRef = useRef<string | null>(null)
+  const homeRedirected = useRef(false)
+
+  useEffect(() => {
+    const home = navTabs.data?.home_path
+    if (!home || home === '/' || location.pathname !== '/' || homeRedirected.current) return
+    homeRedirected.current = true
+    navigate(home, { replace: true })
+  }, [location.pathname, navTabs.data?.home_path, navigate])
 
   useEffect(() => {
     localStorage.setItem('pivot:sidebar-collapsed', collapsed ? '1' : '0')
