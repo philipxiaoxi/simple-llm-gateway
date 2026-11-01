@@ -9,7 +9,8 @@ from app.db import get_db
 from app.deps import admin_role_view, create_access_token, get_current_admin
 from app.login_gate import LoginLocked, login_gate
 from app.models import Admin
-from app.schemas import AdminUpdateRequest, LoginRequest, LoginResponse, MeOut, MeRoleOut
+from app.nav_tabs import clear_custom, resolve_for_admin, resolve_home, save_custom
+from app.schemas import AdminUpdateRequest, LoginRequest, LoginResponse, MeOut, MeRoleOut, NavTabsOut, NavTabsUpdate
 from app.services.client_meta import client_meta
 from app.services.security_audit import enqueue_login_event, record_auth_failure
 
@@ -58,7 +59,11 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
     login_gate.succeed(client)
     enqueue_login_event("login_success", admin.username, meta, headers=headers, status=200)
     admin.last_login_at = utcnow()
-    return LoginResponse(token=create_access_token(admin), username=admin.username)
+    return LoginResponse(
+        token=create_access_token(admin),
+        username=admin.username,
+        home_path=resolve_home(db, admin),
+    )
 
 
 @router.get("/me", response_model=MeOut)
@@ -109,3 +114,24 @@ def update_me(
             method="PATCH",
         )
     return LoginResponse(token=create_access_token(admin), username=admin.username)
+
+
+@router.get("/me/nav-tabs", response_model=NavTabsOut)
+def my_nav_tabs(admin: Admin = Depends(get_current_admin), db: Session = Depends(get_db)) -> NavTabsOut:
+    return NavTabsOut(**resolve_for_admin(db, admin))
+
+
+@router.put("/me/nav-tabs", response_model=NavTabsOut)
+def update_my_nav_tabs(
+    payload: NavTabsUpdate,
+    admin: Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> NavTabsOut:
+    save_custom(db, admin, payload.paths)
+    return NavTabsOut(**resolve_for_admin(db, admin))
+
+
+@router.delete("/me/nav-tabs", response_model=NavTabsOut)
+def reset_my_nav_tabs(admin: Admin = Depends(get_current_admin), db: Session = Depends(get_db)) -> NavTabsOut:
+    clear_custom(db, admin.id)
+    return NavTabsOut(**resolve_for_admin(db, admin))

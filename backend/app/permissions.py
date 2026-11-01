@@ -268,6 +268,7 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
             ("delete", "删除"),
         ),
     ),
+    "nav_tabs": ("底部 Tab", (("manage", "设置默认"),)),
 }
 
 

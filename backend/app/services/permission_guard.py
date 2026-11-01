@@ -74,6 +74,7 @@ RESOURCE_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/api/admin/users", "users"),
     ("/api/admin/roles", "roles"),
     ("/api/admin/permission-catalog", "roles"),
+    ("/api/admin/settings/nav-tabs", "nav_tabs"),
 )
 
 # (方法, 路由模板) -> 权限码。仅登记「默认动作不对」或需要合并到某个动作的接口。
@@ -387,6 +388,8 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("PUT", "/api/admin/public-gate"): "public_gate:update",
     # 权限目录（角色编辑页读取）
     ("GET", "/api/admin/permission-catalog"): "roles:view",
+    ("GET", "/api/admin/settings/nav-tabs"): "nav_tabs:manage",
+    ("PUT", "/api/admin/settings/nav-tabs"): "nav_tabs:manage",
 }
 
 # 权限校验放行：登录、当前账号、OAuth 回调、前端埋点。这些接口要么不挂在守卫路由下，
@@ -395,6 +398,7 @@ EXEMPT_PATHS = frozenset(
     {
         "/api/admin/login",
         "/api/admin/me",
+        "/api/admin/me/nav-tabs",
         "/api/admin/oauth/grok/callback",
         "/api/admin/security/beacon",
         # 服务目录只返回能力元数据，供广场与 MCP Key 授权页使用；可见性由前端按各能力权限过滤
@@ -500,6 +504,8 @@ def require_admin_permission(
     """全局权限守卫：挂在管理路由的父路由上（见 `app/main.py`）。"""
     path = _route_template(request)
     if path is None or not path.startswith("/api/admin") or path in EXEMPT_PATHS:
+        return
+    if path == "/api/admin/settings/nav-tabs" and request.method.upper() == "GET":
         return
     if path.startswith(KIND_AWARE_PREFIX):
         return

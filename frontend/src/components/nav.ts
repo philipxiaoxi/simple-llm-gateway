@@ -125,7 +125,9 @@ export const PLAZA_APP_LINKS: NavLink[] = [
 
 export const SEARCH_LINKS: NavLink[] = [...NAV_LINKS, ...PLAZA_APP_LINKS]
 
-/** 移动端底部 Tab：保留最高频入口，其余走抽屉。 */
+/** 移动端底部 Tab 的内置默认；用户未保存个人配置且管理员未设默认时使用。 */
+export const BUILTIN_TAB_PATHS = ['/', '/accounts', '/keys', '/logs', '/skills']
+
 export const TAB_LINKS: NavLink[] = [
   { to: '/', label: '概览', icon: Activity, perm: 'dashboard:view' },
   { to: '/accounts', label: '账号', icon: RadioTower, perm: 'accounts:view' },
@@ -133,6 +135,16 @@ export const TAB_LINKS: NavLink[] = [
   { to: '/logs', label: '记录', icon: MessageSquareText, perm: 'logs:view' },
   { to: '/skills', label: 'Skills', icon: Sparkles, perm: 'skills:view' },
 ]
+
+export function linksForPaths(paths: string[], pool: NavLink[] = SEARCH_LINKS): NavLink[] {
+  const byPath = new Map(pool.map((link) => [link.to, link]))
+  const picked: NavLink[] = []
+  for (const path of paths) {
+    const link = byPath.get(path)
+    if (link && !picked.some((item) => item.to === link.to)) picked.push(link)
+  }
+  return picked
+}
 
 export function isPathActive(to: string, pathname: string) {
   if (to === '/') return pathname === '/'

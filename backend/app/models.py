@@ -1329,6 +1329,21 @@ class SecurityEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
+class NavTabPreference(Base):
+    """底部 Tab 配置。scope=default 为全站默认（admin_id 为空）；scope=user 为个人配置。"""
+
+    __tablename__ = "nav_tab_preferences"
+    __table_args__ = (
+        Index("ix_nav_tab_preferences_scope_admin", "scope", "admin_id", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scope: Mapped[str] = mapped_column(String(16), nullable=False)
+    admin_id: Mapped[int | None] = mapped_column(ForeignKey("admins.id"), nullable=True)
+    paths_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
 class SecuritySettings(Base):
     """安全中心配置：常用登录地点白名单与 IP/CIDR 白名单。单行表（id=1）。"""
 

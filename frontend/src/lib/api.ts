@@ -23,6 +23,18 @@ export type Me = {
   permissions: string[]
 }
 
+export type NavTabItem = { path: string; label: string; perm: string }
+
+export type NavTabs = {
+  catalog: NavTabItem[]
+  default_paths: string[]
+  custom_paths: string[] | null
+  effective_paths: string[]
+  source: 'custom' | 'default' | 'builtin'
+  max_tabs: number
+  home_path: string | null
+}
+
 export type RoleSummary = {
   id: number
   name: string
@@ -828,11 +840,17 @@ export type SecuritySettings = {
 
 export const api = {
   login: (username: string, password: string) =>
-    request<{ token: string; username: string }>('/api/admin/login', {
+    request<{ token: string; username: string; home_path?: string | null }>('/api/admin/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }),
   me: () => request<Me>('/api/admin/me'),
+  navTabs: () => request<NavTabs>('/api/admin/me/nav-tabs'),
+  saveNavTabs: (paths: string[]) =>
+    request<NavTabs>('/api/admin/me/nav-tabs', { method: 'PUT', body: JSON.stringify({ paths }) }),
+  resetNavTabs: () => request<NavTabs>('/api/admin/me/nav-tabs', { method: 'DELETE' }),
+  saveDefaultNavTabs: (paths: string[]) =>
+    request<NavTabs>('/api/admin/settings/nav-tabs', { method: 'PUT', body: JSON.stringify({ paths }) }),
   updateMe: (payload: { current_password: string; username?: string; password?: string }) =>
     request<{ token: string; username: string }>('/api/admin/me', {
       method: 'PATCH',

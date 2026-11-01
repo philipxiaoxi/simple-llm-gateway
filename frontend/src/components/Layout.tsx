@@ -7,10 +7,10 @@ import {
   PanelLeftOpen,
   Rows3,
   Search,
-  UserRoundPen,
+  Settings,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, clearToken, setToken } from '../lib/api'
 import { flush, track } from '../lib/security'
@@ -19,7 +19,7 @@ import { MIN_PASSWORD_LENGTH, cn, errorMessage } from '../lib/utils'
 import { useMediaQuery } from '../lib/useMediaQuery'
 import { CommandPalette } from './command-palette'
 import { PageContainer } from './layout-primitives'
-import { NAV_GROUPS, PLAZA_APP_LINKS, TAB_LINKS, currentPageLabel, filterNavGroups, filterNavLinks, isPathActive } from './nav'
+import { NAV_GROUPS, PLAZA_APP_LINKS, SEARCH_LINKS, TAB_LINKS, currentPageLabel, filterNavGroups, filterNavLinks, isPathActive, linksForPaths } from './nav'
 import { useSession } from '../lib/session'
 import { ForceUpdateButton } from './PwaUpdate'
 import { Button, Dialog, Field, Input } from './ui'
@@ -29,7 +29,187 @@ type Density = 'comfortable' | 'compact'
 const BRAND_TILE =
   'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-signal/30 bg-signal/10 font-mono text-[11px] tracking-[0.16em] text-signal'
 
-function ProfileDialog({ onClose }: { onClose: () => void }) {
+function reorderPaths(paths: string[], from: number, to: number) {
+  if (from === to || from < 0 || to < 0 || from >= paths.length || to >= paths.length) return paths
+  const next = [...paths]
+  const [item] = next.splice(from, 1)
+  next.splice(to, 0, item)
+  return next
+}
+
+function TabEditor({ canManageDefault }: { canManageDefault: boolean }) {
+  const queryClient = useQueryClient()
+  const { data } = useQuery({ queryKey: ['nav-tabs'], queryFn: api.navTabs })
+  const [paths, setPaths] = useState<string[] | null>(null)
+  const [error, setError] = useState('')
+  const [pending, setPending] = useState(false)
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [overIndex, setOverIndex] = useState<number | null>(null)
+  const [ghost, setGhost] = useState<{ label: string; x: number; y: number } | null>(null)
+  const rowRefs = useRef<Array<HTMLDivElement | null>>([])
+  const selected = paths ?? data?.custom_paths ?? data?.effective_paths ?? []
+  const maxTabs = data?.max_tabs ?? 5
+  const catalog = useMemo(() => linksForPaths(data?.catalog.map((item) => item.path) ?? [], SEARCH_LINKS), [data])
+
+  function indexAt(clientY: number) {
+    const rows = rowRefs.current
+    for (let index = 0; index < rows.length; index += 1) {
+      const rect = rows[index]?.getBoundingClientRect()
+      if (rect && clientY < rect.top + rect.height / 2) return index
+    }
+    return Math.max(0, selected.length - 1)
+  }
+
+  function startDrag(index: number, event: ReactPointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    const handle = event.currentTarget
+    handle.setPointerCapture(event.pointerId)
+    const from = index
+    const label = SEARCH_LINKS.find((item) => item.to === selected[index])?.label ?? ''
+    setDragIndex(from)
+    setOverIndex(from)
+    setGhost({ label, x: event.clientX, y: event.clientY })
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.userSelect = 'none'
+    const move = (pointer: PointerEvent) => {
+      pointer.preventDefault()
+      setOverIndex(indexAt(pointer.clientY))
+      setGhost({ label, x: pointer.clientX, y: pointer.clientY })
+    }
+    const stop = (pointer: PointerEvent) => {
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', stop)
+      handle.removeEventListener('pointercancel', stop)
+      document.body.style.userSelect = previousUserSelect
+      setPaths(reorderPaths(selected, from, indexAt(pointer.clientY)))
+      setDragIndex(null)
+      setOverIndex(null)
+      setGhost(null)
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', stop)
+    handle.addEventListener('pointercancel', stop)
+  }
+
+  async function save(kind: 'mine' | 'default') {
+    setPending(true)
+    setError('')
+    try {
+      const result = kind === 'mine' ? await api.saveNavTabs(selected) : await api.saveDefaultNavTabs(selected)
+      queryClient.setQueryData(['nav-tabs'], result)
+      notifyOk(kind === 'mine' ? '底部 Tab 已保存' : '默认底部 Tab 已保存')
+      setPaths(null)
+    } catch (caught) {
+      setError(errorMessage(caught, '保存失败'))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  async function reset() {
+    setPending(true)
+    setError('')
+    try {
+      const result = await api.resetNavTabs()
+      queryClient.setQueryData(['nav-tabs'], result)
+      setPaths(null)
+      notifyOk('已恢复默认底部 Tab')
+    } catch (caught) {
+      setError(errorMessage(caught, '恢复失败'))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <div className="grid gap-3 border-t border-line pt-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm text-paper">底部 Tab</div>
+        <div className="text-xs text-mist">{selected.length}/{maxTabs}</div>
+      </div>
+      <div className="text-xs text-mist">第一项是登录后默认打开的页面。按住左侧手柄拖动排序。</div>
+      <div className="relative grid touch-pan-y gap-1 select-none">
+        {selected.map((path, index) => {
+          const link = SEARCH_LINKS.find((item) => item.to === path)
+          if (!link) return null
+          return (
+            <div
+              key={path}
+              ref={(node) => {
+                rowRefs.current[index] = node
+              }}
+              className={cn(
+                'flex min-h-11 items-center gap-2 rounded-lg border border-line bg-ink/40 px-1 py-1',
+                dragIndex === index && 'opacity-40',
+                overIndex === index && dragIndex !== index && 'border-signal',
+              )}
+            >
+              <button
+                type="button"
+                className="inline-flex h-11 w-11 shrink-0 cursor-grab touch-none items-center justify-center text-mist active:cursor-grabbing"
+                aria-label={`拖动${link.label}`}
+                style={{ WebkitUserSelect: 'none', userSelect: 'none', touchAction: 'none' }}
+                onPointerDown={(event) => startDrag(index, event)}
+                onContextMenu={(event) => event.preventDefault()}
+              >
+                <Rows3 size={16} aria-hidden="true" />
+              </button>
+              <link.icon size={14} className="shrink-0 text-mist" />
+              <span className="min-w-0 flex-1 truncate text-sm">{link.label}</span>
+              <button
+                type="button"
+                className="inline-flex h-9 w-9 items-center justify-center text-mist"
+                aria-label={`移除${link.label}`}
+                onClick={() => setPaths(selected.filter((item) => item !== path))}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {catalog.filter((link) => !selected.includes(link.to)).map((link) => (
+          <button
+            key={link.to}
+            type="button"
+            disabled={selected.length >= maxTabs}
+            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-line px-2.5 py-1 text-xs text-mist disabled:opacity-40"
+            onClick={() => setPaths([...selected, link.to])}
+          >
+            {link.label}
+          </button>
+        ))}
+      </div>
+      {ghost ? (
+        <div
+          className="pointer-events-none fixed z-[80] -translate-x-4 -translate-y-5 rounded-lg border border-signal bg-panel px-3 py-2 text-sm text-paper shadow-lg"
+          style={{ left: ghost.x, top: ghost.y }}
+        >
+          {ghost.label}
+        </div>
+      ) : null}
+      {error ? <div className="text-sm text-danger" role="alert">{error}</div> : null}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button type="button" variant="ghost" disabled={pending || data?.custom_paths == null} onClick={() => void reset()}>
+          恢复默认
+        </Button>
+        {canManageDefault ? (
+          <Button type="button" variant="ghost" disabled={pending || selected.length === 0} onClick={() => void save('default')}>
+            存为全站默认
+          </Button>
+        ) : null}
+        <Button type="button" disabled={pending || selected.length === 0} onClick={() => void save('mine')}>
+          保存我的 Tab
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function ProfileForm() {
   const queryClient = useQueryClient()
   const { data } = useQuery({ queryKey: ['me'], queryFn: api.me })
   const [username, setUsername] = useState('')
@@ -69,7 +249,6 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
       setToken(result.token)
       await queryClient.invalidateQueries({ queryKey: ['me'] })
       notifyOk('账号已更新')
-      onClose()
     } catch (caught) {
       setError(errorMessage(caught, '更新失败'))
       notifyBad(errorMessage(caught, '更新失败'))
@@ -79,7 +258,6 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Dialog title="账号设置" onClose={onClose}>
       <div className="grid gap-3">
         <Field label="新用户名（不改请留空）">
           <Input
@@ -99,22 +277,54 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
           <Input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} />
         </Field>
         {error ? <div className="text-sm text-danger" role="alert">{error}</div> : null}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            取消
-          </Button>
+        <div className="flex justify-end">
           <Button type="button" disabled={pending} onClick={() => void submit()}>
-            保存
+            保存密码
           </Button>
         </div>
       </div>
+  )
+}
+
+function SettingsDialog({
+  tab,
+  onTab,
+  onClose,
+}: {
+  tab: 'account' | 'tabs'
+  onTab: (tab: 'account' | 'tabs') => void
+  onClose: () => void
+}) {
+  const { can } = useSession()
+  return (
+    <Dialog title="设置" onClose={onClose} className="max-w-xl">
+      <div className="mb-4 flex gap-1 rounded-lg border border-line p-1">
+        {([
+          ['account', '账号'],
+          ['tabs', '底部 Tab'],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={cn(
+              'h-9 flex-1 rounded-md text-sm',
+              tab === id ? 'bg-signal/15 text-signal' : 'text-mist hover:text-paper',
+            )}
+            onClick={() => onTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'account' ? <ProfileForm /> : <TabEditor canManageDefault={can('nav_tabs:manage')} />}
     </Dialog>
   )
 }
 
 export function Layout() {
   const [open, setOpen] = useState(false)
-  const [profile, setProfile] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<'account' | 'tabs'>('account')
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [drawerQuery, setDrawerQuery] = useState('')
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('pivot:sidebar-collapsed') === '1')
@@ -130,7 +340,12 @@ export function Layout() {
   const { can } = useSession()
   const navGroups = useMemo(() => filterNavGroups(NAV_GROUPS, can), [can])
   const plazaLinks = useMemo(() => filterNavLinks(PLAZA_APP_LINKS, can), [can])
-  const tabLinks = useMemo(() => filterNavLinks(TAB_LINKS, can), [can])
+  const navTabs = useQuery({ queryKey: ['nav-tabs'], queryFn: api.navTabs, staleTime: 30_000 })
+  const tabLinks = useMemo(() => {
+    const paths = navTabs.data?.effective_paths
+    const resolved = paths ? linksForPaths(paths) : filterNavLinks(TAB_LINKS, can)
+    return resolved.slice(0, 5)
+  }, [can, navTabs.data])
 
   const previousPathRef = useRef<string | null>(null)
 
@@ -492,6 +707,19 @@ export function Layout() {
             collapsed ? 'lg:flex-col lg:justify-center' : 'lg:flex-row lg:justify-between',
           )}
         >
+          <Button
+            variant="ghost"
+            className="h-10 w-10 shrink-0 justify-center p-0 text-mist"
+            onClick={() => {
+              setSettingsTab('account')
+              setSettingsOpen(true)
+              setOpen(false)
+            }}
+            title="设置"
+            aria-label="设置"
+          >
+            <Settings size={16} />
+          </Button>
           <ForceUpdateButton className="h-10 w-10 shrink-0 justify-center p-0 text-mist" title="强制更新">
             <span className="sr-only">强制更新</span>
           </ForceUpdateButton>
@@ -527,15 +755,6 @@ export function Layout() {
           <Button
             variant="ghost"
             className="h-10 w-10 shrink-0 justify-center p-0 text-mist"
-            onClick={() => setProfile(true)}
-            title="账号设置"
-            aria-label="账号设置"
-          >
-            <UserRoundPen size={16} />
-          </Button>
-          <Button
-            variant="ghost"
-            className="h-10 w-10 shrink-0 justify-center p-0 text-mist"
             onClick={logout}
             title="退出登录"
             aria-label="退出登录"
@@ -544,7 +763,9 @@ export function Layout() {
           </Button>
         </div>
       </aside>
-      {profile ? <ProfileDialog onClose={() => setProfile(false)} /> : null}
+      {settingsOpen ? (
+        <SettingsDialog tab={settingsTab} onTab={setSettingsTab} onClose={() => setSettingsOpen(false)} />
+      ) : null}
 
       <main
         ref={mainRef}
@@ -556,7 +777,6 @@ export function Layout() {
         </PageContainer>
       </main>
 
-      {tabLinks.length ? (
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-panel/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
         <div className="flex h-14">
           {tabLinks.map((link) => {
@@ -579,7 +799,7 @@ export function Layout() {
           })}
         </div>
       </nav>
-      ) : null}
+
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>

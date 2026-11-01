@@ -21,7 +21,7 @@ export function LoginPage() {
       const result = await api.login(username, password)
       setToken(result.token)
       track('session_start')
-      navigate('/')
+      navigate(result.home_path || '/')
     } catch (err) {
       setError(errorMessage(err, '登录失败'))
     } finally {
