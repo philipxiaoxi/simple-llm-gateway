@@ -21,7 +21,8 @@ export function LoginPage() {
       const result = await api.login(username, password)
       setToken(result.token)
       track('session_start')
-      navigate(result.home_path || '/')
+      const desktop = window.matchMedia('(min-width: 768px)').matches
+      navigate(desktop ? '/' : result.home_path || '/')
     } catch (err) {
       setError(errorMessage(err, '登录失败'))
     } finally {
