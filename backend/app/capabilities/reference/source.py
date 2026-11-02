@@ -16,11 +16,13 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Any
 
 import httpx
 
 from app.capabilities.reference.errors import ReferenceError
+from app.capabilities.reference.images import proxy_path
 from app.capabilities.reference.specs import ReferenceSpec, get_spec
 from app.config import get_settings
 
@@ -50,6 +52,7 @@ class ReferenceRecord:
     adult: bool
     search_text: str
     extra: tuple[tuple[str, str], ...]
+    origin: str = "upstream"
 
 
 def _as_int(value: Any, default: int = 0) -> int:
@@ -222,12 +225,13 @@ class ReferenceSource:
             "keywords": record.keywords,
             "width": record.width,
             "height": record.height,
-            "thumb_url": self._image_url(record.thumb_path),
-            "image_url": self._image_url(record.image_path),
+            "thumb_url": self._image_url(record.thumb_path, thumb=True),
+            "image_url": self._image_url(record.image_path, thumb=False),
             "curated": record.curated,
             "hot": record.hot,
             "adult": record.adult,
             "prompt": self._prompt(record),
+            "source": record.origin,
         }
 
     def _prompt(self, record: ReferenceRecord) -> str:
@@ -250,11 +254,13 @@ class ReferenceSource:
             text += f"；{name}：{value}"
         return text
 
-    def _image_url(self, path: str) -> str:
-        settings = get_settings()
-        base = (settings.references_image_cdn or settings.references_source_base).rstrip("/")
-        relative = (path or "").lstrip("/")
-        return f"{base}/{relative}" if base and relative else ""
+    def _image_url(self, path: str, *, thumb: bool) -> str:
+        if path.startswith("/"):
+            return path
+        relative = path
+        if path.startswith("http://") or path.startswith("https://"):
+            relative = urlsplit(path).path.lstrip("/")
+        return proxy_path(self.spec.route, relative) if relative else ""
 
     def _ensure(self, *, force: bool = False) -> None:
         settings = get_settings()

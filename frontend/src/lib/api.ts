@@ -1341,6 +1341,23 @@ export const api = {
     const suffix = params.toString() ? `?${params}` : ''
     return request<ReferenceMeta>(`/api/admin/mcp/${kind}s/meta${suffix}`)
   },
+  referenceCreate: (
+    kind: ReferenceKind,
+    payload: { file: File; title: string; group?: string; category?: string; detail?: string; tags?: string; prompt?: string; adult?: boolean },
+  ) => {
+    const form = new FormData()
+    form.set('file', payload.file)
+    form.set('title', payload.title)
+    form.set('group', payload.group ?? '')
+    form.set('category', payload.category ?? '')
+    form.set('detail', payload.detail ?? '')
+    form.set('tags', payload.tags ?? '')
+    form.set('prompt', payload.prompt ?? '')
+    form.set('adult', payload.adult ? 'true' : 'false')
+    return request<{ item: ReferenceItem }>(`/api/admin/mcp/${kind}s`, { method: 'POST', body: form })
+  },
+  referenceDelete: (kind: ReferenceKind, id: string) =>
+    request<void>(`/api/admin/mcp/${kind}s/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   referenceRefresh: (kind: ReferenceKind, query: { include_adult?: boolean } = {}) => {
     const params = new URLSearchParams()
     if (query.include_adult) params.set('include_adult', 'true')
@@ -2249,6 +2266,7 @@ export type ReferenceItem = {
   hot: boolean
   adult: boolean
   prompt: string
+  source?: 'local' | 'upstream'
 }
 
 export type ReferenceQuery = {

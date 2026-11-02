@@ -140,7 +140,7 @@ def test_reference_search_and_prompt(client: TestClient, auth_headers: dict[str,
     portrait = client.post("/v1/capabilities/portrait/search", headers=auth, json={"query": "短发"})
     assert portrait.status_code == 200, portrait.text
     assert portrait.json()["items"][0]["id"] == "a1"
-    assert portrait.json()["items"][0]["image_url"].endswith("/img/portrait/a1.webp")
+    assert portrait.json()["items"][0]["image_url"] == "/api/admin/mcp/portraits/images/img/portrait/a1.webp"
     assert "人物参考" in portrait.json()["items"][0]["prompt"]
 
     pose = client.post(
@@ -259,3 +259,110 @@ def test_reference_catalog_permissions(client: TestClient, auth_headers: dict[st
         "costume_get",
         "costume_random",
     }
+
+
+PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x00\x05\xfe"
+    b"\x02\xfe\xa7V\x81\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+def test_reference_local_asset_merges_and_survives_refresh(
+    client: TestClient, auth_headers: dict[str, str], reference_sources
+) -> None:
+    created = client.post(
+        "/api/admin/mcp/poses",
+        headers=auth_headers,
+        files={"file": ("pose.png", PNG, "image/png")},
+        data={"title": "本地站姿", "group": "全身单人・标准系", "category": "站姿", "detail": "背面", "tags": "本地,测试", "prompt": "保持站立"},
+    )
+    assert created.status_code == 201, created.text
+    item = created.json()["item"]
+    assert item["id"].startswith("local:")
+    assert item["source"] == "local"
+    assert item["image_url"].endswith("/file")
+
+    listing = client.get("/api/admin/mcp/poses?q=本地站姿", headers=auth_headers)
+    assert listing.status_code == 200, listing.text
+    assert listing.json()["items"][0]["id"] == item["id"]
+    assert "本地" in listing.json()["facets"]["tags"]
+
+    file_response = client.get(item["image_url"], headers=auth_headers)
+    assert file_response.status_code == 200, file_response.text
+    assert file_response.content.startswith(b"\x89PNG")
+
+    from app.capabilities.reference import source as source_module
+
+    source = source_module.get_source("pose")
+    source._fetch_json = lambda url: RAW["pose"]  # type: ignore[method-assign]
+    refreshed = client.post("/api/admin/mcp/poses/refresh", headers=auth_headers)
+    assert refreshed.status_code == 200, refreshed.text
+    again = client.get(f"/api/admin/mcp/poses/{item['id']}", headers=auth_headers)
+    assert again.status_code == 200, again.text
+    assert again.json()["item"]["title"] == "本地站姿"
+
+    denied = client.delete("/api/admin/mcp/poses/p1", headers=auth_headers)
+    assert denied.status_code == 400
+    removed = client.delete(f"/api/admin/mcp/poses/{item['id']}", headers=auth_headers)
+    assert removed.status_code == 204, removed.text
+    missing = client.get(f"/api/admin/mcp/poses/{item['id']}", headers=auth_headers)
+    assert missing.status_code == 404
+
+
+def test_reference_image_proxy_caches_file(client: TestClient, auth_headers: dict[str, str], reference_sources, monkeypatch) -> None:
+    calls = {"count": 0}
+
+    class Response:
+        content = PNG
+        headers = {"content-type": "image/png"}
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class Client:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args) -> None:
+            return None
+
+        def get(self, url: str):
+            calls["count"] += 1
+            assert url.endswith("/img/portrait/a1.webp")
+            return Response()
+
+    monkeypatch.setattr("app.capabilities.reference.images.httpx.Client", Client)
+    first = client.get("/api/admin/mcp/portraits/images/img/portrait/a1.webp", headers=auth_headers)
+    second = client.get("/api/admin/mcp/portraits/images/img/portrait/a1.webp", headers=auth_headers)
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200
+    assert first.content == PNG
+    assert calls["count"] == 1
+    assert first.headers["cache-control"] != "no-store"
+
+
+def test_reference_local_asset_permission(client: TestClient, auth_headers: dict[str, str], reference_sources) -> None:
+    role = client.post(
+        "/api/admin/roles",
+        headers=auth_headers,
+        json={"name": "姿势查看", "permissions": ["mcp_poses:view"]},
+    )
+    assert role.status_code == 201, role.text
+    user = client.post(
+        "/api/admin/users",
+        headers=auth_headers,
+        json={"username": "pose-viewer", "password": "user-pass-123", "role_id": role.json()["id"]},
+    )
+    token = client.post("/api/admin/login", json={"username": "pose-viewer", "password": "user-pass-123"}).json()["token"]
+    auth = {"Authorization": f"Bearer {token}"}
+    response = client.post(
+        "/api/admin/mcp/poses",
+        headers=auth,
+        files={"file": ("pose.png", PNG, "image/png")},
+        data={"title": "无权限"},
+    )
+    assert response.status_code == 403

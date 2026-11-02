@@ -324,6 +324,12 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("POST", "/api/admin/mcp/portraits/refresh"): "mcp_portraits:sync",
     ("POST", "/api/admin/mcp/poses/refresh"): "mcp_poses:sync",
     ("POST", "/api/admin/mcp/costumes/refresh"): "mcp_costumes:sync",
+    ("POST", "/api/admin/mcp/portraits"): "mcp_portraits:create",
+    ("POST", "/api/admin/mcp/poses"): "mcp_poses:create",
+    ("POST", "/api/admin/mcp/costumes"): "mcp_costumes:create",
+    ("DELETE", "/api/admin/mcp/portraits/{reference_id}"): "mcp_portraits:delete",
+    ("DELETE", "/api/admin/mcp/poses/{reference_id}"): "mcp_poses:delete",
+    ("DELETE", "/api/admin/mcp/costumes/{reference_id}"): "mcp_costumes:delete",
     # MCP 图表
     ("GET", "/api/admin/mcp/diagrams"): "mcp_diagrams:view",
     ("GET", "/api/admin/mcp/diagrams/{site_id}"): "mcp_diagrams:view",

@@ -11,6 +11,7 @@ from typing import Any
 
 from app.capabilities.base import CallContext, CapabilitySpec, McpToolDef
 from app.capabilities.reference.errors import ReferenceError
+from app.capabilities.reference.catalog import ReferenceCatalog
 from app.capabilities.reference.source import ATTRIBUTION, get_source
 from app.capabilities.reference.specs import ReferenceSpec
 
@@ -166,7 +167,8 @@ class ReferenceProvider:
     async def dispatch(self, operation: str, payload: dict[str, Any], ctx: CallContext) -> dict[str, Any]:
         if ctx.mcp_key is None:
             raise ReferenceError("需要 MCP Key", status_code=401, error_type="authentication_error")
-        source = get_source(self.library.kind)
+        source = ReferenceCatalog(self.library, get_source(self.library.kind))
+        db = ctx.db
         kind = self.library.kind
         query = str(payload.get("query") or payload.get("q") or "").strip()
         group = str(payload.get("group") or "").strip()
@@ -180,6 +182,7 @@ class ReferenceProvider:
             offset = max(0, _parse_int(payload.get("offset"), 0))
             return await asyncio.to_thread(
                 source.search,
+                db,
                 query=query,
                 group=group,
                 category=category,
@@ -194,10 +197,11 @@ class ReferenceProvider:
             reference_id = str(payload.get("id") or payload.get("reference_id") or "").strip()
             if not reference_id:
                 raise ReferenceError("缺少 id", status_code=400, error_type="invalid_request")
-            return await asyncio.to_thread(source.get, reference_id, include_adult=include_adult)
+            return await asyncio.to_thread(source.get, db, reference_id, include_adult=include_adult)
         if operation in {"random", f"{kind}_random"}:
             return await asyncio.to_thread(
                 source.random,
+                db,
                 query=query,
                 group=group,
                 category=category,

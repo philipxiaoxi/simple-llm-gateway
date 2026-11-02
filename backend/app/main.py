@@ -379,7 +379,8 @@ class DisableApiCacheMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or not str(scope.get("path", "")).startswith("/api/"):
+        path = str(scope.get("path", ""))
+        if scope["type"] != "http" or not path.startswith("/api/") or "/images/" in path:
             await self.app(scope, receive, send)
             return
 
