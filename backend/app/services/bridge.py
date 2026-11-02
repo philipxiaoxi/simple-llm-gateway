@@ -746,30 +746,6 @@ def promote_reasoning_to_content(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def normalize_openai_stream_chunk(chunk: dict[str, Any]) -> dict[str, Any]:
-    """流式等价处理：无工具调用且 content 为空时，把 reasoning_content 增量挪到 content。"""
-    choices = chunk.get("choices")
-    if not isinstance(choices, list):
-        return chunk
-    for choice in choices:
-        if not isinstance(choice, dict):
-            continue
-        delta = choice.get("delta")
-        if not isinstance(delta, dict) or _has_tool_calls(delta):
-            continue
-        content = delta.get("content")
-        if isinstance(content, str) and content.strip():
-            continue
-        if isinstance(content, list) and _message_content_text(content).strip():
-            continue
-        reasoning = extract_reasoning_from_delta(delta)
-        if not reasoning:
-            continue
-        delta["content"] = reasoning
-        delta["reasoning_content"] = None
-    return chunk
-
-
 def extract_text_from_openai_chunk(chunk: dict[str, Any]) -> str:
     choices = chunk.get("choices") or []
     if not choices:

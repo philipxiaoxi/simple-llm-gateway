@@ -90,14 +90,14 @@ def test_stream_dump_keeps_reasoning_content() -> None:
     assert _dump_model(SimpleNamespace()) == {}
 
 
-def test_openai_stream_promotes_reasoning_only_reply(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_openai_stream_keeps_reasoning_separate(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
 
     async def fake_stream(*_args, **_kwargs):
         async def chunks():
             yield {"choices": [{"index": 0, "delta": {"role": "assistant", "content": "", "reasoning_content": ""}}]}
-            yield {"choices": [{"index": 0, "delta": {"content": "", "reasoning_content": "可见"}}]}
-            yield {"choices": [{"index": 0, "delta": {"content": "", "reasoning_content": "回复"}, "finish_reason": "stop"}]}
+            yield {"choices": [{"index": 0, "delta": {"content": "", "reasoning_content": "思考中"}}]}
+            yield {"choices": [{"index": 0, "delta": {"content": "正式回复"}, "finish_reason": "stop"}]}
 
         return chunks()
 
@@ -109,9 +109,10 @@ def test_openai_stream_promotes_reasoning_only_reply(client: TestClient, auth_he
             json={"model": "deepseek-v4.1-flash", "stream": True, "messages": [{"role": "user", "content": "hi"}]},
         ) as response:
             text = "".join(response.iter_text())
-    assert '"content": "可见"' in text
-    assert '"content": "回复"' in text
-    assert '"reasoning_content": "可见"' not in text
+
+    assert '"reasoning_content": "思考中"' in text
+    assert '"content": "思考中"' not in text
+    assert '"content": "正式回复"' in text
 
 
 def test_openai_keeps_reasoning_on_tool_calls(client: TestClient, auth_headers: dict[str, str]) -> None:

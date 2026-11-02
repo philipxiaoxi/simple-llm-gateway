@@ -38,7 +38,6 @@ from app.services.bridge import (
     extract_reasoning_from_openai_chunk,
     extract_text_from_openai_chunk,
     extract_usage,
-    normalize_openai_stream_chunk,
     promote_reasoning_to_content,
     _dump_model,
     input_to_messages,
@@ -721,8 +720,6 @@ async def _stream_response(
                         for event in responses_translator.feed(chunk):
                             yield event
                         continue
-                    if protocol == "openai_chat":
-                        chunk = normalize_openai_stream_chunk(chunk)
                     collector.feed(chunk)
                     if protocol == "anthropic_messages":
                         for event in translator.feed(chunk):
