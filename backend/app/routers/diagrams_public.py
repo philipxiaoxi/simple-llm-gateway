@@ -7,7 +7,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.capabilities.diagram import service
+from app.capabilities.diagram.authoring import diagram_schema
 from app.capabilities.diagram.errors import DiagramError
+from app.capabilities.diagram.renderer import DIAGRAM_TYPES
 from app.capabilities.site import sites as site_service
 from app.capabilities.site.errors import SiteError
 from app.db import get_db
@@ -94,6 +96,24 @@ async def create_diagram(
     db.commit()
     background.add_task(site_service.run_deploy_task, version.id, activate)
     return _deploy_payload(db, site, version)
+
+
+@router.get("/schema")
+def get_diagram_schema(
+    type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    mcp_key=Depends(_mcp_key_dep),
+):
+    rec, denied = _gate(db, mcp_key, "schema")
+    if denied:
+        return denied
+    try:
+        body = diagram_schema(type)
+    except ValueError:
+        rec.failure("未知图表类型")
+        return _error(400, "invalid_request", f"type 必须是 {', '.join(DIAGRAM_TYPES)} 之一")
+    rec.success()
+    return body
 
 
 @router.get("")

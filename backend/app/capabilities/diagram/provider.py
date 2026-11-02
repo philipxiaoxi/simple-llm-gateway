@@ -6,6 +6,7 @@ from app.capabilities.base import CallContext, CapabilitySpec, McpToolDef
 from app.capabilities.site import sites as site_service
 
 from . import renderer, service
+from .authoring import diagram_schema
 from .errors import DiagramError
 
 
@@ -66,6 +67,11 @@ class DiagramProvider:
                     "content_type": "application/json",
                 },
                 {"method": "GET", "path": "/v1/diagrams", "summary": "列出本站点 Key 创建的图表"},
+                {
+                    "method": "GET",
+                    "path": "/v1/diagrams/schema",
+                    "summary": "创建前读取 Archify source 格式、最小示例和字段约束",
+                },
                 {"method": "GET", "path": "/v1/diagrams/{slug}", "summary": "图表详情与版本"},
                 {"method": "GET", "path": "/v1/diagrams/{slug}/source", "summary": "查看指定版本的 JSON 源"},
                 {"method": "PATCH", "path": "/v1/diagrams/{slug}", "summary": "编辑图表元信息"},
@@ -76,6 +82,7 @@ class DiagramProvider:
             ],
             "notes": [
                 "type 取值：architecture / workflow / sequence / dataflow / lifecycle",
+                "创建前调用 diagram_schema 或 GET /v1/diagrams/schema?type=workflow，按返回的 example 填 source",
                 "source 为 Archify 类型化 JSON 源，传对象或 JSON 字符串均可",
                 "source 未通过校验时返回 diagram_invalid，附带 diagnostics 规则码与 supportedFixes",
                 "预览地址为 {origin}/sites/{slug}/；令牌模式下响应带 token 与拼好的 ?token= url",
@@ -87,9 +94,27 @@ class DiagramProvider:
     def list_mcp_tools(self) -> list[McpToolDef]:
         return [
             McpToolDef(
+                name="diagram_schema",
+                description=(
+                    "创建图表前必须先调用。返回编图教程、类型选择、必填字段、合法枚举和可直接复制的最小示例。"
+                    "按 guide.steps 编写，不要猜测 schema。type 可选：architecture/workflow/sequence/dataflow/lifecycle；省略则返回全部类型。"
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "description": "要查询的图表类型；省略返回全部",
+                        }
+                    },
+                },
+                operation="schema",
+            ),
+            McpToolDef(
                 name="diagram_create",
                 description=(
                     "提交 Archify 类型化 JSON 源，渲染为自包含交互式 HTML 并发布为图表站点。"
+                    "调用前先用 diagram_schema 读取该 type 的 example，再按 example 的字段填写 source。"
                     "type 为 architecture/workflow/sequence/dataflow/lifecycle；source 为 JSON 对象或字符串。"
                     "传 slug 更新已有图表（追加版本），不传则新建。返回站点、版本与预览地址。"
                 ),
@@ -97,7 +122,10 @@ class DiagramProvider:
                     "type": "object",
                     "properties": {
                         "type": {"type": "string", "description": "图表类型，五选一"},
-                        "source": {"type": "object", "description": "Archify 类型化 JSON 源"},
+                        "source": {
+                            "type": "object",
+                            "description": "Archify 类型化 JSON 源。先调用 diagram_schema，按返回 example 填写，不要自造字段。",
+                        },
                         "slug": {"type": "string", "description": "目标图表 slug；为空则新建"},
                         "name": {"type": "string", "description": "新建图表时的显示名"},
                         "quality": {
@@ -216,6 +244,12 @@ class DiagramProvider:
         key_id = ctx.mcp_key.id
         slug = str(payload.get("slug") or "").strip()
 
+        if operation in {"schema", "diagram_schema"}:
+            requested = payload.get("type")
+            try:
+                return diagram_schema(None if requested in (None, "") else str(requested))
+            except ValueError:
+                raise DiagramError(f"type 必须是 {', '.join(renderer.DIAGRAM_TYPES)} 之一")
         if operation in {"create", "diagram_create"}:
             return await service.create_diagram(
                 ctx.db,

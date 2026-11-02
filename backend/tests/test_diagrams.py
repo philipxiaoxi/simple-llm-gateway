@@ -459,6 +459,49 @@ def test_duplicate_source_reuses_version(client: TestClient, auth_headers: dict[
     assert latest["reused_version_id"] == first.json()["version"]["id"]
 
 
+def test_diagram_schema_tool_and_rest(client: TestClient, auth_headers: dict[str, str]) -> None:
+    import asyncio
+
+    from app.capabilities import ensure_defaults, invoke_tool
+    from app.capabilities.base import CapabilityError
+    from app.services.mcp_auth import resolve_mcp_key
+
+    key = make_key(client, auth_headers, ["diagram"])
+    headers = {"Authorization": f"Bearer {key}"}
+    listed = client.get("/v1/diagrams/schema", headers=headers)
+    assert listed.status_code == 200, listed.text
+    body = listed.json()
+    assert body["formats"]["workflow"]["example"]["schema_version"] == 2
+    assert "process" not in body["formats"]["workflow"]["node_types"]
+    assert body["formats"]["workflow"]["layout"]["col"].startswith("整数 0..5")
+    assert body["formats"]["architecture"]["example"]["components"][0]["pos"] == [40, 80]
+    assert body["guide"]["steps"][0].startswith("先根据用户要回答的问题")
+    assert "workflow" in body["guide"]["choose_type"]
+    assert "https://github.com/tt-a1i/archify" == body["guide"]["source"]
+
+    workflow = client.get("/v1/diagrams/schema", headers=headers, params={"type": "workflow"})
+    assert set(workflow.json()["formats"]) == {"workflow"}
+    assert client.get("/v1/diagrams/schema", headers=headers, params={"type": "process"}).status_code == 400
+
+    session = get_session_factory()()
+    ensure_defaults()
+    try:
+        owner = resolve_mcp_key(session, key)
+        assert owner is not None
+        guide = asyncio.run(
+            invoke_tool(session, mcp_key=owner, tool_name="diagram_schema", payload={"type": "workflow"})
+        )
+        example = guide["formats"]["workflow"]["example"]
+        assert example["meta"]["output"].endswith(".html")
+        assert example["nodes"][0]["type"] in guide["formats"]["workflow"]["node_types"]
+        with pytest.raises(CapabilityError):
+            asyncio.run(
+                invoke_tool(session, mcp_key=owner, tool_name="diagram_schema", payload={"type": "process"})
+            )
+    finally:
+        session.close()
+
+
 def test_diagram_spec_registered() -> None:
     from app.capabilities import ensure_defaults, get_provider
 
@@ -469,6 +512,7 @@ def test_diagram_spec_registered() -> None:
     assert provider.spec.icon == "shapes"
     tool_names = {tool.name for tool in provider.list_mcp_tools()}
     assert {
+        "diagram_schema",
         "diagram_create",
         "diagram_list",
         "diagram_status",
