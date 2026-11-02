@@ -40,6 +40,104 @@ class FakeResponse:
         }
 
 
+class ReasoningOnlyResponse:
+    def model_dump(self) -> dict:
+        return {
+            "id": "chatcmpl-reason",
+            "object": "chat.completion",
+            "model": "deepseek-v4.1-flash",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "reasoning_content": "可见回复在思考字段里",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 4, "completion_tokens": 6, "total_tokens": 10},
+        }
+
+
+def test_openai_promotes_reasoning_only_reply(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+    with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=ReasoningOnlyResponse())):
+        response = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": "deepseek-v4.1-flash", "messages": [{"role": "user", "content": "hi"}]},
+        )
+    assert response.status_code == 200
+    message = response.json()["choices"][0]["message"]
+    assert message["content"] == "可见回复在思考字段里"
+
+
+def test_openai_stream_promotes_reasoning_only_reply(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+
+    async def fake_stream(*_args, **_kwargs):
+        async def chunks():
+            yield {"choices": [{"index": 0, "delta": {"role": "assistant", "content": "", "reasoning_content": ""}}]}
+            yield {"choices": [{"index": 0, "delta": {"content": "", "reasoning_content": "可见"}}]}
+            yield {"choices": [{"index": 0, "delta": {"content": "", "reasoning_content": "回复"}, "finish_reason": "stop"}]}
+
+        return chunks()
+
+    with patch("app.services.proxy.call_chat", new=AsyncMock(side_effect=fake_stream)):
+        with client.stream(
+            "POST",
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": "deepseek-v4.1-flash", "stream": True, "messages": [{"role": "user", "content": "hi"}]},
+        ) as response:
+            text = "".join(response.iter_text())
+    assert '"content": "可见"' in text
+    assert '"content": "回复"' in text
+    assert '"reasoning_content": "可见"' not in text
+
+
+def test_openai_keeps_reasoning_on_tool_calls(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = _make_key(client, auth_headers)
+
+    class ToolResponse:
+        def model_dump(self) -> dict:
+            return {
+                "id": "chatcmpl-tool",
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "reasoning_content": "先调用工具",
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {"name": "Read", "arguments": "{}"},
+                                }
+                            ],
+                        },
+                        "finish_reason": "tool_calls",
+                    }
+                ],
+            }
+
+    with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=ToolResponse())):
+        response = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": "deepseek-v4.1-flash", "messages": [{"role": "user", "content": "hi"}]},
+        )
+    message = response.json()["choices"][0]["message"]
+    assert message["content"] == ""
+    assert message["reasoning_content"] == "先调用工具"
+    assert message["tool_calls"][0]["id"] == "call_1"
+
+
 def test_openai_forward_and_log(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
     with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=FakeResponse())):

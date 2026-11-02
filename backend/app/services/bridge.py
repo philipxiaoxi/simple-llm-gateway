@@ -688,6 +688,71 @@ async def estimate_usage(
     return prompt, completion, prompt + completion
 
 
+def _message_content_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            str(part.get("text") or "")
+            for part in content
+            if isinstance(part, dict) and part.get("text")
+        )
+    return ""
+
+
+def _has_tool_calls(container: dict[str, Any]) -> bool:
+    tool_calls = container.get("tool_calls") or []
+    return isinstance(tool_calls, list) and any(isinstance(tool, dict) for tool in tool_calls)
+
+
+def promote_reasoning_to_content(payload: dict[str, Any]) -> dict[str, Any]:
+    """NewAPI/OneAPI 思考模型常把可见回复只放在 reasoning_content，content 留空。
+
+    OpenAI 协议客户端只渲染 content。没有工具调用时把思考文本回填到 content，
+    否则客户端会把一次正常回复当成空内容。带 tool_calls 时 content 必须保持为空，
+    思考文本继续留在 reasoning_content 供下一轮回传。
+    """
+    choices = payload.get("choices")
+    if not isinstance(choices, list):
+        return payload
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message")
+        if not isinstance(message, dict) or _has_tool_calls(message):
+            continue
+        if _message_content_text(message.get("content")).strip():
+            continue
+        reasoning = extract_reasoning_text(message)
+        if reasoning:
+            message["content"] = reasoning
+    return payload
+
+
+def normalize_openai_stream_chunk(chunk: dict[str, Any]) -> dict[str, Any]:
+    """流式等价处理：无工具调用且 content 为空时，把 reasoning_content 增量挪到 content。"""
+    choices = chunk.get("choices")
+    if not isinstance(choices, list):
+        return chunk
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        delta = choice.get("delta")
+        if not isinstance(delta, dict) or _has_tool_calls(delta):
+            continue
+        content = delta.get("content")
+        if isinstance(content, str) and content.strip():
+            continue
+        if isinstance(content, list) and _message_content_text(content).strip():
+            continue
+        reasoning = extract_reasoning_from_delta(delta)
+        if not reasoning:
+            continue
+        delta["content"] = reasoning
+        delta["reasoning_content"] = None
+    return chunk
+
+
 def extract_text_from_openai_chunk(chunk: dict[str, Any]) -> str:
     choices = chunk.get("choices") or []
     if not choices:

@@ -38,6 +38,8 @@ from app.services.bridge import (
     extract_reasoning_from_openai_chunk,
     extract_text_from_openai_chunk,
     extract_usage,
+    normalize_openai_stream_chunk,
+    promote_reasoning_to_content,
     input_to_messages,
     messages_need_reasoning_replay,
     pick_usage_from_chunk,
@@ -611,7 +613,7 @@ async def handle_chat(
             else responses_payload_to_dict(result)
         )
     else:
-        payload = openai_payload
+        payload = promote_reasoning_to_content(openai_payload)
 
     usage = extract_usage(openai_payload)
     if usage[0] is None and usage[1] is None and usage[2] is None:
@@ -721,6 +723,8 @@ async def _stream_response(
                         for event in responses_translator.feed(chunk):
                             yield event
                         continue
+                    if protocol == "openai_chat":
+                        chunk = normalize_openai_stream_chunk(chunk)
                     collector.feed(chunk)
                     if protocol == "anthropic_messages":
                         for event in translator.feed(chunk):
@@ -832,8 +836,11 @@ class OpenAIStreamCollector:
                 record["function"]["arguments"] += function["arguments"]
 
     def message(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {"role": "assistant", "content": self.text}
-        if self.reasoning:
+        text = self.text
+        if not text.strip() and self.reasoning and not self.tools:
+            text = self.reasoning
+        payload: dict[str, Any] = {"role": "assistant", "content": text}
+        if self.reasoning and self.tools:
             payload["reasoning_content"] = self.reasoning
         if self.tools:
             payload["tool_calls"] = [self.tools[index] for index in sorted(self.tools)]
