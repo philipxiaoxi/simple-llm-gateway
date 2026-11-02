@@ -69,20 +69,71 @@ backend/app/capabilities/web/
 
 ## 数据模型
 
+### 中文分词（已实测）
+
+FTS5 内置分词器都不能直接满足中文检索：
+
+| 分词器 | `开门` | `开门流程` | 结论 |
+|--------|--------|-----------|------|
+| `unicode61` | 查不到 | 查不到 | 把整段中文当成一个 token |
+| `trigram` | 查不到 | 命中 | 少于 3 字无效，两字词是中文主力 |
+
+`trigram` 对 `限流`、`开门` 这类两字词完全失效。`jieba` 等分词器未安装，且会引入词典与启动开销。
+
+采用**字符二元组**方案：入库前把中文串切成重叠二元组，用空格连接后写入独立的 `grams` 列，查询同样切分。零依赖，两字、三字、英文都能命中。
+
+```python
+CJK = re.compile(r"[\u4e00-\u9fff]")
+
+def grams(text: str) -> str:
+    out: list[str] = []
+    for token in re.findall(r"[\u4e00-\u9fff]+|[A-Za-z0-9_]+", text):
+        if CJK.match(token):
+            if len(token) == 1:
+                out.append(token)
+            else:
+                out.extend(token[i : i + 2] for i in range(len(token) - 1))
+        else:
+            out.append(token.lower())
+    return " ".join(out)
+```
+
+实测：`易微联开门流程图` → `易微 微联 联开 开门 门流 流程 程图`，`开门`、`流程` 均能命中。
+
+代价是中文索引体积约为原文的 2 倍，可接受。二元组会跨词边界产生少量误召回（如 `联开`），对检索召回有利，精度影响可忽略。
+
 ### info_items 全文索引
 
 不改 `InfoItem` 表结构，新增 FTS5 影子表，与 `knowledge_chunks_fts` 同模式：
 
 ```sql
 CREATE VIRTUAL TABLE IF NOT EXISTS info_items_fts USING fts5(
-    text, excerpt, title, item_id UNINDEXED,
+    excerpt, text, grams, author_name, item_id UNINDEXED,
     tokenize = 'unicode61'
 );
 ```
 
+`InfoItem` 没有 `title` 字段，标题与摘要统一在 `excerpt`。`grams` 存二元组串，`text` 存原文用于生成片段，`author_name` 支持按作者检索。
+
+查询只对 `excerpt`、`grams`、`author_name` 计分，原文列权重设为 0，避免与二元组重复计分：
+
+```sql
+SELECT item_id, bm25(info_items_fts, 3.0, 0.0, 1.0, 1.5) AS rank
+FROM info_items_fts
+WHERE info_items_fts MATCH :expr
+ORDER BY rank LIMIT :limit;
+```
+
+正文来源要分渠道处理：
+
+- RSS、Telegram、上报：正文已在 `InfoItem.text`。
+- 微信公众号：`text` 只有摘要，全文在 `content_html`（见 `app/services/info_loop.py:172`）。索引时必须剥离标签后并入 `grams`，否则搜不到文章正文。
+- `content_html` 是补全后异步写入的，全文补全完成时需要重建该条目的索引。
+
 维护方式：
 
-- 采集入库时写入（`backend/app/info/items.py` 新增调用点）。
+- 采集入库时写入（`backend/app/info/collector.py:98` 新增调用点）。
+- 公众号全文补全完成后重建（`app/services/info_loop.py:197`）。
 - 删除、隐藏时同步删除。
 - 提供一次性回填命令，扫描 `info_items` 建索引。
 - FTS5 自带 `bm25()` 排序，无需额外打分。

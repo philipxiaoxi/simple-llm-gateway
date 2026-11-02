@@ -48,6 +48,7 @@ WHEN 页面为 HTML，系统 SHALL 先提取正文再转 Markdown，避免导航
 WHEN 调用方提交查询词，系统 SHALL 在 `info_items` 上执行全文检索。
 
 - 使用 SQLite FTS5 + BM25，按 `published_at` 支持时间过滤。
+- 中文必须支持两字词检索（如 `开门`、`限流`）。实测 `unicode61` 与 `trigram` 都无法命中两字词，采用字符二元组索引。
 - 结果带来源、标题、摘要、原文链接。
 
 ### R4 全网搜索
