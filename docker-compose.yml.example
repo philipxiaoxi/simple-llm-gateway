@@ -15,15 +15,18 @@ services:
     volumes:
       - ./data:/data
 
-  # 可选的自托管聚合搜索。默认不启动，需要联网搜索时执行：
+  # 可选的自托管聚合搜索，不需要任何 API key。默认不启动，需要联网搜索时执行：
+  #   export SEARXNG_SECRET=$(openssl rand -hex 32)
   #   docker compose --profile search up -d
-  # 启动后把 gateway 的 WEB_SEARCH_PROVIDER 设为 searxng。
+  # 再把 gateway 的 WEB_SEARCH_PROVIDER 设为 searxng。
   searxng:
     image: searxng/searxng:latest
     profiles: ["search"]
     environment:
-      # 允许网关通过 JSON 读取结果；生产环境请改成实际域名
-      SEARXNG_BASE_URL: http://localhost:8080/
+      SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-http://searxng:8080/}
+      # 必填，缺失时容器会启动失败。不要用示例值。
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?先执行 export SEARXNG_SECRET=$(openssl rand -hex 32)}
     volumes:
-      - ./data/searxng:/etc/searxng
+      # settings.yml 已打开 json 输出，否则 /search?format=json 返回 403
+      - ./searxng:/etc/searxng
     restart: unless-stopped
