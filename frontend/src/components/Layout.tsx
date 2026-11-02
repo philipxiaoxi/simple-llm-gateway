@@ -337,7 +337,7 @@ export function Layout() {
   const queryClient = useQueryClient()
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
-  const { can } = useSession()
+  const { can, isLoading: sessionLoading } = useSession()
   const navGroups = useMemo(() => filterNavGroups(NAV_GROUPS, can), [can])
   const plazaLinks = useMemo(() => filterNavLinks(PLAZA_APP_LINKS, can), [can])
   const navTabs = useQuery({ queryKey: ['nav-tabs'], queryFn: api.navTabs, staleTime: 30_000 })
@@ -351,11 +351,12 @@ export function Layout() {
   const homeRedirected = useRef(false)
 
   useEffect(() => {
-    const home = navTabs.data?.home_path
-    if (!home || home === '/' || location.pathname !== '/' || homeRedirected.current) return
+    if (location.pathname !== '/' || homeRedirected.current || sessionLoading) return
+    const home = isDesktop ? navGroups[0]?.links[0]?.to : navTabs.data?.home_path
+    if (!home) return
     homeRedirected.current = true
-    navigate(home, { replace: true })
-  }, [location.pathname, navTabs.data?.home_path, navigate])
+    if (home !== '/') navigate(home, { replace: true })
+  }, [isDesktop, location.pathname, navGroups, navTabs.data?.home_path, navigate, sessionLoading])
 
   useEffect(() => {
     localStorage.setItem('pivot:sidebar-collapsed', collapsed ? '1' : '0')
