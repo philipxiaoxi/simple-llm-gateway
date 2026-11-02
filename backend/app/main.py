@@ -265,6 +265,9 @@ for admin_router in (
     admin_mcp_calls.router,
 ):
     admin_guard.include_router(admin_router)
+app.include_router(admin_references.portrait_media_router)
+app.include_router(admin_references.pose_media_router)
+app.include_router(admin_references.costume_media_router)
 app.include_router(admin_skills.download_router)
 app.include_router(admin_skill_bundles.download_router)
 app.include_router(admin_tools.download_router)

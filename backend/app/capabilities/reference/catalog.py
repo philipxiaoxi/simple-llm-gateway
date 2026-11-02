@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.capabilities.reference.assets import file_for, list_assets, local_id, to_record
+from app.capabilities.reference.images import image_token
 from app.capabilities.reference.errors import ReferenceError
 from app.capabilities.reference.source import SCOPES, ReferenceRecord, ReferenceSource
 from app.capabilities.reference.specs import ReferenceSpec
@@ -123,8 +124,10 @@ class ReferenceCatalog:
         item = self.source._item(record)
         if record.origin == "local":
             asset_id = record.id.removeprefix("local:")
-            item["thumb_url"] = f"/api/admin/mcp/{self.spec.route}/{asset_id}/file?thumb=true"
-            item["image_url"] = f"/api/admin/mcp/{self.spec.route}/{asset_id}/file"
+            file_path = f"/api/admin/mcp/{self.spec.route}/{asset_id}/file"
+            token = image_token(file_path)
+            item["thumb_url"] = f"{file_path}?thumb=true&token={token}"
+            item["image_url"] = f"{file_path}?token={token}"
             return item
         item["thumb_url"] = self.source._image_url(record.thumb_path, thumb=True)
         item["image_url"] = self.source._image_url(record.image_path, thumb=False)

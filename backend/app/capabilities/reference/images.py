@@ -9,7 +9,7 @@ import hashlib
 import mimetypes
 import threading
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
@@ -22,14 +22,32 @@ _LOCKS_GUARD = threading.Lock()
 
 
 def proxy_path(route: str, relative_path: str) -> str:
-    safe = "/".join(part for part in relative_path.split("/") if part not in {"", ".", ".."})
-    return f"/api/admin/mcp/{route}/images/{quote(safe)}"
+    safe = safe_image_path(relative_path)
+    path = f"/api/admin/mcp/{route}/images/{quote(safe, safe='/')}"
+    return f"{path}?token={image_token(path)}"
+
+
+def safe_image_path(relative_path: str) -> str:
+    decoded = unquote(relative_path)
+    return "/".join(part for part in decoded.split("/") if part not in {"", ".", ".."})
+
+
+def image_token(path: str) -> str:
+    from app.info.tokens import make_token
+
+    return make_token(path, ttl_seconds=get_settings().references_image_token_ttl_seconds)
+
+
+def image_token_valid(path: str, token: str) -> bool:
+    from app.info.tokens import verify_token
+
+    return verify_token(path, token)
 
 
 def upstream_url(relative_path: str) -> str:
     settings = get_settings()
     base = (settings.references_image_cdn or settings.references_source_base).rstrip("/")
-    relative = relative_path.lstrip("/")
+    relative = quote(safe_image_path(relative_path), safe="/")
     return f"{base}/{relative}"
 
 

@@ -170,6 +170,7 @@ class Settings(BaseSettings):
     # 图片直链前缀；需要 CDN 时把 CDN 地址填到 references_image_cdn
     references_image_cdn: str = ""
     references_cache_ttl_seconds: int = 86400
+    references_image_token_ttl_seconds: int = 43200
     references_timeout_seconds: int = 30
     references_max_results: int = 60
     # Archify 图表生成（diagram 能力）

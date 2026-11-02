@@ -140,7 +140,8 @@ def test_reference_search_and_prompt(client: TestClient, auth_headers: dict[str,
     portrait = client.post("/v1/capabilities/portrait/search", headers=auth, json={"query": "短发"})
     assert portrait.status_code == 200, portrait.text
     assert portrait.json()["items"][0]["id"] == "a1"
-    assert portrait.json()["items"][0]["image_url"] == "/api/admin/mcp/portraits/images/img/portrait/a1.webp"
+    image_url = portrait.json()["items"][0]["image_url"]
+    assert image_url.startswith("http://testserver/api/admin/mcp/portraits/images/img/portrait/a1.webp?token=")
     assert "人物参考" in portrait.json()["items"][0]["prompt"]
 
     pose = client.post(
@@ -281,14 +282,14 @@ def test_reference_local_asset_merges_and_survives_refresh(
     item = created.json()["item"]
     assert item["id"].startswith("local:")
     assert item["source"] == "local"
-    assert item["image_url"].endswith("/file")
+    assert "/file?token=" in item["image_url"]
 
     listing = client.get("/api/admin/mcp/poses?q=本地站姿", headers=auth_headers)
     assert listing.status_code == 200, listing.text
     assert listing.json()["items"][0]["id"] == item["id"]
     assert "本地" in listing.json()["facets"]["tags"]
 
-    file_response = client.get(item["image_url"], headers=auth_headers)
+    file_response = client.get(item["image_url"])
     assert file_response.status_code == 200, file_response.text
     assert file_response.content.startswith(b"\x89PNG")
 
@@ -308,6 +309,16 @@ def test_reference_local_asset_merges_and_survives_refresh(
     assert removed.status_code == 204, removed.text
     missing = client.get(f"/api/admin/mcp/poses/{item['id']}", headers=auth_headers)
     assert missing.status_code == 404
+
+
+def test_reference_image_token_matches_encoded_path(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from app.capabilities.reference.images import image_token_valid, proxy_path
+
+    encoded = proxy_path("costumes", "thumbs/costume/SPR 0021.webp")
+    path, token = encoded.split("?token=", 1)
+    assert "SPR%200021.webp" in path
+    assert image_token_valid(path, token)
+    assert client.get(path).status_code == 401
 
 
 def test_reference_image_proxy_caches_file(client: TestClient, auth_headers: dict[str, str], reference_sources, monkeypatch) -> None:
@@ -336,8 +347,12 @@ def test_reference_image_proxy_caches_file(client: TestClient, auth_headers: dic
             return Response()
 
     monkeypatch.setattr("app.capabilities.reference.images.httpx.Client", Client)
-    first = client.get("/api/admin/mcp/portraits/images/img/portrait/a1.webp", headers=auth_headers)
-    second = client.get("/api/admin/mcp/portraits/images/img/portrait/a1.webp", headers=auth_headers)
+    listed = client.get("/api/admin/mcp/portraits?q=a1", headers=auth_headers)
+    image_url = listed.json()["items"][0]["image_url"]
+    denied = client.get("/api/admin/mcp/portraits/images/img/portrait/a1.webp")
+    assert denied.status_code == 401
+    first = client.get(image_url)
+    second = client.get(image_url)
     assert first.status_code == 200, first.text
     assert second.status_code == 200
     assert first.content == PNG
