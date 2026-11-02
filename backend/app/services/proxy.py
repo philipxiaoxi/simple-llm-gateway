@@ -40,6 +40,7 @@ from app.services.bridge import (
     extract_usage,
     normalize_openai_stream_chunk,
     promote_reasoning_to_content,
+    _dump_model,
     input_to_messages,
     messages_need_reasoning_replay,
     pick_usage_from_chunk,
@@ -599,10 +600,7 @@ async def handle_chat(
             model_resolution=model_resolution,
             peer=peer,
         )
-    if hasattr(result, "model_dump"):
-        openai_payload = result.model_dump()
-    else:
-        openai_payload = result if isinstance(result, dict) else {}
+    openai_payload = _dump_model(result)
 
     if protocol == "anthropic_messages":
         payload = openai_response_to_anthropic(openai_payload, model)

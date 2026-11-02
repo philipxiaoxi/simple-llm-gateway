@@ -611,14 +611,31 @@ async def count_openai_tokens(model: str, messages: list[dict[str, Any]]) -> int
         return total
 
 
+def _dump_model(value: Any) -> dict[str, Any]:
+    """序列化上游对象时保留 reasoning_content。
+
+    LiteLLM 的响应对象继承 OpenAI SDK，model_dump() 默认 exclude_unset=True，
+    会把只挂在 extra 上的 reasoning_content 丢掉。OpenAI 协议客户端随后只看到空 content。
+    """
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, "model_dump"):
+        try:
+            dumped = value.model_dump(exclude_unset=False)
+        except TypeError:
+            dumped = value.model_dump()
+        if isinstance(dumped, dict):
+            return dumped
+    if hasattr(value, "model_dump_json"):
+        dumped = json.loads(value.model_dump_json())
+        if isinstance(dumped, dict):
+            return dumped
+    return {}
+
+
 async def stream_openai_chunks(stream: Any) -> AsyncIterator[dict[str, Any]]:
     async for chunk in stream:
-        if hasattr(chunk, "model_dump"):
-            yield chunk.model_dump()
-        elif isinstance(chunk, dict):
-            yield chunk
-        else:
-            yield json.loads(chunk.model_dump_json())
+        yield _dump_model(chunk)
 
 
 def _as_token_count(value: Any) -> int | None:

@@ -74,6 +74,22 @@ def test_openai_promotes_reasoning_only_reply(client: TestClient, auth_headers: 
     assert message["content"] == "可见回复在思考字段里"
 
 
+def test_stream_dump_keeps_reasoning_content() -> None:
+    from types import SimpleNamespace
+
+    from app.services.bridge import _dump_model
+
+    class DropUnset:
+        def model_dump(self, exclude_unset: bool = True) -> dict:
+            if exclude_unset:
+                return {"choices": [{"delta": {"content": ""}}]}
+            return {"choices": [{"delta": {"content": "", "reasoning_content": "你好"}}]}
+
+    dumped = _dump_model(DropUnset())
+    assert dumped["choices"][0]["delta"]["reasoning_content"] == "你好"
+    assert _dump_model(SimpleNamespace()) == {}
+
+
 def test_openai_stream_promotes_reasoning_only_reply(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
 
