@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.capabilities.reference.assets import create_asset, delete_asset, parse_local_id
 from app.capabilities.reference.catalog import ReferenceCatalog, resolve_file
-from app.capabilities.reference.images import cached_image
+from app.capabilities.reference.images import cached_image, image_token, image_token_valid, safe_image_path
 from app.capabilities.reference.errors import ReferenceError
 from app.capabilities.reference.source import SCOPES, get_source
 from app.capabilities.reference.specs import COSTUME, PORTRAIT, POSE, ReferenceSpec
@@ -21,11 +23,15 @@ def _raise(error: ReferenceError) -> None:
     raise HTTPException(status_code=error.status_code, detail=error.message)
 
 
-def _build_router(spec: ReferenceSpec) -> APIRouter:
+def _build_router(spec: ReferenceSpec) -> tuple[APIRouter, APIRouter]:
     router = APIRouter(
         prefix=f"/api/admin/mcp/{spec.route}",
         tags=[f"admin-{spec.kind}"],
         dependencies=[Depends(get_current_admin)],
+    )
+    media_router = APIRouter(
+        prefix=f"/api/admin/mcp/{spec.route}",
+        tags=[f"admin-{spec.kind}"],
     )
 
     @router.get("", name=f"{spec.kind}_list", operation_id=f"{spec.kind}_list")
@@ -66,16 +72,19 @@ def _build_router(spec: ReferenceSpec) -> APIRouter:
         except ReferenceError as error:
             _raise(error)
 
-    @router.get("/images/{image_path:path}", name=f"{spec.kind}_image", operation_id=f"{spec.kind}_image")
-    def upstream_image(image_path: str) -> FileResponse:
+    @media_router.get("/images/{image_path:path}", name=f"{spec.kind}_image", operation_id=f"{spec.kind}_image")
+    def upstream_image(image_path: str, token: str = Query(default="")) -> FileResponse:
+        request_path = f"/api/admin/mcp/{spec.route}/images/{quote(safe_image_path(image_path), safe='/')}"
+        if not image_token_valid(request_path, token):
+            raise HTTPException(status_code=401, detail="需要有效的图片令牌")
         try:
-            path, media_type = cached_image(spec.kind, image_path)
+            path, media_type = cached_image(spec.kind, safe_image_path(image_path))
         except ReferenceError as error:
             _raise(error)
         return FileResponse(
             path,
             media_type=media_type,
-            headers={"Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"},
+            headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"},
         )
 
     @router.post("/refresh", name=f"{spec.kind}_refresh", operation_id=f"{spec.kind}_refresh")
@@ -129,12 +138,16 @@ def _build_router(spec: ReferenceSpec) -> APIRouter:
             _raise(error)
         return Response(status_code=204)
 
-    @router.get("/{reference_id}/file", name=f"{spec.kind}_file", operation_id=f"{spec.kind}_file")
+    @media_router.get("/{reference_id}/file", name=f"{spec.kind}_file", operation_id=f"{spec.kind}_file")
     def item_file(
         reference_id: str,
         thumb: bool = Query(default=False),
+        token: str = Query(default=""),
         db: Session = Depends(get_db),
     ) -> FileResponse:
+        request_path = f"/api/admin/mcp/{spec.route}/{reference_id}/file"
+        if not image_token_valid(request_path, token):
+            raise HTTPException(status_code=401, detail="需要有效的图片令牌")
         asset_id = parse_local_id(f"local:{reference_id}")
         asset = db.get(ReferenceAsset, asset_id) if asset_id is not None else None
         if asset is None or asset.kind != spec.kind:
@@ -156,9 +169,9 @@ def _build_router(spec: ReferenceSpec) -> APIRouter:
         except ReferenceError as error:
             _raise(error)
 
-    return router
+    return router, media_router
 
 
-portrait_router = _build_router(PORTRAIT)
-pose_router = _build_router(POSE)
-costume_router = _build_router(COSTUME)
+portrait_router, portrait_media_router = _build_router(PORTRAIT)
+pose_router, pose_media_router = _build_router(POSE)
+costume_router, costume_media_router = _build_router(COSTUME)

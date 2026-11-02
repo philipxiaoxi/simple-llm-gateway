@@ -11,6 +11,7 @@ from typing import Any
 
 from app.capabilities.base import CallContext, CapabilitySpec, McpToolDef
 from app.capabilities.reference.errors import ReferenceError
+from app.config import get_settings
 from app.capabilities.reference.catalog import ReferenceCatalog
 from app.capabilities.reference.source import ATTRIBUTION, get_source
 from app.capabilities.reference.specs import ReferenceSpec
@@ -177,6 +178,10 @@ class ReferenceProvider:
         detail = str(payload.get("detail") or "").strip()
         scope = str(payload.get("scope") or "all").strip()
         include_adult = _parse_bool(payload.get("include_adult"))
+        result = await self._run(operation, source, db, kind, query, group, category, tag, detail, scope, include_adult, payload)
+        return _with_absolute_urls(result)
+
+    async def _run(self, operation, source, db, kind, query, group, category, tag, detail, scope, include_adult, payload):
         if operation in {"search", f"{kind}_search"}:
             limit = max(1, min(_parse_int(payload.get("limit"), 20), 60))
             offset = max(0, _parse_int(payload.get("offset"), 0))
@@ -211,3 +216,22 @@ class ReferenceProvider:
                 include_adult=include_adult,
             )
         raise ReferenceError(f"未知操作: {operation}", status_code=404, error_type="not_found")
+
+
+def _with_absolute_urls(payload: dict[str, Any]) -> dict[str, Any]:
+    origin = get_settings().app_base_url.rstrip("/")
+    items = payload.get("items")
+    if isinstance(items, list):
+        for item in items:
+            _absolutize(item, origin)
+    item = payload.get("item")
+    if isinstance(item, dict):
+        _absolutize(item, origin)
+    return payload
+
+
+def _absolutize(item: dict[str, Any], origin: str) -> None:
+    for key in ("thumb_url", "image_url"):
+        value = item.get(key)
+        if isinstance(value, str) and value.startswith("/"):
+            item[key] = f"{origin}{value}"
