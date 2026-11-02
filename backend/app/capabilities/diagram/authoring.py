@@ -39,16 +39,17 @@ _GUIDE = {
         "先根据用户要回答的问题从上表选一个 type。拿不准时选 workflow 画有顺序的步骤，选 sequence 画调用往返。本网关不支持 erd、class、tree、timeline、waterfall、explainer。",
         "用同一个 type 调 diagram_schema，只读返回的 formats.<type>.example。这是形状，不是事实。",
         "复制 example 成完整 source。替换 title、id、label 和连线，保留 schema_version、diagram_type、meta.output、必填数组和节点 type 枚举。",
-        "第一张图控制在一条主路径、大约 8 到 12 个节点，只保留解释问题所必需的分支。细节放进 label 或 sublabel，不要发明 schema 没有的字段。",
+        "第一张图控制在一条主路径、大约 8 到 12 个节点，只保留解释问题所必需的分支。细节放进 label 或 sublabel。meta 只保留 title、output、locale，不要写 description。",
         "source 内的 diagram_type 必须和工具参数 type 一致。meta.output 固定写 diagram.html。中文图加 meta.locale=zh-CN，它只影响阅读器界面，不翻译你写的文字。",
-        "写完一次调用 diagram_create。不要先发探针图，不要缺字段试错。",
+        "workflow、lifecycle 第一次调用 diagram_create 时传 quality=standard。architecture、sequence、dataflow 才默认 showcase。不要先发探针图。",
         "返回 diagram_invalid 时，只改 diagnostics 点名的字段，优先按 supportedFixes 修，然后用同一 slug 再次 diagram_create。同一处修两轮仍失败，就换一种 schema 允许的结构，不要继续猜字段名。",
     ],
     "workflow_repair": [
         "schema_version 写整数 2，不要写 \"1.0\"。",
         "节点 type 用 frontend、backend、database、cloud、security、messagebus、external。页面动作写 frontend，服务处理写 backend，不要写 process。",
-        "col 只能是 0 到 5。超过 6 步就换行复用列，不要把步骤序号写进 col。",
-        "中文按 2 个宽度单位计，一行估算宽度是单位数乘 6.8。默认节点只有 92px，中文 label 必须写 width，并让每一行都小于 width+6。",
+        "同一 lane 的每个 col 只能放一个节点。失败分支放在来源节点相邻的 lane 和相邻 col，不要拉到远端泳道，否则连线会斜穿主路径。",
+        "不要用 yOffset 堆叠中文节点。多出来的步骤拆到新 lane。节点总数接近 8 个时，quality 用 standard。",
+        "写节点前先算宽度：中文、全角符号算 2，英文和数字算 1，估算像素 = 最长一行的单位数 * 6.8。width 取估算值 + 24，且不超过 280。超长说明放 sublabel，不要堆进 label。",
     ],
 }
 
@@ -61,8 +62,8 @@ _RULES = [
     "id 必须匹配 ^[a-zA-Z][a-zA-Z0-9_-]*$，以字母开头。",
     "additionalProperties 为 false：不要发明 schema 里没有的字段。",
     "节点 type 不是 process/step/action。workflow、architecture、sequence、dataflow 用组件枚举；lifecycle 用状态枚举。",
-    "workflow/lifecycle 的 col 是 0 起始的列号，不是步骤序号。超过 6 步时复用列（0..5），不要把第 7 步写成 col=6。",
-    "中文和全角字符按 2 个单位计。workflow 默认节点宽 92px，估算宽度 = 最长一行的单位数 * 6.8。超过节点宽 6px 会被拒绝。中文两行 label 应设 width>=240，并让每一行都放得下。",
+    "workflow/lifecycle 的 col 是 0 起始的列号，不是步骤序号。同一 lane 内 col 不能重复；分支放到另一条 lane，或用 yOffset 垂直错开。",
+    "中文和全角字符按 2 个单位计，英文按 1。节点 width 至少是最长一行单位数 * 6.8 + 24，且不超过 280；更长的内容拆到 sublabel。",
     "校验失败改 source 后重新 diagram_create。平台不会自动补 schema_version、折列或加宽节点。",
 ]
 
@@ -76,7 +77,10 @@ def _workflow_example() -> dict[str, Any]:
         "schema_version": 2,
         "diagram_type": "workflow",
         "meta": _meta("workflow.html"),
-        "lanes": [{"id": "main", "label": "主流程"}],
+        "lanes": [
+            {"id": "main", "label": "主流程"},
+            {"id": "fail", "label": "失败"},
+        ],
         "nodes": [
             {
                 "id": "start",
@@ -87,15 +91,35 @@ def _workflow_example() -> dict[str, Any]:
                 "width": 160,
             },
             {
-                "id": "done",
+                "id": "check",
                 "lane": "main",
                 "col": 1,
+                "type": "security",
+                "label": "校验",
+                "width": 160,
+            },
+            {
+                "id": "done",
+                "lane": "main",
+                "col": 2,
                 "type": "backend",
                 "label": "完成",
                 "width": 160,
             },
+            {
+                "id": "reject",
+                "lane": "fail",
+                "col": 1,
+                "type": "security",
+                "label": "拒绝",
+                "width": 160,
+            },
         ],
-        "edges": [{"from": "start", "to": "done"}],
+        "edges": [
+            {"from": "start", "to": "check"},
+            {"from": "check", "to": "done", "label": "通过"},
+            {"from": "check", "to": "reject", "label": "失败"},
+        ],
     }
 
 
@@ -159,9 +183,11 @@ _TYPES: dict[str, dict[str, Any]] = {
         "required": ["schema_version", "diagram_type", "meta", "lanes", "nodes", "edges"],
         "node_types": _COMPONENT_TYPES,
         "layout": {
-            "col": "整数 0..5。第 7 步起回到已有列，不能把步骤序号直接写进 col。",
-            "lane": "节点 lane 必须引用 lanes[].id。",
+            "col": "整数 0..5。同一 lane 内每个 col 只能有一个节点。",
+            "lane": "节点 lane 必须引用 lanes[].id。失败分支放在来源节点相邻 lane，且 col 与来源节点相同或相邻。",
+            "quality": "8 个以上节点或带中文两行 label 时传 quality=standard，不要用 showcase。",
             "width": "默认 92。中文 label 必须显式加大 width。",
+            "meta": "只写 title、output、locale。不要写 description。",
         },
         "node_required": ["id", "lane", "col", "type", "label"],
         "edge_required": ["from", "to"],
