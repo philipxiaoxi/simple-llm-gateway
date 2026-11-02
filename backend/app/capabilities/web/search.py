@@ -87,6 +87,10 @@ async def search(
         if provider is None:
             if scope == "web":
                 warnings.append("未配置外部搜索 provider，未返回联网结果")
+            else:
+                warnings.append(
+                    "未配置外部搜索 provider，仅返回本地资讯库结果；设置 WEB_SEARCH_PROVIDER=searxng 可启用联网搜索"
+                )
         elif scope == "web" or len(local) < top_k:
             try:
                 found = await provider.search(

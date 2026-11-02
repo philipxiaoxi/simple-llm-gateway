@@ -92,16 +92,17 @@ export default defineConfig({
     allowedHosts: ['.monkeycode-ai.online'],
     proxy: {
       // 语音房间走 WebSocket，必须显式打开 ws（字符串简写不会代理 upgrade）
-      '/api': { target: backendTarget, changeOrigin: true, ws: true },
-      '/v1': backendTarget,
-      '/sites': backendTarget,
-      '/anthropic': backendTarget,
-      '/health': backendTarget,
-      '/chat': backendTarget,
-      '/responses': backendTarget,
-      '/models': backendTarget,
+      '/api': { target: backendTarget, changeOrigin: true, ws: true, xfwd: true },
+      // xfwd 透传 X-Forwarded-Host/Proto，后端据此生成对外可访问的接入地址
+      '/v1': { target: backendTarget, changeOrigin: true, xfwd: true },
+      '/sites': { target: backendTarget, changeOrigin: true, xfwd: true },
+      '/anthropic': { target: backendTarget, changeOrigin: true, xfwd: true },
+      '/health': { target: backendTarget, changeOrigin: true, xfwd: true },
+      '/chat': { target: backendTarget, changeOrigin: true, xfwd: true },
+      '/responses': { target: backendTarget, changeOrigin: true, xfwd: true },
+      '/models': { target: backendTarget, changeOrigin: true, xfwd: true },
       // MCP 端点挂在 /mcp；用正则避免把前端路由 /mcp-plaza 也代理到后端
-      '^/mcp(/|$)': backendTarget,
+      '^/mcp(/|$)': { target: backendTarget, changeOrigin: true, xfwd: true },
     },
   },
 })

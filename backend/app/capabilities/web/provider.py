@@ -32,19 +32,33 @@ DOC_SUFFIXES = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"}
 _FETCH_CACHE: TTLCache[dict[str, Any]] = TTLCache(max_entries=64)
 
 
-def _clamp(value: Any, *, low: int, high: int, default: int) -> int:
-    try:
-        number = int(value)
-    except (TypeError, ValueError):
+def _int_param(payload: dict[str, Any], key: str, *, low: int, high: int, default: int) -> int:
+    """显式传参时校验范围，避免静默夹取值让调用方以为参数生效了。"""
+    if payload.get(key) is None:
         return default
-    return max(low, min(high, number))
+    try:
+        number = int(payload[key])
+    except (TypeError, ValueError) as error:
+        raise WebError(f"{key} 必须是整数") from error
+    if number < low or number > high:
+        raise WebError(f"{key} 需在 {low} 到 {high} 之间")
+    return number
 
 
 def _document_name(url: str, content_type: str) -> str:
+    """按内容类型优先决定扩展名。
+
+    PDF 链接经常没有 .pdf 后缀（如 arxiv 的 /pdf/1706.03762），只按 URL 后缀判断会
+    落到 .bin，被文档解析管线拒绝。
+    """
+    if content_type in PDF_TYPES:
+        return "page.pdf"
+    if content_type in OFFICE_TYPES:
+        return f"page{OFFICE_TYPES[content_type]}"
     suffix = Path(urlparse(url).path).suffix.lower()
     if suffix in DOC_SUFFIXES:
         return f"page{suffix}"
-    return f"page{OFFICE_TYPES.get(content_type, '.bin')}"
+    return "page.bin"
 
 
 def _decode(result: FetchResult) -> str:
@@ -171,7 +185,7 @@ class WebProvider:
         raise WebError(f"未知操作: {operation}", status_code=404, error_type="not_found")
 
     async def _search(self, db, payload: dict[str, Any]) -> dict[str, Any]:
-        top_k = _clamp(payload.get("top_k"), low=1, high=20, default=8)
+        top_k = _int_param(payload, "top_k", low=1, high=20, default=8)
         time_range = str(payload.get("time_range") or "any").lower()
         if time_range not in {"day", "week", "month", "year", "any"}:
             raise WebError("time_range 只能是 day/week/month/year/any")
@@ -193,8 +207,9 @@ class WebProvider:
         if not url.lower().startswith(("http://", "https://")):
             raise WebError("只支持 http/https 链接", error_type="blocked_host")
         include_links = bool(payload.get("include_links"))
-        max_chars = _clamp(
-            payload.get("max_chars"),
+        max_chars = _int_param(
+            payload,
+            "max_chars",
             low=1000,
             high=200000,
             default=settings.web_fetch_max_chars,
@@ -235,6 +250,8 @@ class WebProvider:
             fallback = extracted.fallback
             if fallback:
                 warnings.append("正文提取降级为整页清洗，可能包含少量非正文内容")
+            if len(markdown.strip()) < 200:
+                warnings.append("正文过短，页面可能依赖 JavaScript 渲染，本服务不执行脚本")
         elif content_type in TEXT_TYPES:
             markdown = _decode(result).strip()
             if not markdown:

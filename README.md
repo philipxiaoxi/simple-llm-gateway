@@ -148,7 +148,7 @@ curl -s https://你的站/v1/capabilities/knowledge/search \
 #        douyin_parse, douyin_job, douyin_result, douyin_list
 ```
 
-联网搜索与网页解析由 `web` 能力提供：`web_search` 默认先查本地资讯库（`info_items` 的 FTS5 索引，中文按二元组切分），结果不足时再补外部搜索；`web_fetch` 抓取任意 http/https 页面并用 trafilatura 提取正文为 Markdown，PDF 与 Office 文档转交文档解析管线。外部搜索默认关闭，设置 `WEB_SEARCH_PROVIDER=searxng` 并指向自托管实例后启用。抓取遵守 robots.txt，拒绝内网与保留地址，不执行 JavaScript。
+联网搜索与网页解析由 `web` 能力提供：`web_search` 默认先查本地资讯库（`info_items` 的 FTS5 索引，中文按二元组切分），结果不足时再补外部搜索；`web_fetch` 抓取任意 http/https 页面并用 trafilatura 提取正文为 Markdown，PDF 与 Office 文档转交文档解析管线。外部搜索默认关闭。启用方式：`docker compose --profile search up -d` 启动内置 SearXNG，再把 `WEB_SEARCH_PROVIDER` 设为 `searxng`、`WEB_SEARXNG_BASE_URL` 指向该实例；也可以指向已有的 SearXNG（需开启 JSON 输出）。未配置 provider 时 `web_search` 只返回本地资讯库结果，并在 `warnings` 中说明。抓取遵守 robots.txt，拒绝内网与保留地址，不执行 JavaScript。
 
 文档转换在 MCP 广场「文档转 Markdown」页上传预览。MCP Key 勾选 `docparse` 后，可走 REST `POST /v1/capabilities/docparse/jobs`（multipart 字段 `file`）或 MCP 工具 `docparse_convert`。Docker 部署随镜像安装 `markitdown`，文件落在数据卷 `/data/docparse`。旧版 `.doc/.xls/.ppt` 需要镜像外另行提供 LibreOffice。
 

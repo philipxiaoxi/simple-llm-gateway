@@ -255,6 +255,7 @@ def test_web_search_matches_two_char_chinese(client: TestClient, auth_headers: d
 
 def test_web_search_reindexes_existing_rows(client: TestClient, auth_headers: dict[str, str]) -> None:
     from app.db import get_session_factory
+    from app.info import search_index
     from app.models import InfoItem
 
     session = get_session_factory()()
@@ -272,6 +273,9 @@ def test_web_search_reindexes_existing_rows(client: TestClient, auth_headers: di
                 status="ready",
             )
         )
+        session.commit()
+        # 模拟升级后的启动补建：历史数据不经过采集写入路径
+        assert search_index.reindex_if_empty(session) == 1
         session.commit()
     finally:
         session.close()
@@ -329,3 +333,79 @@ def test_web_search_merges_external_provider(
     assert body["results"][0]["url"] == "https://external.example.com/page"
     assert body["results"][0]["provider"] == "searxng"
     assert body["warnings"] == []
+
+
+def test_web_fetch_pdf_without_suffix(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    """arxiv 这类 /pdf/1706.03762 没有 .pdf 后缀，必须按 content-type 识别。"""
+    _allow_robots(monkeypatch)
+    result = FetchResult(
+        url="https://arxiv.org/pdf/1706.03762",
+        final_url="https://arxiv.org/pdf/1706.03762",
+        status=200,
+        content_type="application/pdf",
+        body=b"%PDF-1.4 fake",
+    )
+    monkeypatch.setattr("app.capabilities.web.provider.fetch", _fake_fetch(result))
+    captured: dict = {}
+
+    def _convert(name: str, raw: bytes):
+        captured["name"] = name
+        return ConvertResult(markdown="# PDF 正文", page_count=1)
+
+    monkeypatch.setattr("app.capabilities.web.provider.convert_bytes", _convert)
+    key = make_key(client, auth_headers, ["web"])
+    response = client.post(
+        "/v1/capabilities/web/fetch",
+        headers={"Authorization": f"Bearer {key}"},
+        json={"url": "https://arxiv.org/pdf/1706.03762"},
+    )
+    assert response.status_code == 200, response.text
+    assert captured["name"] == "page.pdf"
+
+
+def test_web_fetch_passes_through_404(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    _allow_robots(monkeypatch)
+    from app.capabilities.web.fetch import WebError
+
+    async def _not_found(*_args, **_kwargs):
+        raise WebError("上游返回 HTTP 404", status_code=404, error_type="upstream_error")
+
+    monkeypatch.setattr("app.capabilities.web.provider.fetch", _not_found)
+    key = make_key(client, auth_headers, ["web"])
+    response = client.post(
+        "/v1/capabilities/web/fetch",
+        headers={"Authorization": f"Bearer {key}"},
+        json={"url": "https://example.com/nope"},
+    )
+    assert response.status_code == 404
+    assert response.json()["error"]["type"] == "upstream_error"
+
+
+def test_web_fetch_rejects_out_of_range_max_chars(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    _allow_robots(monkeypatch)
+    key = make_key(client, auth_headers, ["web"])
+    response = client.post(
+        "/v1/capabilities/web/fetch",
+        headers={"Authorization": f"Bearer {key}"},
+        json={"url": "https://example.com/a", "max_chars": 200},
+    )
+    assert response.status_code == 400
+    assert "1000" in response.json()["error"]["message"]
+
+
+def test_web_search_warns_when_provider_missing(client: TestClient, auth_headers: dict[str, str]) -> None:
+    key = make_key(client, auth_headers, ["web"])
+    response = client.post(
+        "/v1/capabilities/web/search",
+        headers={"Authorization": f"Bearer {key}"},
+        json={"query": "任意词", "scope": "auto"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert any("WEB_SEARCH_PROVIDER" in warning for warning in body["warnings"])

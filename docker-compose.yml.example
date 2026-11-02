@@ -9,5 +9,21 @@ services:
       DATABASE_PATH: /data/gateway.db
       FRONTEND_DIST: /app/frontend/dist
       APP_BASE_URL: ${APP_BASE_URL:-http://127.0.0.1:8000}
+      # 启用联网搜索时指向下面的 searxng 服务
+      WEB_SEARCH_PROVIDER: ${WEB_SEARCH_PROVIDER:-none}
+      WEB_SEARXNG_BASE_URL: ${WEB_SEARXNG_BASE_URL:-http://searxng:8080}
     volumes:
       - ./data:/data
+
+  # 可选的自托管聚合搜索。默认不启动，需要联网搜索时执行：
+  #   docker compose --profile search up -d
+  # 启动后把 gateway 的 WEB_SEARCH_PROVIDER 设为 searxng。
+  searxng:
+    image: searxng/searxng:latest
+    profiles: ["search"]
+    environment:
+      # 允许网关通过 JSON 读取结果；生产环境请改成实际域名
+      SEARXNG_BASE_URL: http://localhost:8080/
+    volumes:
+      - ./data/searxng:/etc/searxng
+    restart: unless-stopped

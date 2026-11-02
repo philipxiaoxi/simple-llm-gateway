@@ -71,11 +71,11 @@ def count_indexed(db: Session) -> int:
     return int(db.execute(text("SELECT count(*) FROM info_items_fts")).scalar() or 0)
 
 
-def ensure_indexed(db: Session) -> None:
-    """索引为空但库里已有内容时补建，避免首次升级后搜索为空。"""
+def reindex_if_empty(db: Session) -> int:
+    """启动时补建索引，避免升级后历史内容搜不到。已有索引时直接跳过。"""
     if count_indexed(db) > 0:
-        return
-    reindex_all(db)
+        return 0
+    return reindex_all(db)
 
 
 def reindex_all(db: Session) -> int:
@@ -112,7 +112,6 @@ def search(
     expression = _match_expression(query)
     if not expression:
         return []
-    ensure_indexed(db)
 
     clauses = ["info_items_fts MATCH :expr", "items.is_hidden = 0"]
     params: dict[str, Any] = {"expr": expression, "limit": top_k}

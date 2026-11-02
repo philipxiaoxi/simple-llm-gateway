@@ -43,3 +43,51 @@ def test_key_integration_marks_authorized_capabilities(client: TestClient, auth_
 def test_key_integration_requires_admin_and_existing_key(client: TestClient, auth_headers: dict[str, str]) -> None:
     assert client.get("/api/admin/mcp/keys/1/integration").status_code == 401
     assert client.get("/api/admin/mcp/keys/999999/integration", headers=auth_headers).status_code == 404
+
+
+def test_public_origin_prefers_forwarded_host(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from app.routers import admin_mcp_keys
+
+    monkeypatch.setattr(
+        admin_mcp_keys,
+        "get_settings",
+        lambda: SimpleNamespace(app_base_url="http://127.0.0.1:8000"),
+    )
+    request = SimpleNamespace(
+        headers={"x-forwarded-host": "preview.example.com", "x-forwarded-proto": "https"},
+        url=SimpleNamespace(scheme="http"),
+    )
+    assert admin_mcp_keys._public_origin(request) == "https://preview.example.com"
+
+
+def test_public_origin_keeps_explicit_config(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from app.routers import admin_mcp_keys
+
+    monkeypatch.setattr(
+        admin_mcp_keys,
+        "get_settings",
+        lambda: SimpleNamespace(app_base_url="https://gateway.example.com"),
+    )
+    request = SimpleNamespace(
+        headers={"x-forwarded-host": "preview.example.com", "x-forwarded-proto": "https"},
+        url=SimpleNamespace(scheme="http"),
+    )
+    assert admin_mcp_keys._public_origin(request) == "https://gateway.example.com"
+
+
+def test_public_origin_ignores_loopback_host(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from app.routers import admin_mcp_keys
+
+    monkeypatch.setattr(
+        admin_mcp_keys,
+        "get_settings",
+        lambda: SimpleNamespace(app_base_url="http://127.0.0.1:8000"),
+    )
+    request = SimpleNamespace(headers={"host": "127.0.0.1:8000"}, url=SimpleNamespace(scheme="http"))
+    assert admin_mcp_keys._public_origin(request) == "http://127.0.0.1:8000"

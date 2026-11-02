@@ -132,10 +132,11 @@ ORDER BY rank LIMIT :limit;
 
 维护方式：
 
-- 采集入库时写入（`backend/app/info/collector.py:98` 新增调用点）。
-- 公众号全文补全完成后重建（`app/services/info_loop.py:197`）。
+- 采集入库时写入（`backend/app/info/collector.py` 的 `_insert_item`）。
+- 上报入库时写入（`app/info/report.py`）。
+- 公众号全文补全完成后重建（`app/services/info_loop.py`）。
 - 删除、隐藏时同步删除。
-- 提供一次性回填命令，扫描 `info_items` 建索引。
+- 存量数据在启动阶段补建（`app/db.py` 的 `_backfill_info_fts`）。索引维护不放在搜索路径上，避免并发首查同时触发重建把 SQLite 写锁打满。
 - FTS5 自带 `bm25()` 排序，无需额外打分。
 
 ### 搜索缓存（可选）

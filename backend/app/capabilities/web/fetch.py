@@ -78,9 +78,12 @@ async def fetch(
                         current = urljoin(current, location)
                         continue
                     if response.status_code >= 400:
+                        # 上游的 4xx 是目标页面的真实状态，原样透传，调用方才能区分
+                        # 「页面不存在」和「网关/上游故障」；5xx 才归为 502。
+                        status = response.status_code
                         raise WebError(
-                            f"上游返回 HTTP {response.status_code}",
-                            status_code=502,
+                            f"上游返回 HTTP {status}",
+                            status_code=status if status < 500 else 502,
                             error_type="upstream_error",
                         )
                     declared = response.headers.get("content-type", "").split(";")[0].strip().lower()
@@ -110,8 +113,9 @@ async def fetch(
                         headers=dict(response.headers),
                     )
             except httpx.HTTPError as error:
+                detail = str(error).strip() or error.__class__.__name__
                 raise WebError(
-                    f"抓取失败: {error}",
+                    f"抓取失败: {detail}",
                     status_code=502,
                     error_type="upstream_error",
                 ) from error
