@@ -495,6 +495,30 @@ function QuotaItems({ items }: { items: QuotaItem[] }) {
   )
 }
 
+function ProbeSummary({ account }: { account: Account }) {
+  const message = account.last_probe_message?.trim() ?? ''
+  const matched = message.match(/^(\d{3})\s+(https?:\/\/\S+)$/)
+  const status = matched?.[1]
+  const url = matched?.[2]
+  const meta = [
+    `上次探测：${formatTime(account.last_probe_at)}`,
+    account.last_probe_latency_ms != null ? `${account.last_probe_latency_ms}ms` : '',
+    status || (!url && message ? message : ''),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <div className="min-w-0 text-sm text-mist">
+      <div className="break-words">{meta}</div>
+      {url ? (
+        <div className="mt-0.5 truncate font-mono text-xs" title={url}>
+          {url}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 // 卡片默认折叠高度：内容超出时截断，点击「展开全部」查看完整内容。
 const CARD_COLLAPSED_HEIGHT = 300
 
@@ -574,9 +598,10 @@ function ModelList({
       <div className="flex flex-col gap-1.5">
         {visible.map((model) => {
           const enabled = model.enabled !== false
+          const hint = modelCapsHint(model)
           const content = (
             <>
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5 lg:flex-row lg:items-center lg:gap-2">
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span
                   className={cn(
                     'block min-w-0 truncate font-mono text-xs',
@@ -586,16 +611,13 @@ function ModelList({
                 >
                   {model.id}
                 </span>
-                {modelCapsHint(model) || canManage ? (
-                  <span
-                    className="block min-w-0 truncate text-[11px] leading-4 text-mist lg:shrink-0"
-                    title={modelCapsHint(model) || undefined}
-                  >
-                    {modelCapsHint(model) || '点击修改能力'}
+                {hint || canManage ? (
+                  <span className="block min-w-0 truncate text-[11px] leading-4 text-mist" title={hint || undefined}>
+                    {hint || '点击修改能力'}
                   </span>
                 ) : null}
               </span>
-              <span className="flex shrink-0 items-center gap-1">
+              <span className="flex shrink-0 items-center">
                 {model.overridden?.length ? (
                   <Badge tone="warn">已覆盖</Badge>
                 ) : model.source === 'custom' ? (
@@ -612,7 +634,7 @@ function ModelList({
             <div
               key={model.id}
               className={cn(
-                'flex min-w-0 items-center gap-2 rounded-md border px-2.5 py-1.5 lg:py-1',
+                'flex min-w-0 items-center gap-2 overflow-hidden rounded-md border px-2.5 py-1.5',
                 enabled ? 'border-line bg-ink/40' : 'border-dashed border-line/80 bg-ink/20',
               )}
             >
@@ -620,12 +642,12 @@ function ModelList({
                 <button
                   type="button"
                   onClick={() => onEdit(model)}
-                  className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left hover:text-paper"
+                  className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left hover:text-paper"
                 >
                   {content}
                 </button>
               ) : (
-                <div className="flex min-w-0 flex-1 items-center justify-between gap-2">{content}</div>
+                <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">{content}</div>
               )}
               {canManage ? <Switch checked={enabled} onCheckedChange={() => onToggleEnabled(model)} /> : null}
             </div>
@@ -1280,17 +1302,13 @@ export function AccountsPage() {
               {account.last_probe_ok === false ? <Badge tone="bad">探测失败</Badge> : null}
             </div>
             <CollapsibleSection>
-              <div className="break-all text-sm text-mist [overflow-wrap:anywhere]">
-                上次探测：{formatTime(account.last_probe_at)}
-                {account.last_probe_latency_ms != null ? ` · ${account.last_probe_latency_ms}ms` : ''}
-                {account.last_probe_message ? ` · ${account.last_probe_message}` : ''}
-              </div>
+              <ProbeSummary account={account} />
               <div className="space-y-2 border-t border-line pt-3">
-                <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
+                <div className="grid grid-cols-2 gap-2">
 <Can code="accounts:probe">
                   <Button
                     variant="line"
-                    className="w-full md:w-auto"
+                    className="w-full"
                     disabled={busyId === account.id}
                     onClick={() => runProbe(account.id)}
                   >
@@ -1300,7 +1318,7 @@ export function AccountsPage() {
 <Can code="accounts:quota">
                   <Button
                     variant="line"
-                    className="w-full md:w-auto"
+                    className="w-full"
                     disabled={busyId === account.id}
                     onClick={() => runQuota(account.id)}
                   >
@@ -1311,7 +1329,7 @@ export function AccountsPage() {
                   <Button
                     type="button"
                     variant="line"
-                    className="w-full md:w-auto"
+                    className="w-full"
                     disabled={busyId === account.id}
                     onClick={() => runModels(account.id)}
                   >
@@ -1323,7 +1341,7 @@ export function AccountsPage() {
                     <Button
                       type="button"
                       variant="line"
-                      className="w-full md:w-auto"
+                      className="w-full"
                       disabled={busyId === account.id}
                       onClick={() => startOauth(account.id)}
                     >
@@ -1332,21 +1350,19 @@ export function AccountsPage() {
                     </Can>
                   ) : null}
 <Can code="accounts:update">
-                  <Button variant="line" className="w-full md:w-auto" onClick={() => setEditor(account)}>
+                  <Button variant="line" className="w-full" onClick={() => setEditor(account)}>
                     编辑
                   </Button>
 </Can>
-                </div>
-                <div className="grid grid-cols-2 gap-2 md:flex">
 <Can code="accounts:update">
-                  <Button variant="line" className="w-full md:w-auto" onClick={() => toggle(account)}>
+                  <Button variant="line" className="w-full" onClick={() => toggle(account)}>
                     {account.status === 'active' ? '停用' : '启用'}
                   </Button>
 </Can>
 <Can code="accounts:delete">
                   <Button
                     variant="danger"
-                    className="w-full md:w-auto"
+                    className="w-full"
                     disabled={busyId === account.id}
                     onClick={() => void removeAccount(account)}
                   >
