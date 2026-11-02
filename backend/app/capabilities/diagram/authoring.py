@@ -39,17 +39,17 @@ _GUIDE = {
         "先根据用户要回答的问题从上表选一个 type。拿不准时选 workflow 画有顺序的步骤，选 sequence 画调用往返。本网关不支持 erd、class、tree、timeline、waterfall、explainer。",
         "用同一个 type 调 diagram_schema，只读返回的 formats.<type>.example。这是形状，不是事实。",
         "复制 example 成完整 source。替换 title、id、label 和连线，保留 schema_version、diagram_type、meta.output、必填数组和节点 type 枚举。",
-        "第一张图控制在一条主路径、大约 8 到 12 个节点，只保留解释问题所必需的分支。细节放进 label 或 sublabel。meta 只保留 title、output、locale，不要写 description。",
-        "source 内的 diagram_type 必须和工具参数 type 一致。meta.output 固定写 diagram.html。中文图加 meta.locale=zh-CN，它只影响阅读器界面，不翻译你写的文字。",
-        "workflow、lifecycle 第一次调用 diagram_create 时传 quality=standard。architecture、sequence、dataflow 才默认 showcase。不要先发探针图。",
+        "先按官方布局分类每条边，再填字段。主路径上的节点按阅读顺序放在相邻 col。分支或存储放在所属节点正上或正下，使连线是一条直线。回边必须走没有分支的一侧，不能和主路径挤在同一走廊。",
+        "source 内的 diagram_type 必须和工具参数 type 一致。meta 只写 title、output、locale，不要写 description、subtitle、visual_preset。中文图加 meta.locale=zh-CN。",
+        "不要写 via、channelX、channelY、labelAt，先让编译器自动布线。中文 workflow 或节点超过 8 个时传 quality=standard；英文短图才用 showcase。不要先发探针图。",
         "返回 diagram_invalid 时，只改 diagnostics 点名的字段，优先按 supportedFixes 修，然后用同一 slug 再次 diagram_create。同一处修两轮仍失败，就换一种 schema 允许的结构，不要继续猜字段名。",
     ],
-    "workflow_repair": [
-        "schema_version 写整数 2，不要写 \"1.0\"。",
-        "节点 type 用 frontend、backend、database、cloud、security、messagebus、external。页面动作写 frontend，服务处理写 backend，不要写 process。",
-        "同一 lane 的每个 col 只能放一个节点。失败分支放在来源节点相邻的 lane 和相邻 col，不要拉到远端泳道，否则连线会斜穿主路径。",
-        "不要用 yOffset 堆叠中文节点。多出来的步骤拆到新 lane。节点总数接近 8 个时，quality 用 standard。",
-        "写节点前先算宽度：中文、全角符号算 2，英文和数字算 1，估算像素 = 最长一行的单位数 * 6.8。width 取估算值 + 24，且不超过 280。超长说明放 sublabel，不要堆进 label。",
+    "workflow": [
+        "新 workflow 用 schema_version 整数 2。lane 表示责任边界，col 0..5 表示从左到右的进展，不是步骤序号。",
+        "主路径保持单调。失败、拒绝、重试放进 lane.variant=exception 的独立泳道，路由要离开主泳道走廊。",
+        "回边放到主路径没有分支的一侧。若回边会穿过其他边，移动不在主路径上的那个端点，不要加 via。",
+        "同一 lane 且垂直位置重叠的节点至少相距 8px。不要把两个节点放在同一 lane 的同一 col，除非它们用不同 yOffset 做垂直堆叠。",
+        "节点 type 只能是 frontend、backend、database、cloud、security、messagebus、external。中文算 2 个单位，width 至少为最长一行单位数 * 6.8 + 24。中文多节点图用 quality=standard，showcase 的桌面可读性会拒绝过高的泳道图。",
     ],
 }
 
@@ -62,7 +62,7 @@ _RULES = [
     "id 必须匹配 ^[a-zA-Z][a-zA-Z0-9_-]*$，以字母开头。",
     "additionalProperties 为 false：不要发明 schema 里没有的字段。",
     "节点 type 不是 process/step/action。workflow、architecture、sequence、dataflow 用组件枚举；lifecycle 用状态枚举。",
-    "workflow/lifecycle 的 col 是 0 起始的列号，不是步骤序号。同一 lane 内 col 不能重复；分支放到另一条 lane，或用 yOffset 垂直错开。",
+    "workflow 的 col 是 0..5 的进展列。失败泳道用 variant=exception，回边走空走廊，不和主路径共用走廊。",
     "中文和全角字符按 2 个单位计，英文按 1。节点 width 至少是最长一行单位数 * 6.8 + 24，且不超过 280；更长的内容拆到 sublabel。",
     "校验失败改 source 后重新 diagram_create。平台不会自动补 schema_version、折列或加宽节点。",
 ]
@@ -79,7 +79,7 @@ def _workflow_example() -> dict[str, Any]:
         "meta": _meta("workflow.html"),
         "lanes": [
             {"id": "main", "label": "主流程"},
-            {"id": "fail", "label": "失败"},
+            {"id": "fail", "label": "失败", "variant": "exception"},
         ],
         "nodes": [
             {
@@ -183,9 +183,9 @@ _TYPES: dict[str, dict[str, Any]] = {
         "required": ["schema_version", "diagram_type", "meta", "lanes", "nodes", "edges"],
         "node_types": _COMPONENT_TYPES,
         "layout": {
-            "col": "整数 0..5。同一 lane 内每个 col 只能有一个节点。",
-            "lane": "节点 lane 必须引用 lanes[].id。失败分支放在来源节点相邻 lane，且 col 与来源节点相同或相邻。",
-            "quality": "8 个以上节点或带中文两行 label 时传 quality=standard，不要用 showcase。",
+            "col": "整数 0..5，表示从左到右的进展。主路径按阅读顺序放相邻列。",
+            "lane": "lane 表示责任边界。失败、拒绝、重试使用 variant=exception，并把回边放到没有分支的一侧。",
+            "route": "不要写 via、channelX、channelY、labelAt。先用自动布线，只有 diagnostics 点名后才加一个几何字段。",
             "width": "默认 92。中文 label 必须显式加大 width。",
             "meta": "只写 title、output、locale。不要写 description。",
         },

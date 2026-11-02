@@ -476,7 +476,7 @@ def test_diagram_schema_tool_and_rest(client: TestClient, auth_headers: dict[str
     assert body["formats"]["workflow"]["layout"]["col"].startswith("整数 0..5")
     assert body["formats"]["architecture"]["example"]["components"][0]["pos"] == [40, 80]
     assert body["guide"]["steps"][0].startswith("先根据用户要回答的问题")
-    assert "同一 lane" in body["guide"]["workflow_repair"][2]
+    assert body["guide"]["workflow"][1].startswith("主路径保持单调")
     assert body["formats"]["workflow"]["example"]["lanes"][1]["id"] == "fail"
     assert "workflow" in body["guide"]["choose_type"]
     assert "https://github.com/tt-a1i/archify" == body["guide"]["source"]
