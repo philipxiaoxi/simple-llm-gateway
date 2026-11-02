@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.clock import utcnow
 from app.db import get_db
 from app.deps import get_current_admin
+from app.capabilities.generation.prompt_optimize import PromptOptimizeError, optimize_prompt as run_optimize
 from app.generation import service, storage
 from app.info.tokens import media_id_from_token
 from app.models import Admin, GenerationAsset, GenerationTask
@@ -49,6 +50,24 @@ def put_settings(payload: dict | None = None, db: Session = Depends(get_db)):
         return service.update_settings(db, payload or {})
     except service.GenerationError as error:
         raise HTTPException(status_code=error.status_code, detail=_detail({"message": error.message})) from error
+
+
+@router.post("/prompt-optimize")
+async def optimize_prompt(payload: dict = Body(...), db: Session = Depends(get_db)):
+    try:
+        result = await run_optimize(
+            db,
+            service._settings_row(db, create=True),
+            prompt=str(payload.get("prompt") or ""),
+            duration_seconds=payload.get("duration_seconds"),
+            image_count=int(payload.get("image_count") or 0),
+            mode=str(payload.get("mode") or "") or None,
+        )
+    except PromptOptimizeError as error:
+        raise HTTPException(status_code=error.status_code, detail=_detail({"message": error.message})) from error
+    except (TypeError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=_detail({"message": "优化参数不正确"})) from error
+    return {"prompt": result.prompt, "mode": result.mode, "model": result.model}
 
 
 @router.post("/providers/{provider}/key")

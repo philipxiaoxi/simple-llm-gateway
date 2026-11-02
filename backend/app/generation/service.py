@@ -225,6 +225,9 @@ def settings_payload(db: Session) -> dict[str, Any]:
         "providers": providers,
         "default_image_model": _qualified_default(db, settings.default_image_model, "image"),
         "default_video_model": _qualified_default(db, settings.default_video_model, "video"),
+        "prompt_optimize_enabled": bool(settings.prompt_optimize_enabled),
+        "prompt_optimize_account_id": settings.prompt_optimize_account_id,
+        "prompt_optimize_model": settings.prompt_optimize_model or "",
         "catalog": registry.catalog_payload(all_extra_specs(db)),
     }
 
@@ -271,6 +274,8 @@ def update_settings(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
         _store_default(db, row, "default_image_model", payload.get("default_image_model"), "image")
     if "default_video_model" in payload:
         _store_default(db, row, "default_video_model", payload.get("default_video_model"), "video")
+    if "prompt_optimize_enabled" in payload or "prompt_optimize_account_id" in payload or "prompt_optimize_model" in payload:
+        _store_prompt_optimize(db, row, payload)
     row.updated_at = utcnow()
     db.flush()
     return settings_payload(db)
@@ -290,6 +295,20 @@ def _store_default(db: Session, row: GenerationSettings, field: str, value: Any,
         label = "图片" if kind == "image" else "视频"
         raise GenerationError(f"默认{label}模型不可用：{model}")
     setattr(row, field, f"{provider}:{model}"[:128])
+
+
+def _store_prompt_optimize(db: Session, row: GenerationSettings, payload: dict[str, Any]) -> None:
+    from app.capabilities.generation.prompt_optimize import account_model_allowed
+
+    enabled = bool(payload.get("prompt_optimize_enabled", row.prompt_optimize_enabled))
+    account_raw = payload.get("prompt_optimize_account_id", row.prompt_optimize_account_id)
+    model = str(payload.get("prompt_optimize_model", row.prompt_optimize_model) or "").strip()[:128]
+    account_id = int(account_raw) if account_raw not in (None, "", 0, "0") else None
+    if enabled and (account_id is None or not account_model_allowed(db, account_id, model)):
+        raise GenerationError("优化账号不可用或未选择模型", status_code=409)
+    row.prompt_optimize_enabled = enabled
+    row.prompt_optimize_account_id = account_id
+    row.prompt_optimize_model = model
 
 
 def clear_provider_key(db: Session, provider: str) -> None:

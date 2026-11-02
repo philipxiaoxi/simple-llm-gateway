@@ -1,12 +1,12 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Cog } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { api, type GenerationSettings } from '../lib/api'
+import { api, type GenerationSettings, type VoicePolishAccount } from '../lib/api'
 import { resolveModelKey } from '../lib/generation'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage } from '../lib/utils'
 import { GenerationModelSelect } from './GenerationModelSelect'
-import { Button, Dialog, Field, Input, Switch } from './ui'
+import { Button, Dialog, Field, Input, Select, Switch } from './ui'
 import { GENERATION_SETTINGS_KEY, useGenerationSettings } from './useGenerationSettings'
 
 type ProviderForm = {
@@ -28,6 +28,14 @@ export function GenerationConfigDialog({ open, onClose }: { open: boolean; onClo
   const [providers, setProviders] = useState<ProviderForm[]>([])
   const [imageModel, setImageModel] = useState('')
   const [videoModel, setVideoModel] = useState('')
+  const [optimizeEnabled, setOptimizeEnabled] = useState(false)
+  const [optimizeAccountId, setOptimizeAccountId] = useState('')
+  const [optimizeModel, setOptimizeModel] = useState('')
+  const accountsQuery = useQuery({
+    queryKey: ['voice-polish-accounts'],
+    queryFn: api.voicePolishAccounts,
+    enabled: open,
+  })
 
   useEffect(() => {
     if (!open || !settings.data) return
@@ -46,9 +54,14 @@ export function GenerationConfigDialog({ open, onClose }: { open: boolean; onClo
     // 目录里模型带 provider，默认值统一用 provider:model 的键
     setImageModel(resolveModelKey(settings.data.catalog.image, settings.data.default_image_model))
     setVideoModel(resolveModelKey(settings.data.catalog.video, settings.data.default_video_model))
+    setOptimizeEnabled(settings.data.prompt_optimize_enabled)
+    setOptimizeAccountId(settings.data.prompt_optimize_account_id ? String(settings.data.prompt_optimize_account_id) : '')
+    setOptimizeModel(settings.data.prompt_optimize_model || '')
   }, [open, settings.data])
 
   const data: GenerationSettings | undefined = settings.data
+  const accounts: VoicePolishAccount[] = accountsQuery.data?.items ?? []
+  const selectedAccount = accounts.find((item) => String(item.id) === optimizeAccountId)
 
   function patchProvider(index: number, next: Partial<ProviderForm>) {
     setProviders((current) => current.map((item, i) => (i === index ? { ...item, ...next } : item)))
@@ -66,6 +79,9 @@ export function GenerationConfigDialog({ open, onClose }: { open: boolean; onClo
         })),
         default_image_model: imageModel,
         default_video_model: videoModel,
+        prompt_optimize_enabled: optimizeEnabled,
+        prompt_optimize_account_id: optimizeAccountId ? Number(optimizeAccountId) : null,
+        prompt_optimize_model: optimizeModel,
       }),
     onSuccess: async () => {
       notifyOk('生成配置已保存')
@@ -179,6 +195,47 @@ export function GenerationConfigDialog({ open, onClose }: { open: boolean; onClo
                   disabled={pending}
                 />
               </Field>
+            </div>
+
+            <div className="space-y-2 rounded-lg border border-line p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm text-paper">视频提示词优化</div>
+                  <div className="text-xs text-mist">使用所选上游账号改写视频提示词</div>
+                </div>
+                <Switch checked={optimizeEnabled} onCheckedChange={setOptimizeEnabled} disabled={pending} />
+              </div>
+              {optimizeEnabled ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Field label="上游账号">
+                    <Select
+                      value={optimizeAccountId}
+                      onChange={(event) => {
+                        setOptimizeAccountId(event.target.value)
+                        setOptimizeModel('')
+                      }}
+                      disabled={pending}
+                    >
+                      <option value="">选择账号</option>
+                      {accounts.map((item) => (
+                        <option key={item.id} value={item.id} disabled={!item.available}>
+                          {item.name}（{item.provider}）
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="模型">
+                    <Select value={optimizeModel} onChange={(event) => setOptimizeModel(event.target.value)} disabled={pending}>
+                      <option value="">{selectedAccount?.defaultModel ? `账号默认（${selectedAccount.defaultModel}）` : '账号默认'}</option>
+                      {(selectedAccount?.models ?? []).map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+              ) : null}
             </div>
 
             <div className="flex justify-end gap-2 border-t border-line pt-3">

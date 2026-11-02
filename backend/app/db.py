@@ -237,6 +237,23 @@ def _ensure_columns(engine: Engine) -> None:
             connection.execute(
                 text("ALTER TABLE generation_providers ADD COLUMN extra_models TEXT DEFAULT '' NOT NULL")
             )
+        generation_settings_columns = {
+            row[1] for row in connection.execute(text("PRAGMA table_info(generation_settings)"))
+        }
+        generation_settings_statements = {
+            "prompt_optimize_enabled": (
+                "ALTER TABLE generation_settings ADD COLUMN prompt_optimize_enabled BOOLEAN DEFAULT 0 NOT NULL"
+            ),
+            "prompt_optimize_account_id": (
+                "ALTER TABLE generation_settings ADD COLUMN prompt_optimize_account_id INTEGER"
+            ),
+            "prompt_optimize_model": (
+                "ALTER TABLE generation_settings ADD COLUMN prompt_optimize_model VARCHAR(128) DEFAULT '' NOT NULL"
+            ),
+        }
+        for column, statement in generation_settings_statements.items():
+            if generation_settings_columns and column not in generation_settings_columns:
+                connection.execute(text(statement))
         connection.execute(
             text("CREATE UNIQUE INDEX IF NOT EXISTS ix_upstream_accounts_agent_route_id ON upstream_accounts (agent_route_id)")
         )

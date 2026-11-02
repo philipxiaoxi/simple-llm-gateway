@@ -1895,9 +1895,22 @@ export const api = {
     }>
     default_image_model?: string
     default_video_model?: string
+    prompt_optimize_enabled?: boolean
+    prompt_optimize_account_id?: number | null
+    prompt_optimize_model?: string
   }) =>
     request<GenerationSettings>('/api/admin/generation/settings', {
       method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  generationOptimizePrompt: (payload: {
+    prompt: string
+    duration_seconds?: number | string
+    image_count: number
+    mode?: string
+  }) =>
+    request<{ prompt: string; mode: string; model: string }>('/api/admin/generation/prompt-optimize', {
+      method: 'POST',
       body: JSON.stringify(payload),
     }),
   generationClearKey: (provider: string) =>
@@ -3070,6 +3083,9 @@ export type GenerationSettings = {
   providers: GenerationProviderSetting[]
   default_image_model: string
   default_video_model: string
+  prompt_optimize_enabled: boolean
+  prompt_optimize_account_id: number | null
+  prompt_optimize_model: string
   catalog: { image: GenerationModel[]; video: GenerationModel[] }
 }
 

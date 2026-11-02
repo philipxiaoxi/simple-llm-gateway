@@ -26,6 +26,14 @@ import { Button, Field, Input, Select } from './ui'
 
 type ParamValue = string
 
+const OPTIMIZE_MODES = [
+  { value: 'auto', label: '自动' },
+  { value: 't2va', label: '纯文本' },
+  { value: 'i2va', label: '首帧' },
+  { value: 'fl2va', label: '首尾帧' },
+  { value: 'l2va', label: '尾帧' },
+] as const
+
 function initialParams(model: GenerationModel | undefined): Record<string, ParamValue> {
   if (!model) return {}
   const raw = defaultParams(model)
@@ -68,6 +76,8 @@ export function GenerationComposer({
   const canConfig = useCan('generation:settings')
   const canUpload = useCan('generation:upload')
   const [uploading, setUploading] = useState(false)
+  const [optimizing, setOptimizing] = useState(false)
+  const [optimizeMode, setOptimizeMode] = useState('auto')
   const [referenceOpen, setReferenceOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const cloneSeq = useRef(0)
@@ -224,8 +234,29 @@ export function GenerationComposer({
   }
 
   function submit() {
-    if (create.isPending || uploading || !prompt.trim()) return
+    if (create.isPending || uploading || optimizing || !prompt.trim()) return
     create.mutate()
+  }
+
+  async function optimizePrompt() {
+    if (optimizing || !prompt.trim()) return
+    const duration = Number(params.duration || params.duration_seconds || 6) || 6
+    const imageCount = inputs.filter((item) => item.kind === 'image').length
+    setOptimizing(true)
+    try {
+      const result = await api.generationOptimizePrompt({
+        prompt,
+        duration_seconds: duration,
+        image_count: imageCount,
+        mode: optimizeMode === 'auto' ? undefined : optimizeMode,
+      })
+      setPrompt(result.prompt)
+      notifyOk('提示词已优化')
+    } catch (caught) {
+      notifyBad(errorMessage(caught, '优化失败，已保留原文'))
+    } finally {
+      setOptimizing(false)
+    }
   }
 
   if (!model) {
@@ -251,12 +282,12 @@ export function GenerationComposer({
       ) : null}
 
       <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <span className="text-xs uppercase tracking-[0.16em] text-mist">提示词</span>
           <button
             type="button"
             onClick={() => setPrompt(pickExample(kind))}
-            className="inline-flex items-center gap-1 text-xs text-mist transition hover:text-signal"
+            className="inline-flex shrink-0 items-center gap-1 text-xs text-mist transition hover:text-signal"
           >
             <Dices size={13} /> 示例
           </button>
@@ -278,7 +309,35 @@ export function GenerationComposer({
           }
           className="w-full resize-y rounded-lg border border-line-strong bg-control px-3 py-2.5 text-sm leading-6 text-paper outline-none focus:border-signal focus:ring-2 focus:ring-signal/20"
         />
-        <div className="text-right text-xs text-mist">Ctrl / ⌘ + Enter 生成</div>
+        <div className="flex items-center gap-1.5">
+          {kind === 'video' && settings.prompt_optimize_enabled ? (
+            <>
+              <select
+                value={optimizeMode}
+                onChange={(event) => setOptimizeMode(event.target.value)}
+                disabled={optimizing}
+                aria-label="优化模式"
+                className="h-6 shrink-0 rounded-full border border-line bg-control px-2 text-[11px] text-paper outline-none"
+              >
+                {OPTIMIZE_MODES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={optimizing || !prompt.trim()}
+                onClick={() => void optimizePrompt()}
+                className="prompt-optimize-button inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] leading-none disabled:cursor-not-allowed"
+              >
+                <Sparkles size={12} />
+                {optimizing ? '优化中…' : '一键提示词优化'}
+              </button>
+            </>
+          ) : null}
+          <div className="ml-auto whitespace-nowrap text-[11px] text-mist">Ctrl / ⌘ + Enter 生成</div>
+        </div>
       </div>
 
       {supportsRefs ? (
@@ -395,7 +454,7 @@ export function GenerationComposer({
         >
           <Trash2 size={15} />
         </Button>
-        <Button type="button" className="flex-1" disabled={create.isPending || uploading || !prompt.trim()} onClick={submit}>
+        <Button type="button" className="flex-1" disabled={create.isPending || uploading || optimizing || !prompt.trim()} onClick={submit}>
           <Sparkles size={16} />
           {create.isPending ? '提交中…' : kind === 'image' ? '生成图片' : '生成视频'}
         </Button>

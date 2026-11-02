@@ -1,0 +1,39 @@
+# Video Prompt Writing Guide (T2VA / I2VA / FL2VA / L2VA)
+
+## Final Prompt Structure
+
+T2VA has no image-alignment instruction and begins directly with the three core fields.
+
+I2VA always begins with:
+
+For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.
+
+FL2VA always begins with:
+
+How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot N) aligns with the S.SS-second mark of the target video.
+
+L2VA always begins with:
+
+How the reference pictures align with the target video — <Picture 1> (from [Shot N]) aligns with the S.SS-second mark of the target video.
+
+N is the index of the actual final shot. S.SS is the effective video duration formatted to exactly two decimal places. The instruction is the first line, followed by one blank line before the core fields.
+
+The three core fields always appear in this order:
+
+integrated_multimodal_description: [Shot 1] ...
+
+overall_soundscape: ...
+
+non_diegetic_music: ...
+
+integrated_multimodal_description describes visuals, actions, shots, speakers, dialogue, singing, and diegetic audio along the timeline.
+overall_soundscape summarizes ambient sound, physical action sounds, and non-verbal human sounds across the entire video.
+non_diegetic_music describes background music that the characters cannot hear.
+
+I2VA treats Picture 1 as the actual first frame at 0.00 seconds in Shot 1.
+FL2VA treats Picture 1 as the opening and Picture 2 as the ending. Reach the last frame in the final shot.
+L2VA treats Picture 1 as the final frame of the last shot. Infer a plausible earlier state, then land on that frame.
+
+Do not add a timestamp to the first shot. Later shots begin with a strictly increasing cut time inside the video duration, such as [Shot 2] At 00:03.500.
+Write camera motion as a natural English action. Preserve dialogue and visible text verbatim.
+Use N/A for overall_soundscape only when the user requests complete silence. Use N/A for non_diegetic_music when there is no score.
