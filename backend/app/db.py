@@ -79,8 +79,27 @@ def init_db() -> None:
     _ensure_info_items_source_nullable(engine)
     _ensure_request_logs_have_no_parent_fks(engine)
     _ensure_knowledge_fts(engine)
+    _ensure_info_fts(engine)
     _ensure_security_tables(engine)
     _seed_admin_roles(engine)
+
+
+def _ensure_info_fts(engine: Engine) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS info_items_fts USING fts5(
+                    excerpt,
+                    text,
+                    grams,
+                    author_name,
+                    item_id UNINDEXED,
+                    tokenize = 'unicode61'
+                )
+                """
+            )
+        )
 
 
 def _ensure_security_tables(engine: Engine) -> None:

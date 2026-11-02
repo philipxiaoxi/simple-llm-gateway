@@ -19,7 +19,7 @@ from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.clock import utcnow
-from app.info import storage, tokens
+from app.info import search_index, storage, tokens
 from app.info.adapters import DISPLAY_MEDIA_KINDS
 from app.info.content_style import adapt_dark_theme
 from app.models import InfoItem, InfoMedia, InfoSource
@@ -214,6 +214,7 @@ def delete_items(db: Session, item_ids: list[str]) -> int:
     deleted = len(rows)
     for row in rows:
         db.delete(row)
+        search_index.delete_item(db, row.id)
     db.flush()
     for row in rows:
         storage.purge_item(row.id)

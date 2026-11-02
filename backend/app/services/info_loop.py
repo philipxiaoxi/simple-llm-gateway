@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.db import get_session_factory
-from app.info import collector, sources
+from app.info import collector, search_index, sources
 from app.info import media as media_service
 from app.info.adapters import build_excerpt
 from app.info.errors import InfoError
@@ -195,6 +195,7 @@ def enrich_wechat_content_once() -> dict[str, int]:
                     added += 1
                 collector.refresh_item_media_state(session, item)
                 item.content_status = "done"
+                search_index.index_item(session, item)
                 done += 1
             session.commit()
         except Exception:  # noqa: BLE001

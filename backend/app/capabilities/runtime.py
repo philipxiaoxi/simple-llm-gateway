@@ -12,6 +12,7 @@ from app.capabilities.douyin.errors import DouyinError
 from app.capabilities.reference.errors import ReferenceError
 from app.capabilities.registry import get_provider, resolve_tool
 from app.capabilities.site.errors import SiteError
+from app.capabilities.web.errors import WebError
 from app.info.errors import InfoError
 from app.models import McpKey
 from app.services.knowledge import KnowledgeError
@@ -31,7 +32,7 @@ def _normalize_error(error: Exception) -> CapabilityError:
         )
     if isinstance(
         error,
-        KnowledgeError | DocParseError | SiteError | DouyinError | InfoError | ReferenceError,
+        KnowledgeError | DocParseError | SiteError | DouyinError | InfoError | ReferenceError | WebError,
     ):
         return CapabilityError(error.message, status_code=error.status_code, error_type=error.error_type)
     return CapabilityError(str(error), status_code=500, error_type="internal_error")

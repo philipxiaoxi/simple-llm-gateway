@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.clock import utcnow
 from app.config import get_settings
-from app.info import collector, sources, storage
+from app.info import collector, search_index, sources, storage
 from app.info import media as media_service
 from app.info.adapters import build_excerpt, parse_datetime
 from app.info.errors import InfoError
@@ -278,6 +278,7 @@ def save_report(db: Session, *, mcp_key: McpKey, item: ReportInput) -> dict[str,
             for row in media_rows:
                 db.add(row)
             db.flush()
+            search_index.index_item(db, record)
     except IntegrityError:
         # 并发下另一请求已写入同去重键：清理刚落盘的媒体并返回已存在条目
         storage.purge_item(item_id)

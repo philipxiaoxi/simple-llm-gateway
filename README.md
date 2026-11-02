@@ -26,7 +26,7 @@
 - **一键导入**: 分享页按 Key 查询归属，支持 CC Switch 导入
 - **网关代理**: 可将受限网络中的固定上游地址安全地反向接入 Gateway
 - **Skills 仓库**: 上传符合 `SKILL.md` 规范的目录 / zip / tar，按分类浏览、编辑元数据并下载
-- **MCP 广场**: 独立 MCP Key、能力白名单、知识库（文本分块 + 向量/全文检索），REST `/v1/capabilities` 与 MCP `/mcp` 双协议
+- **MCP 广场**: 独立 MCP Key、能力白名单、知识库（文本分块 + 向量/全文检索）、联网搜索与网页解析，REST `/v1/capabilities` 与 MCP `/mcp` 双协议
 - **抖音下载**: 解析抖音分享文案/直链，转存视频与图集并返回稳定下载地址；解析器默认 yt-dlp，依赖可在管理页安装/更新/卸载
 - **资讯收集**: 把 Telegram 等公开渠道的内容采集进本地库，以小红书式瀑布流浏览；纯文字内容用 CSS 生成封面，图文/视频/文字三类统一展示
 - **手机语音输入**: 手机按住说话 → 阿里云实时识别边说边出字 → AI 纠错原地替换 → 自动填进电脑输入框，全链路日志可查
@@ -147,6 +147,8 @@ curl -s https://你的站/v1/capabilities/knowledge/search \
 #        site_deploy, site_list, site_status, site_rollback, site_delete, site_access
 #        douyin_parse, douyin_job, douyin_result, douyin_list
 ```
+
+联网搜索与网页解析由 `web` 能力提供：`web_search` 默认先查本地资讯库（`info_items` 的 FTS5 索引，中文按二元组切分），结果不足时再补外部搜索；`web_fetch` 抓取任意 http/https 页面并用 trafilatura 提取正文为 Markdown，PDF 与 Office 文档转交文档解析管线。外部搜索默认关闭，设置 `WEB_SEARCH_PROVIDER=searxng` 并指向自托管实例后启用。抓取遵守 robots.txt，拒绝内网与保留地址，不执行 JavaScript。
 
 文档转换在 MCP 广场「文档转 Markdown」页上传预览。MCP Key 勾选 `docparse` 后，可走 REST `POST /v1/capabilities/docparse/jobs`（multipart 字段 `file`）或 MCP 工具 `docparse_convert`。Docker 部署随镜像安装 `markitdown`，文件落在数据卷 `/data/docparse`。旧版 `.doc/.xls/.ppt` 需要镜像外另行提供 LibreOffice。
 

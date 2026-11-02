@@ -124,11 +124,11 @@ WHERE info_items_fts MATCH :expr
 ORDER BY rank LIMIT :limit;
 ```
 
-正文来源要分渠道处理：
+正文来源统一取 `InfoItem.text`：
 
-- RSS、Telegram、上报：正文已在 `InfoItem.text`。
-- 微信公众号：`text` 只有摘要，全文在 `content_html`（见 `app/services/info_loop.py:172`）。索引时必须剥离标签后并入 `grams`，否则搜不到文章正文。
-- `content_html` 是补全后异步写入的，全文补全完成时需要重建该条目的索引。
+- RSS、Telegram、上报：正文已在 `text`。
+- 微信公众号：列表阶段 `text` 只有摘要，全文补全完成后 `info_loop` 会把正文写回 `text`（`app/services/info_loop.py:169`），因此只需在补全完成时重建该条索引。
+- `content_html` 仅用于详情页还原排版，不参与检索。
 
 维护方式：
 
