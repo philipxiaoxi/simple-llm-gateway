@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.clock import utcnow
 from app.config import get_settings
 from app.info import media as media_service
-from app.info import search_index, storage
+from app.info import storage
 from app.info.adapters import (
     DISPLAY_MEDIA_KINDS,
     FetchedPost,
@@ -133,7 +133,6 @@ def _insert_item(
 
             db.add(item)
             db.flush()
-            search_index.index_item(db, item)
 
             rows: list[InfoMedia] = []
             for index, entry in enumerate(media_items):
@@ -575,7 +574,6 @@ def delete_source(db: Session, source: InfoSource, *, purge_items: bool = False)
             item = db.get(InfoItem, item_id)
             if item is not None:
                 db.delete(item)  # 媒体行随之级联删除
-                search_index.delete_item(db, item_id)
         db.flush()
     else:
         db.execute(

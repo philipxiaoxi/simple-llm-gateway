@@ -117,10 +117,6 @@ def ensure_defaults() -> None:
         from app.capabilities.diagram.provider import DiagramProvider
 
         register(DiagramProvider())
-    if "web" not in _providers and settings.web_enabled:
-        from app.capabilities.web.provider import WebProvider
-
-        register(WebProvider())
 
 
 def reset_registry_for_tests() -> None:

@@ -124,19 +124,18 @@ WHERE info_items_fts MATCH :expr
 ORDER BY rank LIMIT :limit;
 ```
 
-正文来源统一取 `InfoItem.text`：
+正文来源要分渠道处理：
 
-- RSS、Telegram、上报：正文已在 `text`。
-- 微信公众号：列表阶段 `text` 只有摘要，全文补全完成后 `info_loop` 会把正文写回 `text`（`app/services/info_loop.py:169`），因此只需在补全完成时重建该条索引。
-- `content_html` 仅用于详情页还原排版，不参与检索。
+- RSS、Telegram、上报：正文已在 `InfoItem.text`。
+- 微信公众号：`text` 只有摘要，全文在 `content_html`（见 `app/services/info_loop.py:172`）。索引时必须剥离标签后并入 `grams`，否则搜不到文章正文。
+- `content_html` 是补全后异步写入的，全文补全完成时需要重建该条目的索引。
 
 维护方式：
 
-- 采集入库时写入（`backend/app/info/collector.py` 的 `_insert_item`）。
-- 上报入库时写入（`app/info/report.py`）。
-- 公众号全文补全完成后重建（`app/services/info_loop.py`）。
+- 采集入库时写入（`backend/app/info/collector.py:98` 新增调用点）。
+- 公众号全文补全完成后重建（`app/services/info_loop.py:197`）。
 - 删除、隐藏时同步删除。
-- 存量数据在启动阶段补建（`app/db.py` 的 `_backfill_info_fts`）。索引维护不放在搜索路径上，避免并发首查同时触发重建把 SQLite 写锁打满。
+- 提供一次性回填命令，扫描 `info_items` 建索引。
 - FTS5 自带 `bm25()` 排序，无需额外打分。
 
 ### 搜索缓存（可选）

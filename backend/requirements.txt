@@ -17,5 +17,3 @@ websockets==17.0.1
 chromadb==1.0.20
 mcp==1.13.1
 markitdown[pdf,docx,xlsx,pptx]==0.1.5
-trafilatura==2.3.1
-lxml_html_clean==0.4.6

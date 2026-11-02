@@ -227,22 +227,6 @@ class Settings(BaseSettings):
     # MCP base64 单文件解码后上限（比 REST 小，避免 JSON 过大）
     info_report_max_mcp_file_bytes: int = 5 * 1024 * 1024
     info_report_max_files_per_item: int = 9
-    # ---- 联网搜索与网页解析（web 能力）----
-    web_enabled: bool = True
-    # none / searxng
-    web_search_provider: str = "none"
-    web_searxng_base_url: str = ""
-    web_search_timeout_seconds: int = 10
-    web_search_cache_ttl_seconds: int = 600
-    web_fetch_timeout_seconds: int = 20
-    web_fetch_max_bytes: int = 5 * 1024 * 1024
-    web_fetch_max_redirects: int = 5
-    web_fetch_max_chars: int = 40000
-    web_fetch_cache_ttl_seconds: int = 300
-    web_robots_enabled: bool = True
-    # 留空时复用 info_user_agent
-    web_user_agent: str = ""
-    web_local_search_boost: float = 0.15
     info_report_max_item_bytes: int = 60 * 1024 * 1024
     info_report_batch_max_items: int = 20
     info_report_rate_per_minute: int = 30
@@ -342,10 +326,6 @@ class Settings(BaseSettings):
     @property
     def resolved_chroma_path(self) -> Path:
         return self._resolve_data_path(self.mcp_chroma_path, "chroma")
-
-    @property
-    def resolved_web_user_agent(self) -> str:
-        return self.web_user_agent or self.info_user_agent
 
     @property
     def resolved_docparse_path(self) -> Path:

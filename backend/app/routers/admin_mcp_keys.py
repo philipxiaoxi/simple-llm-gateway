@@ -135,29 +135,6 @@ def reveal_key(key_id: int, db: Session = Depends(get_db)):
     return {"id": item.id, "name": item.name, "key": plaintext}
 
 
-def _is_loopback(host: str) -> bool:
-    hostname = host.rsplit(":", 1)[0].strip("[]").lower()
-    return hostname in {"localhost", "::1"} or hostname.startswith("127.")
-
-
-def _public_origin(request: Request) -> str:
-    """接入说明里的 Base URL 必须是调用方真正能访问到的地址。
-
-    优先用显式配置的 APP_BASE_URL；它仍是默认的 127.0.0.1 时，改用反向代理透传的
-    外部域名，避免预览或容器里给出只对本机有效的地址。
-    """
-    configured = get_settings().app_base_url.rstrip("/")
-    if configured and not _is_loopback(configured.split("://", 1)[-1]):
-        return configured
-    forwarded_host = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip()
-    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
-    host = forwarded_host or request.headers.get("host", "").strip()
-    if host and not _is_loopback(host):
-        proto = forwarded_proto or request.url.scheme
-        return f"{proto}://{host}"
-    return configured or str(request.base_url).rstrip("/")
-
-
 @router.get("/{key_id}/integration")
 def key_integration(key_id: int, request: Request, db: Session = Depends(get_db)):
     """按 Key 生成接入中心所需的端点、能力清单与授权标记，不返回明文密钥。"""
@@ -166,7 +143,7 @@ def key_integration(key_id: int, request: Request, db: Session = Depends(get_db)
         raise HTTPException(404, "MCP Key 不存在")
     ensure_defaults()
     allowed = allowed_capability_ids(item)
-    origin = _public_origin(request)
+    origin = (get_settings().app_base_url or str(request.base_url)).rstrip("/")
     capabilities = []
     for row in catalog_payload(only_enabled=False):
         entry = dict(row)

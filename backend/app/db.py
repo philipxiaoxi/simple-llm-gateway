@@ -79,46 +79,8 @@ def init_db() -> None:
     _ensure_info_items_source_nullable(engine)
     _ensure_request_logs_have_no_parent_fks(engine)
     _ensure_knowledge_fts(engine)
-    _ensure_info_fts(engine)
-    _backfill_info_fts(engine)
     _ensure_security_tables(engine)
     _seed_admin_roles(engine)
-
-
-def _ensure_info_fts(engine: Engine) -> None:
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                """
-                CREATE VIRTUAL TABLE IF NOT EXISTS info_items_fts USING fts5(
-                    excerpt,
-                    text,
-                    grams,
-                    author_name,
-                    item_id UNINDEXED,
-                    tokenize = 'unicode61'
-                )
-                """
-            )
-        )
-
-
-def _backfill_info_fts(engine: Engine) -> None:
-    """升级后首次启动时给历史资讯补建全文索引。
-
-    索引的日常维护在采集/上报/删除的写入路径上完成，这里只处理存量数据。放在启动
-    阶段而不是搜索路径，避免并发首查同时触发重建把 SQLite 写锁打满。
-    """
-    from sqlalchemy.orm import Session
-
-    from app.info.search_index import reindex_if_empty
-
-    try:
-        with Session(engine) as session:
-            reindex_if_empty(session)
-            session.commit()
-    except Exception as error:  # noqa: BLE001 - 索引补建失败不应阻塞启动
-        print(f"[info-fts] 历史资讯索引补建失败: {error}")
 
 
 def _ensure_security_tables(engine: Engine) -> None:
