@@ -1210,6 +1210,9 @@ class GenerationSettings(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     default_image_model: Mapped[str] = mapped_column(String(128), default="", nullable=False)
     default_video_model: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    prompt_optimize_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    prompt_optimize_account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    prompt_optimize_model: Mapped[str] = mapped_column(String(128), default="", nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 

@@ -204,6 +204,7 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("GET", "/api/admin/generation/settings"): "generation:settings",
     ("PUT", "/api/admin/generation/settings"): "generation:settings",
     ("POST", "/api/admin/generation/providers/{provider}/key"): "generation:settings",
+    ("POST", "/api/admin/generation/prompt-optimize"): "generation:settings",
     ("POST", "/api/admin/generation/uploads"): "generation:upload",
     ("POST", "/api/admin/generation/uploads/clone"): "generation:upload",
     ("DELETE", "/api/admin/generation/uploads/{asset_id}"): "generation:upload",

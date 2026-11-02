@@ -155,6 +155,16 @@ Entries discovered by the Agent during task execution should follow this format:
   - 本机跑 pytest 会在 `backend/` 下留 `pytest-of-philip/`，属正常回退产物，可直接删
   - 绕过：给需要临时目录的命令显式指定一个**工作区内**的可写目录（`$env:TEMP` 指向工作区子目录），POSIX 侧无此问题
 
+[前端预览统一更新 8000]
+- Date: 2026-11-02
+- Context: 用户查看视频生成页时，5173 已热更新但 8000 仍是旧构建
+- Category: Operations & Deployment
+- Instructions:
+  - 前端改动完成后，必须 `cd /workspace/frontend && npm run build`，让 8000 提供的 `frontend/dist` 同步更新
+  - 构建前确认 `frontend/src` 下没有同名 `.js` 盖住 `.tsx`，Vite 会优先解析 `.js`
+  - 构建后用产物搜索确认关键文案已进入 `frontend/dist/assets`
+  - 用户预览以 https://8000-65cb1fc1cd31ec7a.monkeycode-ai.online 为准
+
 [MCP 能力写入口以 Key 白名单为信任边界，不默认加防滥用审查]
 - Date: 2026-10-09
 - Context: 设计资讯上报能力（MCP+REST 写入口）时评估是否加内容审查/防滥用

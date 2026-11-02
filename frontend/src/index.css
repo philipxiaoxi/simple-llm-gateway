@@ -234,6 +234,27 @@ html[data-modal-open='true'] [data-app-scroll] {
   animation: page-enter 0.12s ease-out;
 }
 
+@keyframes prompt-optimize-marquee {
+  to {
+    background-position: 200% 0;
+  }
+}
+
+.prompt-optimize-button {
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(#171512, #171512) padding-box,
+    linear-gradient(90deg, #ff4d6d, #ffb703, #8cff4d, #3dd6ff, #7c5cff, #ff4d6d) border-box;
+  background-size: auto, 200% 100%;
+  animation: prompt-optimize-marquee 1.6s linear infinite;
+  color: #f7f3ea;
+}
+
+.prompt-optimize-button:disabled {
+  opacity: 1;
+  color: #c8c2b6;
+}
+
 @keyframes douyin-splash-sweep {
   from {
     transform: translateX(-120%);
