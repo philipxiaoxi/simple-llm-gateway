@@ -1,21 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  BookOpen,
-  Download,
-  FileText,
-  Globe,
-  Image as ImageIcon,
   KeyRound,
   Layers3,
-  Newspaper,
   ScrollText,
-  Shapes,
   Search,
-  Shirt,
-  Sparkles,
   Store,
-  UserRound,
   X,
 } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
@@ -55,20 +45,6 @@ function permForAppPath(path: string | null | undefined): string {
   return match?.perm ?? 'mcp_catalog:view'
 }
 
-const iconMap: Record<string, typeof BookOpen> = {
-  book: BookOpen,
-  store: Store,
-  'file-text': FileText,
-  globe: Globe,
-  download: Download,
-  shapes: Shapes,
-  newspaper: Newspaper,
-  sparkles: Sparkles,
-  image: ImageIcon,
-  user: UserRound,
-  shirt: Shirt,
-}
-
 export function McpPlazaLayout() {
   const { can } = useSession()
   const visibleTabs = tabs.filter((tab) => can(tab.perm))
@@ -86,7 +62,7 @@ export function McpPlazaLayout() {
         description={
           inApp
             ? '应用管理页。平台入口：服务目录、MCP Key、调用记录、接入说明。'
-            : '从卡片进入应用。MCP Key 与调用审计是平台级能力。'
+            : '提供可接入业务系统的能力服务。从卡片进入应用，MCP Key 与调用审计是平台级能力。'
         }
       />
       {inApp ? null : (
@@ -165,29 +141,25 @@ export function McpPlazaCatalogPage() {
       </div>
       {query && items.length ? <div className="text-xs text-mist">找到 {items.length} 个应用</div> : null}
       {isFetching && !data ? <div className="text-sm text-mist">加载中…</div> : null}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
+      <div className="flex items-end justify-between gap-3">
+        <div className="text-sm text-mist">{items.length} 个能力</div>
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {items.map((item) => {
-          const Icon = iconMap[item.icon] || Store
           const to = item.admin_path || undefined
-          const className = "flex min-h-[8.5rem] flex-col rounded-xl border border-line bg-panel p-4 transition hover:border-signal/40 hover:bg-panel/80 sm:min-h-[9.5rem] sm:p-5"
+          const className = "flex min-h-[11.5rem] flex-col border border-line bg-panel px-5 py-5 transition hover:-translate-y-0.5 hover:border-signal/70 hover:shadow-[0_0_0_1px_rgba(200,245,66,0.25)]"
+          const category = item.category || '能力'
           const body = (
             <>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-signal/10 text-signal">
-                    <Icon size={17} />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="truncate text-base font-medium text-paper sm:text-lg">{item.name}</div>
-                    <div className="mt-0.5 text-[11px] text-mist">
-                      {item.capability_id} · v{item.version} · {item.tools.length} tools
-                    </div>
-                  </div>
-                </div>
-                {to ? <span className="shrink-0 pt-1 text-sm text-signal">进入 →</span> : null}
+              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-signal">
+                MCP / {category} / 能力
               </div>
-              <p className="mt-3 line-clamp-2 text-sm leading-6 text-mist">{item.description}</p>
-              {!to ? <div className="mt-3 text-xs text-mist">协议面能力（无独立管理页）</div> : null}
+              <div className="mt-3 text-xl font-semibold tracking-tight text-paper">{item.name}</div>
+              <p className="mt-2 line-clamp-3 text-sm leading-6 text-mist">{item.description}</p>
+              <div className="mt-auto pt-4 text-[11px] text-mist-soft">
+                {item.capability_id} · v{item.version} · {item.tools.length} tools
+                {!to ? ' · 协议面' : ''}
+              </div>
             </>
           )
           if (to) {
