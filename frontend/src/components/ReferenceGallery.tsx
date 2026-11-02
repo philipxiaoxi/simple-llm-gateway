@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
-import { Copy, ExternalLink, Image as ImageIcon, Link2, Loader2, Search } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Copy, ExternalLink, Image as ImageIcon, Link2, Loader2, Plus, Search, Trash2 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 
 import {
@@ -9,6 +9,7 @@ import {
   type ReferenceLabels,
   type ReferenceQuery,
 } from '../lib/api'
+import { useCan } from '../lib/session'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage } from '../lib/utils'
 import { Pagination } from './Pagination'
@@ -48,6 +49,9 @@ export function ReferenceGallery({
   const [page, setPage] = useState(1)
   const [preview, setPreview] = useState<ReferenceItem | null>(null)
   const [pickingId, setPickingId] = useState('')
+  const [adding, setAdding] = useState(false)
+  const canCreate = useCan(`mcp_${kind}s:create`)
+  const canDelete = useCan(`mcp_${kind}s:delete`)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setQuery(queryInput.trim()), 300)
@@ -104,6 +108,17 @@ export function ReferenceGallery({
     }
   }
 
+  const queryClient = useQueryClient()
+  const remove = useMutation({
+    mutationFn: (id: string) => api.referenceDelete(kind, id),
+    onSuccess: () => {
+      notifyOk('已删除本地参考')
+      setPreview(null)
+      void queryClient.invalidateQueries({ queryKey: ['references'] })
+    },
+    onError: (error) => notifyBad(errorMessage(error, '删除失败')),
+  })
+
   async function copyText(text: string, label: string) {
     try {
       await navigator.clipboard.writeText(text)
@@ -115,6 +130,13 @@ export function ReferenceGallery({
 
   return (
     <div className="space-y-4">
+      {canCreate && !compact ? (
+        <div className="flex justify-end">
+          <Button type="button" onClick={() => setAdding(true)}>
+            <Plus size={15} /> 添加参考
+          </Button>
+        </div>
+      ) : null}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <div className="relative">
           <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-mist" />
@@ -213,6 +235,7 @@ export function ReferenceGallery({
               onPreview={() => setPreview(item)}
               onPick={onPick ? () => void handlePick(item) : undefined}
               onCopy={copyText}
+              onDelete={canDelete && item.source === 'local' ? () => remove.mutate(item.id) : undefined}
             />
           ))}
         </div>
@@ -227,6 +250,15 @@ export function ReferenceGallery({
       <Pagination page={page} pageCount={pageCount} total={data?.total ?? 0} unit="条" onPage={setPage} />
 
       {data?.attribution ? <div className="text-[11px] leading-5 text-mist">{data.attribution}</div> : null}
+      {adding ? (
+        <ReferenceCreateDialog
+          kind={kind}
+          labels={labels}
+          groups={groups}
+          categories={categories}
+          onClose={() => setAdding(false)}
+        />
+      ) : null}
 
       {preview ? (
         <Dialog title={preview.title} onClose={() => setPreview(null)} className="max-w-3xl">
@@ -310,6 +342,111 @@ export function ReferencePickerDialog({
   )
 }
 
+function ReferenceCreateDialog({
+  kind,
+  labels,
+  groups,
+  categories,
+  onClose,
+}: {
+  kind: ReferenceKind
+  labels: ReferenceLabels
+  groups: string[]
+  categories: string[]
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [title, setTitle] = useState('')
+  const [group, setGroup] = useState('')
+  const [category, setCategory] = useState('')
+  const [detail, setDetail] = useState('')
+  const [tags, setTags] = useState('')
+  const [prompt, setPrompt] = useState('')
+  const [adult, setAdult] = useState(false)
+  const [file, setFile] = useState<File | null>(null)
+  const create = useMutation({
+    mutationFn: () => {
+      if (!file) throw new Error('请选择图片')
+      return api.referenceCreate(kind, { file, title, group, category, detail, tags, prompt, adult })
+    },
+    onSuccess: () => {
+      notifyOk('已添加参考')
+      void queryClient.invalidateQueries({ queryKey: ['references'] })
+      onClose()
+    },
+    onError: (error) => notifyBad(errorMessage(error, '添加失败')),
+  })
+
+  return (
+    <Dialog title="添加参考" onClose={onClose} className="max-w-xl">
+      <form
+        className="grid gap-3 sm:grid-cols-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          create.mutate()
+        }}
+      >
+        <label className="space-y-1 text-xs text-mist sm:col-span-2">
+          图片
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            className="block w-full text-sm text-paper file:mr-3 file:rounded-md file:border-0 file:bg-panel-2 file:px-3 file:py-2"
+          />
+        </label>
+        <label className="space-y-1 text-xs text-mist sm:col-span-2">
+          标题
+          <input value={title} onChange={(event) => setTitle(event.target.value)} required className="w-full rounded-md border border-line bg-control px-3 py-2 text-sm text-paper outline-none focus:border-signal" />
+        </label>
+        <label className="space-y-1 text-xs text-mist">
+          {labels.group}
+          <Input value={group} onChange={(event) => setGroup(event.target.value)} list={`${kind}-groups`} />
+          <datalist id={`${kind}-groups`}>
+            {groups.map((value) => <option key={value} value={value} />)}
+          </datalist>
+        </label>
+        <label className="space-y-1 text-xs text-mist">
+          {labels.category}
+          <Input value={category} onChange={(event) => setCategory(event.target.value)} list={`${kind}-categories`} />
+          <datalist id={`${kind}-categories`}>
+            {categories.map((value) => <option key={value} value={value} />)}
+          </datalist>
+        </label>
+        <label className="space-y-1 text-xs text-mist">
+          {labels.detail}
+          <Input value={detail} onChange={(event) => setDetail(event.target.value)} />
+        </label>
+        <label className="space-y-1 text-xs text-mist">
+          标签
+          <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="用逗号分隔" className="w-full rounded-md border border-line bg-control px-3 py-2 text-sm text-paper outline-none focus:border-signal" />
+        </label>
+        <label className="space-y-1 text-xs text-mist sm:col-span-2">
+          提示词
+          <textarea
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            rows={3}
+            className="w-full rounded-md border border-line bg-control px-3 py-2 text-sm text-paper outline-none focus:border-signal"
+          />
+        </label>
+        {kind !== 'portrait' ? (
+          <div className="flex items-center justify-between rounded-md border border-line px-3 py-2 sm:col-span-2">
+            <span className="text-xs text-mist">标记为 18+</span>
+            <Switch checked={adult} onCheckedChange={setAdult} />
+          </div>
+        ) : null}
+        <div className="flex justify-end gap-2 sm:col-span-2">
+          <Button type="button" variant="line" onClick={onClose}>取消</Button>
+          <Button type="submit" disabled={create.isPending || !file || !title.trim()}>
+            {create.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} 保存
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+
 function ReferenceCard({
   item,
   compact,
@@ -317,6 +454,7 @@ function ReferenceCard({
   onPreview,
   onPick,
   onCopy,
+  onDelete,
 }: {
   item: ReferenceItem
   compact: boolean
@@ -324,12 +462,14 @@ function ReferenceCard({
   onPreview: () => void
   onPick?: () => void
   onCopy: (text: string, label: string) => void
+  onDelete?: () => void
 }) {
   const badges = (
     <>
       {item.curated ? <OverlayTag tone="curated">精选</OverlayTag> : null}
       {item.hot ? <OverlayTag tone="hot">热门</OverlayTag> : null}
       {item.adult ? <OverlayTag tone="adult">18+</OverlayTag> : null}
+      {item.source === 'local' ? <OverlayTag tone="curated">本地</OverlayTag> : null}
     </>
   )
 
@@ -411,6 +551,11 @@ function ReferenceCard({
           >
             <Link2 size={13} /> 链接
           </Button>
+          {onDelete ? (
+            <Button type="button" variant="line" className="min-h-8 px-2 py-1 text-xs" onClick={onDelete}>
+              <Trash2 size={13} /> 删除
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>

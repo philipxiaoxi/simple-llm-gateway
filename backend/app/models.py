@@ -1344,6 +1344,30 @@ class NavTabPreference(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
+class ReferenceAsset(Base):
+    """管理员添加到参考库的本地图片。上游同步只更新缓存，不修改本表。"""
+
+    __tablename__ = "reference_assets"
+    __table_args__ = (Index("ix_reference_assets_kind_created", "kind", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    group_name: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    category: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    detail: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    tags_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    adult: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    image_path: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    thumb_path: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    width: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
 class SecuritySettings(Base):
     """安全中心配置：常用登录地点白名单与 IP/CIDR 白名单。单行表（id=1）。"""
 

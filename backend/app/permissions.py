@@ -205,6 +205,8 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
         (
             ("view", "查看"),
             ("sync", "同步数据"),
+            ("create", "添加参考"),
+            ("delete", "删除参考"),
         ),
     ),
     "mcp_poses": (
@@ -212,6 +214,8 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
         (
             ("view", "查看"),
             ("sync", "同步数据"),
+            ("create", "添加参考"),
+            ("delete", "删除参考"),
         ),
     ),
     "mcp_costumes": (
@@ -219,6 +223,8 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
         (
             ("view", "查看"),
             ("sync", "同步数据"),
+            ("create", "添加参考"),
+            ("delete", "删除参考"),
         ),
     ),
     "mcp_diagrams": (
