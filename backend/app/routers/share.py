@@ -32,8 +32,10 @@ from app.services.key_models import (
     bound_accounts,
     build_model_catalog,
     is_account_available,
+    public_model_entries,
     public_model_ids,
     rename_model_alias,
+    serialize_aliases,
 )
 from app.services.leaderboard import LeaderboardError, get_leaderboard
 from app.services.model_caps import serialize_record
@@ -84,11 +86,6 @@ def _key_token_totals(db: Session, api_key_id: int) -> tuple[int, int]:
     return int(today_tokens), int(total_tokens)
 
 
-def _serialize_aliases(item: ApiKey) -> list[dict]:
-    rows = sorted(item.aliases or [], key=lambda row: row.id)
-    return [{"alias": row.alias, "model": row.model_public_id} for row in rows]
-
-
 @router.post("/lookup")
 def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> dict:
     raw_key = payload.api_key.strip()
@@ -105,7 +102,6 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
         record = serialize_record(entry.record) if entry.record is not None else {}
         record["id"] = entry.public_id
         records.append(record)
-    account_indexes = {bound_account.id: index for index, bound_account in enumerate(bound)}
     origin = settings.app_base_url.rstrip("/")
     provider = account.provider if account else ""
     registered = find_provider(provider) if provider else None
@@ -134,20 +130,9 @@ def lookup_key(payload: ShareLookupRequest, db: Session = Depends(get_db)) -> di
         "today_tokens": today_tokens,
         "total_tokens": total_tokens,
         "models": models,
-        "aliases": _serialize_aliases(item),
+        "aliases": serialize_aliases(item),
         "model_caps": records,
-        "model_entries": [
-            {
-                "id": entry.public_id,
-                "raw_id": entry.raw_id,
-                "account_id": entry.account.id,
-                "account_name": entry.account.name,
-                "account_source": entry.account.source,
-                "provider": entry.account.provider,
-                "account_index": account_indexes.get(entry.account.id, 0),
-            }
-            for entry in catalog
-        ],
+        "model_entries": public_model_entries(item),
         "gateway": {
             "origin": origin,
             "anthropic_base_url": gateway_endpoint(origin, False),
@@ -215,7 +200,7 @@ def save_alias(payload: ShareAliasSaveRequest, db: Session = Depends(get_db)) ->
         row.model_public_id = payload.model
         row.updated_at = utcnow()
     db.commit()
-    return {"aliases": _serialize_aliases(item)}
+    return {"aliases": serialize_aliases(item)}
 
 
 @router.post("/aliases/rename")
@@ -228,7 +213,7 @@ def rename_alias(payload: ShareAliasRenameRequest, db: Session = Depends(get_db)
     except AliasConflict as error:
         raise HTTPException(status_code=error.status_code, detail=error.detail) from error
     db.commit()
-    return {"aliases": _serialize_aliases(item)}
+    return {"aliases": serialize_aliases(item)}
 
 
 @router.post("/aliases/delete")
@@ -241,7 +226,7 @@ def delete_alias(payload: ShareAliasDeleteRequest, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="别名不存在")
     db.delete(row)
     db.commit()
-    return {"aliases": _serialize_aliases(item)}
+    return {"aliases": serialize_aliases(item)}
 
 
 @router.get("/leaderboard", response_model=LeaderboardOut)

@@ -174,6 +174,62 @@ def public_model_ids(api_key: ApiKey) -> list[str]:
     return [entry.public_id for entry in build_model_catalog(api_key)]
 
 
+def public_model_entries(api_key: ApiKey) -> list[dict]:
+    """可用模型 + 归属账号，供前端在选择器里按上游账号分组展示。"""
+    accounts = bound_accounts(api_key)
+    indexes = {account.id: index for index, account in enumerate(accounts)}
+    return [
+        {
+            "id": entry.public_id,
+            "raw_id": entry.raw_id,
+            "account_id": entry.account.id,
+            "account_name": entry.account.name,
+            "account_source": entry.account.source,
+            "provider": entry.account.provider,
+            "account_index": indexes.get(entry.account.id, 0),
+        }
+        for entry in build_model_catalog(api_key)
+    ]
+
+
+def _model_account(api_key: ApiKey, public_id: str) -> UpstreamAccount | None:
+    for entry in build_model_catalog(api_key, include_disabled=True):
+        if entry.public_id == public_id:
+            return entry.account
+    # 账号停用后其模型不在可用目录里，退回扫描已绑定账号（含不可用）找回原归属
+    for account in bound_accounts(api_key):
+        prefix = account_prefix(account)
+        for record in parse_model_records(account.models_json):
+            raw = record.id
+            if public_id in (raw, f"{prefix}/{raw}", f"{prefix}-{account.id}/{raw}"):
+                return account
+    return None
+
+
+def serialize_aliases(api_key: ApiKey) -> list[dict]:
+    """别名 + 目标模型的归属账号；模型已失效时标记 available=False 供前端高亮。"""
+    catalog = {entry.public_id: entry for entry in build_model_catalog(api_key)}
+    accounts = bound_accounts(api_key)
+    indexes = {account.id: index for index, account in enumerate(accounts)}
+    result: list[dict] = []
+    for row in sorted(api_key.aliases or [], key=lambda item: item.id):
+        entry = catalog.get(row.model_public_id)
+        account = entry.account if entry is not None else _model_account(api_key, row.model_public_id)
+        result.append(
+            {
+                "alias": row.alias,
+                "model": row.model_public_id,
+                "account_id": account.id if account is not None else None,
+                "account_name": account.name if account is not None else None,
+                "account_source": account.source if account is not None else None,
+                "provider": account.provider if account is not None else None,
+                "account_index": indexes.get(account.id, 0) if account is not None else 0,
+                "available": entry is not None,
+            }
+        )
+    return result
+
+
 def find_alias(db: Session, api_key_id: int, alias: str) -> ModelAlias | None:
     return db.scalar(select(ModelAlias).where(ModelAlias.api_key_id == api_key_id, ModelAlias.alias == alias))
 

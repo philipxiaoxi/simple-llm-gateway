@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Children, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { useMemo, useState, type ReactNode } from 'react'
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
 import { ModelAliasList } from '../components/ModelAliasList'
 import { VscodeImportDialog } from '../components/VscodeImportDialog'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
-import { api, type Account, type ApiKeyItem, type ApiKeySort, type CcSwitchTarget, type GatewayAgent, type ShareAlias } from '../lib/api'
+import { modelOptions } from '../lib/modelOptions'
+import { api, type Account, type ApiKeyItem, type ApiKeySort, type CcSwitchTarget, type GatewayAgent, type ShareAlias, type ShareModelEntry } from '../lib/api'
 import { openShareWithApiKey } from '../lib/shareTransfer'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { Can, useCan } from '../lib/session'
@@ -12,50 +14,28 @@ import { ALIAS_INPUT_PATTERN, cn, errorMessage, formatTime, formatTokenCount, RI
 import { FilterBar } from '../components/filter-bar'
 
 function MoreMenu({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(false)
-  const [upward, setUpward] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function onDocumentClick(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onDocumentClick)
-    return () => document.removeEventListener('mousedown', onDocumentClick)
-  }, [open])
-
-  function toggle() {
-    const next = !open
-    setOpen(next)
-    if (next) {
-      const rect = containerRef.current?.getBoundingClientRect()
-      if (rect) {
-        const itemCount = Children.count(children)
-        const estimatedHeight = itemCount * 36 + 16
-        setUpward(rect.bottom + estimatedHeight > window.innerHeight)
-      }
-    }
-  }
-
   return (
-    <div ref={containerRef} className="relative w-full md:w-auto">
-      <Button type="button" variant="line" className="w-full md:w-auto" onClick={toggle}>
-        更多
-      </Button>
-      {open ? (
-        <div
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <Button type="button" variant="line" className="w-full md:w-auto">
+          更多
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={4}
+          collisionPadding={{ top: 12, right: 12, bottom: 84, left: 12 }}
           className={cn(
-            'absolute right-0 z-20 min-w-40 rounded-md border border-line bg-panel-2 p-1 shadow-menu',
-            upward ? 'bottom-full mb-1' : 'top-full mt-1',
+            'z-[70] max-h-[min(70dvh,20rem)] min-w-40 max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-md border border-line bg-panel-2 p-1 shadow-menu',
+            'motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:zoom-in-95 motion-safe:data-[state=open]:duration-150',
+            'motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=closed]:fade-out-0 motion-safe:data-[state=closed]:zoom-out-95 motion-safe:data-[state=closed]:duration-100',
           )}
         >
           {children}
-        </div>
-      ) : null}
-    </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   )
 }
 
@@ -69,16 +49,17 @@ function MenuItem({
   onClick: () => void
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <DropdownMenu.Item
+      onSelect={onClick}
       className={cn(
-        'block w-full rounded-md px-3 py-2 text-left text-sm transition',
-        danger ? 'bg-danger/15 text-danger hover:bg-danger/25' : 'text-paper hover:bg-elevate',
+        'cursor-pointer select-none rounded-md px-3 py-2 text-sm outline-none transition',
+        danger
+          ? 'bg-danger/15 text-danger data-[highlighted]:bg-danger/25'
+          : 'text-paper data-[highlighted]:bg-elevate',
       )}
     >
       {children}
-    </button>
+    </DropdownMenu.Item>
   )
 }
 
@@ -322,6 +303,7 @@ function KeyAliasesDialog({ keyId, keyName, onClose }: { keyId: number; keyName:
   const { data } = useQuery({ queryKey: ['key-aliases', keyId], queryFn: () => api.keyAliases(keyId) })
   const aliases: ShareAlias[] = data?.aliases ?? []
   const models: string[] = data?.models ?? []
+  const modelEntries: ShareModelEntry[] = data?.model_entries ?? []
 
   async function mutate(action: () => Promise<unknown>, successText: string) {
     if (pending) return
@@ -366,6 +348,7 @@ function KeyAliasesDialog({ keyId, keyName, onClose }: { keyId: number; keyName:
           <ModelAliasList
             aliases={aliases}
             models={models}
+            modelEntries={modelEntries}
             busy={pending}
             onSwitch={(alias, model) =>
               void mutate(() => api.keyAliasSave(keyId, { alias, model }), `别名 ${alias} 已切换到 ${model}`)
@@ -407,11 +390,7 @@ function KeyAliasesDialog({ keyId, keyName, onClose }: { keyId: number; keyName:
             <div className="min-w-36 flex-1 sm:max-w-64">
               <Field label="指向模型">
                 <Select value={modelDraft || models[0]} onChange={(event) => setModelDraft(event.target.value)}>
-                  {models.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
+                  {modelOptions(models, modelEntries)}
                 </Select>
               </Field>
             </div>

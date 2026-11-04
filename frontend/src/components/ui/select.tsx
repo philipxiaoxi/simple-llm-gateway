@@ -122,7 +122,10 @@ export function Select({
           className,
         )}
       >
-        <span className={cn('min-w-0 flex-1 truncate', selectedLabel == null && 'text-mist-soft')}>
+        <span
+          title={typeof selectedLabel === 'string' ? selectedLabel : undefined}
+          className={cn('min-w-0 flex-1 truncate', selectedLabel == null && 'text-mist-soft')}
+        >
           {selectedLabel}
         </span>
         <SelectPrimitive.Icon asChild>
@@ -138,6 +141,7 @@ export function Select({
         <SelectPrimitive.Content
           position="popper"
           sideOffset={4}
+          collisionPadding={12}
           className={cn(
             'relative z-[70] max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[8rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-line-strong bg-panel-2 text-paper shadow-menu',
             'w-[var(--radix-select-trigger-width)]',
@@ -176,7 +180,10 @@ function renderGroups(groups: ParsedGroup[]) {
     if (group.label !== undefined) {
       items.push(
         <SelectPrimitive.Group key={`group-${groupIndex}`}>
-          <SelectPrimitive.Label className="px-2 py-1.5 text-[11px] uppercase tracking-[0.12em] text-mist-soft">
+          <SelectPrimitive.Label
+            title={typeof group.label === 'string' ? group.label : undefined}
+            className="max-w-full truncate px-2 py-1.5 text-[11px] tracking-[0.12em] text-mist-soft"
+          >
             {group.label}
           </SelectPrimitive.Label>
           {group.items.map((item, itemIndex) => renderItem(item, `g${groupIndex}-${itemIndex}`))}
@@ -196,13 +203,18 @@ function renderItem(item: ParsedItem, key: string) {
       value={toRadix(item.value)}
       disabled={item.disabled}
       className={cn(
-        'relative flex min-h-9 cursor-pointer select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none',
+        'relative flex min-h-9 w-full min-w-0 cursor-pointer select-none items-center overflow-hidden rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none',
         'data-[highlighted]:bg-elevate data-[highlighted]:text-paper',
         'data-[disabled]:pointer-events-none data-[disabled]:opacity-40',
       )}
     >
-      <SelectPrimitive.ItemText>
-        <span className="min-w-0 truncate">{item.label}</span>
+      <SelectPrimitive.ItemText asChild>
+        <span
+          title={typeof item.label === 'string' ? item.label : undefined}
+          className="block min-w-0 flex-1 truncate"
+        >
+          {item.label}
+        </span>
       </SelectPrimitive.ItemText>
       <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
         <SelectPrimitive.ItemIndicator>

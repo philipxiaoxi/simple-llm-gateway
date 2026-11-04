@@ -1,13 +1,36 @@
 import { useState } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
-import { Button, Field, Input, Select } from './ui'
-import type { ShareAlias } from '../lib/api'
+import { Badge, Button, Field, Input, Select } from './ui'
+import type { ShareAlias, ShareModelEntry } from '../lib/api'
+import { accountColor } from '../lib/accountModels'
+import { modelOptions } from '../lib/modelOptions'
 import { notifyBad } from '../lib/toast'
 import { ALIAS_INPUT_PATTERN, cn } from '../lib/utils'
+
+function AccountCell({ alias }: { alias: ShareAlias }) {
+  const available = alias.available ?? true
+  const color = accountColor(alias.account_index ?? 0)
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      {alias.account_name ? (
+        <>
+          <span className={cn('size-2 shrink-0 rounded-full', color.dot)} aria-hidden="true" />
+          <span className="min-w-0 max-w-48 truncate text-sm text-mist" title={alias.account_name}>
+            {alias.account_name}
+          </span>
+        </>
+      ) : (
+        <span className="text-sm text-mist-soft">—</span>
+      )}
+      {available ? null : <Badge tone="warn">已失效</Badge>}
+    </div>
+  )
+}
 
 export function ModelAliasList({
   aliases,
   models,
+  modelEntries,
   busy = false,
   onSwitch,
   onRename,
@@ -15,6 +38,7 @@ export function ModelAliasList({
 }: {
   aliases: ShareAlias[]
   models: string[]
+  modelEntries?: ShareModelEntry[]
   busy?: boolean
   onSwitch: (alias: string, model: string) => void
   onRename: (oldAlias: string, newAlias: string) => void
@@ -55,16 +79,19 @@ export function ModelAliasList({
           <thead className="bg-panel-2 text-mist">
             <tr>
               <th className="whitespace-nowrap px-3 py-2 font-medium">别名</th>
-              <th className="px-3 py-2 font-medium">指向模型</th>
+              <th className="px-3 py-2 font-medium">指向模型 / 上游账号</th>
               <th className="whitespace-nowrap px-3 py-2 text-right font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
             {aliases.map((item) => {
-              const targetMissing = !models.includes(item.model)
+              const available = item.available ?? models.includes(item.model)
               const isRenaming = renamingAlias === item.alias
               return (
-                <tr key={item.alias} className="border-t border-line hover:bg-elevate">
+                <tr
+                  key={item.alias}
+                  className={cn('border-t border-line hover:bg-elevate', available ? null : 'bg-warn/5')}
+                >
                   <td className="max-w-44 truncate px-3 py-2 font-mono text-sm text-paper" title={item.alias}>
                     {isRenaming ? (
                       <Input
@@ -88,18 +115,23 @@ export function ModelAliasList({
                   </td>
                   <td className="px-3 py-2">
                     <Select
-                      className={cn('w-full', targetMissing && 'border-warn/60 text-warn')}
-                      value={targetMissing ? '' : item.model}
+                      className={cn('w-full', available ? null : 'border-warn/60 text-warn')}
+                      value={item.model}
                       disabled={busy}
                       onChange={(event) => onSwitch(item.alias, event.target.value)}
                     >
-                      {targetMissing ? <option value="">模型已移除，请重新选择</option> : null}
-                      {models.map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))}
+                      {available ? null : (
+                        <optgroup label="已失效">
+                          <option value={item.model} disabled>
+                            {item.model}（已失效）
+                          </option>
+                        </optgroup>
+                      )}
+                      {modelOptions(models, modelEntries)}
                     </Select>
+                    <div className="mt-1.5">
+                      <AccountCell alias={item} />
+                    </div>
                   </td>
                   <td className="whitespace-nowrap px-3 py-2">
                     <div className="flex items-center justify-end gap-2">
@@ -138,12 +170,18 @@ export function ModelAliasList({
         </table>
       </div>
 
-      <div className="grid gap-2 lg:hidden">
+      <div className="grid min-w-0 gap-2 lg:hidden">
         {aliases.map((item) => {
-          const targetMissing = !models.includes(item.model)
+          const available = item.available ?? models.includes(item.model)
           const isRenaming = renamingAlias === item.alias
           return (
-            <div key={item.alias} className="space-y-3 rounded-lg border border-line bg-ink/40 p-3">
+            <div
+              key={item.alias}
+              className={cn(
+                'min-w-0 space-y-3 rounded-lg border border-line bg-ink/40 p-3',
+                available ? null : 'border-warn/60 bg-warn/5',
+              )}
+            >
               <div className="flex items-center gap-2">
                 {isRenaming ? (
                   <Input
@@ -197,19 +235,25 @@ export function ModelAliasList({
               </div>
               <Field label="指向模型">
                 <Select
-                  className={cn(targetMissing && 'border-warn/60 text-warn')}
-                  value={targetMissing ? '' : item.model}
+                  className={cn(available ? null : 'border-warn/60 text-warn')}
+                  value={item.model}
                   disabled={busy}
                   onChange={(event) => onSwitch(item.alias, event.target.value)}
                 >
-                  {targetMissing ? <option value="">模型已移除，请重新选择</option> : null}
-                  {models.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
+                  {available ? null : (
+                    <optgroup label="已失效">
+                      <option value={item.model} disabled>
+                        {item.model}（已失效）
+                      </option>
+                    </optgroup>
+                  )}
+                  {modelOptions(models, modelEntries)}
                 </Select>
               </Field>
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <span className="shrink-0 text-xs text-mist-soft">上游账号</span>
+                <AccountCell alias={item} />
+              </div>
             </div>
           )
         })}
