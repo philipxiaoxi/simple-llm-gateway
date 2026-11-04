@@ -224,14 +224,22 @@ def test_call_logs_filters(client: TestClient, auth_headers: dict[str, str]):
     assert none["items"] == []
 
 
+def _shanghai_noon_utc():
+    from datetime import UTC, datetime
+
+    from app.clock import SHANGHAI_TZ
+
+    return datetime.now(SHANGHAI_TZ).replace(hour=12, minute=0, second=0, microsecond=0).astimezone(UTC).replace(tzinfo=None)
+
+
 def test_call_stats_summary(client: TestClient, auth_headers: dict[str, str]) -> None:
-    from app.clock import utcnow
     from app.db import get_session_factory
     from app.models import McpCallLog
+    from app.services import mcp_stats
 
     session = get_session_factory()()
     try:
-        now = utcnow()
+        now = _shanghai_noon_utc()
         session.add_all(
             [
                 McpCallLog(
@@ -265,15 +273,100 @@ def test_call_stats_summary(client: TestClient, auth_headers: dict[str, str]) ->
     finally:
         session.close()
 
-    stats = client.get("/api/admin/mcp/calls/summary?days=7&capability_id=pose", headers=auth_headers)
-    assert stats.status_code == 200, stats.text
-    body = stats.json()
-    assert body["total"] == 2
-    assert body["success"] == 1
+    # 未刷新时只读快照，返回空统计
+    empty = client.get("/api/admin/mcp/calls/summary?days=7", headers=auth_headers)
+    assert empty.status_code == 200, empty.text
+    assert empty.json()["total"] == 0
+
+    refreshed = client.get("/api/admin/mcp/calls/summary?days=7&refresh=1", headers=auth_headers)
+    assert refreshed.status_code == 200, refreshed.text
+    body = refreshed.json()
+    assert body["total"] == 3
+    assert body["success"] == 2
     assert body["failed"] == 1
-    assert body["success_rate"] == 0.5
-    assert body["avg_latency_ms"] == 50
-    assert body["capabilities"][0]["key"] == "pose"
+    assert body["success_rate"] == round(2 / 3, 4)
+    assert body["avg_latency_ms"] == 37
     assert len(body["daily"]) == 7
-    assert body["daily"][-1]["total"] == 2
+    assert body["daily"][-1]["total"] == 3
     assert len(body["hourly"]) == 24
+    # 只有失败的操作才进失败榜，按失败数排序
+    assert [item["key"] for item in body["failure_operations"]] == ["pose:get"]
+    assert body["failure_operations"][0]["failed"] == 1
+
+    # 耗时分布固定 5 档，且总数与区间调用量一致
+    assert [item["key"] for item in body["latency_buckets"]] == [key for key, *_ in mcp_stats.LATENCY_BUCKETS]
+    assert sum(item["total"] for item in body["latency_buckets"]) == body["total"]
+    assert body["latency_buckets"][0]["total"] == 3  # 10/20/80ms 都落在 < 100ms
+
+    # 慢操作按 P95 排序，带调用量与均值
+    slowest = body["slow_operations"][0]
+    assert slowest["key"] == "pose:get"
+    assert slowest["p95_latency_ms"] == 80
+    assert slowest["avg_latency_ms"] == 80
+
+    # 缓存读取不再重算，数据与刷新结果一致
+    cached = client.get("/api/admin/mcp/calls/summary?days=7", headers=auth_headers)
+    assert cached.json() == body
+
+
+def test_call_stats_merges_failure_remainder_into_other(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from app.db import get_session_factory
+    from app.models import McpCallLog
+    from app.services import mcp_stats
+
+    session = get_session_factory()()
+    try:
+        now = _shanghai_noon_utc()
+        # 12 个操作里有 9 个失败，失败榜前 6 项之外的 3 个应合并成「其他」
+        session.add_all(
+            [
+                McpCallLog(
+                    capability_id="cap",
+                    operation=f"op-{index:02d}",
+                    success=index >= 9,
+                    latency_ms=(index + 1) * 200,
+                    mcp_key_name="shared-key",
+                    created_at=now,
+                )
+                for index in range(12)
+            ]
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    session = get_session_factory()()
+    try:
+        stats = mcp_stats.refresh_snapshot(session, 7)
+    finally:
+        session.close()
+    assert stats.total == 12
+    assert stats.failed == 9
+    assert len(stats.failure_operations) == mcp_stats.FAILURE_LIMIT + 1
+    assert stats.failure_operations[-1].key == mcp_stats.OTHER_KEY
+    assert stats.failure_operations[-1].failed == 3
+    assert sum(item.failed for item in stats.failure_operations) == stats.failed
+    # 慢操作只保留前 6 项，不合并「其他」
+    assert len(stats.slow_operations) == mcp_stats.SLOW_LIMIT
+    assert stats.slow_operations[0].key == "cap:op-11"
+    assert stats.slow_operations[0].p95_latency_ms == 2400
+    assert sum(item.total for item in stats.latency_buckets) == stats.total
+
+
+def test_snapshot_schema_marks_outdated_payload(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from app.db import get_session_factory
+    from app.models import McpCallStatsSnapshot
+    from app.services import mcp_stats
+
+    session = get_session_factory()()
+    try:
+        # 旧结构快照没有 schema 标记，启动补偿据此判定需要重算
+        session.add(McpCallStatsSnapshot(days=7, payload_json='{"days": 7}'))
+        session.commit()
+        assert not mcp_stats.snapshot_is_current('{"days": 7}')
+
+        mcp_stats.refresh_snapshot(session, 7)
+        row = session.get(McpCallStatsSnapshot, 7)
+        assert row is not None and mcp_stats.snapshot_is_current(row.payload_json)
+    finally:
+        session.close()

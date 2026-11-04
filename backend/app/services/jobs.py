@@ -13,6 +13,7 @@ from app.db import get_session_factory
 from app.services import dashboard_stats as dashboard_stats_service
 from app.services import grok_oauth, model_caps, quota, read_cache
 from app.services import leaderboard as leaderboard_service
+from app.services import mcp_stats as mcp_stats_service
 from app.services.job_settings import get_job_int, get_job_params, update_job_params
 
 
@@ -69,7 +70,7 @@ JOB_META = {
     },
     JOB_DASHBOARD_STATS: {
         "name": "概览图表刷新",
-        "description": "按间隔把概览图表聚合写入数据库。打开页面只读快照，不再现场扫表。",
+        "description": "按间隔把概览与 MCP 调用图表聚合写入数据库。打开页面只读快照，不再现场扫表。",
         "kind": "loop",
         "source_url": None,
     },
@@ -240,9 +241,14 @@ async def _execute(job_id: str) -> dict[str, Any]:
         session = get_session_factory()()
         try:
             refreshed = dashboard_stats_service.refresh_all(session)
+            mcp_refreshed = mcp_stats_service.refresh_all(session)
         finally:
             session.close()
-        return {"message": f"已刷新 {refreshed} 个区间的概览图表", "refreshed": refreshed}
+        return {
+            "message": f"已刷新 {refreshed} 个区间的概览图表、{mcp_refreshed} 个区间的 MCP 图表",
+            "refreshed": refreshed,
+            "mcp_refreshed": mcp_refreshed,
+        }
     raise ValueError("任务不存在")
 
 
@@ -275,23 +281,45 @@ async def run_job(job_id: str) -> dict[str, Any]:
             read_cache.invalidate_job_snapshot(job_id)
 
 
+def _stats_snapshot_ready(session) -> bool:
+    """概览与 MCP 图表快照是否都已就绪。"""
+    for days in dashboard_stats_service.snapshot_days():
+        row = session.get(dashboard_stats_service.StatsRow, days)
+        if row is None or not row.payload_json or row.payload_json == "{}":
+            return False
+    for days in mcp_stats_service.snapshot_days():
+        row = session.get(mcp_stats_service.StatsRow, days)
+        if row is None or not mcp_stats_service.snapshot_is_current(row.payload_json):
+            return False
+    return True
+
+
 async def _catch_up_stale_cache(job_id: str) -> None:
     """循环任务启动时的一次性补偿。
 
-    模型榜只读缓存，缓存过期/为空时页面就一直停在旧数据上；如果只靠间隔唤醒，
-    重启后还得再等满一个间隔（默认 12 小时）才恢复。这里在进循环前先补一次。
+    图表与模型榜只读缓存，缓存过期/为空时页面就一直停在旧数据上；如果只靠间隔唤醒，
+    重启后还得再等满一个间隔（默认 30 分钟 / 12 小时）才恢复。这里在进循环前先补一次。
     """
-    if job_id != JOB_LEADERBOARD:
-        return
-    session = get_session_factory()()
-    try:
-        fresh = leaderboard_service.cache_is_fresh(leaderboard_service.latest_snapshot(session))
-    finally:
-        session.close()
-    if fresh:
+    if job_id == JOB_LEADERBOARD:
+        session = get_session_factory()()
+        try:
+            fresh = leaderboard_service.cache_is_fresh(leaderboard_service.latest_snapshot(session))
+        finally:
+            session.close()
+        if fresh:
+            return
+    elif job_id == JOB_DASHBOARD_STATS:
+        session = get_session_factory()()
+        try:
+            ready = _stats_snapshot_ready(session)
+        finally:
+            session.close()
+        if ready:
+            return
+    else:
         return
     with suppress(Exception):
-        await run_job(JOB_LEADERBOARD)
+        await run_job(job_id)
 
 
 async def run_job_loop(job_id: str) -> None:
@@ -412,15 +440,25 @@ def _dashboard_stats_snapshot() -> dict[str, Any]:
             ready += 1
             if latest is None or row.computed_at > latest:
                 latest = row.computed_at
+        mcp_ready = 0
+        for days in mcp_stats_service.snapshot_days():
+            row = session.get(mcp_stats_service.StatsRow, days)
+            if row is None or not row.payload_json or row.payload_json == "{}":
+                continue
+            mcp_ready += 1
+            if latest is None or row.computed_at > latest:
+                latest = row.computed_at
     finally:
         session.close()
     return {
         "cache_fetched_at": latest,
         "cache_expires_at": _expires_at(latest, interval) if latest else None,
-        "cache_ok": ready > 0,
+        "cache_ok": ready > 0 and mcp_ready > 0,
         "ttl_seconds": interval,
         "ready": ready,
         "buckets": len(dashboard_stats_service.snapshot_days()),
+        "mcp_ready": mcp_ready,
+        "mcp_buckets": len(mcp_stats_service.snapshot_days()),
     }
 
 

@@ -112,17 +112,10 @@ export function McpCallsPage() {
     refetchInterval: 15_000,
   })
 
+  // 图表读定时任务写入的快照，固定为全局口径；上方筛选只影响下方列表
   const stats = useQuery({
-    queryKey: ['mcp-call-stats', { days, capabilityId, keyId, result, keyword }],
-    queryFn: () =>
-      api.mcpCallStats({
-        days,
-        capability_id: capabilityId || undefined,
-        mcp_key_id: keyId ? Number(keyId) : undefined,
-        success: result === '' ? undefined : result === 'ok',
-        q: keyword || undefined,
-      }),
-    refetchInterval: 15_000,
+    queryKey: ['mcp-call-stats', days],
+    queryFn: () => api.mcpCallStats({ days }),
   })
 
   const data = calls.data
@@ -148,6 +141,7 @@ export function McpCallsPage() {
     <div className="space-y-3" aria-busy={calls.isFetching}>
       <p className="text-sm text-mist">
         授权通过后的能力调用都会记录，成功与失败均可查，点击任意一行查看请求与响应详情。当前筛选共 {total} 条。
+        上方图表为全局数据，按定时任务缓存（默认 30 分钟更新），筛选仅作用于下方列表。
       </p>
       <McpCallStatsPanel stats={stats.data} days={days} onDays={setDays} loading={stats.isPending} />
 

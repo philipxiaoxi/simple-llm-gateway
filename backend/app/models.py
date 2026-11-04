@@ -456,6 +456,17 @@ class DashboardStatsSnapshot(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class McpCallStatsSnapshot(Base):
+    """MCP 调用图表的预计算快照。与概览图表的定时任务一起刷新，请求只读这一行。"""
+
+    __tablename__ = "mcp_call_stats_snapshots"
+
+    days: Mapped[int] = mapped_column(Integer, primary_key=True)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class ContentAuditFinding(Base):
     __tablename__ = "content_audit_findings"
     __table_args__ = (

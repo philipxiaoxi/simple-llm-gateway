@@ -1057,6 +1057,17 @@ class McpCallStatsBucket(BaseModel):
     success: int = 0
     failed: int = 0
     avg_latency_ms: int = 0
+    p95_latency_ms: int = 0
+    # 占区间总调用量的比例；「其他」是聚合项，占比同样计入
+    request_share: float = 0
+
+
+class McpLatencyBucket(BaseModel):
+    key: str
+    label: str
+    total: int = 0
+    success: int = 0
+    failed: int = 0
 
 
 class McpCallStatsOut(BaseModel):
@@ -1067,9 +1078,12 @@ class McpCallStatsOut(BaseModel):
     success_rate: float = 0
     avg_latency_ms: int = 0
     p95_latency_ms: int = 0
-    capabilities: list[McpCallStatsBucket] = Field(default_factory=list)
-    operations: list[McpCallStatsBucket] = Field(default_factory=list)
-    keys: list[McpCallStatsBucket] = Field(default_factory=list)
+    # 固定 5 档耗时分布，未命中的档位补 0
+    latency_buckets: list[McpLatencyBucket] = Field(default_factory=list)
+    # 按 P95 排序的慢操作，取前几项
+    slow_operations: list[McpCallStatsBucket] = Field(default_factory=list)
+    # 失败次数最多的操作，按失败数排序，只含有失败的项
+    failure_operations: list[McpCallStatsBucket] = Field(default_factory=list)
     daily: list[McpCallStatsBucket] = Field(default_factory=list)
     hourly: list[McpCallStatsBucket] = Field(default_factory=list)
 

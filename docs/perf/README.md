@@ -160,7 +160,7 @@ SSE（`text/event-stream`）不压缩、不缓冲；客户端未声明 `Accept-E
 
 | 数据 | 缓存键 | 默认 TTL | 失效时机 |
 | --- | --- | --- | --- |
-| 概览图表聚合 | `days + 上海日` | 30 分钟 | 到期后由下一个请求重算；`refresh=1` 强制重算 |
+| 概览 / MCP 调用图表聚合 | `dashboard_stats` 任务档位（7/14/30/90、1/7/14/30/90） | 30 分钟 | 由定时任务写入 `*_stats_snapshots`，请求只读快照；`refresh=1` 强制重算 |
 | 定时任务快照 | 每个 `job_id` | 30 分钟 | 该任务执行/改参数、扫描开始结束、面板「刷新状态」 |
 | 内容审计进度 | 单键 | 30 分钟 | 扫描开始/结束/批次落库；扫描进行中不缓存（实时进度） |
 
@@ -180,6 +180,7 @@ SSE（`text/event-stream`）不压缩、不缓冲；客户端未声明 `Accept-E
 | `/api/admin/dashboard/stats?days=7` | 2–6 ms（窗口内数据少） | 不变，命中后 1 ms |
 
 概览页的卡片数字（`/api/admin/dashboard`，约 43–100 ms）是索引/小表查询，保持实时不受影响。
+图表聚合后来进一步改为落库快照（`dashboard_stats_snapshots` / `mcp_call_stats_snapshots`），由 `dashboard_stats` 定时任务统一刷新，不再依赖首个请求触发冷启动。
 缓存只解掉「同一份统计被反复重算」；如果以后要求秒级刷新，再考虑把区间聚合合并成单次扫表。
 
 注意：缓存是进程内的，单实例部署（Dockerfile / compose 都是单 uvicorn worker）下即全量生效；
