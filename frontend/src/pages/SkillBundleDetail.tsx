@@ -171,7 +171,7 @@ export function SkillBundleDetailPage() {
                     <span className="font-medium text-warn">Skill 已失效</span>
                     <Badge tone="warn">missing</Badge>
                   </div>
-                  <code className="mt-1 block text-xs text-mist">skill_id={member.skill_id}</code>
+                  <code className="mt-1 block break-all text-xs text-mist">skill_id={member.skill_id}</code>
                 </>
               ) : (
                 <>

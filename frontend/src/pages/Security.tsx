@@ -181,7 +181,7 @@ function EventRow({
         ) : null}
         {item.device_type ? <span>· {item.device_type}</span> : null}
         {item.method || item.path ? (
-          <span className="font-mono">
+          <span className="min-w-0 break-all font-mono">
             · {item.method} {item.path}
             {item.status_code ? ` (${item.status_code})` : ''}
           </span>

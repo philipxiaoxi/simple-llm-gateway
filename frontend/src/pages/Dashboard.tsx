@@ -6,6 +6,7 @@ import { api, type DashboardBenchmarkTop, type DashboardLeaderboardStatus, type 
 import { useSession } from '../lib/session'
 import { cn, formatContextWindow, formatTime, formatTokenCount } from '../lib/utils'
 import { PageHeader } from '../components/layout-primitives'
+import { Reveal, ValuePop } from '../components/motion/transitions'
 import { DashboardSummary } from '../components/dashboard-summary'
 import { McpCallStatsPanel } from '../components/McpCallStats'
 import { ChartSkeleton } from '../components/charts/chart-card'
@@ -78,7 +79,7 @@ function MetricCard({ label, value, to, perm, warn, span }: Metric) {
         )}
         title={String(value)}
       >
-        {value}
+        <ValuePop>{value}</ValuePop>
       </div>
     </Card>
   )
@@ -330,11 +331,21 @@ export function DashboardPage() {
           />
         </section>
       ) : null}
-      <MetricSection title="今日" items={today} className="grid grid-cols-2 gap-3 lg:grid-cols-3" />
-      <MetricSection title="累计" items={totals} className="grid grid-cols-2 gap-3 lg:max-w-xl" />
-      <MetricSection title="资源" items={resources} className="grid grid-cols-2 gap-3 lg:grid-cols-4" />
-      <LeaderboardTopSection items={data?.leaderboard_top ?? []} status={data?.leaderboard_status} />
-      <BenchmarkSpeedTopSection items={data?.benchmark_speed_top ?? []} />
+      <Reveal index={1}>
+        <MetricSection title="今日" items={today} className="grid grid-cols-2 gap-3 lg:grid-cols-3" />
+      </Reveal>
+      <Reveal index={2}>
+        <MetricSection title="累计" items={totals} className="grid grid-cols-2 gap-3 lg:max-w-xl" />
+      </Reveal>
+      <Reveal index={3}>
+        <MetricSection title="资源" items={resources} className="grid grid-cols-2 gap-3 lg:grid-cols-4" />
+      </Reveal>
+      <Reveal index={4}>
+        <LeaderboardTopSection items={data?.leaderboard_top ?? []} status={data?.leaderboard_status} />
+      </Reveal>
+      <Reveal index={5}>
+        <BenchmarkSpeedTopSection items={data?.benchmark_speed_top ?? []} />
+      </Reveal>
     </div>
   )
 }

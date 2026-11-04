@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 @import "sonner/dist/styles.css";
 
 /* 自托管 IBM Plex latin 子集：去掉对 Google Fonts 的跨域阻塞请求。
@@ -78,6 +79,33 @@
   --color-accent-pink: #f472b6;
   --color-accent-cyan: #22d3ee;
 
+  /* shadcn/ui 语义令牌别名：组件统一用 bg-background / text-foreground 等，
+     值仍指向上面这套主题令牌，因此 data-theme 切换时无需 dark: 变体。 */
+  --color-background: var(--color-ink);
+  --color-foreground: var(--color-paper);
+  --color-card: var(--color-panel);
+  --color-card-foreground: var(--color-paper);
+  --color-popover: var(--color-panel-2);
+  --color-popover-foreground: var(--color-paper);
+  --color-primary: var(--color-signal);
+  --color-primary-foreground: var(--color-on-signal);
+  --color-secondary: var(--color-elevate);
+  --color-secondary-foreground: var(--color-paper);
+  --color-muted: var(--color-elevate);
+  --color-muted-foreground: var(--color-mist);
+  --color-accent: var(--color-elevate-strong);
+  --color-accent-foreground: var(--color-paper);
+  --color-destructive: var(--color-danger);
+  --color-destructive-foreground: #ffffff;
+  --color-border: var(--color-line);
+  --color-input: var(--color-line-strong);
+  --color-ring: var(--color-signal);
+
+  /* 与改造前 Tailwind 默认圆角保持一致，避免全站视觉位移 */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
 }
 
 :root {

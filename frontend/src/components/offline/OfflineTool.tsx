@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AppWindow, Archive, Code2, Compass, Container, Download, Globe, RefreshCw, RotateCcw, Trash2, TriangleAlert } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useCan } from '../../lib/session'
-import { Button } from '../ui'
+import { Button, Select } from '../ui'
 import { notifyBad, notifyOk } from '../../lib/toast'
 import { errorMessage, cn } from '../../lib/utils'
 import { relativeTime } from '../../lib/info'
@@ -370,15 +370,15 @@ export function OfflineTool({ base }: { base: string }) {
                 placeholder="搜索名称 / 文件名"
                 className="h-8 w-40 rounded-lg border border-line-strong bg-control/60 px-2.5 text-xs text-paper outline-none transition placeholder:text-mist-soft focus:border-signal focus:ring-2 focus:ring-signal/20"
               />
-              <select
+              <Select
                 value={sort}
                 onChange={(event) => setSort(event.target.value as 'recent' | 'name' | 'size')}
-                className="h-8 rounded-lg border border-line-strong bg-control/60 px-2 text-xs text-paper outline-none transition focus:border-signal focus:ring-2 focus:ring-signal/20"
+                className="h-8 min-h-8 w-auto rounded-lg px-2 py-0 text-xs"
               >
                 <option value="recent">最近缓存</option>
                 <option value="name">按名称</option>
                 <option value="size">按大小</option>
-              </select>
+              </Select>
             </div>
           </div>
         ) : null}

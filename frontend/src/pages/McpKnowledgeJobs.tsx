@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { RotateCcw, Search, Trash2, X } from 'lucide-react'
-import { Button, Card, Field, Input } from '../components/ui'
+import { Button, Card, Field, Input, Select } from '../components/ui'
 import { api, type McpKnowledgeJob } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage, formatTime } from '../lib/utils'
@@ -143,18 +143,14 @@ export function McpKnowledgeJobsPage() {
           </div>
         </Field>
         <Field label="知识库">
-          <select
-            className="w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm text-paper"
-            value={kbId}
-            onChange={(e) => updateParam('kb_id', e.target.value)}
-          >
+          <Select value={kbId} onChange={(e) => updateParam('kb_id', e.target.value)}>
             <option value="">全部知识库</option>
             {(bases.data || []).map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
         <Field label="搜索来源名">
           <div className="flex gap-2">

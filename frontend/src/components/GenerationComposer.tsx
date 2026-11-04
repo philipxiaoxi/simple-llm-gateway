@@ -312,19 +312,19 @@ export function GenerationComposer({
         <div className="flex items-center gap-1.5">
           {kind === 'video' && settings.prompt_optimize_enabled ? (
             <>
-              <select
+              <Select
                 value={optimizeMode}
                 onChange={(event) => setOptimizeMode(event.target.value)}
                 disabled={optimizing}
                 aria-label="优化模式"
-                className="h-6 shrink-0 rounded-full border border-line bg-control px-2 text-[11px] text-paper outline-none"
+                className="h-6 min-h-6 w-auto shrink-0 rounded-full px-2 py-0 pr-1.5 text-[11px]"
               >
                 {OPTIMIZE_MODES.map((item) => (
                   <option key={item.value} value={item.value}>
                     {item.label}
                   </option>
                 ))}
-              </select>
+              </Select>
               <button
                 type="button"
                 disabled={optimizing || !prompt.trim()}
