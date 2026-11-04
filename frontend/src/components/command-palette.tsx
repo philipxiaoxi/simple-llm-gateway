@@ -88,7 +88,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     // 遮罩点击关闭只是辅助快捷方式，键盘用户用 Esc / Enter
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 px-4 pt-[12vh]"
+      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 px-4 pt-[12vh] animate-in fade-in-0 duration-150"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
@@ -97,7 +97,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         role="dialog"
         aria-modal="true"
         aria-label="跳转页面"
-        className="w-full max-w-xl overflow-hidden rounded-xl border border-line-strong bg-panel shadow-modal"
+        className="w-full max-w-xl overflow-hidden rounded-xl border border-line-strong bg-panel shadow-modal animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-200"
       >
         <div className="flex items-center gap-2 border-b border-line px-3">
           <Search size={16} className="shrink-0 text-mist" aria-hidden="true" />

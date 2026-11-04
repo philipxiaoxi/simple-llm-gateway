@@ -1,3 +1,4 @@
+import { fileURLToPath, URL } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
@@ -7,6 +8,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 const backendTarget = process.env.VITE_BACKEND_TARGET || 'http://127.0.0.1:8000'
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -80,6 +86,9 @@ export default defineConfig({
             { name: 'xgplayer', test: /[\\/]node_modules[\\/]xgplayer[\\/]/ },
             // 图表库只被概览页动态导入，独立成块后不随主导航一起加载
             { name: 'echarts', test: /[\\/]node_modules[\\/](echarts|zrender)[\\/]/ },
+            // shadcn/ui 依赖与动画库版本稳定，单独成块便于长期缓存
+            { name: 'radix', test: /[\\/]node_modules[\\/]@radix-ui[\\/]/ },
+            { name: 'motion', test: /[\\/]node_modules[\\/](motion|framer-motion|motion-dom|motion-utils)[\\/]/ },
             { name: 'vendor', test: /[\\/]node_modules[\\/]/ },
           ],
         },

@@ -21,6 +21,7 @@ import { MIN_PASSWORD_LENGTH, cn, errorMessage } from '../lib/utils'
 import { useMediaQuery } from '../lib/useMediaQuery'
 import { CommandPalette } from './command-palette'
 import { PageContainer } from './layout-primitives'
+import { PageTransition } from './motion/transitions'
 import { ThemePreferencePanel } from './theme-preference'
 import { NAV_GROUPS, PLAZA_APP_LINKS, SEARCH_LINKS, TAB_LINKS, currentPageLabel, filterNavGroups, filterNavLinks, isPathActive, linksForPaths } from './nav'
 import { useSession } from '../lib/session'
@@ -798,10 +799,13 @@ export function Layout() {
       <main
         ref={mainRef}
         data-app-scroll
-        className="bg-ink px-4 pb-[calc(var(--app-tab)+env(safe-area-inset-bottom)+0.75rem)] pt-[calc(var(--app-header)+env(safe-area-inset-top)+0.75rem)] md:h-svh md:overflow-y-auto md:px-6 md:pb-6 md:pt-6 lg:px-8"
+        className="overflow-x-clip bg-ink px-4 pb-[calc(var(--app-tab)+env(safe-area-inset-bottom)+0.75rem)] pt-[calc(var(--app-header)+env(safe-area-inset-top)+0.75rem)] md:h-svh md:overflow-y-auto md:px-6 md:pb-6 md:pt-6 lg:px-8"
       >
         <PageContainer>
-          <Outlet />
+          {/* 按一级路径分组：/info 与 /info/:id 共用一次过渡，避免打开详情时重挂载瀑布流 */}
+          <PageTransition key={location.pathname.split('/')[1] || 'home'}>
+            <Outlet />
+          </PageTransition>
         </PageContainer>
       </main>
 

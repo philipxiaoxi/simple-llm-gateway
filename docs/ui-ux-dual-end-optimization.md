@@ -814,8 +814,8 @@ export function DataView<T>({
 
 ## 12. 取舍与不做的事
 
-- **不做浅色主题**：`color-scheme: dark` 与品牌视觉一致；技能检索出的通用面板色（#0F172A 系）与现有品牌不符，只借其「数据密集、状态色、Swiss 式留白」原则，不替换令牌。
-- **不引入 UI 组件库**（Radix/shadcn）：`Sheet` 的焦点陷阱等可自建（约 60 行），引入 Radix 会增加 15–25 KB gz，而当前 vendor 已 122 KB。
+- ~~**不做浅色主题**~~：后续已补浅色主题，令牌在 `html[data-theme='light']` 覆盖，深色仍是默认。
+- ~~**不引入 UI 组件库**（Radix/shadcn）~~：后续已迁移到 shadcn/ui（Radix + cva），见 `frontend/src/components/ui/`。`Select` 基于 Radix 实现但保留 `<option>` / `<optgroup>` 写法，存量调用点无需改写。
 - **不做复杂手势**（左滑删除、下拉刷新）：与浏览器返回手势冲突，误触成本高。
 - **不做 `container queries` 全量替换**：断点方案已能覆盖「同一数据换形态」，container query 仅用于卡片内部自适应。
 - **不改造公开端 `/share/*`、`/voice/send`**：它们已是面向手机的独立流程（`min-h-svh`、安全区、sticky 头、触摸手势），仅跟随本方案享受 `Sheet`/令牌收益，不做结构重排。

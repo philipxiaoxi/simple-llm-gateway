@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { RotateCcw, Search, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Button, Card, Field, Input } from '../components/ui'
+import { Button, Card, Field, Input, Select } from '../components/ui'
 import { api, getToken, type DocParseJob } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage, formatTime } from '../lib/utils'
@@ -306,18 +306,14 @@ export function McpDocParsePage() {
           </pre>
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
             <Field label="送入知识库">
-              <select
-                className="w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm"
-                value={kbId}
-                onChange={(event) => setKbId(event.target.value)}
-              >
+              <Select value={kbId} onChange={(event) => setKbId(event.target.value)}>
                 <option value="">选择知识库</option>
                 {(bases.data || []).map((base) => (
                   <option key={base.id} value={base.id}>
                     {base.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             {canIngest ? (
             <Button

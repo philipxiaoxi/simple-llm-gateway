@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, ListChecks, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Button, Card, Dialog, Field, Input } from '../components/ui'
+import { Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type McpKnowledgeEmbeddingAccount } from '../lib/api'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
@@ -59,17 +59,13 @@ function ScopeFields({
   return (
     <>
       <Field label="访问范围（MCP 下游）">
-        <select
-          className="w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm text-paper"
-          value={scope}
-          onChange={(e) => onScopeChange(e.target.value)}
-        >
+        <Select value={scope} onChange={(e) => onScopeChange(e.target.value)}>
           {SCOPE_OPTIONS.map((item) => (
             <option key={item.value} value={item.value}>
               {item.label}
             </option>
           ))}
-        </select>
+        </Select>
       </Field>
       {scope === 'restricted' ? (
         <Field label="允许的 MCP Key">
@@ -119,8 +115,7 @@ function EmbeddingFields({
   return (
     <>
       <Field label="向量上游账号">
-        <select
-          className="w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm text-paper"
+        <Select
           value={accountId === '' ? '' : String(accountId)}
           onChange={(e) => {
             const value = e.target.value
@@ -141,23 +136,18 @@ function EmbeddingFields({
               {item.name} ({item.provider}){item.available ? '' : ' · 不可用'}
             </option>
           ))}
-        </select>
+        </Select>
       </Field>
       <Field label="向量模型">
         {models.length ? (
-          <select
-            className="w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm text-paper"
-            value={model}
-            onChange={(e) => onModelChange(e.target.value)}
-            disabled={!accountId}
-          >
+          <Select value={model} onChange={(e) => onModelChange(e.target.value)} disabled={!accountId}>
             <option value="">请选择模型</option>
             {models.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>
             ))}
-          </select>
+          </Select>
         ) : (
           <Input
             value={model}
@@ -688,15 +678,11 @@ export function McpKnowledgeDetailPage() {
           <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="关键词或语义问题" />
         </Field>
         <Field label="模式">
-          <select
-            className="w-full rounded-md border border-line-strong-strong bg-control px-3 py-2 text-sm"
-            value={mode}
-            onChange={(e) => setMode(e.target.value)}
-          >
+          <Select value={mode} onChange={(e) => setMode(e.target.value)}>
             <option value="hybrid">hybrid</option>
             <option value="fulltext">fulltext</option>
             <option value="vector">vector</option>
-          </select>
+          </Select>
         </Field>
         <Button type="button" variant="line" disabled={!query.trim() || search.isPending} onClick={() => search.mutate()}>
           检索

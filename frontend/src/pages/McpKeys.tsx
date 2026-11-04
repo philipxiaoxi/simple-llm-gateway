@@ -161,7 +161,7 @@ function OverflowActions({ actions }: { actions: ActionItem[] }) {
       <div
         ref={measureRef}
         aria-hidden="true"
-        className="pointer-events-none invisible absolute left-0 top-0 flex gap-2 overflow-hidden"
+        className="pointer-events-none invisible absolute inset-x-0 top-0 flex gap-2 overflow-hidden"
       >
         {actions.map((action) => (
           <div key={action.key} className="shrink-0">
