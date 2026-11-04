@@ -7,6 +7,7 @@ import { useSession } from '../lib/session'
 import { cn, formatContextWindow, formatTime, formatTokenCount } from '../lib/utils'
 import { PageHeader } from '../components/layout-primitives'
 import { DashboardSummary } from '../components/dashboard-summary'
+import { McpCallStatsPanel } from '../components/McpCallStats'
 import { ChartSkeleton } from '../components/charts/chart-card'
 
 // 图表区按需加载：echarts 体积不小，别让其它后台路由（和首屏之外的模块）一起买单
@@ -256,6 +257,8 @@ function BenchmarkSpeedTopSection({ items }: { items: DashboardBenchmarkTop[] })
 
 export function DashboardPage() {
   const { data } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard })
+  const { can } = useSession()
+  const canViewMcp = can('mcp_calls:view')
   const [days, setDays] = useState<RangeDays>(readStoredRange)
   useEffect(() => {
     localStorage.setItem(RANGE_STORAGE_KEY, String(days))
@@ -264,6 +267,12 @@ export function DashboardPage() {
     queryKey: ['dashboard-stats', days],
     queryFn: () => api.dashboardStats(days),
     // 切区间时先保留上一份数据，避免图表整块闪成骨架
+    placeholderData: keepPreviousData,
+  })
+  const mcpStats = useQuery({
+    queryKey: ['mcp-call-stats', days],
+    queryFn: () => api.mcpCallStats({ days }),
+    enabled: canViewMcp,
     placeholderData: keepPreviousData,
   })
   const today: Metric[] = [
@@ -294,7 +303,7 @@ export function DashboardPage() {
     <div className="space-y-5">
       <PageHeader
         title="概览"
-        description="调用趋势、消耗结构与资源快照，点卡片进入对应列表。图表聚合按缓存更新（默认 30 分钟），卡片数字实时。"
+        description="调用趋势、MCP 调用、消耗结构与资源快照，点卡片进入对应列表。图表聚合按缓存更新（默认 30 分钟），卡片数字实时。"
         actions={<RangeTabs days={days} onChange={setDays} />}
       />
       <DashboardSummary data={stats} />
@@ -305,6 +314,22 @@ export function DashboardPage() {
       ) : (
         <ChartsSkeleton />
       )}
+      {canViewMcp ? (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xs uppercase tracking-[0.16em] text-mist">MCP 调用</h2>
+            <Link to="/mcp-plaza/calls" className="text-xs text-signal hover:underline">
+              查看调用记录
+            </Link>
+          </div>
+          <McpCallStatsPanel
+            stats={mcpStats.data}
+            days={days}
+            loading={mcpStats.isPending}
+            showRanges={false}
+          />
+        </section>
+      ) : null}
       <MetricSection title="今日" items={today} className="grid grid-cols-2 gap-3 lg:grid-cols-3" />
       <MetricSection title="累计" items={totals} className="grid grid-cols-2 gap-3 lg:max-w-xl" />
       <MetricSection title="资源" items={resources} className="grid grid-cols-2 gap-3 lg:grid-cols-4" />

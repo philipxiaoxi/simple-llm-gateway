@@ -168,3 +168,41 @@ def test_run_quota_job_refreshes_due_accounts(client: TestClient, auth_headers: 
     quota_job = next(item for item in response.json()["items"] if item["id"] == "quota")
     assert quota_job["last_ok"] is True
     assert quota_job["details"]["account_count"] == 1
+
+def test_run_dashboard_stats_job_refreshes_mcp_snapshots(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    from app.services import mcp_stats
+
+    response = client.post("/api/admin/jobs/dashboard_stats/run", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    job = next(item for item in response.json()["items"] if item["id"] == "dashboard_stats")
+    assert job["last_ok"] is True
+    assert job["details"]["mcp_ready"] == len(mcp_stats.snapshot_days())
+    assert "MCP 图表" in job["last_message"]
+
+    summary = client.get("/api/admin/mcp/calls/summary?days=7", headers=auth_headers)
+    assert summary.status_code == 200, summary.text
+    assert summary.json()["days"] == 7
+
+async def test_loop_catches_up_empty_dashboard_stats(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    from app.db import get_session_factory
+    from app.services import dashboard_stats
+    from app.services import jobs as jobs_service
+
+    session = get_session_factory()()
+    try:
+        assert not jobs_service._stats_snapshot_ready(session)
+    finally:
+        session.close()
+
+    await jobs_service._catch_up_stale_cache("dashboard_stats")
+
+    session = get_session_factory()()
+    try:
+        assert jobs_service._stats_snapshot_ready(session)
+        assert session.get(dashboard_stats.StatsRow, 7) is not None
+    finally:
+        session.close()

@@ -1721,19 +1721,10 @@ export const api = {
     return request<McpCallLogList>(`/api/admin/mcp/calls${suffix}`)
   },
   mcpCall: (id: number) => request<McpCallLogDetail>(`/api/admin/mcp/calls/${id}`),
-  mcpCallStats: (
-    query: {
-      days?: number
-      capability_id?: string
-      mcp_key_id?: number
-      success?: boolean
-      q?: string
-    } = {},
-  ) => {
+  mcpCallStats: (query: { days?: number; refresh?: boolean } = {}) => {
     const params = new URLSearchParams()
-    Object.entries(query).forEach(([key, value]) => {
-      if (value !== undefined && value !== '') params.set(key, String(value))
-    })
+    if (query.days !== undefined) params.set('days', String(query.days))
+    if (query.refresh) params.set('refresh', '1')
     const suffix = params.toString() ? `?${params}` : ''
     return request<McpCallStats>(`/api/admin/mcp/calls/summary${suffix}`)
   },
@@ -2499,6 +2490,16 @@ export type McpCallStatsBucket = {
   success: number
   failed: number
   avg_latency_ms: number
+  p95_latency_ms: number
+  request_share: number
+}
+
+export type McpLatencyBucket = {
+  key: string
+  label: string
+  total: number
+  success: number
+  failed: number
 }
 
 export type McpCallStats = {
@@ -2509,9 +2510,9 @@ export type McpCallStats = {
   success_rate: number
   avg_latency_ms: number
   p95_latency_ms: number
-  capabilities: McpCallStatsBucket[]
-  operations: McpCallStatsBucket[]
-  keys: McpCallStatsBucket[]
+  latency_buckets: McpLatencyBucket[]
+  slow_operations: McpCallStatsBucket[]
+  failure_operations: McpCallStatsBucket[]
   daily: McpCallStatsBucket[]
   hourly: McpCallStatsBucket[]
 }
