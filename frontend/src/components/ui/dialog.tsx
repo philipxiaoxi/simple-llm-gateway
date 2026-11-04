@@ -54,8 +54,10 @@ export function Sheet({
         <DialogPrimitive.Overlay
           className={cn(
             'fixed inset-0 z-50 bg-black/60',
-            'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:duration-200',
-            'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:duration-150',
+            // 用 motion-safe: 而不是 motion-reduce:animate-none：data-state 变体的选择器权重
+            // 高于单类，后者会被压过去，动画仍然播放。
+            'motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:duration-200',
+            'motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=closed]:fade-out-0 motion-safe:data-[state=closed]:duration-150',
           )}
         />
         <DialogPrimitive.Content
@@ -66,8 +68,8 @@ export function Sheet({
           }}
           className={cn(
             'fixed inset-x-0 bottom-0 z-50 flex max-h-[90dvh] w-full min-w-0 flex-col overflow-hidden border-line bg-panel outline-none',
-            'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom-4 data-[state=open]:duration-200',
-            'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-bottom-4 data-[state=closed]:duration-150',
+            'motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:slide-in-from-bottom-4 motion-safe:data-[state=open]:duration-200',
+            'motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=closed]:fade-out-0 motion-safe:data-[state=closed]:slide-out-to-bottom-4 motion-safe:data-[state=closed]:duration-150',
             // 移动：底部抽屉（长表单可直接占满视口）
             // 占满视口时为灵动岛/刘海留出顶部安全区，否则标题会被状态栏遮住
             mobileFull
@@ -77,7 +79,7 @@ export function Sheet({
             // 桌面：居中弹窗
             'lg:inset-x-auto lg:bottom-auto lg:left-1/2 lg:top-1/2 lg:my-0 lg:max-h-[min(84dvh,56rem)] lg:-translate-x-1/2 lg:-translate-y-1/2',
             'lg:rounded-xl lg:border lg:pb-0 lg:shadow-floating',
-            'lg:data-[state=open]:zoom-in-95 lg:data-[state=closed]:zoom-out-95 lg:data-[state=open]:slide-in-from-bottom-0',
+            'lg:motion-safe:data-[state=open]:zoom-in-95 lg:motion-safe:data-[state=closed]:zoom-out-95 lg:motion-safe:data-[state=open]:slide-in-from-bottom-0',
             size,
             className,
           )}
