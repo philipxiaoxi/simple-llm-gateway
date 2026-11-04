@@ -2,7 +2,13 @@ import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getToken, api, type Preferences, type ThemeMode } from './api'
 import { errorMessage } from './utils'
-import { getThemeMode, setThemeMode, useTheme, useThemeMode } from './theme'
+import {
+  getThemeMode,
+  markThemeReady,
+  setThemeMode,
+  useTheme,
+  useThemeMode,
+} from './theme'
 import { notifyBad } from './toast'
 
 const QUERY_KEY = ['preferences'] as const
@@ -41,7 +47,7 @@ export function useThemePreference() {
 /** 读取服务端偏好并应用到本地；未登录时不发请求。 */
 export function ThemeSync() {
   const hasToken = Boolean(getToken())
-  const { data } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: api.preferences,
     enabled: hasToken,
@@ -51,9 +57,18 @@ export function ThemeSync() {
 
   const serverMode = data?.theme
   useEffect(() => {
-    if (!serverMode || serverMode === getThemeMode()) return
-    setThemeMode(serverMode, { persistLocal: true })
-  }, [serverMode])
+    // 未登录或本地没有账号态时，首帧缓存就是最终主题，无需等接口。
+    if (!hasToken) {
+      markThemeReady()
+      return
+    }
+    // 服务端偏好还没回来时先别放行启动画面，否则会先闪一下本地猜的主题。
+    if (isPending) return
+    if (serverMode && serverMode !== getThemeMode()) {
+      setThemeMode(serverMode, { persistLocal: true })
+    }
+    markThemeReady()
+  }, [hasToken, isPending, serverMode])
 
   return null
 }
