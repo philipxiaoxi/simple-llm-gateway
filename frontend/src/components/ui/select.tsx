@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 /**
  * shadcn/ui Select（Radix），保留 `<option>` / `<optgroup>` 的调用写法。
  *
- * 全站有 80 处调用，其中大量用 `value=""` 表示「全部」。Radix 不允许空字符串作为
+ * 全站有 88 处调用，其中大量用 `value=""` 表示「全部」。Radix 不允许空字符串作为
  * item value，所以内部用一个哨兵值占位，对外仍然把 `''` 原样透传给 `onChange`。
  * 子元素只用于解析选项，不会被渲染成真实 DOM。
  */
@@ -141,9 +141,9 @@ export function Select({
           className={cn(
             'relative z-[70] max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[8rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-line-strong bg-panel-2 text-paper shadow-menu',
             'w-[var(--radix-select-trigger-width)]',
-            'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:duration-150',
-            'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:duration-100',
-            'data-[side=bottom]:slide-in-from-top-1 data-[side=top]:slide-in-from-bottom-1',
+            'motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:zoom-in-95 motion-safe:data-[state=open]:duration-150',
+            'motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=closed]:fade-out-0 motion-safe:data-[state=closed]:zoom-out-95 motion-safe:data-[state=closed]:duration-100',
+            'motion-safe:data-[side=bottom]:slide-in-from-top-1 motion-safe:data-[side=top]:slide-in-from-bottom-1',
           )}
         >
           <SelectPrimitive.ScrollUpButton className="flex h-6 items-center justify-center text-mist">

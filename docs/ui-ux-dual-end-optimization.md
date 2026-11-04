@@ -820,6 +820,8 @@ export function DataView<T>({
 - **不做 `container queries` 全量替换**：断点方案已能覆盖「同一数据换形态」，container query 仅用于卡片内部自适应。
 - **不改造公开端 `/share/*`、`/voice/send`**：它们已是面向手机的独立流程（`min-h-svh`、安全区、sticky 头、触摸手势），仅跟随本方案享受 `Sheet`/令牌收益，不做结构重排。
 
+后续新增依赖的引入条件与体积预算见 [技术栈采用指南](./tech-stack-guide.md)。
+
 ---
 
 ## 附录 A：对比度实算方法

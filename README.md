@@ -340,14 +340,19 @@ llm-gateway/
 
 | 层级 | 技术 |
 |------|------|
-| 前端框架 | React 19 + Vite |
-| 样式 | Tailwind CSS 4 |
+| 前端框架 | React 19 + Vite 8 + TypeScript |
+| 样式 | Tailwind CSS 4（CSS 变量主题令牌，深浅双主题） |
+| UI 组件 | shadcn/ui（Radix + class-variance-authority） |
+| 图标 / 动画 | lucide-react / motion + tw-animate-css |
 | 数据请求 | TanStack Query |
-| 后端框架 | FastAPI |
+| 图表 / 播放器 | ECharts（按需注册）/ xgplayer |
+| 后端框架 | FastAPI + Pydantic + Uvicorn |
 | 数据库 | SQLite (SQLAlchemy 2) |
 | 协议转换 | LiteLLM |
 | 认证 | JWT + bcrypt |
 | 部署 | Docker Compose |
+
+新增依赖前先看 [技术栈采用指南](./docs/tech-stack-guide.md)，其中记录了现状、引入判定条件与体积预算。
 
 ## 测试
 
