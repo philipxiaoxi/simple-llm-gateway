@@ -40,6 +40,10 @@ def _set_account_models(models: list[str]) -> None:
         session.close()
 
 
+def _alias_pairs(aliases: list[dict]) -> list[tuple[str, str]]:
+    return [(item["alias"], item["model"]) for item in aliases]
+
+
 def _save_alias(client: TestClient, key: str, alias: str, model: str):
     return client.post(
         "/api/share/aliases/save",
@@ -52,15 +56,15 @@ def test_save_list_and_switch_alias(client: TestClient, auth_headers: dict[str, 
 
     saved = _save_alias(client, key, "fast", "deepseek-chat")
     assert saved.status_code == 200, saved.text
-    assert saved.json()["aliases"] == [{"alias": "fast", "model": "deepseek-chat"}]
+    assert _alias_pairs(saved.json()["aliases"]) == [("fast", "deepseek-chat")]
 
     lookup = client.post("/api/share/lookup", json={"api_key": key}).json()
-    assert lookup["aliases"] == [{"alias": "fast", "model": "deepseek-chat"}]
+    assert _alias_pairs(lookup["aliases"]) == [("fast", "deepseek-chat")]
 
     # 同名保存即切换指向的模型
     switched = _save_alias(client, key, "fast", "deepseek-reasoner")
     assert switched.status_code == 200
-    assert switched.json()["aliases"] == [{"alias": "fast", "model": "deepseek-reasoner"}]
+    assert _alias_pairs(switched.json()["aliases"]) == [("fast", "deepseek-reasoner")]
 
     # 删除
     deleted = client.post("/api/share/aliases/delete", json={"api_key": key, "alias": "fast"})
@@ -305,7 +309,9 @@ def test_admin_key_alias_endpoints(client: TestClient, auth_headers: dict[str, s
 
     listed = client.get(f"/api/admin/keys/{key_id}/aliases", headers=auth_headers)
     assert listed.status_code == 200
-    assert listed.json() == {"aliases": [], "models": ["deepseek-chat", "deepseek-reasoner"]}
+    assert listed.json()["aliases"] == []
+    assert listed.json()["models"] == ["deepseek-chat", "deepseek-reasoner"]
+    assert {item["account_name"] for item in listed.json()["model_entries"]} == {"DS"}
 
     saved = client.post(
         f"/api/admin/keys/{key_id}/aliases",
@@ -313,7 +319,7 @@ def test_admin_key_alias_endpoints(client: TestClient, auth_headers: dict[str, s
         json={"alias": "fast", "model": "deepseek-chat"},
     )
     assert saved.status_code == 200
-    assert saved.json()["aliases"] == [{"alias": "fast", "model": "deepseek-chat"}]
+    assert _alias_pairs(saved.json()["aliases"]) == [("fast", "deepseek-chat")]
 
     switched = client.post(
         f"/api/admin/keys/{key_id}/aliases",
@@ -321,7 +327,7 @@ def test_admin_key_alias_endpoints(client: TestClient, auth_headers: dict[str, s
         json={"alias": "fast", "model": "deepseek-reasoner"},
     )
     assert switched.status_code == 200
-    assert switched.json()["aliases"] == [{"alias": "fast", "model": "deepseek-reasoner"}]
+    assert _alias_pairs(switched.json()["aliases"]) == [("fast", "deepseek-reasoner")]
 
     conflict = client.post(
         f"/api/admin/keys/{key_id}/aliases",
@@ -339,7 +345,7 @@ def test_admin_key_alias_endpoints(client: TestClient, auth_headers: dict[str, s
 
     # 管理端设置后，自助页和转发立即同步生效
     lookup = client.post("/api/share/lookup", json={"api_key": key}).json()
-    assert lookup["aliases"] == [{"alias": "fast", "model": "deepseek-reasoner"}]
+    assert _alias_pairs(lookup["aliases"]) == [("fast", "deepseek-reasoner")]
 
     deleted = client.delete(f"/api/admin/keys/{key_id}/aliases/fast", headers=auth_headers)
     assert deleted.status_code == 200
@@ -347,6 +353,37 @@ def test_admin_key_alias_endpoints(client: TestClient, auth_headers: dict[str, s
 
     gone = client.delete(f"/api/admin/keys/{key_id}/aliases/fast", headers=auth_headers)
     assert gone.status_code == 404
+
+
+def test_alias_reports_account_and_unavailable_state(client: TestClient, auth_headers: dict[str, str]) -> None:
+    _make_key(client, auth_headers)
+    key_id = int(client.get("/api/admin/keys", headers=auth_headers).json()[0]["id"])
+    saved = client.post(
+        f"/api/admin/keys/{key_id}/aliases",
+        headers=auth_headers,
+        json={"alias": "fast", "model": "deepseek-chat"},
+    )
+    assert saved.status_code == 200
+    item = saved.json()["aliases"][0]
+    assert item["account_name"] == "DS"
+    assert item["available"] is True
+
+    # 上游账号停用后模型不再可用，别名仍要能标出原归属并标记失效
+    session = get_session_factory()()
+    try:
+        account = session.scalar(select(UpstreamAccount))
+        assert account is not None
+        account.status = "disabled"
+        session.commit()
+    finally:
+        session.close()
+
+    listed = client.get(f"/api/admin/keys/{key_id}/aliases", headers=auth_headers)
+    assert listed.status_code == 200
+    assert listed.json()["models"] == []
+    item = listed.json()["aliases"][0]
+    assert item["account_name"] == "DS"
+    assert item["available"] is False
 
 
 def test_share_rename_alias(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -358,10 +395,10 @@ def test_share_rename_alias(client: TestClient, auth_headers: dict[str, str]) ->
         json={"api_key": key, "old_alias": "fast", "new_alias": "quick"},
     )
     assert renamed.status_code == 200
-    assert renamed.json()["aliases"] == [{"alias": "quick", "model": "deepseek-chat"}]
+    assert _alias_pairs(renamed.json()["aliases"]) == [("quick", "deepseek-chat")]
 
     lookup = client.post("/api/share/lookup", json={"api_key": key}).json()
-    assert lookup["aliases"] == [{"alias": "quick", "model": "deepseek-chat"}]
+    assert _alias_pairs(lookup["aliases"]) == [("quick", "deepseek-chat")]
 
     # 重命名到已存在的别名应报错
     assert _save_alias(client, key, "other", "deepseek-reasoner").status_code == 200
@@ -395,11 +432,11 @@ def test_admin_rename_alias(client: TestClient, auth_headers: dict[str, str]) ->
         json={"old_alias": "fast", "new_alias": "quick"},
     )
     assert renamed.status_code == 200
-    assert renamed.json()["aliases"] == [{"alias": "quick", "model": "deepseek-chat"}]
+    assert _alias_pairs(renamed.json()["aliases"]) == [("quick", "deepseek-chat")]
 
     # 自助页同步生效
     lookup = client.post("/api/share/lookup", json={"api_key": key}).json()
-    assert lookup["aliases"] == [{"alias": "quick", "model": "deepseek-chat"}]
+    assert _alias_pairs(lookup["aliases"]) == [("quick", "deepseek-chat")]
 
     # 重命名不存在的别名应报 404
     gone = client.post(

@@ -274,6 +274,18 @@ export type ShareModelEntry = {
 export type ShareAlias = {
   alias: string
   model: string
+  account_id?: number | null
+  account_name?: string | null
+  account_source?: 'upstream' | 'agent' | null
+  provider?: string | null
+  account_index?: number
+  available?: boolean
+}
+
+export type AliasListResponse = {
+  aliases: ShareAlias[]
+  models: string[]
+  model_entries: ShareModelEntry[]
 }
 
 export type ShareLookup = {
@@ -1025,19 +1037,19 @@ export const api = {
     request<ApiKeyItem>(`/api/admin/keys/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteKey: (id: number) => request<{ ok: boolean }>(`/api/admin/keys/${id}`, { method: 'DELETE' }),
   keyAliases: (id: number) =>
-    request<{ aliases: ShareAlias[]; models: string[] }>(`/api/admin/keys/${id}/aliases`),
+    request<AliasListResponse>(`/api/admin/keys/${id}/aliases`),
   keyAliasSave: (id: number, payload: { alias: string; model: string }) =>
-    request<{ aliases: ShareAlias[]; models: string[] }>(`/api/admin/keys/${id}/aliases`, {
+    request<AliasListResponse>(`/api/admin/keys/${id}/aliases`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
   keyAliasRename: (id: number, payload: { old_alias: string; new_alias: string }) =>
-    request<{ aliases: ShareAlias[]; models: string[] }>(`/api/admin/keys/${id}/aliases/rename`, {
+    request<AliasListResponse>(`/api/admin/keys/${id}/aliases/rename`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
   keyAliasDelete: (id: number, alias: string) =>
-    request<{ aliases: ShareAlias[]; models: string[] }>(
+    request<AliasListResponse>(
       `/api/admin/keys/${id}/aliases/${encodeURIComponent(alias)}`,
       { method: 'DELETE' },
     ),

@@ -6,6 +6,7 @@ import { ModelPickDialog } from '../components/ModelPickDialog'
 import { VscodeImportDialog } from '../components/VscodeImportDialog'
 import { Badge, Button, Card, Field, Input, Select } from '../components/ui'
 import { accountColor, shareModelEntries } from '../lib/accountModels'
+import { modelOptions } from '../lib/modelOptions'
 import { api, type CcSwitchTarget, type ModelCaps, type ShareAlias, type ShareLookup, type ShareModelEntry } from '../lib/api'
 import { listenForShareApiKey } from '../lib/shareTransfer'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
@@ -88,11 +89,13 @@ function modelHint(caps?: ModelCaps) {
 function ModelAliasManager({
   rawKey,
   models,
+  modelEntries,
   aliases,
   onChange,
 }: {
   rawKey: string
   models: string[]
+  modelEntries: ShareModelEntry[]
   aliases: ShareAlias[]
   onChange: (aliases: ShareAlias[]) => void
 }) {
@@ -145,6 +148,7 @@ function ModelAliasManager({
         <ModelAliasList
           aliases={aliases}
           models={models}
+          modelEntries={modelEntries}
           busy={busy}
           onSwitch={(alias, model) =>
             void mutate(() => api.shareAliasSave({ api_key: rawKey, alias, model }), `别名 ${alias} 已切换到 ${model}`)
@@ -185,11 +189,7 @@ function ModelAliasManager({
         <div className="min-w-40 flex-1 sm:max-w-72">
           <Field label="指向模型">
             <Select value={aliasModelDraft} onChange={(event) => setAliasModelDraft(event.target.value)}>
-              {models.map((model) => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
+              {modelOptions(models, modelEntries)}
             </Select>
           </Field>
         </div>
@@ -568,7 +568,13 @@ export function SharePage() {
         ) : null}
 
         {lookup && lookup.status === 'active' && lookup.models.length > 0 ? (
-          <ModelAliasManager rawKey={rawKey.trim()} models={lookup.models} aliases={aliases} onChange={setAliases} />
+          <ModelAliasManager
+            rawKey={rawKey.trim()}
+            models={lookup.models}
+            modelEntries={shareModelEntries(lookup)}
+            aliases={aliases}
+            onChange={setAliases}
+          />
         ) : null}
 
         {lookup ? (

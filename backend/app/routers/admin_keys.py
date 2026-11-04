@@ -20,22 +20,24 @@ from app.schemas import (
     KeyUpdate,
 )
 from app.serializers import key_to_out
-from app.services.gateway_rate_limit import gateway_limiter, invalidate_gateway_key
 from app.services.ccswitch import (
     CCS_SWITCH_TARGETS,
     build_ccswitch_url_for_app,
     build_vscode_config,
     describe_ccswitch_targets,
 )
+from app.services.gateway_rate_limit import gateway_limiter, invalidate_gateway_key
 from app.services.key_models import (
     ALIAS_ERROR,
     ALIAS_PATTERN,
     AliasConflict,
     build_model_catalog,
+    public_model_entries,
     public_model_ids,
     public_model_records,
     rename_model_alias,
     replace_key_accounts,
+    serialize_aliases,
 )
 
 router = APIRouter(prefix="/api/admin/keys", tags=["admin-keys"], dependencies=[Depends(get_current_admin)])
@@ -167,7 +169,11 @@ def cc_switch_build(key_id: int, payload: CcSwitchBuildRequest, db: Session = De
 @router.get("/{key_id}/aliases")
 def list_aliases(key_id: int, db: Session = Depends(get_db)) -> dict:
     item = _get_key(db, key_id)
-    return {"aliases": _serialize_aliases(item), "models": public_model_ids(item)}
+    return {
+        "aliases": serialize_aliases(item),
+        "models": public_model_ids(item),
+        "model_entries": public_model_entries(item),
+    }
 
 
 @router.post("/{key_id}/aliases")
@@ -189,7 +195,11 @@ def save_alias(key_id: int, payload: AdminAliasSaveRequest, db: Session = Depend
         row.model_public_id = payload.model
         row.updated_at = utcnow()
     db.commit()
-    return {"aliases": _serialize_aliases(item), "models": public_model_ids(item)}
+    return {
+        "aliases": serialize_aliases(item),
+        "models": public_model_ids(item),
+        "model_entries": public_model_entries(item),
+    }
 
 
 @router.post("/{key_id}/aliases/rename")
@@ -200,7 +210,11 @@ def rename_alias(key_id: int, payload: AdminAliasRenameRequest, db: Session = De
     except AliasConflict as error:
         raise HTTPException(status_code=error.status_code, detail=error.detail) from error
     db.commit()
-    return {"aliases": _serialize_aliases(item), "models": public_model_ids(item)}
+    return {
+        "aliases": serialize_aliases(item),
+        "models": public_model_ids(item),
+        "model_entries": public_model_entries(item),
+    }
 
 
 @router.delete("/{key_id}/aliases/{alias:path}")
@@ -213,7 +227,11 @@ def delete_alias(key_id: int, alias: str, db: Session = Depends(get_db)) -> dict
         raise HTTPException(status_code=404, detail="别名不存在")
     db.delete(row)
     db.commit()
-    return {"aliases": _serialize_aliases(item), "models": public_model_ids(item)}
+    return {
+        "aliases": serialize_aliases(item),
+        "models": public_model_ids(item),
+        "model_entries": public_model_entries(item),
+    }
 
 
 @router.patch("/{key_id}", response_model=KeyOut)
@@ -262,11 +280,6 @@ def _get_key(db: Session, key_id: int) -> ApiKey:
     if item is None:
         raise HTTPException(status_code=404, detail="API Key 不存在")
     return item
-
-
-def _serialize_aliases(item: ApiKey) -> list[dict]:
-    rows = sorted(item.aliases or [], key=lambda row: row.id)
-    return [{"alias": row.alias, "model": row.model_public_id} for row in rows]
 
 
 def _plaintext_key(item: ApiKey) -> str:
