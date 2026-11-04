@@ -128,10 +128,10 @@ export function BenchmarkModelPicker({
                   onClick={() => toggle(target)}
                   className={cn(
                     'flex w-full min-w-0 items-center gap-3 border px-3 py-2.5 text-left text-sm transition-colors',
-                    checked ? 'border-signal/50 bg-signal/10' : 'border-transparent hover:border-line hover:bg-white/5',
+                    checked ? 'border-signal/50 bg-signal/10' : 'border-transparent hover:border-line hover:bg-elevate',
                   )}
                 >
-                  <span className={cn('flex h-4 w-4 shrink-0 items-center justify-center border text-[10px]', checked ? 'border-signal bg-signal text-black' : 'border-mist/50')}>
+                  <span className={cn('flex h-4 w-4 shrink-0 items-center justify-center border text-[10px]', checked ? 'border-signal bg-signal text-on-signal' : 'border-mist/50')}>
                     {checked ? '✓' : null}
                   </span>
                   <span className="min-w-0">

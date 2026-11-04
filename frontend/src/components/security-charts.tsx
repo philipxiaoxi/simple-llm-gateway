@@ -3,40 +3,43 @@ import { ChartCard, ChartEmpty, ChartTabs, type ChartTable } from './charts/char
 import { EChart } from './charts/echart'
 import { SeriesLegend } from './charts/chart-legend'
 import {
-  CHART_PALETTE,
-  CHART_TEXT,
-  CHART_TEXT_SOFT,
-  CHART_TOOLTIP_BASE,
   areaGradient,
   categoryAxis,
+  chartTheme,
   compactCount,
   dayLabel,
   dayLabelLong,
   formatPercent,
+  themeColor,
   tooltipHtml,
   valueAxis,
   type ChartOption,
   type ChartTooltipParam,
 } from '../lib/chart-theme'
 import type { SecurityOverview, SecurityTrendPoint } from '../lib/api'
+import { useTheme } from '../lib/theme'
 
 type ShareMode = 'outcome' | 'client'
 
-const TREND_SERIES = [
-  { key: 'login_success', name: '登录成功', color: '#4ade80' },
-  { key: 'login_failure', name: '登录失败', color: '#f5b942' },
-  { key: 'suspicious', name: '异常请求', color: '#f25f6d' },
-] as const
+function paletteIndex(palette: readonly string[], index: number) {
+  return palette[((index % palette.length) + palette.length) % palette.length]
+}
 
-const OUTCOME_ITEMS = [
-  { key: 'success', name: '成功', color: '#4ade80' },
-  { key: 'rejected', name: '已拒绝', color: '#f5b942' },
-  { key: 'failed', name: '失败', color: '#f25f6d' },
-  { key: 'unknown', name: '未知', color: '#94a3b8' },
-] as const
+function trendSeries() {
+  return [
+    { key: 'login_success', name: '登录成功', color: themeColor('ok', '#4ade80') },
+    { key: 'login_failure', name: '登录失败', color: themeColor('warn', '#f5b942') },
+    { key: 'suspicious', name: '异常请求', color: themeColor('danger', '#f25f6d') },
+  ] as const
+}
 
-function paletteColor(index: number) {
-  return CHART_PALETTE[((index % CHART_PALETTE.length) + CHART_PALETTE.length) % CHART_PALETTE.length]
+function outcomeItems() {
+  return [
+    { key: 'success', name: '成功', color: themeColor('ok', '#4ade80') },
+    { key: 'rejected', name: '已拒绝', color: themeColor('warn', '#f5b942') },
+    { key: 'failed', name: '失败', color: themeColor('danger', '#f25f6d') },
+    { key: 'unknown', name: '未知', color: themeColor('mist', '#94a3b8') },
+  ] as const
 }
 
 /** 按 since/until 补齐日期（含首尾），保证无事件的日子也画成 0 而不是被跳过。 */
@@ -62,19 +65,21 @@ function expandTrend(data: SecurityOverview): SecurityTrendPoint[] {
 }
 
 function buildTrendOption(points: SecurityTrendPoint[], hidden: ReadonlySet<string>): ChartOption {
-  const names = TREND_SERIES.map((item) => item.name)
+  const seriesList = trendSeries()
+  const theme = chartTheme()
+  const names = seriesList.map((item) => item.name)
   const showSymbol = points.length <= 14
   return {
     grid: { left: 8, right: 12, top: 16, bottom: 8, containLabel: true },
     tooltip: {
-      ...CHART_TOOLTIP_BASE,
+      ...chartTheme().tooltipBase,
       trigger: 'axis',
-      axisPointer: { type: 'line', lineStyle: { color: '#3b4557', width: 1 } },
+      axisPointer: { type: 'line', lineStyle: { color: theme.axisPointerLine, width: 1 } },
       formatter: (params: unknown) => {
         const rows = (Array.isArray(params) ? params : [params]) as ChartTooltipParam[]
         const point = points[rows[0]?.dataIndex ?? 0]
         if (!point) return ''
-        const items = TREND_SERIES.map((series) => ({
+        const items = seriesList.map((series) => ({
           label: series.name,
           value: point[series.key],
           color: series.color,
@@ -90,7 +95,7 @@ function buildTrendOption(points: SecurityTrendPoint[], hidden: ReadonlySet<stri
     legend: { show: false, selected: Object.fromEntries(names.map((name) => [name, !hidden.has(name)])) },
     xAxis: categoryAxis(points.map((point) => dayLabel(point.date))),
     yAxis: valueAxis((value) => compactCount(value)),
-    series: TREND_SERIES.map((series) => ({
+    series: seriesList.map((series) => ({
       name: series.name,
       type: 'line' as const,
       stack: 'events',
@@ -109,21 +114,22 @@ function buildTrendOption(points: SecurityTrendPoint[], hidden: ReadonlySet<stri
 
 function shareItems(data: SecurityOverview, mode: ShareMode) {
   if (mode === 'outcome') {
-    return OUTCOME_ITEMS.map((item) => ({
+    return outcomeItems().map((item) => ({
       name: item.name,
       value: data.outcome_counts[item.key] ?? 0,
       color: item.color,
     })).filter((item) => item.value > 0)
   }
+  const palette = chartTheme().palette
   return data.client_counts
-    .map((item, index) => ({ name: item.name, value: item.count, color: paletteColor(index) }))
+    .map((item, index) => ({ name: item.name, value: item.count, color: paletteIndex(palette, index) }))
     .filter((item) => item.value > 0)
 }
 
 function buildShareOption(items: { name: string; value: number; color: string }[]): ChartOption {
   return {
     tooltip: {
-      ...CHART_TOOLTIP_BASE,
+      ...chartTheme().tooltipBase,
       trigger: 'item',
       formatter: (params: unknown) => {
         const row = (Array.isArray(params) ? params[0] : params) as ChartTooltipParam & { percent?: number }
@@ -142,8 +148,8 @@ function buildShareOption(items: { name: string; value: number; color: string }[
       itemWidth: 8,
       itemHeight: 8,
       itemGap: 12,
-      textStyle: { color: CHART_TEXT, fontSize: 11 },
-      pageTextStyle: { color: CHART_TEXT_SOFT },
+      textStyle: { color: chartTheme().text, fontSize: 11 },
+      pageTextStyle: { color: chartTheme().textSoft },
     },
     series: [
       {
@@ -151,7 +157,7 @@ function buildShareOption(items: { name: string; value: number; color: string }[
         radius: ['52%', '74%'],
         center: ['50%', '46%'],
         avoidLabelOverlap: true,
-        itemStyle: { borderColor: '#12161d', borderWidth: 2, borderRadius: 4 },
+        itemStyle: { borderColor: themeColor('panel', '#12161d'), borderWidth: 2, borderRadius: 4 },
         label: { show: false },
         labelLine: { show: false },
         emphasis: { scale: true, scaleSize: 4 },
@@ -167,8 +173,10 @@ function buildShareOption(items: { name: string; value: number; color: string }[
 
 function TrendChart({ data }: { data: SecurityOverview }) {
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
+  // 订阅主题：切换后重新渲染，图表配色从 CSS 变量重新读取
+  useTheme()
   const points = useMemo(() => expandTrend(data), [data])
-  const option = useMemo(() => buildTrendOption(points, hidden), [points, hidden])
+  const option = buildTrendOption(points, hidden)
   const total = points.reduce((sum, point) => sum + point.login_success + point.login_failure + point.suspicious, 0)
   const table = useMemo<ChartTable>(
     () => ({
@@ -177,7 +185,7 @@ function TrendChart({ data }: { data: SecurityOverview }) {
     }),
     [points],
   )
-  const items = TREND_SERIES.map((series) => ({ name: series.name, color: series.color }))
+  const items = trendSeries().map((series) => ({ name: series.name, color: series.color }))
 
   return (
     <ChartCard
@@ -211,8 +219,9 @@ function TrendChart({ data }: { data: SecurityOverview }) {
 
 function ShareChart({ data }: { data: SecurityOverview }) {
   const [mode, setMode] = useState<ShareMode>('outcome')
-  const items = useMemo(() => shareItems(data, mode), [data, mode])
-  const option = useMemo(() => buildShareOption(items), [items])
+  useTheme()
+  const items = shareItems(data, mode)
+  const option = buildShareOption(items)
   const total = items.reduce((sum, item) => sum + item.value, 0)
   const table = useMemo<ChartTable>(
     () => ({

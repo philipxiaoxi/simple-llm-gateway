@@ -114,9 +114,9 @@ export function ChartEmpty({
 export function ChartSkeleton({ className }: { className?: string }) {
   return (
     <Card className={cn('space-y-3', className)}>
-      <div className="h-4 w-24 animate-pulse rounded bg-white/5" />
-      <div className="h-3 w-40 animate-pulse rounded bg-white/5" />
-      <div className="h-[200px] animate-pulse rounded-lg bg-white/[0.03] lg:h-[240px]" />
+      <div className="h-4 w-24 animate-pulse rounded bg-elevate" />
+      <div className="h-3 w-40 animate-pulse rounded bg-elevate" />
+      <div className="h-[200px] animate-pulse rounded-lg bg-elevate lg:h-[240px]" />
     </Card>
   )
 }

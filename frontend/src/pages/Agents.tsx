@@ -42,7 +42,7 @@ export function AgentsPage() {
           <span>状态</span>
         </div>
         {agents.map((agent) => (
-          <Link key={agent.agent_id} to={`/agents/${encodeURIComponent(agent.agent_id)}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 border-b border-line px-4 py-4 transition hover:bg-white/[0.03] last:border-b-0 sm:grid-cols-[minmax(0,1fr)_minmax(220px,1fr)_auto_auto]">
+          <Link key={agent.agent_id} to={`/agents/${encodeURIComponent(agent.agent_id)}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 border-b border-line px-4 py-4 transition hover:bg-elevate last:border-b-0 sm:grid-cols-[minmax(0,1fr)_minmax(220px,1fr)_auto_auto]">
             <div className="flex min-w-0 items-center gap-3">
               <Server size={18} className="shrink-0 text-info" />
               <code className="truncate text-sm text-paper">{agent.agent_id}</code>

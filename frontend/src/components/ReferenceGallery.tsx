@@ -491,7 +491,7 @@ function ReferenceCard({
               type="button"
               onClick={onPick}
               disabled={picking}
-              className="absolute inset-x-1.5 bottom-1.5 inline-flex items-center justify-center gap-1 rounded-md bg-signal px-2 py-1 text-[11px] font-medium text-ink opacity-100 shadow-sm transition hover:bg-signal/90 disabled:opacity-60 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
+              className="absolute inset-x-1.5 bottom-1.5 inline-flex items-center justify-center gap-1 rounded-md bg-signal px-2 py-1 text-[11px] font-medium text-on-signal opacity-100 shadow-sm transition hover:bg-signal/90 disabled:opacity-60 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
             >
               {picking ? <Loader2 size={12} className="animate-spin" /> : <ImageIcon size={12} />}
               用作参考
@@ -564,8 +564,8 @@ function ReferenceCard({
 
 function OverlayTag({ tone, children }: { tone: 'curated' | 'hot' | 'adult'; children: ReactNode }) {
   const map = {
-    curated: 'bg-signal text-ink',
-    hot: 'bg-warn text-ink',
+    curated: 'bg-signal text-on-signal',
+    hot: 'bg-warn text-on-signal',
     adult: 'bg-danger text-white',
   }
   return (

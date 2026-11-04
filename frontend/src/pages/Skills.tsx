@@ -321,7 +321,7 @@ export function SkillsPage() {
             type="button"
             onClick={() => setCategory(item.name)}
             className={`rounded-full px-3 py-1 text-xs transition ${
-              category === item.name ? 'bg-signal/15 text-signal' : 'bg-white/5 text-mist hover:text-paper'
+              category === item.name ? 'bg-signal/15 text-signal' : 'bg-elevate text-mist hover:text-paper'
             }`}
           >
             {item.name} {item.count}

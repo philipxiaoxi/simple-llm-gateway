@@ -35,6 +35,10 @@ export type NavTabs = {
   home_path: string | null
 }
 
+export type ThemeMode = 'system' | 'light' | 'dark'
+
+export type Preferences = { theme: ThemeMode }
+
 export type RoleSummary = {
   id: number
   name: string
@@ -849,6 +853,9 @@ export const api = {
   saveNavTabs: (paths: string[]) =>
     request<NavTabs>('/api/admin/me/nav-tabs', { method: 'PUT', body: JSON.stringify({ paths }) }),
   resetNavTabs: () => request<NavTabs>('/api/admin/me/nav-tabs', { method: 'DELETE' }),
+  preferences: () => request<Preferences>('/api/admin/me/preferences'),
+  savePreferences: (payload: Preferences) =>
+    request<Preferences>('/api/admin/me/preferences', { method: 'PUT', body: JSON.stringify(payload) }),
   saveDefaultNavTabs: (paths: string[]) =>
     request<NavTabs>('/api/admin/settings/nav-tabs', { method: 'PUT', body: JSON.stringify({ paths }) }),
   updateMe: (payload: { current_password: string; username?: string; password?: string }) =>

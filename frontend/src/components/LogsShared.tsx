@@ -21,7 +21,7 @@ export function CopyButton({
     <button
       type="button"
       className={cn(
-        'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-mist transition hover:bg-white/5 hover:text-paper',
+        'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-mist transition hover:bg-elevate hover:text-paper',
         className,
       )}
       onClick={() => {
@@ -78,7 +78,7 @@ export function ToolCallList({ calls }: { calls: ToolCall[] }) {
             <span className="font-mono">{call.name}</span>
             <ChevronDown size={12} className="ml-auto text-mist" />
           </summary>
-          <pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-black/30 p-2 font-mono text-[11px] text-mist [overflow-wrap:anywhere]">
+          <pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-ink/60 p-2 font-mono text-[11px] text-mist [overflow-wrap:anywhere]">
             {call.arguments || '（无参数）'}
           </pre>
         </details>

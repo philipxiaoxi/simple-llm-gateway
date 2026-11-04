@@ -423,7 +423,7 @@ function ImportDialog({
         <Field label="JSON 文件">
           <label
             className={cn(
-              'flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border border-dashed border-line bg-ink px-3 py-6 text-center transition hover:border-signal/60 hover:bg-white/[0.02]',
+              'flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border border-dashed border-line bg-ink px-3 py-6 text-center transition hover:border-signal/60 hover:bg-elevate',
               fileName && 'border-signal/40',
             )}
           >
@@ -563,7 +563,7 @@ function CollapsibleSection({ children }: { children: ReactNode }) {
           <button
             type="button"
             onClick={() => setExpanded((current) => !current)}
-            className="rounded-full bg-white/10 px-4 py-1.5 text-xs font-medium text-paper transition hover:bg-white/15"
+            className="rounded-full bg-elevate-strong px-4 py-1.5 text-xs font-medium text-paper transition hover:bg-elevate-strong"
           >
             {expanded ? '收起' : '展开全部'}
           </button>

@@ -374,7 +374,7 @@ export function InfoItemPage() {
                     type="button"
                     aria-label="上一项"
                     onClick={() => step(-1)}
-                    className="absolute left-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-paper transition hover:bg-black/70"
+                    className="absolute left-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
                   >
                     <ChevronLeft size={18} />
                   </button>
@@ -382,11 +382,11 @@ export function InfoItemPage() {
                     type="button"
                     aria-label="下一项"
                     onClick={() => step(1)}
-                    className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-paper transition hover:bg-black/70"
+                    className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
                   >
                     <ChevronRight size={18} />
                   </button>
-                  <span className="pointer-events-none absolute right-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-[11px] text-paper">
+                  <span className="pointer-events-none absolute right-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-[11px] text-white">
                     {safeIndex + 1}/{media.length}
                   </span>
                 </>
@@ -413,7 +413,7 @@ export function InfoItemPage() {
                     <span
                       className={cn(
                         'h-1.5 rounded-full transition-all',
-                        position === safeIndex ? 'w-5 bg-signal' : 'w-1.5 bg-white/25 group-hover:bg-white/45',
+                        position === safeIndex ? 'w-5 bg-signal' : 'w-1.5 bg-track-strong group-hover:bg-track-hover',
                       )}
                     />
                   </button>

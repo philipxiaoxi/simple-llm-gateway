@@ -1347,6 +1347,17 @@ class NavTabPreference(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
+class AdminPreference(Base):
+    """管理员界面偏好（主题等）。按账号存储，登录后跨设备同步。"""
+
+    __tablename__ = "admin_preferences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    admin_id: Mapped[int] = mapped_column(ForeignKey("admins.id"), unique=True, nullable=False, index=True)
+    # system（跟随系统）/ light / dark；未知值按 system 处理
+    theme: Mapped[str] = mapped_column(String(16), default="system", nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
 class ReferenceAsset(Base):
     """管理员添加到参考库的本地图片。上游同步只更新缓存，不修改本表。"""
 

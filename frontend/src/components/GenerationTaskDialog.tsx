@@ -69,7 +69,7 @@ export function GenerationTaskDialog({
 
           {isTaskActive(task.status) ? (
             <div className="space-y-1">
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
                 <div className="h-full rounded-full bg-signal transition-all" style={{ width: `${Math.max(3, task.progress)}%` }} />
               </div>
               <div className="text-xs text-mist">{statusLabel(task.status)} · {task.progress}%</div>

@@ -38,7 +38,7 @@ function ResultTile({ result, rank }: { result: BenchmarkResult; rank?: number }
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {rank ? (
-            <span className={cn('inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[11px]', fastest ? 'bg-signal text-ink' : 'bg-white/10 text-mist')}>
+            <span className={cn('inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[11px]', fastest ? 'bg-signal text-on-signal' : 'bg-elevate-strong text-mist')}>
               {rank}
             </span>
           ) : null}
@@ -70,7 +70,7 @@ function RankBadge({ rank }: { rank: number }) {
   const medal = MEDALS[rank - 1]
   if (medal) return <span className="text-lg leading-none" title={`第 ${rank} 名`}>{medal}</span>
   return (
-    <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-white/5 px-1.5 font-mono text-xs text-mist">
+    <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-elevate px-1.5 font-mono text-xs text-mist">
       {rank}
     </span>
   )
@@ -115,14 +115,14 @@ function ExportMenu() {
       {open ? (
         <>
           <button type="button" aria-label="关闭导出菜单" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-50 mt-1 w-44 border border-line bg-panel-2 py-1 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
+          <div className="absolute right-0 z-50 mt-1 w-44 border border-line bg-panel-2 py-1 shadow-menu">
             {canExportHistory ? (
-            <button type="button" className="block w-full px-3 py-2 text-left text-sm text-paper hover:bg-white/5" onClick={() => void run('history')}>
+            <button type="button" className="block w-full px-3 py-2 text-left text-sm text-paper hover:bg-elevate" onClick={() => void run('history')}>
               导出测速历史
             </button>
             ) : null}
             {canExportLeaderboard ? (
-            <button type="button" className="block w-full px-3 py-2 text-left text-sm text-paper hover:bg-white/5" onClick={() => void run('leaderboard')}>
+            <button type="button" className="block w-full px-3 py-2 text-left text-sm text-paper hover:bg-elevate" onClick={() => void run('leaderboard')}>
               导出速度排行榜
             </button>
             ) : null}

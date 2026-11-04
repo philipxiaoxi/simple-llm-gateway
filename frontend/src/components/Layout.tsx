@@ -3,11 +3,13 @@ import {
   ChevronDown,
   LogOut,
   Menu,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Rows3,
   Search,
   Settings,
+  Sun,
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
@@ -19,8 +21,10 @@ import { MIN_PASSWORD_LENGTH, cn, errorMessage } from '../lib/utils'
 import { useMediaQuery } from '../lib/useMediaQuery'
 import { CommandPalette } from './command-palette'
 import { PageContainer } from './layout-primitives'
+import { ThemePreferencePanel } from './theme-preference'
 import { NAV_GROUPS, PLAZA_APP_LINKS, SEARCH_LINKS, TAB_LINKS, currentPageLabel, filterNavGroups, filterNavLinks, isPathActive, linksForPaths } from './nav'
 import { useSession } from '../lib/session'
+import { useThemePreference } from '../lib/useThemePreference'
 import { ForceUpdateButton } from './PwaUpdate'
 import { Button, Dialog, Field, Input } from './ui'
 
@@ -286,13 +290,15 @@ function ProfileForm() {
   )
 }
 
+type SettingsTab = 'account' | 'appearance' | 'tabs'
+
 function SettingsDialog({
   tab,
   onTab,
   onClose,
 }: {
-  tab: 'account' | 'tabs'
-  onTab: (tab: 'account' | 'tabs') => void
+  tab: SettingsTab
+  onTab: (tab: SettingsTab) => void
   onClose: () => void
 }) {
   const { can } = useSession()
@@ -301,6 +307,7 @@ function SettingsDialog({
       <div className="mb-4 flex gap-1 rounded-lg border border-line p-1">
         {([
           ['account', '账号'],
+          ['appearance', '外观'],
           ['tabs', '底部 Tab'],
         ] as const).map(([id, label]) => (
           <button
@@ -316,7 +323,9 @@ function SettingsDialog({
           </button>
         ))}
       </div>
-      {tab === 'account' ? <ProfileForm /> : <TabEditor canManageDefault={can('nav_tabs:manage')} />}
+      {tab === 'account' ? <ProfileForm /> : null}
+      {tab === 'appearance' ? <ThemePreferencePanel /> : null}
+      {tab === 'tabs' ? <TabEditor canManageDefault={can('nav_tabs:manage')} /> : null}
     </Dialog>
   )
 }
@@ -324,7 +333,7 @@ function SettingsDialog({
 export function Layout() {
   const [open, setOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<'account' | 'tabs'>('account')
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('account')
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [drawerQuery, setDrawerQuery] = useState('')
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('pivot:sidebar-collapsed') === '1')
@@ -332,6 +341,7 @@ export function Layout() {
   const [density, setDensity] = useState<Density>(() =>
     localStorage.getItem('pivot:density') === 'compact' ? 'compact' : 'comfortable',
   )
+  const { theme, choose: chooseTheme } = useThemePreference()
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -547,7 +557,7 @@ export function Layout() {
             <button
               type="button"
               onClick={() => setCollapsed(true)}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-mist-soft transition hover:bg-white/5 hover:text-paper"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-mist-soft transition hover:bg-elevate hover:text-paper"
               aria-label="折叠侧栏"
               title="折叠侧栏"
             >
@@ -658,7 +668,7 @@ export function Layout() {
                             : 'lg:mx-0 lg:h-9 lg:w-auto lg:justify-start lg:px-2.5 lg:py-0',
                           isActive
                             ? 'bg-signal/15 text-signal ring-1 ring-inset ring-signal/25'
-                            : 'text-mist hover:bg-white/[0.06] hover:text-paper',
+                            : 'text-mist hover:bg-elevate hover:text-paper',
                         )
                       }
                     >
@@ -697,7 +707,7 @@ export function Layout() {
                   key={link.to}
                   to={link.to}
                   onClick={() => setOpen(false)}
-                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-mist transition-colors hover:bg-white/[0.06] hover:text-paper"
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-mist transition-colors hover:bg-elevate hover:text-paper"
                 >
                   <link.icon size={18} className="shrink-0" />
                   <span className="truncate">{link.label}</span>
@@ -712,13 +722,13 @@ export function Layout() {
 
         <div
           className={cn(
-            'flex shrink-0 items-center justify-between gap-1 border-t border-line bg-ink/40 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 md:flex-col md:items-center md:justify-center lg:border-t-0',
+            'flex shrink-0 items-center justify-between gap-1 border-t border-line bg-ink/40 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 md:flex-col md:items-center md:justify-center lg:gap-0 lg:border-t-0 lg:px-2',
             collapsed ? 'lg:flex-col lg:justify-center' : 'lg:flex-row lg:justify-between',
           )}
         >
           <Button
             variant="ghost"
-            className="h-10 w-10 shrink-0 justify-center p-0 text-mist"
+            className="h-10 w-10 shrink-0 justify-center p-0 text-mist lg:h-9 lg:w-9"
             onClick={() => {
               setSettingsTab('account')
               setSettingsOpen(true)
@@ -729,18 +739,27 @@ export function Layout() {
           >
             <Settings size={16} />
           </Button>
-          <ForceUpdateButton className="h-10 w-10 shrink-0 justify-center p-0 text-mist" title="强制更新">
+          <ForceUpdateButton className="h-10 w-10 shrink-0 justify-center p-0 text-mist lg:h-9 lg:w-9" title="强制更新">
             <span className="sr-only">强制更新</span>
           </ForceUpdateButton>
           <Button
             variant="ghost"
-            className="h-10 w-10 shrink-0 justify-center p-0 text-mist"
+            className="h-10 w-10 shrink-0 justify-center p-0 text-mist lg:h-9 lg:w-9"
             onClick={() => setDensity((value) => (value === 'compact' ? 'comfortable' : 'compact'))}
             title={density === 'compact' ? '密度：紧凑（点击切换舒适）' : '密度：舒适（点击切换紧凑）'}
             aria-label={density === 'compact' ? '切换为舒适密度' : '切换为紧凑密度'}
             aria-pressed={density === 'compact'}
           >
             <Rows3 size={16} />
+          </Button>
+          <Button
+            variant="ghost"
+            className="h-10 w-10 shrink-0 justify-center p-0 text-mist lg:h-9 lg:w-9"
+            onClick={() => chooseTheme(theme === 'dark' ? 'light' : 'dark')}
+            title={theme === 'dark' ? '主题：深色（点击切换浅色）' : '主题：浅色（点击切换深色）'}
+            aria-label={theme === 'dark' ? '切换为浅色主题' : '切换为深色主题'}
+          >
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </Button>
           <Button
             variant="ghost"
@@ -753,7 +772,7 @@ export function Layout() {
           </Button>
           <Button
             variant="ghost"
-            className="hidden h-10 w-10 shrink-0 justify-center p-0 text-mist md:inline-flex"
+            className="hidden h-10 w-10 shrink-0 justify-center p-0 text-mist md:inline-flex lg:h-9 lg:w-9"
             onClick={() => setCollapsed((value) => !value)}
             title={collapsed ? '展开侧栏' : '折叠侧栏'}
             aria-label={collapsed ? '展开侧栏' : '折叠侧栏'}
@@ -763,7 +782,7 @@ export function Layout() {
           </Button>
           <Button
             variant="ghost"
-            className="h-10 w-10 shrink-0 justify-center p-0 text-mist"
+            className="h-10 w-10 shrink-0 justify-center p-0 text-mist lg:h-9 lg:w-9"
             onClick={logout}
             title="退出登录"
             aria-label="退出登录"

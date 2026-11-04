@@ -116,7 +116,7 @@ function SessionRow({ item }: { item: LogItem }) {
     return <div className={cn(className, 'cursor-default')}>{body}</div>
   }
   return (
-    <Link to={`/logs/${item.id}`} className={cn(className, 'transition hover:bg-white/[0.03]')}>
+    <Link to={`/logs/${item.id}`} className={cn(className, 'transition hover:bg-elevate')}>
       {body}
     </Link>
   )
@@ -323,7 +323,7 @@ export function LogsPage() {
         {isPending && items.length === 0 ? (
           <div className="space-y-2">
             {Array.from({ length: 5 }).map((_, index) => (
-              <div key={index} className="h-16 animate-pulse rounded-xl bg-white/[0.04]" />
+              <div key={index} className="h-16 animate-pulse rounded-xl bg-elevate" />
             ))}
           </div>
         ) : null}
@@ -360,7 +360,7 @@ export function LogsPage() {
         <button
           type="button"
           onClick={scrollToTop}
-          className="fixed bottom-20 left-1/2 z-30 -translate-x-1/2 rounded-full bg-signal px-4 py-2 text-sm font-medium text-ink shadow-lg lg:bottom-8"
+          className="fixed bottom-20 left-1/2 z-30 -translate-x-1/2 rounded-full bg-signal px-4 py-2 text-sm font-medium text-on-signal shadow-lg lg:bottom-8"
         >
           <span className="inline-flex items-center gap-1">
             <ArrowUp size={14} />

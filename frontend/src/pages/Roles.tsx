@@ -147,7 +147,7 @@ export function RolesPage() {
                   <span
                     className={cn(
                       'grid h-9 w-9 shrink-0 place-items-center rounded-lg',
-                      role.builtin ? 'bg-signal/15 text-signal' : 'bg-white/5 text-mist',
+                      role.builtin ? 'bg-signal/15 text-signal' : 'bg-elevate text-mist',
                     )}
                   >
                     <ShieldCheck size={16} />
@@ -279,7 +279,7 @@ export function RolesPage() {
                       type="button"
                       className={cn(
                         'shrink-0 rounded-full px-2 py-0.5 text-xs transition',
-                        allSelected ? 'bg-signal/15 text-signal' : 'text-mist hover:bg-white/5 hover:text-paper',
+                        allSelected ? 'bg-signal/15 text-signal' : 'text-mist hover:bg-elevate hover:text-paper',
                       )}
                       onClick={() => toggleGroup(codes, !allSelected)}
                     >

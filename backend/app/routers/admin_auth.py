@@ -8,9 +8,19 @@ from app.crypto import hash_password, verify_password
 from app.db import get_db
 from app.deps import admin_role_view, create_access_token, get_current_admin
 from app.login_gate import LoginLocked, login_gate
-from app.models import Admin
+from app.models import Admin, AdminPreference
 from app.nav_tabs import clear_custom, resolve_for_admin, resolve_home, save_custom
-from app.schemas import AdminUpdateRequest, LoginRequest, LoginResponse, MeOut, MeRoleOut, NavTabsOut, NavTabsUpdate
+from app.schemas import (
+    AdminUpdateRequest,
+    LoginRequest,
+    LoginResponse,
+    MeOut,
+    MeRoleOut,
+    NavTabsOut,
+    NavTabsUpdate,
+    PreferencesOut,
+    PreferencesUpdate,
+)
 from app.services.client_meta import client_meta
 from app.services.security_audit import enqueue_login_event, record_auth_failure
 
@@ -135,3 +145,31 @@ def update_my_nav_tabs(
 def reset_my_nav_tabs(admin: Admin = Depends(get_current_admin), db: Session = Depends(get_db)) -> NavTabsOut:
     clear_custom(db, admin.id)
     return NavTabsOut(**resolve_for_admin(db, admin))
+
+def _preference(db: Session, admin: Admin, create: bool = False) -> AdminPreference | None:
+    row = db.scalar(select(AdminPreference).where(AdminPreference.admin_id == admin.id))
+    if row is None and create:
+        row = AdminPreference(admin_id=admin.id, theme="system")
+        db.add(row)
+    return row
+
+
+@router.get("/me/preferences", response_model=PreferencesOut)
+def my_preferences(admin: Admin = Depends(get_current_admin), db: Session = Depends(get_db)) -> PreferencesOut:
+    row = _preference(db, admin)
+    return PreferencesOut(theme=row.theme if row is not None else "system")
+
+
+@router.put("/me/preferences", response_model=PreferencesOut)
+def update_my_preferences(
+    payload: PreferencesUpdate,
+    admin: Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> PreferencesOut:
+    row = _preference(db, admin, create=True)
+    if row is None:
+        raise HTTPException(status_code=500, detail="偏好设置写入失败")
+    row.theme = payload.theme
+    row.updated_at = utcnow()
+    db.commit()
+    return PreferencesOut(theme=row.theme)

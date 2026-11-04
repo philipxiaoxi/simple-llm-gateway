@@ -147,7 +147,7 @@ export function McpPlazaCatalogPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {items.map((item) => {
           const to = item.admin_path || undefined
-          const className = "flex min-h-[11.5rem] flex-col border border-line bg-panel px-5 py-5 transition hover:-translate-y-0.5 hover:border-signal/70 hover:shadow-[0_0_0_1px_rgba(200,245,66,0.25)]"
+          const className = "flex min-h-[11.5rem] flex-col border border-line bg-panel px-5 py-5 transition hover:-translate-y-0.5 hover:border-signal/70 hover:shadow-glow"
           const category = item.category || '能力'
           const body = (
             <>

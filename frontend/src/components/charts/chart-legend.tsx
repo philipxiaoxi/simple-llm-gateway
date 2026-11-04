@@ -41,7 +41,7 @@ export function SeriesLegend({
                 title={item.name}
                 onClick={() => onToggle(item.name)}
                 className={cn(
-                  'inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-xs transition-colors hover:bg-white/5',
+                  'inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-xs transition-colors hover:bg-elevate',
                   visible ? 'text-mist-strong' : 'text-mist-soft/70',
                 )}
               >

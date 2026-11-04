@@ -41,7 +41,7 @@ const KIND_FILTERS = [
 
 const CHIP_CLASS =
   'inline-flex shrink-0 items-center gap-1 rounded-full border px-3 py-2 text-xs leading-5 transition'
-const CHIP_IDLE = 'border-line bg-white/[0.03] text-mist hover:border-mist/40 hover:text-paper'
+const CHIP_IDLE = 'border-line bg-elevate text-mist hover:border-mist/40 hover:text-paper'
 const CHIP_ACTIVE = 'border-signal/40 bg-signal/15 text-signal'
 
 type FeedEntry =
@@ -259,7 +259,7 @@ export function InfoFeedPage() {
           <Button type="button" variant="line" onClick={() => setProgressOpen(true)}>
             <ListChecks size={15} /> 判定进度
             {stats.data && stats.data.ai_pending > 0 ? (
-              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-signal px-1 text-[10px] font-semibold text-ink">
+              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-signal px-1 text-[10px] font-semibold text-on-signal">
                 {stats.data.ai_pending}
               </span>
             ) : stats.data && stats.data.ai_failed > 0 ? (
@@ -310,7 +310,7 @@ export function InfoFeedPage() {
           >
             <SlidersHorizontal size={13} /> 筛选
             {activeFilterCount ? (
-              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-signal px-1 text-[10px] font-semibold text-ink">
+              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-signal px-1 text-[10px] font-semibold text-on-signal">
                 {activeFilterCount}
               </span>
             ) : null}
@@ -765,30 +765,30 @@ function InfoCard({
           )}
 
           {isVideo && image ? (
-            <span className="pointer-events-none absolute left-1/2 top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-paper backdrop-blur-sm">
+            <span className="pointer-events-none absolute left-1/2 top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm">
               <Play size={16} className="translate-x-[1px] fill-current" />
             </span>
           ) : null}
 
           {duration && image ? (
-            <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded bg-black/65 px-1.5 py-0.5 text-[11px] text-paper">
+            <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded bg-black/65 px-1.5 py-0.5 text-[11px] text-white">
               {duration}
             </span>
           ) : null}
 
           {image && item.media_count > 1 && !isVideo ? (
-            <span className="pointer-events-none absolute right-1.5 top-1.5 rounded bg-black/65 px-1.5 py-0.5 text-[11px] text-paper">
+            <span className="pointer-events-none absolute right-1.5 top-1.5 rounded bg-black/65 px-1.5 py-0.5 text-[11px] text-white">
               1/{item.media_count}
             </span>
           ) : null}
 
           {item.is_featured || item.ai_score != null ? (
-            <span className="pointer-events-none absolute left-1.5 top-1.5 flex items-center gap-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-paper">
+            <span className="pointer-events-none absolute left-1.5 top-1.5 flex items-center gap-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white">
               {item.is_featured ? <Star size={11} className="fill-amber-300 text-amber-300" /> : null}
               {item.ai_score != null ? <span>{item.ai_score}</span> : null}
             </span>
           ) : !image ? (
-            <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-black/45 px-1.5 py-0.5 text-[10px] text-paper/80">
+            <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-black/45 px-1.5 py-0.5 text-[10px] text-white/80">
               文字
             </span>
           ) : null}
@@ -841,7 +841,7 @@ function InfoCard({
           aria-label={item.is_favorite ? '取消收藏' : '收藏'}
           aria-pressed={item.is_favorite}
           onClick={() => onToggleFavorite(item)}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-paper"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-elevate hover:text-paper"
         >
           <Heart size={15} className={cn(item.is_favorite && 'fill-signal text-signal')} />
         </button>

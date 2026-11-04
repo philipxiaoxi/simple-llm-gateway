@@ -34,7 +34,7 @@ function PageNumberButton({
       onClick={() => onPage(page)}
       className={cn(
         'inline-flex min-h-11 min-w-11 items-center justify-center rounded-md px-2 text-sm font-medium tabular-nums transition lg:min-h-9 lg:min-w-9',
-        active ? 'bg-signal text-ink' : 'border border-line bg-panel-2 text-paper hover:border-mist/40',
+        active ? 'bg-signal text-on-signal' : 'border border-line bg-panel-2 text-paper hover:border-mist/40',
       )}
     >
       {page}

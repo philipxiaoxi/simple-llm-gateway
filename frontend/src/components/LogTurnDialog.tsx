@@ -96,7 +96,7 @@ export function LogTurnDialog({
       <div
         role="dialog"
         aria-modal="true"
-        className={cn('relative flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line bg-ink shadow-2xl')}
+        className={cn('relative flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line bg-ink shadow-modal')}
       >
         <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
           <div className="min-w-0">

@@ -383,7 +383,7 @@ export function VoiceSendPage() {
       <header className="flex items-center gap-2 border-b border-line px-3 py-[max(0.6rem,env(safe-area-inset-top))]">
         <Link
           to="/voice/join"
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-mist hover:bg-white/5"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-mist hover:bg-elevate"
           aria-label="返回"
         >
           <ArrowLeft size={18} />

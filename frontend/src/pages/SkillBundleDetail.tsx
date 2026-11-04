@@ -371,7 +371,7 @@ function AddMembersDialog({
               <label
                 key={item.id}
                 htmlFor={`skill-candidate-${item.id}`}
-                className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 hover:bg-white/5"
+                className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 hover:bg-elevate"
               >
                 <input
                   id={`skill-candidate-${item.id}`}

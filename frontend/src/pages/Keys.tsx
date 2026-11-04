@@ -48,7 +48,7 @@ function MoreMenu({ children }: { children: ReactNode }) {
       {open ? (
         <div
           className={cn(
-            'absolute right-0 z-20 min-w-40 rounded-md border border-line bg-panel-2 p-1 shadow-[0_10px_30px_rgba(0,0,0,0.4)]',
+            'absolute right-0 z-20 min-w-40 rounded-md border border-line bg-panel-2 p-1 shadow-menu',
             upward ? 'bottom-full mb-1' : 'top-full mt-1',
           )}
         >
@@ -74,7 +74,7 @@ function MenuItem({
       onClick={onClick}
       className={cn(
         'block w-full rounded-md px-3 py-2 text-left text-sm transition',
-        danger ? 'bg-danger/15 text-danger hover:bg-danger/25' : 'text-paper hover:bg-white/5',
+        danger ? 'bg-danger/15 text-danger hover:bg-danger/25' : 'text-paper hover:bg-elevate',
       )}
     >
       {children}

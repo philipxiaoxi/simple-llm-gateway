@@ -60,14 +60,14 @@ function ImageLightbox({ url, alt, onClose }: { url: string; alt: string; onClos
         <a
           href={url}
           download
-          className="inline-flex h-9 items-center gap-1 rounded-md bg-white/10 px-3 text-xs text-white backdrop-blur transition hover:bg-white/20"
+          className="inline-flex h-9 items-center gap-1 rounded-md bg-elevate-strong px-3 text-xs text-white backdrop-blur transition hover:bg-track"
         >
           <Download size={14} /> 下载
         </a>
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex h-9 items-center rounded-md bg-white/10 px-3 text-xs text-white backdrop-blur transition hover:bg-white/20"
+          className="inline-flex h-9 items-center rounded-md bg-elevate-strong px-3 text-xs text-white backdrop-blur transition hover:bg-track"
         >
           关闭
         </button>
@@ -202,7 +202,7 @@ export function GenerationWorks({
           return (
             <div
               key={task.id}
-              className="group relative overflow-hidden rounded-xl border border-line bg-panel/70 transition hover:border-signal/50 hover:shadow-[0_8px_30px_rgba(0,0,0,0.35)]"
+              className="group relative overflow-hidden rounded-xl border border-line bg-panel/70 transition hover:border-signal/50 hover:shadow-hover"
             >
               <div className="relative aspect-square overflow-hidden bg-panel-2">
                 <WorkMedia task={task} onPreview={(url, alt) => setPreview({ url, alt })} />
@@ -211,7 +211,7 @@ export function GenerationWorks({
                 </div>
                 {active ? (
                   <div className="pointer-events-none absolute inset-x-0 bottom-0 space-y-1 bg-gradient-to-t from-black/70 to-transparent px-2.5 pb-2 pt-6">
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/20">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
                       <div className="h-full rounded-full bg-signal transition-all" style={{ width: `${Math.max(4, task.progress)}%` }} />
                     </div>
                     <div className="text-right text-[11px] text-white/85">{task.progress}%</div>
@@ -222,7 +222,7 @@ export function GenerationWorks({
               <button
                 type="button"
                 onClick={() => onSelect(task)}
-                className="block w-full space-y-1.5 p-2.5 text-left transition hover:bg-white/[0.04]"
+                className="block w-full space-y-1.5 p-2.5 text-left transition hover:bg-elevate"
               >
                 <div
                   className={cn(
