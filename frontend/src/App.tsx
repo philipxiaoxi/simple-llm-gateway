@@ -6,6 +6,8 @@ import { Layout } from './components/Layout'
 import { PwaUpdater } from './components/PwaUpdate'
 import { getToken } from './lib/api'
 import { RequirePerm, SessionProvider } from './lib/session'
+import { useTheme } from './lib/theme'
+import { ThemeSync } from './lib/useThemePreference'
 import { DashboardPage } from './pages/Dashboard'
 import { LoginPage } from './pages/Login'
 import type { ReactElement } from 'react'
@@ -179,11 +181,13 @@ function RouteFallback() {
 }
 
 export default function App() {
+  const theme = useTheme()
   return (
     <QueryClientProvider client={queryClient}>
       <PwaUpdater />
+      <ThemeSync />
       <Toaster
-        theme="dark"
+        theme={theme}
         position="top-center"
         richColors
         closeButton

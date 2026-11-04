@@ -111,7 +111,7 @@ export function ItemPickDialog({
           {filtered.map((item) => (
             <label
               key={item.id}
-              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 hover:bg-white/5"
+              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 hover:bg-elevate"
             >
               <input
                 type="checkbox"

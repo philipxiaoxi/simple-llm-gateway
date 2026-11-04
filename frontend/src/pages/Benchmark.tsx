@@ -30,7 +30,7 @@ function SpeedHint() {
       输出速度
       <button type="button" className="group relative inline-flex" aria-label="输出速度计算公式">
         <Info size={13} className="cursor-help text-mist group-hover:text-paper group-focus-visible:text-paper" />
-        <span className="pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-72 border border-line bg-panel-2 p-3 text-left text-[11px] leading-5 font-normal text-mist shadow-[0_12px_32px_rgba(0,0,0,0.45)] group-hover:block group-focus-visible:block">
+        <span className="pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-72 border border-line bg-panel-2 p-3 text-left text-[11px] leading-5 font-normal text-mist shadow-menu group-hover:block group-focus-visible:block">
           <span className="block font-mono text-paper">tok/s = completion_tokens ÷ ((总耗时 − 首 token) / 1000)</span>
           <span className="mt-1.5 block">分子取上游 usage 的 completion_tokens（含思考，不再另加 reasoning_tokens）。分母为首 token 之后的生成窗口。无 usage 时不显示速度。</span>
         </span>
@@ -387,7 +387,7 @@ export function BenchmarkPage() {
             </div>
           </div>
           {visibleTargets.length > 0 && completedCount > 0 && completedCount < visibleTargets.length ? (
-            <div className="mb-3 h-1 w-full overflow-hidden rounded-full bg-white/5">
+            <div className="mb-3 h-1 w-full overflow-hidden rounded-full bg-track">
               <div className="h-full bg-signal transition-all" style={{ width: `${(completedCount / visibleTargets.length) * 100}%` }} />
             </div>
           ) : null}

@@ -18,9 +18,9 @@ export function ListSkeleton({ rows = 6, card = true }: { rows?: number; card?: 
       <div className="grid gap-3 md:grid-cols-2 lg:hidden" aria-hidden="true">
         {Array.from({ length: rows }, (_, index) => (
           <Card key={index} className="space-y-3">
-            <div className="h-4 w-1/3 animate-pulse rounded bg-white/[0.06]" />
-            <div className="h-3 w-4/5 animate-pulse rounded bg-white/[0.05]" />
-            <div className="h-3 w-2/3 animate-pulse rounded bg-white/[0.05]" />
+            <div className="h-4 w-1/3 animate-pulse rounded bg-elevate" />
+            <div className="h-3 w-4/5 animate-pulse rounded bg-elevate" />
+            <div className="h-3 w-2/3 animate-pulse rounded bg-elevate" />
           </Card>
         ))}
       </div>
@@ -30,10 +30,10 @@ export function ListSkeleton({ rows = 6, card = true }: { rows?: number; card?: 
     <div className="hidden overflow-hidden rounded-xl border border-line lg:block" aria-hidden="true">
       {Array.from({ length: rows }, (_, index) => (
         <div key={index} className="flex gap-4 border-b border-line/60 px-3 py-3 last:border-0">
-          <div className="h-4 w-1/6 animate-pulse rounded bg-white/[0.06]" />
-          <div className="h-4 w-1/4 animate-pulse rounded bg-white/[0.05]" />
-          <div className="h-4 w-1/5 animate-pulse rounded bg-white/[0.05]" />
-          <div className="h-4 w-1/6 animate-pulse rounded bg-white/[0.04]" />
+          <div className="h-4 w-1/6 animate-pulse rounded bg-elevate" />
+          <div className="h-4 w-1/4 animate-pulse rounded bg-elevate" />
+          <div className="h-4 w-1/5 animate-pulse rounded bg-elevate" />
+          <div className="h-4 w-1/6 animate-pulse rounded bg-elevate" />
         </div>
       ))}
     </div>
@@ -119,7 +119,7 @@ export function DataView<T>({
                 key={keyOf(item)}
                 onClick={onRowClick ? () => onRowClick(item) : undefined}
                 className={cn(
-                  'border-t border-line align-top transition hover:bg-white/[0.03]',
+                  'border-t border-line align-top transition hover:bg-elevate',
                   onRowClick && 'cursor-pointer',
                 )}
               >

@@ -561,7 +561,7 @@ export function ToolsPage() {
                 </div>
               ) : null}
 
-              <div className="mt-auto flex items-center justify-between gap-3 rounded-md bg-white/[0.03] px-2.5 py-1.5 font-mono text-[11px] text-mist">
+              <div className="mt-auto flex items-center justify-between gap-3 rounded-md bg-elevate px-2.5 py-1.5 font-mono text-[11px] text-mist">
                 <span className="shrink-0">
                   {tool.file_size ? formatBytes(tool.file_size) : "尚未生成文件"}
                   {tool.version ? ` · v${tool.version}` : ""}

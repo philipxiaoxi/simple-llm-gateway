@@ -219,7 +219,7 @@ export function PublicInfoGate({
     <div className="page-enter relative w-full max-w-md">
       <GateBackdrop />
 
-      <div className="relative z-10 overflow-hidden rounded-[28px] border border-line/80 bg-panel/80 shadow-[0_40px_120px_-30px_rgba(0,0,0,0.95)] backdrop-blur-xl">
+      <div className="relative z-10 overflow-hidden rounded-[28px] border border-line/80 bg-panel/80 shadow-hero backdrop-blur-xl">
         <div className="h-px w-full bg-gradient-to-r from-transparent via-signal/70 to-transparent" />
         <div className="space-y-6 p-7 sm:p-9">
           <div className="flex items-center gap-2 font-mono text-[11px] tracking-[0.34em] text-signal/90">
@@ -227,7 +227,7 @@ export function PublicInfoGate({
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-signal/30 bg-gradient-to-br from-signal/25 via-signal/10 to-info/10 text-signal shadow-[0_0_30px_-8px_rgba(200,245,66,0.5)]">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-signal/30 bg-gradient-to-br from-signal/25 via-signal/10 to-info/10 text-signal shadow-glow-soft">
               <ShieldCheck size={27} />
             </div>
             <div className="min-w-0">
@@ -275,7 +275,7 @@ export function PublicInfoGate({
             <button
               type="submit"
               disabled={busy || !password.trim()}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-signal text-sm font-semibold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-signal text-sm font-semibold text-on-signal transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? (
                 '验证中…'
@@ -517,25 +517,25 @@ function PublicInfoCard({
           )}
 
           {isVideo && image ? (
-            <span className="pointer-events-none absolute left-1/2 top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-paper backdrop-blur-sm">
+            <span className="pointer-events-none absolute left-1/2 top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm">
               <Play size={16} className="translate-x-[1px] fill-current" />
             </span>
           ) : null}
 
           {duration && image ? (
-            <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded bg-black/65 px-1.5 py-0.5 text-[11px] text-paper">
+            <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded bg-black/65 px-1.5 py-0.5 text-[11px] text-white">
               {duration}
             </span>
           ) : null}
 
           {image && item.media_count > 1 && !isVideo ? (
-            <span className="pointer-events-none absolute right-1.5 top-1.5 rounded bg-black/65 px-1.5 py-0.5 text-[11px] text-paper">
+            <span className="pointer-events-none absolute right-1.5 top-1.5 rounded bg-black/65 px-1.5 py-0.5 text-[11px] text-white">
               1/{item.media_count}
             </span>
           ) : null}
 
           {item.is_featured || item.ai_score != null ? (
-            <span className="pointer-events-none absolute left-1.5 top-1.5 flex items-center gap-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-paper">
+            <span className="pointer-events-none absolute left-1.5 top-1.5 flex items-center gap-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white">
               {item.is_featured ? <Star size={11} className="fill-amber-300 text-amber-300" /> : null}
               {item.ai_score != null ? <span>{item.ai_score}</span> : null}
             </span>
@@ -608,7 +608,7 @@ export function PublicInfoItemPage() {
         <button
           type="button"
           onClick={close}
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-mist transition hover:bg-white/5 hover:text-paper"
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-mist transition hover:bg-elevate hover:text-paper"
         >
           <ArrowLeft size={17} /> 返回
         </button>
@@ -685,7 +685,7 @@ export function PublicInfoItemPage() {
                         type="button"
                         aria-label="上一项"
                         onClick={() => setIndex((value) => (value - 1 + media.length) % media.length)}
-                        className="absolute left-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-paper transition hover:bg-black/70"
+                        className="absolute left-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
                       >
                         <ChevronLeft size={18} />
                       </button>
@@ -693,11 +693,11 @@ export function PublicInfoItemPage() {
                         type="button"
                         aria-label="下一项"
                         onClick={() => setIndex((value) => (value + 1) % media.length)}
-                        className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-paper transition hover:bg-black/70"
+                        className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
                       >
                         <ChevronRight size={18} />
                       </button>
-                      <span className="pointer-events-none absolute right-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-[11px] text-paper">
+                      <span className="pointer-events-none absolute right-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-[11px] text-white">
                         {safeIndex + 1}/{media.length}
                       </span>
                     </>
@@ -717,7 +717,7 @@ export function PublicInfoItemPage() {
                         <span
                           className={cn(
                             'h-1.5 rounded-full transition-all',
-                            position === safeIndex ? 'w-5 bg-signal' : 'w-1.5 bg-white/25',
+                            position === safeIndex ? 'w-5 bg-signal' : 'w-1.5 bg-track-strong',
                           )}
                         />
                       </button>

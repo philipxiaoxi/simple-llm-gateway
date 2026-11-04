@@ -11,10 +11,10 @@ export type AccountColor = {
 const ACCOUNT_COLORS: AccountColor[] = [
   { border: 'border-signal/35', dot: 'bg-signal', text: 'text-signal', tint: 'bg-signal/5', hover: 'hover:bg-signal/15' },
   { border: 'border-info/35', dot: 'bg-info', text: 'text-info', tint: 'bg-info/5', hover: 'hover:bg-info/15' },
-  { border: 'border-[#a78bfa]/35', dot: 'bg-[#a78bfa]', text: 'text-[#a78bfa]', tint: 'bg-[#a78bfa]/5', hover: 'hover:bg-[#a78bfa]/15' },
-  { border: 'border-[#fb923c]/35', dot: 'bg-[#fb923c]', text: 'text-[#fb923c]', tint: 'bg-[#fb923c]/5', hover: 'hover:bg-[#fb923c]/15' },
-  { border: 'border-[#f472b6]/35', dot: 'bg-[#f472b6]', text: 'text-[#f472b6]', tint: 'bg-[#f472b6]/5', hover: 'hover:bg-[#f472b6]/15' },
-  { border: 'border-[#22d3ee]/35', dot: 'bg-[#22d3ee]', text: 'text-[#22d3ee]', tint: 'bg-[#22d3ee]/5', hover: 'hover:bg-[#22d3ee]/15' },
+  { border: 'border-accent-violet/35', dot: 'bg-accent-violet', text: 'text-accent-violet', tint: 'bg-accent-violet/5', hover: 'hover:bg-accent-violet/15' },
+  { border: 'border-accent-orange/35', dot: 'bg-accent-orange', text: 'text-accent-orange', tint: 'bg-accent-orange/5', hover: 'hover:bg-accent-orange/15' },
+  { border: 'border-accent-pink/35', dot: 'bg-accent-pink', text: 'text-accent-pink', tint: 'bg-accent-pink/5', hover: 'hover:bg-accent-pink/15' },
+  { border: 'border-accent-cyan/35', dot: 'bg-accent-cyan', text: 'text-accent-cyan', tint: 'bg-accent-cyan/5', hover: 'hover:bg-accent-cyan/15' },
 ]
 
 export function accountColor(index: number) {

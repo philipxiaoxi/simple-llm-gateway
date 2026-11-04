@@ -1313,3 +1313,21 @@ class SecuritySettingsUpdate(BaseModel):
     location_check_enabled: bool = True
     trusted_locations: list[SecurityLocationEntry] = Field(default_factory=list)
     ip_allowlist: list[str] = Field(default_factory=list)
+
+THEME_MODES = ("system", "light", "dark")
+
+class PreferencesOut(BaseModel):
+    theme: str
+
+class PreferencesUpdate(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    theme: str
+
+    @field_validator("theme")
+    @classmethod
+    def _valid_theme(cls, value: str) -> str:
+        normalized = (value or "").strip().lower()
+        if normalized not in THEME_MODES:
+            raise ValueError(f"theme 必须是 {'/'.join(THEME_MODES)} 之一")
+        return normalized

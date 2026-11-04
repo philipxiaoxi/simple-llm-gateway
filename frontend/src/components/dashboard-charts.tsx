@@ -6,10 +6,8 @@ import { EChart } from './charts/echart'
 import { SeriesLegend } from './charts/chart-legend'
 import {
   CHART_FONT_MONO,
-  CHART_PALETTE,
-  CHART_TEXT,
-  CHART_TOOLTIP_BASE,
   areaGradient,
+  chartTheme,
   categoryAxis,
   compactCount,
   dayLabel,
@@ -22,11 +20,13 @@ import {
   type ChartTooltipParam,
 } from '../lib/chart-theme'
 import type { DashboardStats } from '../lib/api'
+import { useTheme } from '../lib/theme'
 import { useMediaQuery } from '../lib/useMediaQuery'
 import { formatCount, formatTokenCount } from '../lib/utils'
 
 function paletteColor(index: number) {
-  return CHART_PALETTE[((index % CHART_PALETTE.length) + CHART_PALETTE.length) % CHART_PALETTE.length]
+  const palette = chartTheme().palette
+  return palette[((index % palette.length) + palette.length) % palette.length]
 }
 
 function peakDay(data: DashboardStats) {
@@ -43,7 +43,7 @@ function buildCallsOption(data: DashboardStats, hidden: ReadonlySet<string>): Ch
   return {
     grid: { left: 8, right: 12, top: 16, bottom: 8, containLabel: true },
     tooltip: {
-      ...CHART_TOOLTIP_BASE,
+      ...chartTheme().tooltipBase,
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
       formatter: (params: unknown) => {
@@ -105,9 +105,9 @@ function buildTokensOption(data: DashboardStats, hidden: ReadonlySet<string>): C
   return {
     grid: { left: 8, right: 12, top: 16, bottom: 8, containLabel: true },
     tooltip: {
-      ...CHART_TOOLTIP_BASE,
+      ...chartTheme().tooltipBase,
       trigger: 'axis',
-      axisPointer: { type: 'line', lineStyle: { color: '#3b4557', width: 1 } },
+      axisPointer: { type: 'line', lineStyle: { color: chartTheme().axisPointerLine, width: 1 } },
       formatter: (params: unknown) => {
         const rows = (Array.isArray(params) ? params : [params]) as ChartTooltipParam[]
         const day = data.daily[rows[0]?.dataIndex ?? 0]
@@ -147,7 +147,7 @@ function buildShareOption(data: DashboardStats, metric: ShareMetric, compact: bo
   return {
     grid: { left: 4, right: 60, top: 8, bottom: 8, containLabel: true },
     tooltip: {
-      ...CHART_TOOLTIP_BASE,
+      ...chartTheme().tooltipBase,
       trigger: 'item',
       formatter: (params: unknown) => {
         const param = (Array.isArray(params) ? params[0] : params) as ChartTooltipParam
@@ -167,7 +167,7 @@ function buildShareOption(data: DashboardStats, metric: ShareMetric, compact: bo
       axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: {
-        color: CHART_TEXT,
+        color: chartTheme().text,
         fontSize: 11,
         width: compact ? 96 : 150,
         overflow: 'truncate',
@@ -188,7 +188,7 @@ function buildShareOption(data: DashboardStats, metric: ShareMetric, compact: bo
         label: {
           show: true,
           position: 'right' as const,
-          color: CHART_TEXT,
+          color: chartTheme().text,
           fontSize: 11,
           fontFamily: CHART_FONT_MONO,
           formatter: (params: unknown) => {
@@ -209,7 +209,7 @@ function buildHourlyOption(data: DashboardStats): ChartOption {
   return {
     grid: { left: 8, right: 12, top: 16, bottom: 8, containLabel: true },
     tooltip: {
-      ...CHART_TOOLTIP_BASE,
+      ...chartTheme().tooltipBase,
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
       formatter: (params: unknown) => {
@@ -242,11 +242,10 @@ function buildHourlyOption(data: DashboardStats): ChartOption {
 
 function DailyCallsChart({ data }: { data: DashboardStats }) {
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set<string>())
-  const option = useMemo(() => buildCallsOption(data, hidden), [data, hidden])
-  const legendItems = useMemo(
-    () => data.models.map((item, index) => ({ name: item.model, color: paletteColor(index) })),
-    [data],
-  )
+  // 订阅主题：切换后重新渲染，图表配色从 CSS 变量重新读取
+  useTheme()
+  const option = buildCallsOption(data, hidden)
+  const legendItems = data.models.map((item, index) => ({ name: item.model, color: paletteColor(index) }))
   const toggle = useCallback((name: string) => {
     setHidden((previous) => {
       const next = new Set(previous)
@@ -287,14 +286,12 @@ function DailyCallsChart({ data }: { data: DashboardStats }) {
 
 function DailyTokensChart({ data }: { data: DashboardStats }) {
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set<string>())
-  const option = useMemo(() => buildTokensOption(data, hidden), [data, hidden])
-  const legendItems = useMemo(
-    () => [
-      { name: '输入 Token', color: paletteColor(1) },
-      { name: '输出 Token', color: paletteColor(0) },
-    ],
-    [],
-  )
+  useTheme()
+  const option = buildTokensOption(data, hidden)
+  const legendItems = [
+    { name: '输入 Token', color: paletteColor(1) },
+    { name: '输出 Token', color: paletteColor(0) },
+  ]
   const toggle = useCallback((name: string) => {
     setHidden((previous) => {
       const next = new Set(previous)
@@ -328,7 +325,8 @@ function DailyTokensChart({ data }: { data: DashboardStats }) {
 function ModelShareChart({ data, height }: { data: DashboardStats; height: number }) {
   const [metric, setMetric] = useState<ShareMetric>('requests')
   const isDesktop = useMediaQuery('(min-width: 1024px)')
-  const option = useMemo(() => buildShareOption(data, metric, !isDesktop), [data, metric, isDesktop])
+  useTheme()
+  const option = buildShareOption(data, metric, !isDesktop)
   const table = useMemo<ChartTable>(() => {
     const sorted = [...data.models].sort((a, b) => b.requests - a.requests)
     return {
@@ -362,7 +360,8 @@ function ModelShareChart({ data, height }: { data: DashboardStats; height: numbe
 }
 
 function HourlyChart({ data, height }: { data: DashboardStats; height: number }) {
-  const option = useMemo(() => buildHourlyOption(data), [data])
+  useTheme()
+  const option = buildHourlyOption(data)
   const peak = useMemo(() => {
     let best = { hour: 0, requests: 0 }
     for (const item of data.hourly) if (item.requests > best.requests) best = item
@@ -417,7 +416,7 @@ function AccountUsageChart({ data }: { data: DashboardStats }) {
                 </span>
               </div>
               <div className="mt-1.5 flex items-center gap-2">
-                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/5">
+                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-track">
                   <div
                     className="h-full rounded-full bg-info/70"
                     style={{ width: `${Math.max(2, Math.round(item.request_share * 100))}%` }}

@@ -1,15 +1,55 @@
 <!doctype html>
-<html lang="zh-CN" class="dark" style="background-color:#0b0d11;color-scheme:dark">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="color-scheme" content="dark" />
-    <meta name="supported-color-schemes" content="dark" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="supported-color-schemes" content="dark light" />
     <meta name="theme-color" content="#0b0d11" />
-    <meta name="theme-color" content="#0b0d11" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0b0d11" media="(prefers-color-scheme: dark)" />
+    <script>
+      /* 在首帧之前定好主题，避免浅色用户看到深色闪屏。
+         模式：system（跟随系统）/ light / dark；服务端偏好登录后由 ThemeSync 覆盖本地缓存。 */
+      ;(function () {
+        var mode = 'system'
+        try {
+          var saved = localStorage.getItem('pivot:theme-mode')
+          if (saved === 'light' || saved === 'dark' || saved === 'system') {
+            mode = saved
+          } else {
+            var legacy = localStorage.getItem('pivot:theme')
+            if (legacy === 'light' || legacy === 'dark') mode = legacy
+          }
+        } catch (error) {}
+        var prefersLight =
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-color-scheme: light)').matches
+        var theme = mode === 'system' ? (prefersLight ? 'light' : 'dark') : mode
+        var root = document.documentElement
+        root.setAttribute('data-theme', theme)
+        root.setAttribute('data-theme-mode', mode)
+        var meta = document.querySelector('meta[name="theme-color"]')
+        if (meta) meta.setAttribute('content', theme === 'light' ? '#eef2f8' : '#0b0d11')
+      })()
+    </script>
     <style>
-      :root { color-scheme: dark; background-color: #0b0d11; }
-      html, body { margin: 0; background-color: #0b0d11; color-scheme: dark; }
+      /* 首帧前置主题：默认深色；浅色由 html[data-theme="light"] 覆盖。
+         这段必须内联在 index.html，保证样式表加载前不会闪白/闪黑。 */
+      :root {
+        color-scheme: dark;
+        background-color: #0b0d11;
+      }
+      html[data-theme="light"] {
+        color-scheme: light;
+        background-color: #eef2f8;
+      }
+      html,
+      body {
+        margin: 0;
+        background-color: #0b0d11;
+      }
+      html[data-theme="light"],
+      html[data-theme="light"] body {
+        background-color: #eef2f8;
+      }
     </style>
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
@@ -33,11 +73,15 @@
       crossorigin
     />
     <style>
-      html,
-      body {
-        margin: 0;
-        background-color: #0b0d11;
-        color-scheme: dark;
+      :root {
+        --boot-bg: #0b0d11;
+        --boot-accent: #c8f542;
+        --boot-accent-dim: rgba(200, 245, 66, 0.2);
+      }
+      html[data-theme="light"] {
+        --boot-bg: #eef2f8;
+        --boot-accent: #4f7a10;
+        --boot-accent-dim: rgba(79, 122, 16, 0.2);
       }
       #boot-splash {
         position: fixed;
@@ -46,7 +90,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #0b0d11;
+        background: var(--boot-bg);
         transition: opacity 0.3s ease;
       }
       #boot-splash.boot-splash-hide {
@@ -63,13 +107,13 @@
         font-family: "IBM Plex Mono", ui-monospace, monospace;
         font-size: 14px;
         letter-spacing: 0.28em;
-        color: #c8f542;
+        color: var(--boot-accent);
       }
       .boot-spinner {
         width: 28px;
         height: 28px;
-        border: 3px solid rgba(200, 245, 66, 0.2);
-        border-top-color: #c8f542;
+        border: 3px solid var(--boot-accent-dim);
+        border-top-color: var(--boot-accent);
         border-radius: 50%;
         animation: boot-spin 0.8s linear infinite;
       }
@@ -80,7 +124,7 @@
       }
     </style>
   </head>
-  <body style="background-color:#0b0d11;color-scheme:dark">
+  <body>
     <div id="boot-splash" aria-hidden="true">
       <div class="boot-splash-inner">
         <div class="boot-logo">AI一体化服务平台</div>

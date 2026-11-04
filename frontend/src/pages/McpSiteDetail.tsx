@@ -443,7 +443,7 @@ function VersionRow({
             {version.is_current ? (
               <span className="rounded-full bg-signal/15 px-2 py-0.5 text-xs text-signal">当前版本</span>
             ) : null}
-            {version.purged ? <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-mist">文件已清理</span> : null}
+            {version.purged ? <span className="rounded-full bg-elevate px-2 py-0.5 text-xs text-mist">文件已清理</span> : null}
           </div>
           <div className="mt-1 break-words text-xs text-mist [overflow-wrap:anywhere]">
             {version.source_name} · {version.file_count} 文件 · {formatBytes(version.total_bytes)} · 入口 {version.entry_file}

@@ -118,7 +118,7 @@ export function LogTrajectory({
                   <button
                     type="button"
                     onClick={() => onPreviewTurn(turn.anchor_seq, turn.to_seq, turn.index)}
-                    className="flex w-full items-start gap-3 rounded-xl border border-line bg-panel/60 p-3 text-left transition hover:border-mist/40 hover:bg-white/[0.03]"
+                    className="flex w-full items-start gap-3 rounded-xl border border-line bg-panel/60 p-3 text-left transition hover:border-mist/40 hover:bg-elevate"
                   >
                     <Badge tone="mist">{turn.index != null ? `第 ${turn.index} 轮` : '上下文'}</Badge>
                     <div className="min-w-0 flex-1">

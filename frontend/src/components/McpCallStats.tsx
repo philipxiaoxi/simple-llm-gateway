@@ -2,9 +2,8 @@ import { lazy, Suspense, useMemo, useState } from 'react'
 
 import { ChartCard, ChartEmpty, ChartTabs, type ChartTable } from './charts/chart-card'
 import {
-  CHART_PALETTE,
-  CHART_TOOLTIP_BASE,
   categoryAxis,
+  chartTheme,
   compactCount,
   tooltipHtml,
   valueAxis,
@@ -12,6 +11,7 @@ import {
   type ChartTooltipParam,
 } from '../lib/chart-theme'
 import type { McpCallStats, McpCallStatsBucket } from '../lib/api'
+import { useTheme } from '../lib/theme'
 import { formatCount } from '../lib/utils'
 
 const EChart = lazy(() => import('./charts/echart').then((module) => ({ default: module.EChart })))
@@ -45,10 +45,10 @@ function tableOf(items: McpCallStatsBucket[], label: string): ChartTable {
 
 function barOption(items: McpCallStatsBucket[]): ChartOption {
   return {
-    color: [CHART_PALETTE[0], CHART_PALETTE[11]],
+    color: [chartTheme().palette[0], chartTheme().palette[11]],
     grid: { left: 8, right: 12, top: 16, bottom: 8, containLabel: true },
     tooltip: {
-      ...CHART_TOOLTIP_BASE,
+      ...chartTheme().tooltipBase,
       trigger: 'axis',
       formatter: (params) => {
         const rows = (Array.isArray(params) ? params : [params]) as ChartTooltipParam[]
@@ -81,7 +81,7 @@ function barOption(items: McpCallStatsBucket[]): ChartOption {
 
 function ChartBody({ option, label }: { option: ChartOption; label: string }) {
   return (
-    <Suspense fallback={<div className="h-[220px] animate-pulse rounded-lg bg-white/[0.03]" />}>
+    <Suspense fallback={<div className="h-[220px] animate-pulse rounded-lg bg-elevate" />}>
       <EChart option={option} ariaLabel={label} className="h-[220px]" />
     </Suspense>
   )
@@ -89,10 +89,10 @@ function ChartBody({ option, label }: { option: ChartOption; label: string }) {
 
 function lineOption(items: McpCallStatsBucket[]): ChartOption {
   return {
-    color: [CHART_PALETTE[0], CHART_PALETTE[11]],
+    color: [chartTheme().palette[0], chartTheme().palette[11]],
     grid: { left: 8, right: 12, top: 16, bottom: 8, containLabel: true },
     tooltip: {
-      ...CHART_TOOLTIP_BASE,
+      ...chartTheme().tooltipBase,
       trigger: 'axis',
       formatter: (params) => {
         const rows = (Array.isArray(params) ? params : [params]) as ChartTooltipParam[]
@@ -126,6 +126,8 @@ export function McpCallStatsPanel({
   onDays: (days: number) => void
   loading: boolean
 }) {
+  // 订阅主题变化，切换后图表配色重新计算
+  useTheme()
   const [breakdown, setBreakdown] = useState<'capability' | 'operation' | 'key'>('capability')
   const breakdownItems = useMemo(() => {
     if (!stats) return []

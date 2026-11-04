@@ -40,7 +40,7 @@ function Splash({ closing }: { closing: boolean }) {
           </p>
         </div>
 
-        <div className="h-[3px] w-44 overflow-hidden rounded-full bg-white/[0.06]">
+        <div className="h-[3px] w-44 overflow-hidden rounded-full bg-elevate">
           <div className="douyin-splash-sweep h-full w-1/3 rounded-full bg-gradient-to-r from-transparent via-signal to-transparent" />
         </div>
       </div>

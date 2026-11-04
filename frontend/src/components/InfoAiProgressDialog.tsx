@@ -161,7 +161,7 @@ export function InfoAiProgressDialog({ open, onClose }: { open: boolean; onClose
                 'inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs transition',
                 tab === item.key
                   ? 'border-signal/40 bg-signal/15 text-signal'
-                  : 'border-line bg-white/[0.03] text-mist hover:text-paper',
+                  : 'border-line bg-elevate text-mist hover:text-paper',
               )}
             >
               {item.label}
@@ -250,7 +250,7 @@ function ProgressRow({
   const text = item.excerpt || item.text || '（无正文）'
   const canSkip = allowSkip && (item.ai_status === 'failed' || item.ai_status === 'pending')
   return (
-    <div className="flex items-start gap-2 border-b border-line/70 px-3 py-2.5 transition last:border-0 hover:bg-white/[0.03]">
+    <div className="flex items-start gap-2 border-b border-line/70 px-3 py-2.5 transition last:border-0 hover:bg-elevate">
       <Link
         to={`/info/${item.id}${search}`}
         onClick={onOpen}
@@ -278,7 +278,7 @@ function ProgressRow({
             title="跳过（不再判定）"
             disabled={busy}
             onClick={() => onSkip(item.id)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-mist transition hover:bg-white/5 hover:text-paper disabled:opacity-40"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-mist transition hover:bg-elevate hover:text-paper disabled:opacity-40"
           >
             <SkipForward size={14} />
           </button>

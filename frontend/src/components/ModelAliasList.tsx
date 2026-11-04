@@ -64,7 +64,7 @@ export function ModelAliasList({
               const targetMissing = !models.includes(item.model)
               const isRenaming = renamingAlias === item.alias
               return (
-                <tr key={item.alias} className="border-t border-line hover:bg-white/5">
+                <tr key={item.alias} className="border-t border-line hover:bg-elevate">
                   <td className="max-w-44 truncate px-3 py-2 font-mono text-sm text-paper" title={item.alias}>
                     {isRenaming ? (
                       <Input

@@ -104,7 +104,7 @@ function CacheCard({
               {row.title}
             </span>
             {badge ? (
-              <span className="shrink-0 rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-mist">{badge}</span>
+              <span className="shrink-0 rounded bg-elevate px-1.5 py-0.5 font-mono text-[10px] text-mist">{badge}</span>
             ) : null}
           </div>
           {showFilename ? (
@@ -119,7 +119,7 @@ function CacheCard({
 
       {active ? (
         <div className="space-y-1.5">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
             <div
               className="h-full rounded-full bg-signal transition-all"
               style={{ width: `${Math.max(4, row.percent)}%` }}
@@ -280,7 +280,7 @@ export function OfflineTool({ base }: { base: string }) {
                 'inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition',
                 selected
                   ? 'border-signal/40 bg-signal/15 text-signal'
-                  : 'border-line bg-white/[0.03] text-mist hover:border-mist/40 hover:text-paper',
+                  : 'border-line bg-elevate text-mist hover:border-mist/40 hover:text-paper',
               )}
             >
               <Icon size={14} />

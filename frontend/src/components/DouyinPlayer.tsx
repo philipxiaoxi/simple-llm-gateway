@@ -160,9 +160,9 @@ export function DouyinPlayer({ src, poster, autoPlay = false, className }: Props
         <button
           type="button"
           onClick={enableSound}
-          className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full border border-white/15 bg-black/60 px-3 py-1 text-xs font-medium text-paper backdrop-blur-md transition hover:border-signal/60 hover:text-signal"
+          className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full border border-white/15 bg-black/60 px-3 py-1 text-xs font-medium text-white backdrop-blur-md transition hover:border-white/40 hover:text-white"
         >
-          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-signal" />
+          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
           点击开启声音
         </button>
       ) : null}

@@ -33,14 +33,14 @@ export function Switch({
         'inline-flex min-h-9 shrink-0 items-center gap-2 rounded-full border px-2 py-1 text-[11px] font-medium transition md:min-h-7',
         checked
           ? 'border-signal/35 bg-signal/10 text-signal hover:bg-signal/15'
-          : 'border-line bg-white/[0.03] text-mist hover:border-mist/40 hover:text-paper',
+          : 'border-line bg-elevate text-mist hover:border-mist/40 hover:text-paper',
         disabled && 'cursor-not-allowed opacity-40',
       )}
     >
       <span
         className={cn(
           'relative inline-flex h-4 w-7 items-center rounded-full p-0.5 transition-colors',
-          checked ? 'justify-end bg-signal' : 'justify-start bg-white/20',
+          checked ? 'justify-end bg-signal' : 'justify-start bg-track',
         )}
       >
         <span className="h-3 w-3 rounded-full bg-white shadow-sm" />
@@ -59,8 +59,8 @@ export function Button({
     <button
       className={cn(
         'inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition disabled:opacity-40 md:min-h-9',
-        variant === 'primary' && 'bg-signal text-ink hover:brightness-110',
-        variant === 'ghost' && 'bg-transparent text-paper hover:bg-white/5',
+        variant === 'primary' && 'bg-signal text-on-signal hover:brightness-110',
+        variant === 'ghost' && 'bg-transparent text-paper hover:bg-elevate',
         variant === 'danger' && 'bg-danger/15 text-danger hover:bg-danger/25',
         variant === 'line' && 'border border-line bg-panel-2 text-paper hover:border-mist/40',
         className,
@@ -83,7 +83,7 @@ export function Input({ className, ...props }: ComponentPropsWithRef<'input'>) {
 }
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('card-pad rounded-xl border border-line bg-panel/90 shadow-[0_10px_40px_rgba(0,0,0,0.25)]', className)}>{children}</div>
+  return <div className={cn('card-pad rounded-xl border border-line bg-panel/90 shadow-card', className)}>{children}</div>
 }
 
 export function Badge({
@@ -101,7 +101,7 @@ export function Badge({
     ok: 'bg-signal/15 text-signal',
     bad: 'bg-danger/15 text-danger',
     warn: 'bg-warn/15 text-warn',
-    mist: 'bg-white/5 text-mist',
+    mist: 'bg-elevate text-mist',
     info: 'bg-info/15 text-info',
   }
   return (
@@ -252,9 +252,9 @@ export function Sheet({
           mobileFull
             ? 'h-[100dvh] max-h-[100dvh] rounded-none border-0 pt-[env(safe-area-inset-top)] lg:pt-0'
             : 'rounded-t-2xl border-t',
-          'pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-20px_60px_rgba(0,0,0,0.45)]',
+          'pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-sheet',
           // 桌面：居中弹窗
-          'lg:my-[12vh] lg:max-h-[min(84dvh,56rem)] lg:rounded-xl lg:border lg:pb-0 lg:shadow-[0_20px_60px_rgba(0,0,0,0.45)]',
+          'lg:my-[12vh] lg:max-h-[min(84dvh,56rem)] lg:rounded-xl lg:border lg:pb-0 lg:shadow-floating',
           size,
           className,
         )}
@@ -329,7 +329,7 @@ export function IconButton({
       aria-label={label}
       title={label}
       className={cn(
-        'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-mist transition hover:bg-white/5 hover:text-paper disabled:opacity-40 md:h-9 md:w-9',
+        'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-mist transition hover:bg-elevate hover:text-paper disabled:opacity-40 md:h-9 md:w-9',
         className,
       )}
       {...props}

@@ -40,7 +40,7 @@ function deviceLabel(userAgent: string) {
 function StatCard({ icon, label, value }: { icon: ReactNode; label: string; value: string | number }) {
   return (
     <div className="flex items-center gap-2.5 bg-panel px-4 py-3">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-signal">{icon}</span>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-elevate text-signal">{icon}</span>
       <div className="min-w-0">
         <div className="truncate text-sm font-semibold text-paper">{value}</div>
         <div className="text-[11px] text-mist">{label}</div>
@@ -127,7 +127,7 @@ export function InfoPublicSessionsDialog({
 
   return createPortal(
     <div className="safe-area-modal fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/70 backdrop-blur-sm">
-      <div className="my-[8vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-line bg-panel shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9)]">
+      <div className="my-[8vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-line bg-panel shadow-hero">
         <div className="relative border-b border-line px-5 py-4">
           <div
             aria-hidden

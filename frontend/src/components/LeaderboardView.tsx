@@ -177,7 +177,7 @@ export function LeaderboardView({
             </thead>
             <tbody>
               {filtered.map((item) => (
-                <tr key={item.slug} className="border-t border-line hover:bg-white/5">
+                <tr key={item.slug} className="border-t border-line hover:bg-elevate">
                   <td className={`${COL_NARROW} font-mono text-mist`}>{String(item.rank ?? '—').padStart(2, '0')}</td>
                   <td className="min-w-36 max-w-[220px] px-3 py-2">
                     <div className="truncate font-medium" title={item.name}>

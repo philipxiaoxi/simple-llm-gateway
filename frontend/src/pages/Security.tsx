@@ -157,7 +157,7 @@ function EventRow({
       onClick={canOpen ? () => onOpen(item.id) : undefined}
       className={cn(
         'block w-full px-4 py-3 text-left transition',
-        canOpen ? 'cursor-pointer hover:bg-white/[0.03]' : 'cursor-default',
+        canOpen ? 'cursor-pointer hover:bg-elevate' : 'cursor-default',
       )}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -690,7 +690,7 @@ export function SecurityPage() {
               'shrink-0 cursor-pointer whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition',
               tab === item.key
                 ? 'border-signal/40 bg-signal/10 text-signal'
-                : 'border-line bg-white/[0.02] text-mist hover:text-paper',
+                : 'border-line bg-elevate text-mist hover:text-paper',
             )}
           >
             {item.label}
@@ -748,7 +748,7 @@ export function SecurityPage() {
                     'cursor-pointer rounded-full border px-2.5 py-1 text-xs transition',
                     active
                       ? 'border-signal/40 bg-signal/10 text-signal'
-                      : 'border-line bg-white/[0.02] text-mist hover:text-paper',
+                      : 'border-line bg-elevate text-mist hover:text-paper',
                   )}
                 >
                   {tagLabel(tag)}
@@ -766,7 +766,7 @@ export function SecurityPage() {
         {events.isPending && items.length === 0 ? (
           <div className="space-y-2 p-4">
             {Array.from({ length: 5 }).map((_, index) => (
-              <div key={index} className="h-14 animate-pulse rounded-lg bg-white/[0.04]" />
+              <div key={index} className="h-14 animate-pulse rounded-lg bg-elevate" />
             ))}
           </div>
         ) : null}
