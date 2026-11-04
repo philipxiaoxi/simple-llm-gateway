@@ -17,6 +17,32 @@ const listeners = new Set<() => void>()
 let mode: ThemeMode | null = null
 let resolved: Theme | null = null
 
+/**
+ * 首帧脚本只能按本地缓存猜主题，登录后服务端偏好可能覆盖它。
+ * 启动画面要等偏好落地后再淡出，避免「浅色闪一下再变深色」。
+ */
+const themeReadyWaiters: Array<() => void> = []
+let themeReady = false
+
+export function markThemeReady() {
+  if (themeReady) return
+  themeReady = true
+  themeReadyWaiters.splice(0).forEach((resolve) => resolve())
+}
+
+/** 主题已确定（或等待超时）时 resolve，供启动画面延迟淡出使用。 */
+export function whenThemeReady(timeoutMs = 900): Promise<void> {
+  if (themeReady) return Promise.resolve()
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer)
+      resolve()
+    }
+    const timer = setTimeout(() => markThemeReady(), timeoutMs)
+    themeReadyWaiters.push(done)
+  })
+}
+
 function normalizeMode(value: string | null | undefined): ThemeMode {
   return value === 'light' || value === 'dark' ? value : 'system'
 }
