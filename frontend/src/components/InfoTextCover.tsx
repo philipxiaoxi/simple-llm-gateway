@@ -60,7 +60,7 @@ export function InfoTextCover({
         {excerpt ? (
           <p
             className={cn(
-              'line-clamp-4 text-balance font-medium leading-snug text-paper/95',
+              'line-clamp-4 text-balance font-medium leading-snug text-white/95',
               compact ? 'text-[13px]' : 'text-[15px]',
             )}
           >
@@ -87,7 +87,7 @@ export function InfoTextCover({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-center gap-1.5 px-3 pb-2.5 pt-1 text-[11px] text-paper/55">
+      <div className="flex items-center justify-center gap-1.5 px-3 pb-2.5 pt-1 text-[11px] text-white/60">
         <span className="min-w-0 truncate">{channel}</span>
         {time ? <span className="shrink-0">· {time}</span> : null}
       </div>

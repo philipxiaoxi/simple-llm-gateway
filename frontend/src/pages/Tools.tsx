@@ -517,15 +517,15 @@ export function ToolsPage() {
           </Field>
         </Card>
       </div>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {items.map((tool) => {
           const downloading = tool.status === "downloading";
           return (
             <Card
               key={tool.id}
-              className="flex flex-col gap-3 transition-colors hover:border-mist/40"
+              className="flex min-w-0 flex-col gap-3 transition-colors hover:border-mist/40"
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2
                     className="truncate text-lg font-semibold leading-6"
@@ -548,7 +548,7 @@ export function ToolsPage() {
                 </Badge>
               </div>
 
-              <p className="line-clamp-2 min-h-10 text-sm leading-5 text-mist">
+              <p className="line-clamp-2 min-h-10 break-words text-sm leading-5 text-mist">
                 {tool.description || "暂无描述"}
               </p>
 
@@ -561,12 +561,12 @@ export function ToolsPage() {
                 </div>
               ) : null}
 
-              <div className="mt-auto flex items-center justify-between gap-3 rounded-md bg-elevate px-2.5 py-1.5 font-mono text-[11px] text-mist">
+              <div className="mt-auto flex min-w-0 items-center justify-between gap-3 rounded-md bg-elevate px-2.5 py-1.5 font-mono text-[11px] text-mist">
                 <span className="shrink-0">
                   {tool.file_size ? formatBytes(tool.file_size) : "尚未生成文件"}
                   {tool.version ? ` · v${tool.version}` : ""}
                 </span>
-                <span className="truncate" title={tool.script_name}>
+                <span className="min-w-0 truncate" title={tool.script_name}>
                   {tool.script_name}
                 </span>
               </div>
@@ -581,7 +581,7 @@ export function ToolsPage() {
                     onClick={() => setEdit(tool)}
                   >
                     <FileCode2 size={16} className="shrink-0" />
-                    <span className="truncate">编辑</span>
+                    <span className="min-w-0 truncate">编辑</span>
                   </Button>
 ) : null}
                   {downloading ? (
@@ -592,7 +592,7 @@ export function ToolsPage() {
                       onClick={() => stopDownload.mutate(tool.id)}
                     >
                       <Square size={16} className="shrink-0" />
-                      <span className="truncate">停止</span>
+                      <span className="min-w-0 truncate">停止</span>
                     </Button>
                   ) : canRun ? (
                     <Button
@@ -604,7 +604,7 @@ export function ToolsPage() {
                       }}
                     >
                       <HardDriveDownload size={16} className="shrink-0" />
-                      <span className="truncate">
+                      <span className="min-w-0 truncate">
                         {tool.status === "downloaded" ? "更新缓存" : "下载缓存"}
                       </span>
                     </Button>
@@ -617,7 +617,7 @@ export function ToolsPage() {
                     onClick={() => void download(tool)}
                   >
                     <Download size={16} className="shrink-0" />
-                    <span className="truncate">下载</span>
+                    <span className="min-w-0 truncate">下载</span>
                   </Button>
 {canDelete ? (
                   <Button

@@ -19,7 +19,7 @@ export function OfflinePage() {
   }
 
   return (
-    <div className="page-enter mx-auto w-full max-w-[1080px] space-y-5 px-4 pt-6 pb-[max(3rem,calc(env(safe-area-inset-bottom)+2rem))]">
+    <div className="page-enter mx-auto w-full max-w-[1080px] min-w-0 space-y-5">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <div className="font-mono text-xs tracking-[0.28em] text-signal">OFFLINE TOOLKIT</div>
