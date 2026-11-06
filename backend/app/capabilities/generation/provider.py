@@ -149,7 +149,7 @@ class GenerationProvider:
                     "summary": "按 Key 配置的视频模型生成视频",
                     "content_type": "application/json",
                 },
-                {"method": "POST", "path": "/v1/capabilities/generation/generation_job", "summary": "查询/推进生成任务"},
+                {"method": "POST", "path": "/v1/capabilities/generation/generation_job", "summary": "查询生成任务（默认不等待）"},
                 {"method": "POST", "path": "/v1/capabilities/generation/generation_result", "summary": "读取任务结果与下载地址"},
                 {"method": "POST", "path": "/v1/capabilities/generation/generation_list", "summary": "列出当前 Key 的生成任务"},
             ],
@@ -157,8 +157,9 @@ class GenerationProvider:
                 "模型不通过接口传入：请在管理端「MCP 广场 → 服务目录 → 图片 / 视频生成」中为该能力选定图片 / 视频模型。",
                 f"{_PARAM_NOTE}",
                 f"{_MEDIA_NOTE}",
-                "提交后返回 job_id 与状态；可在等待窗口内直接返回结果，未完成时用 generation_job 轮询。",
-                "download_url 为带网关根地址的绝对地址，按 Key 令牌可匿名下载；结果也会转存到平台本地。",
+                "提交后立即返回 job_id 与初始状态，后台负责提交、轮询和结果转存。",
+                "传 wait_seconds 可让本次调用在服务端等待推进（默认 0，立即返回），未完成时继续用 generation_job 轮询。",
+                "结果转存完成前结果带 remote_url；转存完成后提供 download_url（带网关根地址的绝对地址，按 Key 令牌可匿名下载）。",
             ],
         },
     )
@@ -167,7 +168,7 @@ class GenerationProvider:
         return [
             McpToolDef(
                 name="image_generate",
-                description="按当前 Key 配置的图片模型生成图片。",
+                description="按当前 Key 配置的图片模型生成图片；立即返回 job_id，用 generation_job 查询进度与结果。",
                 input_schema={
                     "type": "object",
                     "properties": {
@@ -183,7 +184,7 @@ class GenerationProvider:
                         },
                         "wait_seconds": {
                             "type": "integer",
-                            "description": "内联等待完成的秒数上限；超时返回进行中的 job，可用 generation_job 继续轮询",
+                            "description": "可选，服务端内联等待完成的秒数上限；默认 0，立即返回 job_id",
                         },
                     },
                     "required": ["prompt"],
@@ -193,7 +194,7 @@ class GenerationProvider:
             ),
             McpToolDef(
                 name="video_generate",
-                description="按当前 Key 配置的视频模型生成视频。",
+                description="按当前 Key 配置的视频模型生成视频；立即返回 job_id，用 generation_job 查询进度与结果。",
                 input_schema={
                     "type": "object",
                     "properties": {
@@ -215,7 +216,7 @@ class GenerationProvider:
                             "items": _MEDIA_ITEM,
                             "description": "参考音频列表，最多 3 个",
                         },
-                        "wait_seconds": {"type": "integer", "description": "内联等待完成的秒数上限"},
+                        "wait_seconds": {"type": "integer", "description": "可选，服务端内联等待完成的秒数上限；默认 0，立即返回"},
                     },
                     "required": ["prompt"],
                 },
@@ -224,12 +225,12 @@ class GenerationProvider:
             ),
             McpToolDef(
                 name="generation_job",
-                description="查询或推进生成任务；未完成时会在等待窗口内继续轮询。",
+                description="查询生成任务；默认立即返回，传 wait_seconds 可在服务端等待推进。",
                 input_schema={
                     "type": "object",
                     "properties": {
                         "job_id": {"type": "string", "description": "image_generate / video_generate 返回的 job_id（必填）"},
-                        "wait_seconds": {"type": "integer", "description": "本次最多等待推进的秒数"},
+                        "wait_seconds": {"type": "integer", "description": "可选，本次最多等待推进的秒数；默认 0，立即返回"},
                     },
                     "required": ["job_id"],
                 },
@@ -326,7 +327,8 @@ class GenerationProvider:
             storage.purge_task(task.id)
             raise
         wait = self._wait_seconds(payload.get("wait_seconds"))
-        await asyncio.to_thread(service.run_task_inline, task.id, wait)
+        if wait > 0:
+            await asyncio.to_thread(service.run_task_inline, task.id, wait)
         return await asyncio.to_thread(self._payload, ctx, task.id)
 
     def _resolve_target(
@@ -365,12 +367,11 @@ class GenerationProvider:
 
     @staticmethod
     def _wait_seconds(value: Any) -> int:
-        if value is None:
-            return get_settings().generation_mcp_max_wait_seconds
+        """默认 0：提交后立即返回，任务交给后台循环推进；显式传值才内联等待。"""
         try:
             return max(0, min(int(value), 600))
         except (TypeError, ValueError):
-            return get_settings().generation_mcp_max_wait_seconds
+            return 0
 
     @staticmethod
     def _load_source(item: Any, max_bytes: int) -> tuple[bytes, str]:
@@ -402,8 +403,9 @@ class GenerationProvider:
             raise CapabilityError("任务不存在", status_code=404, error_type="not_found")
         if task.status not in {"succeeded", "failed", "violation"}:
             wait = self._wait_seconds(payload.get("wait_seconds"))
-            ctx.db.commit()
-            await asyncio.to_thread(service.run_task_inline, task_id, wait)
+            if wait > 0:
+                ctx.db.commit()
+                await asyncio.to_thread(service.run_task_inline, task_id, wait)
         return await asyncio.to_thread(self._payload, ctx, task_id)
 
     def _result(self, ctx: CallContext, payload: dict[str, Any]) -> dict[str, Any]:

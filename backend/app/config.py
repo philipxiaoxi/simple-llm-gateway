@@ -241,7 +241,7 @@ class Settings(BaseSettings):
     # 作品与参考文件落盘目录，留空时与数据库同级（data/generation）
     generation_media_path: str = ""
     # 后台轮询/转存循环间隔
-    generation_tick_seconds: int = 5
+    generation_tick_seconds: int = 2
     # 单个参考文件大小上限
     generation_max_input_bytes: int = 30 * 1024 * 1024
     # 单个生成结果文件大小上限
@@ -252,8 +252,6 @@ class Settings(BaseSettings):
     generation_http_timeout_seconds: int = 60
     # 作品与参考文件地址的签名令牌有效期
     generation_token_ttl_seconds: int = 43200
-    # MCP 生成能力提交后内联等待完成的秒数上限
-    generation_mcp_max_wait_seconds: int = 60
     # ---- 安全中心（登录审计 / 异常请求标记 / 前端埋点）----
     security_audit_enabled: bool = True
     security_beacon_enabled: bool = True

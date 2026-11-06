@@ -635,7 +635,21 @@ def _ensure_generation_columns(connection) -> None:  # type: ignore[no-untyped-d
         )
     if "thumb_filename" not in columns:
         connection.execute(text("ALTER TABLE generation_assets ADD COLUMN thumb_filename VARCHAR(256)"))
+    # 转存/缩略图补全循环按 role + status 取待处理资产，避免高频全表扫描
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_generation_assets_role_status_created "
+            "ON generation_assets (role, status, created_at)"
+        )
+    )
     task_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(generation_tasks)"))}
+    if task_columns:
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_generation_tasks_status_updated_at "
+                "ON generation_tasks (status, updated_at)"
+            )
+        )
     if task_columns and "mcp_key_id" not in task_columns:
         connection.execute(text("ALTER TABLE generation_tasks ADD COLUMN mcp_key_id INTEGER"))
         connection.execute(
