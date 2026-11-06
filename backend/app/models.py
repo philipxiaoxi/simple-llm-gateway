@@ -1235,6 +1235,9 @@ class GenerationTask(Base):
     """
 
     __tablename__ = "generation_tasks"
+    __table_args__ = (
+        Index("ix_generation_tasks_status_updated_at", "status", "updated_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     kind: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
@@ -1270,6 +1273,9 @@ class GenerationAsset(Base):
     """
 
     __tablename__ = "generation_assets"
+    __table_args__ = (
+        Index("ix_generation_assets_role_status_created", "role", "status", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     task_id: Mapped[str | None] = mapped_column(

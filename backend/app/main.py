@@ -15,7 +15,7 @@ from app.capabilities import ensure_defaults
 from app.config import get_settings, validate_app_secret_key
 from app.db import get_engine, get_session_factory, init_db
 from app.deps import get_current_admin
-from app.generation.service import generation_loop
+from app.generation.service import generation_download_loop, generation_loop
 from app.generation.service import reconcile_stuck as reconcile_stuck_generation
 from app.mcp_server import McpRootEntrypoint, build_mcp_app, start_mcp_session
 from app.offline.jobs import reconcile_stuck_jobs as reconcile_stuck_offline_jobs
@@ -170,8 +170,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         # 资讯收集：定时采集 + 媒体转存 worker + 保留清理
         background_tasks.extend(start_info_workers())
         background_tasks.append(asyncio.create_task(info_retention_loop()))
-        # 图片 / 视频生成：提交、轮询、结果转存
+        # 图片 / 视频生成：提交/轮询与结果转存分开，避免大文件下载阻塞任务推进
         background_tasks.append(asyncio.create_task(generation_loop()))
+        background_tasks.append(asyncio.create_task(generation_download_loop()))
         # 安全中心：审计事件异步落库 + 保留期清理
         background_tasks.append(asyncio.create_task(audit_worker()))
         background_tasks.append(asyncio.create_task(security_retention_loop()))

@@ -811,7 +811,8 @@ def poll_running_once(limit: int = 5) -> dict[str, int]:
             for row in session.scalars(
                 select(GenerationTask.id)
                 .where(GenerationTask.status == STATUS_RUNNING, GenerationTask.upstream_id != "")
-                .order_by(GenerationTask.created_at.asc())
+                # 按最近一次轮询时间轮转，避免高并发时后面的任务一直排不到
+                .order_by(GenerationTask.updated_at.asc())
                 .limit(max(1, limit))
             ).all()
         ]
@@ -871,7 +872,10 @@ def poll_task_now(factory, task_id: str) -> str:
 
 
 def run_task_inline(task_id: str, wait_seconds: int = 0) -> None:
-    """把单个任务在等待窗口内推进到终态（提交 + 轮询 + 转存结果）。"""
+    """在等待窗口内把单个任务推进到终态（提交 + 轮询）。
+
+    结果转存交给后台 `download_pending_once`，避免把文件传输算进接口耗时。
+    """
     factory = get_session_factory()
     settings = get_settings()
     deadline = time.monotonic() + max(0, int(wait_seconds))
@@ -891,8 +895,6 @@ def run_task_inline(task_id: str, wait_seconds: int = 0) -> None:
         if time.monotonic() >= deadline:
             break
         time.sleep(min(1.0, max(0.05, deadline - time.monotonic())))
-    # 结果转存：尽量在窗口内把已经生成的图片/视频落到本地
-    download_task_results(factory, settings, task_id)
 
 
 def download_task_results(factory, settings, task_id: str) -> int:
@@ -1125,27 +1127,41 @@ def backfill_thumbnails(db: Session, limit: int = 20) -> int:
 
 
 async def generation_loop() -> None:
+    """提交与轮询循环。保持轻量，避免慢下载拖住任务推进。"""
     interval = max(2, int(get_settings().generation_tick_seconds))
+    while True:
+        try:
+            submit = await asyncio.to_thread(submit_pending_once, 10)
+            if submit.get("submitted") or submit.get("failed"):
+                print(f"[generation] 提交：成功 {submit.get('submitted')}，失败 {submit.get('failed')}")
+            poll = await asyncio.to_thread(poll_running_once, 20)
+            if poll.get("finished"):
+                print(f"[generation] 轮询：完成 {poll.get('finished')}")
+        except Exception as error:  # noqa: BLE001
+            print(f"[generation] 循环异常：{error}")
+        await asyncio.sleep(interval)
+
+
+async def generation_download_loop() -> None:
+    """结果转存与缩略图补全。独立循环，避免大文件下载阻塞提交/轮询。"""
+    interval = max(2, int(get_settings().generation_tick_seconds))
+    backfill_counter = 0
     cleanup_counter = 0
     while True:
         try:
-            submit = await asyncio.to_thread(submit_pending_once)
-            if submit.get("submitted") or submit.get("failed"):
-                print(f"[generation] 提交：成功 {submit.get('submitted')}，失败 {submit.get('failed')}")
-            poll = await asyncio.to_thread(poll_running_once)
-            if poll.get("finished"):
-                print(f"[generation] 轮询：完成 {poll.get('finished')}")
             download = await asyncio.to_thread(download_pending_once)
             if download.get("processed"):
                 print(f"[generation] 转存：处理 {download.get('processed')}，就绪 {download.get('ready')}")
-            # 历史作品补缩略图（有则秒查一次空集）
-            await asyncio.to_thread(_backfill_thumbnails_once)
+            backfill_counter += 1
+            if backfill_counter >= max(1, 10 // interval):
+                backfill_counter = 0
+                await asyncio.to_thread(_backfill_thumbnails_once)
             cleanup_counter += 1
             if cleanup_counter >= max(1, 3600 // interval):
                 cleanup_counter = 0
                 await asyncio.to_thread(_cleanup_inputs_once)
         except Exception as error:  # noqa: BLE001
-            print(f"[generation] 循环异常：{error}")
+            print(f"[generation] 转存循环异常：{error}")
         await asyncio.sleep(interval)
 
 
@@ -1363,6 +1379,7 @@ __all__ = [
     "delete_uploaded_input",
     "download_pending_once",
     "download_task_results",
+    "generation_download_loop",
     "generation_loop",
     "get_task",
     "get_task_for_key",

@@ -406,6 +406,7 @@ EXEMPT_PATHS = frozenset(
         "/api/admin/login",
         "/api/admin/me",
         "/api/admin/me/nav-tabs",
+        "/api/admin/me/preferences",
         "/api/admin/oauth/grok/callback",
         "/api/admin/security/beacon",
         # 服务目录只返回能力元数据，供广场与 MCP Key 授权页使用；可见性由前端按各能力权限过滤

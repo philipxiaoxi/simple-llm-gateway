@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -104,14 +106,34 @@ def test_mcp_image_generate_uses_configured_model(
     response = client.post(
         "/v1/capabilities/generation/image_generate",
         headers={"x-api-key": key},
-        json={"prompt": "一只边牧", "model": "gpt-image-2", "params": {"aspectRatio": "1:1", "imageSize": "1K"}},
+        json={
+            "prompt": "一只边牧",
+            "model": "gpt-image-2",
+            "params": {"aspectRatio": "1:1", "imageSize": "1K"},
+            "wait_seconds": 60,
+        },
     )
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["model"] == "nano-banana-2"
     assert body["status"] == "succeeded"
-    assert body["results"][0]["status"] == "ready"
-    assert body["results"][0]["download_url"].startswith("http")
+    # 转存由后台循环负责；内联等待只推进状态，返回时结果可能还在 pending
+    result = body["results"][0]
+    assert result["remote_url"] == "https://example.com/a.png"
+    # 转存可能由后台循环并发处理，轮询到 ready 为止
+    for _ in range(40):
+        if result["status"] == "ready":
+            break
+        service.download_pending_once()
+        time.sleep(0.05)
+        body = client.post(
+            "/v1/capabilities/generation/generation_job",
+            headers={"x-api-key": key},
+            json={"job_id": body["job_id"]},
+        ).json()
+        result = body["results"][0]
+    assert result["status"] == "ready"
+    assert result["download_url"].startswith("http")
 
     listing = client.post(
         "/v1/capabilities/generation/generation_list",
@@ -120,6 +142,19 @@ def test_mcp_image_generate_uses_configured_model(
     )
     assert listing.status_code == 200
     assert listing.json()["total"] == 1
+
+    # 默认不内联等待：提交请求应立即返回 queued/running，而不是等生成完成
+    started = time.perf_counter()
+    quick = client.post(
+        "/v1/capabilities/generation/image_generate",
+        headers={"x-api-key": key},
+        json={"prompt": "第二张", "params": {"aspectRatio": "1:1", "imageSize": "1K"}},
+    )
+    elapsed = time.perf_counter() - started
+    assert quick.status_code == 200, quick.text
+    assert elapsed < 1.0
+    assert quick.json()["job_id"]
+    assert quick.json()["status"] in {"queued", "submitting", "running", "succeeded"}
 
 
 def test_mcp_requires_capability(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -135,3 +170,9 @@ def test_mcp_requires_capability(client: TestClient, auth_headers: dict[str, str
         json={"prompt": "x"},
     )
     assert response.status_code == 403
+
+
+def test_generation_default_wait_is_zero() -> None:
+    from app.capabilities.generation.provider import GenerationProvider
+
+    assert GenerationProvider._wait_seconds(None) == 0
