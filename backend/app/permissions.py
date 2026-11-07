@@ -103,6 +103,7 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
         ),
     ),
     "generation": ("生成配置（图片/视频共用）", (("settings", "配置供应商与默认模型"), ("upload", "参考素材上传"))),
+    "assistant": ("AI 助手", (("view", "使用助手"), ("manage", "配置对话模型"))),
     "offline": (
         "离线下载",
         (

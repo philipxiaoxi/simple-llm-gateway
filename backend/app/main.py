@@ -22,6 +22,7 @@ from app.offline.jobs import reconcile_stuck_jobs as reconcile_stuck_offline_job
 from app.offline.jobs import start_offline_job_workers
 from app.routers import (
     admin_accounts,
+    admin_assistant,
     admin_auth,
     admin_benchmark,
     admin_benchmark_groups,
@@ -205,6 +206,7 @@ for admin_router in (
     admin_users.router,
     admin_roles.router,
     admin_accounts.router,
+    admin_assistant.router,
     admin_benchmark.router,
     admin_benchmark_groups.router,
     admin_benchmark_history.router,

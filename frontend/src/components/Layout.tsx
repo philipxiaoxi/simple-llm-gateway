@@ -19,6 +19,7 @@ import { flush, track } from '../lib/security'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { MIN_PASSWORD_LENGTH, cn, errorMessage } from '../lib/utils'
 import { useMediaQuery } from '../lib/useMediaQuery'
+import { AssistantRoot } from './assistant/AssistantRoot'
 import { CommandPalette } from './command-palette'
 import { PageContainer } from './layout-primitives'
 import { PageTransition } from './motion/transitions'
@@ -834,6 +835,7 @@ export function Layout() {
 
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <AssistantRoot />
     </div>
   )
 }
