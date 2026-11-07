@@ -370,3 +370,102 @@ def test_snapshot_schema_marks_outdated_payload(client: TestClient, auth_headers
         assert row is not None and mcp_stats.snapshot_is_current(row.payload_json)
     finally:
         session.close()
+
+
+def test_call_stats_is_stable_across_scan_chunks(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    from datetime import timedelta
+
+    from app.db import get_session_factory
+    from app.models import McpCallLog
+    from app.services import mcp_stats
+    from app.services.stats_scan import iter_time_chunks
+
+    session = get_session_factory()()
+    try:
+        now = _shanghai_noon_utc()
+        session.add_all(
+            [
+                McpCallLog(
+                    capability_id="pose",
+                    operation=f"op-{index}",
+                    success=index != 1,
+                    latency_ms=100 + index * 50,
+                    created_at=now - timedelta(days=index),
+                )
+                for index in range(5)
+            ]
+        )
+        session.commit()
+        baseline = mcp_stats.compute_stats(session, 7)
+        monkeypatch.setattr(
+            mcp_stats,
+            "iter_time_chunks",
+            lambda start, end: iter_time_chunks(start, end, days=1),
+        )
+        chunked = mcp_stats.compute_stats(session, 7)
+    finally:
+        session.close()
+
+    assert chunked == baseline
+    assert chunked.total == 5
+    assert chunked.failed == 1
+
+
+def test_call_stats_job_uses_incremental_rollups(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    from datetime import datetime, timedelta
+
+    from app.clock import SHANGHAI_TZ
+    from app.db import get_session_factory
+    from app.models import McpCallDailyStats, McpCallLog
+    from app.services import mcp_stats
+
+    now = _shanghai_noon_utc()
+    old_created = now - timedelta(days=10)
+    session = get_session_factory()()
+    try:
+        session.add(
+            McpCallLog(
+                capability_id="pose",
+                operation="search",
+                success=True,
+                latency_ms=120,
+                created_at=old_created,
+            )
+        )
+        session.commit()
+
+        assert mcp_stats.refresh_all(session) == len(mcp_stats.SNAPSHOT_DAYS)
+        old_day = (datetime.now(SHANGHAI_TZ) - timedelta(days=10)).date().isoformat()
+        old_row = session.get(McpCallDailyStats, old_day)
+        assert old_row is not None and old_row.total == 1
+        old_computed_at = old_row.computed_at
+        snapshot = mcp_stats.load_snapshot(session, 30)
+        full = mcp_stats.compute_stats(session, 30)
+        assert snapshot is not None and snapshot == full
+
+        session.add(
+            McpCallLog(
+                capability_id="pose",
+                operation="get",
+                success=False,
+                latency_ms=240,
+                created_at=now,
+            )
+        )
+        session.commit()
+        mcp_stats.refresh_all(session)
+
+        # 历史日不重扫，只刷新今天
+        old_row = session.get(McpCallDailyStats, old_day)
+        assert old_row is not None and old_row.computed_at == old_computed_at
+        snapshot = mcp_stats.load_snapshot(session, 30)
+        full = mcp_stats.compute_stats(session, 30)
+        assert snapshot is not None and snapshot == full
+        assert snapshot.total == 2
+        assert snapshot.failed == 1
+    finally:
+        session.close()

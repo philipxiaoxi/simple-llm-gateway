@@ -693,7 +693,7 @@ async def _process(event: PendingEvent) -> None:
     trusted: bool | None = None
     rule = ""
     if event.event_type in {"login_success", "login_failure", "login_locked", "suspicious_request", "auth_fail_burst"}:
-        entries, networks, enabled = load_trusted_locations()
+        entries, networks, enabled = await asyncio.to_thread(load_trusted_locations)
         loc_tags, trusted, rule = classify_location(ip, location, entries, networks, enabled)
         tags.extend(tag for tag in loc_tags if tag not in tags)
     if event.event_type in {"suspicious_request", "frontend_beacon"}:
@@ -705,7 +705,20 @@ async def _process(event: PendingEvent) -> None:
             if event.severity == "info":
                 event.severity = "warn"
 
-    _write_event(event, ip, location, user_agent, client_name, client_version, device_type, tags, trusted, rule, detail)
+    await asyncio.to_thread(
+        _write_event,
+        event,
+        ip,
+        location,
+        user_agent,
+        client_name,
+        client_version,
+        device_type,
+        tags,
+        trusted,
+        rule,
+        detail,
+    )
 
 
 def _outcome(status: int | None) -> str | None:

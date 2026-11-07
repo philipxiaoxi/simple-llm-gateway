@@ -204,6 +204,21 @@ async def _wait_next(job_id: str) -> str:
         return "interval"
 
 
+def _refresh_dashboard_stats_snapshots() -> tuple[int, int]:
+    """同步聚合概览与 MCP 图表。
+
+    正式服日志库很大时，这一轮聚合可能持续数分钟。调用方必须把它放到工作线程，
+    否则会占住事件循环，连静态资源和健康检查都无法响应。
+    """
+    session = get_session_factory()()
+    try:
+        refreshed = dashboard_stats_service.refresh_all(session)
+        mcp_refreshed = mcp_stats_service.refresh_all(session)
+    finally:
+        session.close()
+    return refreshed, mcp_refreshed
+
+
 async def _execute(job_id: str) -> dict[str, Any]:
     if job_id == JOB_CATALOG:
         before = model_caps.catalog_cache_info().get("fetched_at")
@@ -238,12 +253,7 @@ async def _execute(job_id: str) -> dict[str, Any]:
             raise RuntimeError(str(error_message))
         return {"message": f"已缓存 {total} 条榜单", "total": total}
     if job_id == JOB_DASHBOARD_STATS:
-        session = get_session_factory()()
-        try:
-            refreshed = dashboard_stats_service.refresh_all(session)
-            mcp_refreshed = mcp_stats_service.refresh_all(session)
-        finally:
-            session.close()
+        refreshed, mcp_refreshed = await asyncio.to_thread(_refresh_dashboard_stats_snapshots)
         return {
             "message": f"已刷新 {refreshed} 个区间的概览图表、{mcp_refreshed} 个区间的 MCP 图表",
             "refreshed": refreshed,
