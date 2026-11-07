@@ -89,3 +89,115 @@ def test_xhr_404_still_raises_probe_path(monkeypatch) -> None:
     audit.submit_request_event(judge, 404, "GET", path, headers=headers, peer="1.2.3.4")
     assert len(captured) == 1
     assert captured[0].risk_tags == ["probe_path"]
+
+
+def test_command_line_client_is_automation_not_scanner() -> None:
+    tags = _tags("/api/admin/users", {"user-agent": "curl/8.5.0"})
+    assert "automation_client" in tags
+    assert "scanner_ua" not in tags
+
+
+def test_attack_scanner_is_still_critical_source() -> None:
+    tags = _tags("/api/admin/users", {"user-agent": "sqlmap/1.8"})
+    assert "scanner_ua" in tags
+
+
+def test_authenticated_automation_is_info(monkeypatch) -> None:
+    from app.services import security_audit as audit
+
+    captured = _capture(monkeypatch)
+    monkeypatch.setattr(audit, "_actor_from_headers", lambda _headers: "admin")
+    judge = audit.judge_request("/api/admin/users", {"user-agent": "curl/8.5.0"}, "1.2.3.4")
+    audit.submit_request_event(
+        judge, 200, "GET", "/api/admin/users", headers={"user-agent": "curl/8.5.0"}, peer="1.2.3.4"
+    )
+    assert len(captured) == 1
+    assert captured[0].severity == "info"
+    assert "authenticated_automation" in captured[0].risk_tags
+
+
+def test_anonymous_automation_remains_warning(monkeypatch) -> None:
+    from app.services import security_audit as audit
+
+    captured = _capture(monkeypatch)
+    monkeypatch.setattr(audit, "_actor_from_headers", lambda _headers: None)
+    judge = audit.judge_request("/api/admin/users", {"user-agent": "curl/8.5.0"}, "1.2.3.4")
+    audit.submit_request_event(
+        judge, 200, "GET", "/api/admin/users", headers={"user-agent": "curl/8.5.0"}, peer="1.2.3.4"
+    )
+    assert len(captured) == 1
+    assert captured[0].severity == "warn"
+    assert "authenticated_automation" not in captured[0].risk_tags
+
+
+def test_authenticated_scanner_stays_critical(monkeypatch) -> None:
+    from app.services import security_audit as audit
+
+    captured = _capture(monkeypatch)
+    monkeypatch.setattr(audit, "_actor_from_headers", lambda _headers: "admin")
+    judge = audit.judge_request("/api/admin/users", {"user-agent": "sqlmap/1.8"}, "1.2.3.4")
+    audit.submit_request_event(
+        judge, 200, "GET", "/api/admin/users", headers={"user-agent": "sqlmap/1.8"}, peer="1.2.3.4"
+    )
+    assert len(captured) == 1
+    assert captured[0].severity == "critical"
+
+
+def test_internal_request_marker_is_unforgeable() -> None:
+    from app.internal_requests import internal_audit_headers, is_internal_audit_request
+
+    assert is_internal_audit_request(internal_audit_headers())
+    assert not is_internal_audit_request({"x-internal-audit-token": "wrong"})
+
+
+def test_middleware_skips_internal_requests(monkeypatch) -> None:
+    import asyncio
+
+    from app.internal_requests import internal_audit_headers
+    from app.services import security_audit as audit
+
+    captured = _capture(monkeypatch)
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(_message):
+        return None
+
+    headers = [(key.encode(), value.encode()) for key, value in internal_audit_headers().items()]
+    scope = {
+        "type": "http",
+        "path": "/api/admin/users",
+        "method": "GET",
+        "headers": headers,
+        "client": ("1.2.3.4", 1234),
+    }
+    asyncio.run(audit.SecurityAuditMiddleware(app)(scope, receive, send))
+    assert captured == []
+
+
+def test_login_request_is_not_duplicated_as_suspicious(monkeypatch) -> None:
+    from app.services import security_audit as audit
+
+    captured = _capture(monkeypatch)
+    judge = audit.judge_request("/api/admin/login", {"user-agent": "curl/8.5.0"}, "1.2.3.4")
+    audit.submit_request_event(
+        judge, 401, "POST", "/api/admin/login", headers={"user-agent": "curl/8.5.0"}, peer="1.2.3.4"
+    )
+    assert captured == []
+
+
+def test_login_scanner_still_generates_event(monkeypatch) -> None:
+    from app.services import security_audit as audit
+
+    captured = _capture(monkeypatch)
+    judge = audit.judge_request("/api/admin/login", {"user-agent": "sqlmap/1.8"}, "1.2.3.4")
+    audit.submit_request_event(
+        judge, 401, "POST", "/api/admin/login", headers={"user-agent": "sqlmap/1.8"}, peer="1.2.3.4"
+    )
+    assert len(captured) == 1
+    assert captured[0].severity == "critical"

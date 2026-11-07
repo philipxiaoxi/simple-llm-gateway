@@ -97,7 +97,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-  Req["Console_Route 请求"] --> IsProxy{"Proxy_Route?"}
+  Req["Console_Route 请求"] --> IsProxy{"Proxy_Route 或内部受信请求?"}
   IsProxy -->|是| Skip["不判定"]
   IsProxy -->|否| Marker{"有 X-GW-Client: web?"}
   Marker -->|否| Tag1["risk: missing_marker"]
@@ -108,16 +108,22 @@ flowchart TB
   Tag2 --> Origin{"Origin 与 APP_BASE_URL 一致?"}
   Origin -->|否| Tag3["risk: origin_mismatch"]
   Origin -->|是| Scan
-  Tag3 --> Scan{"UA 命中扫描器?"}
-  Scan -->|是| Tag4["risk: scanner_ua, severity=critical"]
-  Scan -->|否| Resp
+  Tag3 --> Scan{"UA 类型?"}
+  Scan -->|攻击扫描器| Tag4["risk: scanner_ua, severity=critical"]
+  Scan -->|常见命令行客户端| Tag4b["risk: automation_client"]
+  Scan -->|其他| Resp
   Tag4 --> Resp["下游响应"]
-  Resp --> Is404{"status=404?"}
+  Tag4b --> Resp
+  Resp --> Login{"登录接口且非扫描器?"}
+  Login -->|是| Done["由 login_* 事件记录，丢弃"]
+  Login -->|否| Is404{"status=404?"}
   Is404 -->|是| Tag5["risk: probe_path"]
   Is404 -->|否| Emit
   Tag5 --> Emit{"risk_tags 非空?"}
-  Emit -->|是| Enqueue["入队 suspicious_request"]
-  Emit -->|否| Done["丢弃"]
+  Emit -->|是| Auth{"已登录且仅自动化标签、2xx/3xx?"}
+  Auth -->|是| EnqueueInfo["入队 suspicious_request, severity=info"]
+  Auth -->|否| Enqueue["入队 suspicious_request"]
+  Emit -->|否| Done
 ```
 
 ## Components and Interfaces
@@ -129,6 +135,7 @@ backend/app/
   models.py                      # 修改：新增 SecurityEvent、SecuritySettings
   db.py                          # 修改：建表 + 索引迁移
   config.py                      # 修改：新增 security_* 配置
+  internal_requests.py           # 新增：进程内受信请求随机令牌
   services/
     security_audit.py            # 新增：判定规则、自动化信号、Location_Match、节流、内存队列、worker
     security_retention.py        # 新增：保留期清理循环
@@ -183,10 +190,14 @@ PROXY_PREFIXES = ("/v1/", "/anthropic/", "/chat", "/responses", "/models", "/mcp
 CONSOLE_PREFIXES = ("/api/admin/", "/api/public/", "/api/voice/")
 
 BROWSER_TOKEN = re.compile(r"(Mozilla/5\.0).*(Chrome/|Firefox/|Safari/|Edg/|Version/)", re.I)
-SCANNER_PATTERNS = (          # 复用并扩展 client_meta._CLIENT_PATTERNS
+SCANNER_PATTERNS = (          # 真正的扫描 / 攻击工具，命中即 critical
+    "sqlmap", "nikto", "nmap", "nuclei", "masscan", "zgrab",
+    "feroxbuster", "ffuf", "dirbuster", "gobuster", "wpscan", "acunetix",
+    "nessus", "openvas", "whatweb", "hydra", "joomscan", "wfuzz", "dirb",
+)
+AUTOMATION_CLIENT_PATTERNS = (  # 正常命令行 / 自动化客户端，命中只记为 automation_client
     "curl/", "wget/", "python-requests", "python-httpx", "httpx/", "aiohttp/",
     "go-http-client", "okhttp", "java/", "node-fetch", "undici", "axios/",
-    "sqlmap", "nikto", "nmap", "nuclei", "masscan", "zgrab", "feroxbuster", "ffuf",
 )
 
 def looks_like_browser(ua: str) -> bool: ...
@@ -196,7 +207,10 @@ def judge_request(path, headers, peer) -> JudgeResult: ...
 - `JudgeResult`：`{is_console, is_proxy, source, risk_tags, severity, client_ip, user_agent, client_name}`，其中 `source ∈ {web, api, direct}`。
 - 判定优先级：先排 Proxy_Route（直接 `source=api` 且不判定），再对 Console_Route 依次叠加标签。
 - 浏览器识别基于 `(Mozilla/5.0)` + 主流引擎令牌，缺失即 `non_browser_ua`；这与「UA 明显不是浏览器」一一对应。
-- 扫描器字符串命中即 `scanner_ua`，级别 `critical`。
+- 攻击扫描器字符串命中即 `scanner_ua`，级别 `critical`；常见命令行客户端只加 `automation_client`，级别 `warn`。
+- 已登录账号的正常自动化调用（2xx/3xx，且只有 `non_browser_ua`/`missing_marker`/`automation_client`）记录为 `info`，并追加 `authenticated_automation`，不计入概览的异常请求数。
+- 站内 AI 助手等进程内调用通过随机令牌头识别为 Internal_Trusted_Request，安全审计中间件直接放行，不生成异常事件。
+- 登录接口不再重复生成 `suspicious_request`，登录成功/失败/锁定由专用 `login_*` 事件记录；扫描器 UA 除外。
 - `auth_fail_burst`：按 IP 维护滑窗计数器，登录失败与 401/403 均计入，超阈值单独成事件（与登录失败事件并存，后者由 `admin_auth` 直接产生）。
 
 ### 3.1 自动化信号（服务端 + Beacon）
@@ -515,7 +529,10 @@ window.addEventListener('pagehide', flush)
 ## Test Strategy
 
 - 单元测试 `backend/tests/test_security_audit.py`：
-  - `judge_request` 对 Proxy_Route 返回空标签；对无 marker 的 `/api/admin/x` 返回 `missing_marker`；对 curl UA 返回 `non_browser_ua` + `scanner_ua`；对 404 probe 返回 `probe_path`。
+  - `judge_request` 对 Proxy_Route 返回空标签；对无 marker 的 `/api/admin/x` 返回 `missing_marker`；对 curl UA 返回 `non_browser_ua` + `automation_client`；对 sqlmap UA 返回 `scanner_ua`；对 404 probe 返回 `probe_path`。
+  - 已登录账号的 curl/httpx 成功调用记为 `info` + `authenticated_automation`；匿名调用仍为 `warn`；扫描器始终 `critical`。
+  - 内部令牌请求被安全审计中间件跳过；错误令牌不生效。
+  - 登录接口的 curl/httpx 请求不重复生成 `suspicious_request`，扫描器仍生成。
   - 浏览器 UA（Chrome/Safari/Firefox）无 `non_browser_ua`。
   - `automation_signals`：`HeadlessChrome` UA 命中 `headless_ua`；Beacon `webdriver=true` 命中 `webdriver`；零屏幕命中 `zero_screen`；缺失 `Accept-Language` 命中 `missing_accept_language`。
   - `normalize_location`：`中国 广东省 广州市` → `(中国, 广东, 广州)`；`北京市` 的 province 与 city 均为 `北京`。

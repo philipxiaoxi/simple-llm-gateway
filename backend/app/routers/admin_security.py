@@ -199,7 +199,13 @@ def overview(
         .where(*base, SecurityEvent.event_type.in_(("login_failure", "login_locked")))
     ) or 0
     suspicious = db.scalar(
-        select(func.count()).select_from(SecurityEvent).where(*base, SecurityEvent.event_type.in_(_SUSPICIOUS_TYPES))
+        select(func.count())
+        .select_from(SecurityEvent)
+        .where(
+            *base,
+            SecurityEvent.event_type.in_(_SUSPICIOUS_TYPES),
+            SecurityEvent.severity != "info",
+        )
     ) or 0
     distinct_ips = db.scalar(
         select(func.count(func.distinct(SecurityEvent.client_ip))).where(*base, SecurityEvent.client_ip.is_not(None))
@@ -236,15 +242,17 @@ def overview(
     ]
     day_expr = func.strftime("%Y-%m-%d", SecurityEvent.created_at)
     buckets: dict[str, SecurityTrendPoint] = {}
-    for day, event_type, count in db.execute(
-        select(day_expr, SecurityEvent.event_type, func.count()).where(*base).group_by(day_expr, SecurityEvent.event_type)
+    for day, event_type, severity, count in db.execute(
+        select(day_expr, SecurityEvent.event_type, SecurityEvent.severity, func.count())
+        .where(*base)
+        .group_by(day_expr, SecurityEvent.event_type, SecurityEvent.severity)
     ).all():
         point = buckets.setdefault(str(day), SecurityTrendPoint(date=str(day)))
         if event_type == "login_success":
-            point.login_success = int(count or 0)
+            point.login_success += int(count or 0)
         elif event_type in ("login_failure", "login_locked"):
             point.login_failure += int(count or 0)
-        elif event_type in _SUSPICIOUS_TYPES:
+        elif event_type in _SUSPICIOUS_TYPES and severity != "info":
             point.suspicious += int(count or 0)
     return SecurityOverviewOut(
         since=since,

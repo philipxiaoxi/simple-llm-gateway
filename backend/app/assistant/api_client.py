@@ -7,6 +7,7 @@ from urllib.parse import quote
 import httpx
 
 from app.assistant.api_catalog import ApiOperation
+from app.internal_requests import internal_audit_headers
 
 _SENSITIVE_KEYS = frozenset(
     {
@@ -134,6 +135,7 @@ async def execute_api(
         "X-GW-Client": "web",
         "X-Assistant-Call": "1",
         "Accept": "application/json",
+        **internal_audit_headers(),
     }
     request_body = body if operation.method in {"POST", "PUT", "PATCH", "DELETE"} else None
     transport = httpx.ASGITransport(app=app)

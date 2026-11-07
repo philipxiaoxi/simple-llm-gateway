@@ -17,8 +17,10 @@ Updated: 2026-10-20
 - **Proxy_Route**：面向大模型调用的网关路径集合，包含 `/v1/*`、`/anthropic/*`、`/chat/*`、`/responses/*`、`/models`、`/mcp`。
 - **Frontend_Marker**：由 Admin_Console 前端在每次接口请求中携带的客户端标识请求头 `X-GW-Client: web`。
 - **Beacon**：前端在关键行为发生时或页面卸载时向安全中心上报的事件。
-- **Risk_Tag**：对请求附加的机器可读风险标签，例如 `non_browser_ua`、`missing_marker`、`origin_mismatch`、`scanner_ua`、`probe_path`、`automation`、`auth_fail_burst`、`unfamiliar_location`、`local_network`、`location_unknown`。
+- **Risk_Tag**：对请求附加的机器可读风险标签，例如 `non_browser_ua`、`missing_marker`、`origin_mismatch`、`scanner_ua`、`automation_client`、`authenticated_automation`、`probe_path`、`automation`、`auth_fail_burst`、`unfamiliar_location`、`local_network`、`location_unknown`。
 - **Direct_Request**：命中 Console_Route 且未携带合法 Frontend_Marker、或携带非浏览器 UA 的请求，即用户所述的「直接发起调试」。
+- **Automation_Client**：常见的命令行或自动化 HTTP 客户端，例如 curl、wget、python-requests、httpx、aiohttp、axios。它们属于正常自家人/脚本调用，不等同于扫描器。
+- **Internal_Trusted_Request**：当前服务进程内的受信调用，例如站内 AI 助手通过 ASGI 直连管理接口；携带进程内随机令牌，外部客户端无法伪造。
 - **标记记录**：安全中心仅对事件做持久化留痕与风险标签，不改变请求的响应结果，也不执行限流、封禁或对外告警。
 - **Attempted_Password**：登录失败或登录锁定时客户端提交的密码原文，入库前加密、限长，仅通过单事件详情接口向已认证管理员展示。
 - **Automation**：由 headless/自动化 UA 令牌、Beacon 的 `webdriver`、零屏幕尺寸或缺失 `Accept-Language` 等信号判定出的自动化客户端。
@@ -68,13 +70,16 @@ Updated: 2026-10-20
 2. WHEN a request targets a Console_Route and carries a User-Agent that does not match a browser pattern, the system SHALL attach the `non_browser_ua` Risk_Tag and record a `suspicious_request` Security_Event.
 3. WHEN a request targets a Console_Route without a Frontend_Marker, the system SHALL attach the `missing_marker` Risk_Tag.
 4. WHEN a request targets a Console_Route without a Frontend_Marker and carries an Origin header that mismatches the request host or the configured application origin, the system SHALL attach the `origin_mismatch` Risk_Tag.
-5. WHEN a request User-Agent matches a known scanner or command-line client pattern, the system SHALL attach the `scanner_ua` Risk_Tag and set event severity to `critical`.
-6. WHEN a request targets a non-existent Console_Route path and returns HTTP 404, the system SHALL attach the `probe_path` Risk_Tag.
-7. WHEN a request or Beacon exhibits an automation signal, the system SHALL attach the `automation` Risk_Tag and record the matched signal names in the event detail.
-8. The system SHALL treat the following as automation signals: a browser-like User-Agent that matches a headless or automation token, a Beacon reporting `webdriver` true, a Beacon reporting zero screen dimensions, and a browser-like User-Agent lacking an `Accept-Language` header.
-9. WHEN a single client IP produces authentication failures exceeding the configured threshold within the configured window, the system SHALL persist an `auth_fail_burst` Security_Event with severity `critical`.
-10. The system SHALL exclude Proxy_Routes from `non_browser_ua` and `missing_marker` classification.
-11. WHILE security audit is enabled, the system SHALL evaluate every Console_Route request for risk tags.
+5. WHEN a request User-Agent matches a known attack scanner pattern, the system SHALL attach the `scanner_ua` Risk_Tag and set event severity to `critical`.
+6. WHEN a request User-Agent matches a common command-line or automation client pattern, the system SHALL attach the `automation_client` Risk_Tag with severity `warn`; when the request is authenticated and succeeds, the system SHALL record it with severity `info` and the `authenticated_automation` Risk_Tag.
+7. WHEN a request targets a non-existent Console_Route path and returns HTTP 404, the system SHALL attach the `probe_path` Risk_Tag.
+8. WHEN a request or Beacon exhibits an automation signal, the system SHALL attach the `automation` Risk_Tag and record the matched signal names in the event detail.
+9. The system SHALL treat the following as automation signals: a browser-like User-Agent that matches a headless or automation token, a Beacon reporting `webdriver` true, a Beacon reporting zero screen dimensions, and a browser-like User-Agent lacking an `Accept-Language` header.
+10. WHEN a single client IP produces authentication failures exceeding the configured threshold within the configured window, the system SHALL persist an `auth_fail_burst` Security_Event with severity `critical`.
+11. The system SHALL exclude Proxy_Routes from `non_browser_ua` and `missing_marker` classification.
+12. WHILE security audit is enabled, the system SHALL evaluate every Console_Route request for risk tags.
+13. The system SHALL skip `suspicious_request` evaluation for Internal_Trusted_Requests.
+14. WHEN a login request is already recorded as a `login_*` event, the system SHALL NOT create a duplicate `suspicious_request` event for that request, unless the request carries `scanner_ua`.
 
 ### Requirement 4
 
@@ -96,7 +101,7 @@ Updated: 2026-10-20
 #### Acceptance Criteria
 
 1. The system SHALL provide an Admin_Console page at route `/security`.
-2. The Security Center page SHALL display an overview containing the login success count, login failure count, suspicious request count, and distinct source IP count for a selected time range.
+2. The Security Center page SHALL display an overview containing the login success count, login failure count, suspicious request count, and distinct source IP count for a selected time range. The suspicious request count SHALL include only `warn` and `critical` events; authenticated automation recorded as `info` SHALL NOT inflate it.
 3. The Security Center page SHALL provide a login log view listing authentication Security_Events ordered by creation time descending.
 4. The Security Center page SHALL provide a suspicious request view listing `suspicious_request` and `auth_fail_burst` Security_Events with their Risk_Tags and severity.
 5. The Security Center page SHALL provide a frontend beacon view listing `frontend_beacon` Security_Events.

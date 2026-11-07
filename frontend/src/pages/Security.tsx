@@ -52,6 +52,8 @@ const TAG_LABEL: Record<string, string> = {
   missing_marker: '缺少前端标识',
   origin_mismatch: '来源不符',
   scanner_ua: '扫描器 UA',
+  automation_client: '自动化客户端',
+  authenticated_automation: '已验证自动化',
   probe_path: '路径探测',
   automation: '自动化',
   auth_fail_burst: '认证突增',
@@ -64,6 +66,8 @@ const TAG_LABEL: Record<string, string> = {
 const TAG_OPTIONS = [
   'scanner_ua',
   'non_browser_ua',
+  'automation_client',
+  'authenticated_automation',
   'missing_marker',
   'probe_path',
   'origin_mismatch',
@@ -617,7 +621,9 @@ export function SecurityPage() {
             <ShieldAlert size={20} className="text-signal" />
             <h1 className="text-2xl font-semibold">安全中心</h1>
           </div>
-          <p className="mt-1 text-sm text-mist">登录审计、异常请求标记与前端埋点，集中查看与筛选。</p>
+          <p className="mt-1 text-sm text-mist">
+            登录审计、异常请求标记与前端埋点，集中查看与筛选。已登录账号的自动化调用记为提示，不计入异常请求。
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Select value={days} onChange={(event) => setDays(Number(event.target.value))} className="w-28">
