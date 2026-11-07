@@ -98,7 +98,7 @@ UI_NAVIGATE_TOOL: dict[str, Any] = {
         "parameters": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "站内路径，如 /mcp-plaza、/mcp-plaza/douyin、/logs"},
+                "path": {"type": "string", "description": "站内路径，优先从系统提示中的可用页面目录选择"},
                 "title": {"type": "string", "description": "可选页面名称，用于提示"},
             },
             "required": ["path"],
@@ -357,10 +357,11 @@ async def execute_tool(
         }
 
     if name == "ui_navigate":
-        path = normalize_navigation_path(str(arguments.get("path") or ""))
+        path = normalize_navigation_path(str(arguments.get("path") or ""), permissions)
         if path is None:
-            pages = "、".join(f"{item['label']} {item['path']}" for item in page_directory())
-            return _error(name, f"不支持的页面路径。可用页面：{pages}")
+            pages = "、".join(f"{item['label']} {item['path']}" for item in page_directory(permissions))
+            message = f"当前账号没有权限打开该页面。可用页面：{pages}" if pages else "当前账号没有权限打开管理页面"
+            return _error(name, message)
         title = str(arguments.get("title") or "").strip()
         return {
             "kind": "navigate",

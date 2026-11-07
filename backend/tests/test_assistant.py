@@ -350,6 +350,9 @@ def test_assistant_permission_split(client: TestClient, auth_headers: dict[str, 
     assert client.put("/api/admin/assistant/settings", headers=headers, json={}).status_code == 403
     assert client.get("/api/admin/assistant/models", headers=headers).status_code == 403
 
+    tools = client.get("/api/admin/assistant/tools", headers=headers).json()
+    assert all(page["path"] != "/skills" for page in tools["pages"])
+
 
 def test_assistant_conversation_isolation(client: TestClient, auth_headers: dict[str, str]) -> None:
     conversation_id = _create_conversation(client, auth_headers)
@@ -566,3 +569,42 @@ def test_assistant_ignores_reasoning_after_answer_text(
     assistant = next(message for message in detail["messages"] if message["role"] == "assistant")
     assert assistant["content"] == "答案继续。"
     assert assistant["reasoning"] == "先看用户意图。"
+
+
+def test_assistant_navigation_requires_page_permission() -> None:
+    import asyncio
+
+    from app.assistant.api_catalog import normalize_navigation_path, page_directory
+    from app.assistant.prompts import build_system_prompt
+    from app.assistant.tools import execute_tool
+    from app.main import app
+
+    assert normalize_navigation_path("/skills", {"assistant:view"}) is None
+    assert normalize_navigation_path("/skills", {"skills:view"}) == "/skills"
+    assert "/skills" in {page["path"] for page in page_directory({"skills:view"})}
+    assert "/skills" not in {page["path"] for page in page_directory({"assistant:view"})}
+    assert "/mcp-plaza" in {page["path"] for page in page_directory({"mcp_douyin:view"})}
+    assert normalize_navigation_path("/mcp-plaza", {"mcp_douyin:view"}) == "/mcp-plaza"
+    assert normalize_navigation_path("/logs/abc", {"logs:view"}) is None
+    assert normalize_navigation_path("/logs/abc", {"logs:detail"}) == "/logs/abc"
+    assert normalize_navigation_path("/mcp-plaza/../skills", {"mcp_catalog:view"}) is None
+    assert normalize_navigation_path("/mcp-plaza/%2e%2e/skills", {"mcp_catalog:view"}) is None
+
+    prompt = build_system_prompt(admin_name="测试", page=None, permissions={"skills:view"})
+    assert "/skills" in prompt
+    assert "/mcp-plaza/douyin" not in prompt
+
+    result = asyncio.run(
+        execute_tool(
+            app=app,
+            token="unused",
+            permissions={"assistant:view"},
+            admin_id=1,
+            conversation_id="test",
+            tool_call_id="call_nav",
+            name="ui_navigate",
+            arguments={"path": "/skills", "title": "Skills"},
+        )
+    )
+    assert result["ok"] is False
+    assert "没有权限" in result["error"]

@@ -186,7 +186,7 @@ export function ToolCallCard({
   const isSearch = call.name === 'api_search'
   const isDescribe = call.name === 'api_describe'
   const isNavigate = call.name === 'ui_navigate'
-  const rawNavigatePath = isNavigate ? String(asRecord(call.result)?.path || call.arguments.path || '') : ''
+  const rawNavigatePath = isNavigate && call.ok ? String(asRecord(call.result)?.path || call.arguments.path || '') : ''
   const navigatePath = rawNavigatePath.startsWith('/') ? rawNavigatePath : ''
   const externalHref = safeUrl(download || link)
 

@@ -32,6 +32,7 @@ from app.assistant.tools import build_tool_defs, llm_result
 from app.db import get_db, get_session_factory
 from app.deps import get_current_admin
 from app.models import Admin, AssistantApproval
+from app.services.permission_guard import permissions_for_admin
 
 router = APIRouter(
     prefix="/api/admin/assistant",
@@ -120,7 +121,11 @@ def get_assistant_models(db: Session = Depends(get_db)):
 
 
 @router.get("/tools")
-def get_assistant_tools():
+def get_assistant_tools(
+    admin: Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    permissions = permissions_for_admin(db, admin)
     return {
         "items": [
             {
@@ -129,7 +134,7 @@ def get_assistant_tools():
             }
             for item in build_tool_defs()
         ],
-        "pages": page_directory(),
+        "pages": page_directory(permissions),
     }
 
 

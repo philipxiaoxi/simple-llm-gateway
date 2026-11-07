@@ -5,8 +5,9 @@ import re
 import warnings
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import unquote
 
-from app.services.permission_guard import resolve_permission
+from app.services.permission_guard import has_permission, resolve_permission
 
 _CATALOG_APP_ID: int | None = None
 _CATALOG: list[ApiOperation] | None = None
@@ -172,38 +173,43 @@ DESCRIPTION_OVERRIDES: dict[tuple[str, str], str] = {
 }
 
 PAGE_DIRECTORY: tuple[dict[str, str], ...] = (
-    {"path": "/", "label": "概览"},
-    {"path": "/accounts", "label": "上游账号"},
-    {"path": "/agents", "label": "网关代理"},
-    {"path": "/keys", "label": "API Key"},
-    {"path": "/logs", "label": "记录审计"},
-    {"path": "/benchmark", "label": "模型测速"},
-    {"path": "/benchmark/history", "label": "测速历史"},
-    {"path": "/leaderboard", "label": "模型榜"},
-    {"path": "/info", "label": "资讯收集"},
-    {"path": "/info/sources", "label": "资讯源"},
-    {"path": "/image-gen", "label": "图片生成"},
-    {"path": "/video-gen", "label": "视频生成"},
-    {"path": "/offline", "label": "离线下载"},
-    {"path": "/skills", "label": "Skills"},
-    {"path": "/skills/bundles", "label": "Skills 组合包"},
-    {"path": "/mcp-plaza", "label": "MCP 广场"},
-    {"path": "/mcp-plaza/knowledge", "label": "知识库"},
-    {"path": "/mcp-plaza/docparse", "label": "文档解析"},
-    {"path": "/mcp-plaza/sites", "label": "站点部署"},
-    {"path": "/mcp-plaza/douyin", "label": "抖音下载"},
-    {"path": "/mcp-plaza/diagrams", "label": "图表"},
-    {"path": "/mcp-plaza/generation", "label": "生成配置"},
-    {"path": "/mcp-plaza/keys", "label": "MCP Key"},
-    {"path": "/mcp-plaza/calls", "label": "MCP 调用记录"},
-    {"path": "/tools", "label": "工具中心"},
-    {"path": "/jobs", "label": "定时任务"},
-    {"path": "/security", "label": "安全中心"},
-    {"path": "/voice", "label": "语音房"},
-    {"path": "/users", "label": "用户管理"},
-    {"path": "/roles", "label": "角色管理"},
+    {"path": "/", "label": "概览", "perm": "dashboard:view"},
+    {"path": "/accounts", "label": "上游账号", "perm": "accounts:view"},
+    {"path": "/agents", "label": "网关代理", "perm": "agents:view"},
+    {"path": "/keys", "label": "API Key", "perm": "keys:view"},
+    {"path": "/logs", "label": "记录审计", "perm": "logs:view"},
+    {"path": "/benchmark", "label": "模型测速", "perm": "benchmark:view"},
+    {"path": "/benchmark/history", "label": "测速历史", "perm": "benchmark_history:view"},
+    {"path": "/leaderboard", "label": "模型榜", "perm": "leaderboard:view"},
+    {"path": "/info", "label": "资讯收集", "perm": "info:view"},
+    {"path": "/info/sources", "label": "资讯源", "perm": "info:view"},
+    {"path": "/image-gen", "label": "图片生成", "perm": "image_gen:view"},
+    {"path": "/video-gen", "label": "视频生成", "perm": "video_gen:view"},
+    {"path": "/offline", "label": "离线下载", "perm": "offline:view"},
+    {"path": "/skills", "label": "Skills", "perm": "skills:view"},
+    {"path": "/skills/bundles", "label": "Skills 组合包", "perm": "skill_bundles:view"},
+    {"path": "/mcp-plaza", "label": "MCP 广场", "perm": "mcp_catalog:view"},
+    {"path": "/mcp-plaza/knowledge", "label": "知识库", "perm": "mcp_knowledge:view"},
+    {"path": "/mcp-plaza/docparse", "label": "文档解析", "perm": "mcp_docparse:view"},
+    {"path": "/mcp-plaza/sites", "label": "站点部署", "perm": "mcp_sites:view"},
+    {"path": "/mcp-plaza/douyin", "label": "抖音下载", "perm": "mcp_douyin:view"},
+    {"path": "/mcp-plaza/diagrams", "label": "图表", "perm": "mcp_diagrams:view"},
+    {"path": "/mcp-plaza/info-report", "label": "资讯上报", "perm": "mcp_info:view"},
+    {"path": "/mcp-plaza/portraits", "label": "人像参考库", "perm": "mcp_portraits:view"},
+    {"path": "/mcp-plaza/poses", "label": "姿势参考库", "perm": "mcp_poses:view"},
+    {"path": "/mcp-plaza/costumes", "label": "服装参考库", "perm": "mcp_costumes:view"},
+    {"path": "/mcp-plaza/generation", "label": "生成配置", "perm": "generation:settings"},
+    {"path": "/mcp-plaza/keys", "label": "MCP Key", "perm": "mcp_keys:view"},
+    {"path": "/mcp-plaza/calls", "label": "MCP 调用记录", "perm": "mcp_calls:view"},
+    {"path": "/tools", "label": "工具中心", "perm": "tools:view"},
+    {"path": "/jobs", "label": "定时任务", "perm": "jobs:view"},
+    {"path": "/security", "label": "安全中心", "perm": "security:view"},
+    {"path": "/voice", "label": "语音房", "perm": "voice:view"},
+    {"path": "/users", "label": "用户管理", "perm": "users:view"},
+    {"path": "/roles", "label": "角色管理", "perm": "roles:view"},
 )
-ALLOWED_PAGE_PREFIXES = tuple(item["path"] for item in PAGE_DIRECTORY if item["path"] != "/")
+
+PAGE_DETAIL_PERMS = ((re.compile(r"^/logs/[^/]+$"), "logs:detail"),)
 
 
 @dataclass
@@ -569,23 +575,50 @@ def catalog_payload(operation: ApiOperation) -> dict[str, Any]:
     }
 
 
-def page_directory() -> list[dict[str, str]]:
-    return [dict(item) for item in PAGE_DIRECTORY]
+def _page_for_path(path: str) -> dict[str, str] | None:
+    for pattern, perm in PAGE_DETAIL_PERMS:
+        if pattern.match(path):
+            return {"path": path, "label": "日志详情", "perm": perm}
+    best: dict[str, str] | None = None
+    for item in PAGE_DIRECTORY:
+        prefix = item["path"]
+        if prefix == "/":
+            if path == "/":
+                return dict(item)
+            continue
+        if path == prefix or path.startswith(prefix + "/"):
+            if best is None or len(prefix) > len(best["path"]):
+                best = item
+    return dict(best) if best is not None else None
 
 
-def normalize_navigation_path(path: str) -> str | None:
+def page_directory(permissions: set[str] | None = None) -> list[dict[str, str]]:
+    if permissions is None:
+        return [dict(item) for item in PAGE_DIRECTORY]
+    return [dict(item) for item in PAGE_DIRECTORY if has_permission(permissions, item["perm"])]
+
+
+def normalize_navigation_path(path: str, permissions: set[str] | None = None) -> str | None:
     value = (path or "").strip()
     if not value.startswith("/") or value.startswith("//") or len(value) > 300:
         return None
-    base = value.split("?", 1)[0]
+    base = value.split("?", 1)[0].split("#", 1)[0]
+    decoded = unquote(unquote(base))
+    if "\\" in decoded:
+        return None
+    segments = [segment for segment in decoded.split("/") if segment]
+    if any(segment in {".", ".."} for segment in segments):
+        return None
     if base in {"/login", "/share", "/voice/join"}:
         return None
     if base.rstrip("/") == "":
-        return "/"
-    for prefix in ALLOWED_PAGE_PREFIXES:
-        if base == prefix or base.startswith(prefix + "/"):
-            return value
-    return None
+        base = "/"
+    page = _page_for_path(base)
+    if page is None:
+        return None
+    if permissions is not None and not has_permission(permissions, page["perm"]):
+        return None
+    return value
 
 
 def dumps(value: Any) -> str:
