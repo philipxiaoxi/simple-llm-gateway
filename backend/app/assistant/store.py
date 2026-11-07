@@ -201,11 +201,11 @@ def update_settings(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
     if "temperature" in payload:
         row.temperature = _as_float(payload, "temperature", 0.7, 0.0, 2.0)
     if "max_tokens" in payload:
-        row.max_tokens = _as_int(payload, "max_tokens", 2048, 0, 32000)
+        row.max_tokens = _as_int(payload, "max_tokens", 16384, 0, 1048576)
     if "max_tool_rounds" in payload:
-        row.max_tool_rounds = _as_int(payload, "max_tool_rounds", 6, 1, 12)
+        row.max_tool_rounds = _as_int(payload, "max_tool_rounds", 20, 1, 100)
     if "history_message_limit" in payload:
-        row.history_message_limit = _as_int(payload, "history_message_limit", 30, 4, 100)
+        row.history_message_limit = _as_int(payload, "history_message_limit", 300, 4, 2000)
     row.updated_at = utcnow()
     db.flush()
     return settings_payload(db)
@@ -397,7 +397,7 @@ def load_llm_messages(db: Session, conversation_id: str, limit: int) -> list[dic
         select(AssistantMessage)
         .where(AssistantMessage.conversation_id == conversation_id)
         .order_by(AssistantMessage.id.desc())
-        .limit(max(1, min(limit, 100)))
+        .limit(max(1, min(limit, 2000)))
     ).all()
     rows = list(reversed(rows))
     tool_results = {

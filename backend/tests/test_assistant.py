@@ -532,3 +532,37 @@ def test_assistant_approval_execution_failure_is_recorded(
     )
     assert approval_state == "failed"
     assert detail["messages"][-1]["role"] == "assistant"
+
+
+def test_assistant_ignores_reasoning_after_answer_text(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    account = _create_account(client, auth_headers)
+    _configure(client, auth_headers, account["id"])
+    conversation_id = _create_conversation(client, auth_headers)
+
+    from app.assistant import agent
+
+    async def fake_call_chat(account, messages, model, stream, extra, api_key):
+        return FakeStream(
+            [
+                {"choices": [{"delta": {"reasoning_content": "先看用户意图。"}, "finish_reason": None}]},
+                {"choices": [{"delta": {"content": "答案"}, "finish_reason": None}]},
+                {"choices": [{"delta": {"reasoning_content": "这句是噪声。"}, "finish_reason": None}]},
+                {"choices": [{"delta": {"content": "继续。"}, "finish_reason": None}]},
+                {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+                {"choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}},
+            ]
+        )
+
+    monkeypatch.setattr(agent, "call_chat", fake_call_chat)
+    events = _stream_message(client, auth_headers, conversation_id, "回答我")
+    reasoning = "".join(data["delta"] for name, data in events if name == "reasoning")
+    assert reasoning == "先看用户意图。"
+
+    detail = client.get(
+        f"/api/admin/assistant/conversations/{conversation_id}", headers=auth_headers
+    ).json()
+    assistant = next(message for message in detail["messages"] if message["role"] == "assistant")
+    assert assistant["content"] == "答案继续。"
+    assert assistant["reasoning"] == "先看用户意图。"

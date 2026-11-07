@@ -194,11 +194,11 @@ export function AssistantSettingsDialog({
               className="h-9 w-full accent-signal"
             />
           </Field>
-          <Field label="最大输出 tokens">
+          <Field label="最大输出 tokens（0 = 不限制）">
             <Input
               type="number"
               min={0}
-              max={32000}
+              max={1048576}
               value={form.maxTokens}
               onChange={(event) => update('maxTokens', Number(event.target.value) || 0)}
             />
@@ -207,24 +207,24 @@ export function AssistantSettingsDialog({
             <Input
               type="number"
               min={1}
-              max={12}
+              max={100}
               value={form.maxToolRounds}
-              onChange={(event) => update('maxToolRounds', Number(event.target.value) || 1)}
+              onChange={(event) => update('maxToolRounds', Number(event.target.value) || 20)}
             />
           </Field>
           <Field label="携带最近消息数">
             <Input
               type="number"
               min={4}
-              max={100}
+              max={2000}
               value={form.historyLimit}
-              onChange={(event) => update('historyLimit', Number(event.target.value) || 30)}
+              onChange={(event) => update('historyLimit', Number(event.target.value) || 300)}
             />
           </Field>
         </div>
 
         <div className="text-[11px] leading-5 text-mist-soft">
-          模型与密钥来自现有上游账号，密钥仍由服务端加密保存。助手只按当前管理员的权限调用接口；POST、PUT、PATCH、DELETE 会先暂停并等待你审批。
+          模型与密钥来自现有上游账号，密钥仍由服务端加密保存。助手只按当前管理员的权限调用接口；POST、PUT、PATCH、DELETE 会先暂停并等待你审批。默认值按长上下文推荐配置，最大输出填 0 表示不设置上限。
         </div>
       </div>
     </Dialog>

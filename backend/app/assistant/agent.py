@@ -337,16 +337,16 @@ async def run_turn(
                     round_completion = int(usage[1])
                 for choice in _chunk_choices(chunk):
                     delta = choice.get("delta") or {}
+                    reasoning = extract_reasoning_from_openai_chunk(chunk)
+                    if reasoning and not text_parts:
+                        reasoning_parts.append(reasoning)
+                        yield "reasoning", {"delta": reasoning}
                     content = extract_text_from_openai_chunk(chunk)
                     if content:
                         if not text_parts:
                             yield "status", {"stage": "writing", "round": round_index + 1}
                         text_parts.append(content)
                         yield "text", {"delta": content}
-                    reasoning = extract_reasoning_from_openai_chunk(chunk)
-                    if reasoning:
-                        reasoning_parts.append(reasoning)
-                        yield "reasoning", {"delta": reasoning}
                     _accumulate_tool_calls(tool_acc, delta.get("tool_calls"))
                     if choice.get("finish_reason"):
                         finish_reason = str(choice["finish_reason"])
