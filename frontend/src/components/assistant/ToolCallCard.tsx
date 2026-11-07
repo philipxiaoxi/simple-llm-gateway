@@ -39,12 +39,12 @@ function pathOf(call: UiToolCall): string {
   return apiId.split(' ').slice(1).join(' ') || call.approval?.path || ''
 }
 
-function iconFor(call: UiToolCall) {
-  if (call.name === 'api_search') return Search
-  if (call.name === 'api_describe') return FileSearch
-  if (call.name === 'api_call') return PlugZap
-  if (call.name === 'ui_navigate') return Compass
-  return PlugZap
+function ToolIcon({ call, size = 14 }: { call: UiToolCall; size?: number }) {
+  if (call.name === 'api_search') return <Search size={size} />
+  if (call.name === 'api_describe') return <FileSearch size={size} />
+  if (call.name === 'api_call') return <PlugZap size={size} />
+  if (call.name === 'ui_navigate') return <Compass size={size} />
+  return <PlugZap size={size} />
 }
 
 function methodTone(method: string) {
@@ -141,28 +141,35 @@ function SearchResults({ result }: { result: unknown }) {
   const items = Array.isArray(data?.items) ? data.items : []
   if (!items.length) return null
   return (
-    <div className="border-t border-line/60 px-2 py-1.5">
-      {items.slice(0, 4).map((raw, index) => {
-        const item = asRecord(raw)
-        if (!item) return null
-        const method = String(item.method || '')
-        return (
-          <div key={`${item.id || index}`} className="flex min-w-0 items-start gap-2 rounded-md px-1 py-1.5">
-            <span className={cn('mt-0.5 shrink-0 rounded border px-1 py-0.5 font-mono text-[9px]', methodTone(method))}>
-              {method || 'API'}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-mono text-[10px] text-mist-soft">{String(item.path || '')}</div>
-              <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-mist">{String(item.summary || item.description || '')}</div>
+    <details className="group border-t border-line/60">
+      <summary className="flex cursor-pointer list-none items-center gap-1 px-3 py-2 text-[11px] text-mist transition-colors hover:text-paper [&::-webkit-details-marker]:hidden">
+        <ChevronDown size={12} className="shrink-0 transition-transform group-open:rotate-180" />
+        接口信息
+        <span className="text-mist-soft">· {items.length} 个</span>
+      </summary>
+      <div className="border-t border-line/60 px-2 py-1.5">
+        {items.slice(0, 4).map((raw, index) => {
+          const item = asRecord(raw)
+          if (!item) return null
+          const method = String(item.method || '')
+          return (
+            <div key={`${item.id || index}`} className="flex min-w-0 items-start gap-2 rounded-md px-1 py-1.5">
+              <span className={cn('mt-0.5 shrink-0 rounded border px-1 py-0.5 font-mono text-[9px]', methodTone(method))}>
+                {method || 'API'}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-mono text-[10px] text-mist-soft">{String(item.path || '')}</div>
+                <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-mist">{String(item.summary || item.description || '')}</div>
+              </div>
+              {item.read_only === false ? (
+                <span className="mt-0.5 shrink-0 text-[9px] text-warn">需审批</span>
+              ) : null}
             </div>
-            {item.read_only === false ? (
-              <span className="mt-0.5 shrink-0 text-[9px] text-warn">需审批</span>
-            ) : null}
-          </div>
-        )
-      })}
-      {items.length > 4 ? <div className="px-1 py-1 text-[10px] text-mist-soft">还有 {items.length - 4} 个结果</div> : null}
-    </div>
+          )
+        })}
+        {items.length > 4 ? <div className="px-1 py-1 text-[10px] text-mist-soft">还有 {items.length - 4} 个结果</div> : null}
+      </div>
+    </details>
   )
 }
 
@@ -173,7 +180,6 @@ export function ToolCallCard({
   call: UiToolCall
   onDecideApproval: (approvalId: string, decision: 'approve' | 'reject') => void
 }) {
-  const Icon = iconFor(call)
   const method = methodOf(call)
   const path = pathOf(call)
   const approval = call.approval
@@ -214,7 +220,7 @@ export function ToolCallCard({
                   : 'border-ok/25 bg-ok/10 text-ok',
           )}
         >
-          <Icon size={14} />
+          <ToolIcon call={call} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1.5">
