@@ -23,6 +23,7 @@ from app.services.ccswitch import (
     describe_ccswitch_targets,
     gateway_endpoint,
 )
+from app.services.dashboard_stats import key_usage_totals
 from app.services.key_models import (
     ALIAS_ERROR,
     ALIAS_PATTERN,
@@ -65,6 +66,9 @@ def _account_availability_status(account) -> str:
 
 
 def _key_token_totals(db: Session, api_key_id: int) -> tuple[int, int]:
+    cached = key_usage_totals(db, [api_key_id])
+    if cached is not None:
+        return cached.get(api_key_id, (0, 0))
     today = shanghai_day_start_utc()
     today_tokens = (
         db.scalar(

@@ -47,6 +47,29 @@ def test_dashboard_counts(client: TestClient, auth_headers: dict[str, str]) -> N
     assert body["benchmark_speed_top"] == []
 
 
+def test_dashboard_merges_request_log_scalar_queries(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """仪表盘的今日/累计标量统计必须合并成一次 request_logs 聚合。"""
+    from sqlalchemy import event
+
+    from app.db import get_engine
+
+    request_log_queries = {"count": 0}
+
+    def before_cursor_execute(_conn, _cursor, statement, _parameters, _context, _executemany) -> None:
+        if "request_logs" in statement and statement.lstrip().upper().startswith("SELECT"):
+            request_log_queries["count"] += 1
+
+    engine = get_engine()
+    event.listen(engine, "before_cursor_execute", before_cursor_execute)
+    try:
+        response = client.get("/api/admin/dashboard", headers=auth_headers)
+    finally:
+        event.remove(engine, "before_cursor_execute", before_cursor_execute)
+
+    assert response.status_code == 200, response.text
+    assert request_log_queries["count"] == 1
+
+
 def test_logs_are_paginated(client: TestClient, auth_headers: dict[str, str]) -> None:
     account = client.post(
         "/api/admin/accounts",

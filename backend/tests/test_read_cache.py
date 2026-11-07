@@ -103,16 +103,16 @@ def test_ttl_cache_single_flight_merges_concurrent_misses() -> None:
 def test_dashboard_stats_reads_snapshot_until_refresh(
     client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.routers import admin_dashboard
+    from app.services import dashboard_stats
 
     calls: list[int] = []
-    real = admin_dashboard.compute_stats
+    real = dashboard_stats.refresh_snapshot_from_rollups
 
     def spy(db, days):  # type: ignore[no-untyped-def]
         calls.append(days)
         return real(db, days)
 
-    monkeypatch.setattr(admin_dashboard, "compute_stats", spy)
+    monkeypatch.setattr(dashboard_stats, "refresh_snapshot_from_rollups", spy)
     empty = client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 7})
     assert empty.status_code == 200
     assert empty.json()["daily"] == []

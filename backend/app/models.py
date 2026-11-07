@@ -476,6 +476,7 @@ class RequestLogDailyStats(Base):
     latency_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     models_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     accounts_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    keys_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     hourly_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     latency_hist_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     computed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
@@ -488,6 +489,7 @@ class DashboardStatsMeta(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     rollup_watermark: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rollup_schema: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 

@@ -292,7 +292,7 @@ async def run_job(job_id: str) -> dict[str, Any]:
 
 
 def _stats_snapshot_ready(session) -> bool:
-    """概览与 MCP 图表快照是否都已就绪。"""
+    """概览/MCP 快照与请求日志日聚合是否都已就绪。"""
     for days in dashboard_stats_service.snapshot_days():
         row = session.get(dashboard_stats_service.StatsRow, days)
         if row is None or not row.payload_json or row.payload_json == "{}":
@@ -301,7 +301,8 @@ def _stats_snapshot_ready(session) -> bool:
         row = session.get(mcp_stats_service.StatsRow, days)
         if row is None or not mcp_stats_service.snapshot_is_current(row.payload_json):
             return False
-    return True
+    # 日聚合结构升级后要补一次历史回填，否则仪表盘累计值会继续走实时全表扫描
+    return dashboard_stats_service.rollups_complete(session)
 
 
 async def _catch_up_stale_cache(job_id: str) -> None:

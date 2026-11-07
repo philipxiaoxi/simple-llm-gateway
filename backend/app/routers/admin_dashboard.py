@@ -4,7 +4,7 @@ import math
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.clock import SHANGHAI_TZ, shanghai_day_start_utc
@@ -34,7 +34,7 @@ from app.schemas import (
     DashboardStatsOut,
     DashboardStatsSummaryOut,
 )
-from app.services.dashboard_stats import empty_stats, load_snapshot, refresh_snapshot
+from app.services.dashboard_stats import dashboard_totals, empty_stats, load_snapshot, refresh_snapshot
 from app.services.leaderboard import latest_snapshot, snapshot_to_payload
 from app.services.local_agent_relay import local_agent_relay
 
@@ -374,61 +374,100 @@ def compute_stats(db: Session, days: int) -> DashboardStatsOut:
     )
 
 
+def _dashboard_log_scalars(db: Session, today: datetime) -> dict[str, int]:
+    """实时回退：一次条件聚合算出今日/累计请求与 Token。"""
+    row = db.execute(
+        select(
+            func.coalesce(
+                func.sum(
+                    case(
+                        (RequestLog.created_at >= today, func.coalesce(RequestLog.turn_count, 1)),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                RequestLog.created_at >= today,
+                                RequestLog.status == "error",
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (RequestLog.created_at >= today, RequestLog.total_tokens),
+                        else_=None,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(func.sum(func.coalesce(RequestLog.turn_count, 1)), 0),
+            func.coalesce(func.sum(RequestLog.total_tokens), 0),
+        )
+    ).one()
+    return {
+        "today_requests": int(row[0] or 0),
+        "today_failures": int(row[1] or 0),
+        "today_tokens": int(row[2] or 0),
+        "total_requests": int(row[3] or 0),
+        "total_tokens": int(row[4] or 0),
+    }
+
+
+def _dashboard_small_counts(db: Session) -> dict[str, int]:
+    row = db.execute(
+        select(
+            select(func.count()).select_from(BenchmarkRun).scalar_subquery(),
+            select(func.count()).select_from(Skill).scalar_subquery(),
+            select(func.count()).select_from(ApiKey).scalar_subquery(),
+            select(func.count()).select_from(DesktopTool).scalar_subquery(),
+        )
+    ).one()
+    return {
+        "benchmark_count": int(row[0] or 0),
+        "skill_count": int(row[1] or 0),
+        "key_count": int(row[2] or 0),
+        "tool_count": int(row[3] or 0),
+    }
+
+
 @router.get("/dashboard", response_model=DashboardOut)
 def dashboard(db: Session = Depends(get_db)) -> DashboardOut:
-    account_count = db.scalar(select(func.count()).select_from(UpstreamAccount)) or 0
     accounts = db.scalars(select(UpstreamAccount).options(joinedload(UpstreamAccount.oauth_token))).all()
     # 探测失败与缺凭据可能命中同一账号，用去重集合统计，避免「异常账号」重复计数
     unhealthy_ids = {account.id for account in accounts if account.last_probe_ok is False}
     unhealthy_ids.update(
         account.id for account in accounts if get_provider(account.provider).missing_credential(account)
     )
-    today = shanghai_day_start_utc()
-    today_requests = (
-        db.scalar(
-            select(func.coalesce(func.sum(func.coalesce(RequestLog.turn_count, 1)), 0)).where(
-                RequestLog.created_at >= today
-            )
-        )
-        or 0
-    )
-    today_failures = (
-        db.scalar(
-            select(func.count())
-            .select_from(RequestLog)
-            .where(RequestLog.created_at >= today, RequestLog.status == "error")
-        )
-        or 0
-    )
-    today_tokens = (
-        db.scalar(
-            select(func.coalesce(func.sum(RequestLog.total_tokens), 0)).where(RequestLog.created_at >= today)
-        )
-        or 0
-    )
-    total_requests = (
-        db.scalar(select(func.coalesce(func.sum(func.coalesce(RequestLog.turn_count, 1)), 0))) or 0
-    )
-    total_tokens = db.scalar(select(func.coalesce(func.sum(RequestLog.total_tokens), 0))) or 0
-    benchmark_count = db.scalar(select(func.count()).select_from(BenchmarkRun)) or 0
-    skill_count = db.scalar(select(func.count()).select_from(Skill)) or 0
-    key_count = db.scalar(select(func.count()).select_from(ApiKey)) or 0
-    tool_count = db.scalar(select(func.count()).select_from(DesktopTool)) or 0
+    log_scalars = dashboard_totals(db)
+    if log_scalars is None:
+        log_scalars = _dashboard_log_scalars(db, shanghai_day_start_utc())
+    small_counts = _dashboard_small_counts(db)
     agents = db.scalars(select(GatewayAgent)).all()
     agent_count = len(agents)
     agent_online_count = sum(1 for agent in agents if local_agent_relay.is_agent_online(agent.agent_id))
     return DashboardOut(
-        account_count=account_count,
+        account_count=len(accounts),
         unhealthy_count=len(unhealthy_ids),
-        today_requests=today_requests,
-        today_failures=today_failures,
-        today_tokens=int(today_tokens),
-        total_requests=total_requests,
-        total_tokens=int(total_tokens),
-        benchmark_count=benchmark_count,
-        skill_count=skill_count,
-        key_count=key_count,
-        tool_count=tool_count,
+        today_requests=log_scalars["today_requests"],
+        today_failures=log_scalars["today_failures"],
+        today_tokens=log_scalars["today_tokens"],
+        total_requests=log_scalars["total_requests"],
+        total_tokens=log_scalars["total_tokens"],
+        benchmark_count=small_counts["benchmark_count"],
+        skill_count=small_counts["skill_count"],
+        key_count=small_counts["key_count"],
+        tool_count=small_counts["tool_count"],
         agent_count=agent_count,
         agent_online_count=agent_online_count,
         leaderboard_top=_leaderboard_top(db),
