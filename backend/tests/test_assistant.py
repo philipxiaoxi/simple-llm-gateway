@@ -608,3 +608,34 @@ def test_assistant_navigation_requires_page_permission() -> None:
     )
     assert result["ok"] is False
     assert "没有权限" in result["error"]
+
+
+def test_assistant_internal_calls_carry_audit_bypass_header() -> None:
+    import asyncio
+
+    from app.assistant.api_catalog import ApiOperation
+    from app.assistant.api_client import execute_api
+    from app.internal_requests import INTERNAL_AUDIT_HEADER, is_internal_audit_request
+
+    captured: dict[str, str] = {}
+
+    async def app(scope, receive, send):
+        captured.update({key.decode(): value.decode() for key, value in scope["headers"]})
+        await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"application/json")]})
+        await send({"type": "http.response.body", "body": b"{}"})
+
+    operation = ApiOperation(
+        id="me",
+        method="GET",
+        path="/api/admin/me",
+        summary="当前账号",
+        description="",
+        category="当前账号",
+        category_id="me",
+        permission=None,
+        read_only=True,
+        supported=True,
+    )
+    result = asyncio.run(execute_api(app, "token", operation))
+    assert result["ok"] is True
+    assert is_internal_audit_request({INTERNAL_AUDIT_HEADER: captured[INTERNAL_AUDIT_HEADER]})

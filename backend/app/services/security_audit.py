@@ -25,6 +25,7 @@ import jwt
 from app.config import get_settings
 from app.crypto import encrypt_secret
 from app.db import get_session_factory
+from app.internal_requests import is_internal_audit_request
 from app.models import SecurityEvent, SecuritySettings
 from app.services.client_meta import client_ip as resolve_client_ip
 from app.services.client_meta import (
@@ -42,8 +43,31 @@ _BROWSER_TOKEN = re.compile(
     r"Mozilla/5\.0.*(Chrome/|Firefox/|Safari/|Edg/|Version/|Mobile/)", re.I
 )
 
-# 命令行客户端 / 扫描器：命中即 critical
+# 真正的扫描 / 攻击工具：命中即 critical
 SCANNER_PATTERNS = (
+    "sqlmap",
+    "nikto",
+    "nmap",
+    "nuclei",
+    "masscan",
+    "zgrab",
+    "feroxbuster",
+    "ffuf",
+    "dirbuster",
+    "gobuster",
+    "wpscan",
+    "acunetix",
+    "nessus",
+    "openvas",
+    "whatweb",
+    "hydra",
+    "joomscan",
+    "wfuzz",
+    "dirb",
+)
+
+# 常见命令行 / 自动化客户端：只标记为自动化来源，不再当作扫描器
+AUTOMATION_CLIENT_PATTERNS = (
     "curl/",
     "wget/",
     "python-requests",
@@ -56,16 +80,6 @@ SCANNER_PATTERNS = (
     "node-fetch",
     "undici",
     "axios/",
-    "sqlmap",
-    "nikto",
-    "nmap",
-    "nuclei",
-    "masscan",
-    "zgrab",
-    "feroxbuster",
-    "ffuf",
-    "dirbuster",
-    "gobuster",
 )
 
 # headless / 自动化 UA 令牌（仅在 UA 伪装成浏览器时判定，避免误伤正常 SDK）
@@ -218,8 +232,11 @@ def judge_request(path: str, headers: dict[str, str], peer: str | None) -> Judge
     # 因此只在缺少标识时比对 Origin，避免反向代理改写 Host 造成的误报。
     if not has_marker and _origin_mismatch(lowered):
         tags.append("origin_mismatch")
-    if any(token in (user_agent or "").lower() for token in SCANNER_PATTERNS):
+    lowered_ua = (user_agent or "").lower()
+    if any(token in lowered_ua for token in SCANNER_PATTERNS):
         tags.append("scanner_ua")
+    elif any(token in lowered_ua for token in AUTOMATION_CLIENT_PATTERNS):
+        tags.append("automation_client")
     return JudgeResult(True, "direct", ip, user_agent, client_name, tags)
 
 
@@ -491,6 +508,14 @@ def _actor_from_headers(headers: dict[str, str] | None) -> str | None:
     return str(subject) if subject else None
 
 
+def _authenticated_automation(tags: list[str], status: int, actor: str | None) -> bool:
+    """已登录账号发起的正常自动化调用，不应按扫描/入侵级别告警。"""
+    if not actor or not (200 <= status < 400):
+        return False
+    expected = {"non_browser_ua", "missing_marker", "automation_client"}
+    return bool(set(tags)) and set(tags) <= expected
+
+
 def submit_request_event(
     judge: JudgeResult,
     status: int,
@@ -503,12 +528,23 @@ def submit_request_event(
     if not judge.is_console:
         return
     tags = list(judge.risk_tags)
+    # 登录成功/失败已经由 login_* 事件记录，普通客户端再记一条异常请求属于重复告警。
+    # 真正的扫描器仍保留，便于发现撞库工具。
+    if path.rstrip("/") == "/api/admin/login" and "scanner_ua" not in tags:
+        return
     # 子资源（图片/字体/iframe 等）的 404 只是资源缺失，不代表有人在探测接口
     if status == 404 and not is_subresource_request(headers or {}):
         tags.append("probe_path")
     if not tags:
         return
-    severity = "critical" if "scanner_ua" in tags else "warn"
+    actor = _actor_from_headers(headers)
+    if _authenticated_automation(tags, status, actor):
+        tags.append("authenticated_automation")
+        severity = "info"
+    elif "scanner_ua" in tags:
+        severity = "critical"
+    else:
+        severity = "warn"
     _enqueue(
         PendingEvent(
             event_type="suspicious_request",
@@ -520,7 +556,7 @@ def submit_request_event(
             path=path,
             status=status,
             risk_tags=tags,
-            actor=_actor_from_headers(headers),
+            actor=actor,
             detail={"client_ip": judge.client_ip, "user_agent": judge.user_agent},
         )
     )
@@ -760,6 +796,10 @@ class SecurityAuditMiddleware:
             key.decode("latin-1").lower(): value.decode("latin-1")
             for key, value in scope.get("headers", [])
         }
+        # 站内 AI 助手等进程内调用属于受信请求，不参与异常判定
+        if is_internal_audit_request(headers):
+            await self.app(scope, receive, send)
+            return
         peer = (scope.get("client") or (None, None))[0]
         judge = judge_request(path, headers, peer)
         status = 500
