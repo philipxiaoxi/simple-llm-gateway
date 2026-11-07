@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import threading
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -206,3 +208,38 @@ async def test_loop_catches_up_empty_dashboard_stats(
         assert session.get(dashboard_stats.StatsRow, 7) is not None
     finally:
         session.close()
+
+
+async def test_dashboard_stats_job_does_not_block_event_loop(monkeypatch) -> None:
+    """大库聚合要放工作线程，否则会卡住事件循环，静态资源与接口一起失联。"""
+    from app.services import dashboard_stats, jobs, mcp_stats
+
+    started = threading.Event()
+    release = threading.Event()
+
+    class DummySession:
+        def close(self) -> None:
+            pass
+
+    def fake_dashboard(_session) -> int:
+        started.set()
+        release.wait(3)
+        return 1
+
+    def fake_mcp(_session) -> int:
+        return 1
+
+    monkeypatch.setattr(jobs, "get_session_factory", lambda: DummySession)
+    monkeypatch.setattr(dashboard_stats, "refresh_all", fake_dashboard)
+    monkeypatch.setattr(mcp_stats, "refresh_all", fake_mcp)
+
+    task = asyncio.create_task(jobs.run_job(jobs.JOB_DASHBOARD_STATS))
+    try:
+        assert await asyncio.to_thread(started.wait, 2)
+        await asyncio.sleep(0.05)
+        assert not task.done()
+    finally:
+        release.set()
+    extra = await asyncio.wait_for(task, 2)
+    assert extra["refreshed"] == 1
+    assert extra["mcp_refreshed"] == 1

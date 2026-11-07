@@ -5,10 +5,10 @@ from datetime import timedelta
 
 from sqlalchemy import delete, select
 
-from app.clock import utcnow
+from app.clock import to_shanghai, utcnow
 from app.config import get_settings
 from app.db import get_session_factory
-from app.models import KnowledgeIngestJob, McpCallLog
+from app.models import KnowledgeIngestJob, McpCallDailyStats, McpCallLog
 from app.services import knowledge_jobs
 
 CLEANUP_INTERVAL_SECONDS = 24 * 3600
@@ -42,6 +42,10 @@ def cleanup_once() -> dict[str, int]:
             cutoff = now - timedelta(days=call_days)
             result = session.execute(delete(McpCallLog).where(McpCallLog.created_at < cutoff))
             removed_calls = int(result.rowcount or 0)
+            # 日聚合跟源日志一起清理；cutoff 所在日也删掉，下次刷新会按剩余日志重算。
+            session.execute(
+                delete(McpCallDailyStats).where(McpCallDailyStats.day <= to_shanghai(cutoff).date().isoformat())
+            )
 
         # 清理没有对应任务记录的原文文件
         active_ids = set(session.scalars(select(KnowledgeIngestJob.id)).all())

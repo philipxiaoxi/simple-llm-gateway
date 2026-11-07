@@ -26,6 +26,7 @@ def _add_log(
     status: str = "success",
     latency_ms: int = 100,
     created_at: datetime | None = None,
+    updated_at: datetime | None = None,
 ) -> None:
     session = get_session_factory()()
     try:
@@ -45,6 +46,7 @@ def _add_log(
                 completion_tokens=completion_tokens,
                 latency_ms=latency_ms,
                 created_at=created_at or _to_utc_naive(_shanghai_today()),
+                updated_at=updated_at,
             )
         )
         session.commit()
@@ -159,3 +161,53 @@ def test_dashboard_stats_token_fallback_and_previous_window(
 def test_dashboard_stats_rejects_invalid_range(client: TestClient, auth_headers: dict[str, str]) -> None:
     assert client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 0}).status_code == 422
     assert client.get("/api/admin/dashboard/stats", headers=auth_headers, params={"days": 91}).status_code == 422
+
+
+def test_dashboard_job_uses_incremental_daily_rollups(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    from app.db import get_session_factory
+    from app.models import RequestLogDailyStats
+    from app.services import dashboard_stats
+
+    account_id, key_id = _seed(client, auth_headers)
+    old_day = _shanghai_today() - timedelta(days=10)
+    _add_log(
+        account_id,
+        key_id,
+        "glm-5.2",
+        total_tokens=100,
+        created_at=_to_utc_naive(old_day),
+    )
+
+    session = get_session_factory()()
+    try:
+        assert dashboard_stats.refresh_all(session) == len(dashboard_stats.SNAPSHOT_DAYS)
+        old_row = session.get(RequestLogDailyStats, old_day.strftime("%Y-%m-%d"))
+        assert old_row is not None and old_row.requests == 1
+        old_computed_at = old_row.computed_at
+
+        _add_log(
+            account_id,
+            key_id,
+            "glm-5.2",
+            total_tokens=50,
+            created_at=_to_utc_naive(_shanghai_today()),
+            updated_at=datetime.now(UTC).replace(tzinfo=None),
+        )
+        assert dashboard_stats.refresh_all(session) == len(dashboard_stats.SNAPSHOT_DAYS)
+
+        # 历史日已经算过，新增日志只应影响今天，不能把旧日重新扫一遍
+        old_row = session.get(RequestLogDailyStats, old_day.strftime("%Y-%m-%d"))
+        assert old_row is not None and old_row.computed_at == old_computed_at
+        snapshot = dashboard_stats.load_snapshot(session, 30)
+        assert snapshot is not None
+        assert snapshot.summary.requests == 2
+        assert snapshot.summary.tokens == 150
+
+        from app.routers.admin_dashboard import compute_stats
+
+        full = compute_stats(session, 30)
+        assert snapshot.model_dump(exclude={"computed_at"}) == full.model_dump(exclude={"computed_at"})
+    finally:
+        session.close()

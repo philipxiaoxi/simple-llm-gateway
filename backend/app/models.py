@@ -456,6 +456,41 @@ class DashboardStatsSnapshot(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class RequestLogDailyStats(Base):
+    """请求日志的上海自然日增量聚合。
+
+    历史日志只按天算一次；后台刷新只重算有新增/续写日志的日期，再从这些日行拼出
+    7/14/30/90 天快照，避免每轮都重复扫完整张大表。
+    """
+
+    __tablename__ = "request_log_daily_stats"
+
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    log_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    requests: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    latency_sum: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    latency_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    models_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    accounts_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    hourly_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    latency_hist_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class DashboardStatsMeta(Base):
+    """概览增量聚合的源数据水位，成功后向前推进。"""
+
+    __tablename__ = "dashboard_stats_meta"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rollup_watermark: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
 class McpCallStatsSnapshot(Base):
     """MCP 调用图表的预计算快照。与概览图表的定时任务一起刷新，请求只读这一行。"""
 
@@ -465,6 +500,32 @@ class McpCallStatsSnapshot(Base):
     payload_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     computed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class McpCallDailyStats(Base):
+    """MCP 调用日志的上海自然日增量聚合。"""
+
+    __tablename__ = "mcp_call_daily_stats"
+
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    success: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    latency_sum: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    hourly_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    operations_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    latency_hist_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    latency_buckets_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class McpCallStatsMeta(Base):
+    """MCP 调用增量聚合的源数据水位。"""
+
+    __tablename__ = "mcp_call_stats_meta"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rollup_watermark: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
 class ContentAuditFinding(Base):
