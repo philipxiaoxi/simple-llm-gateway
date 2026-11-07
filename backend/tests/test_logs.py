@@ -48,7 +48,7 @@ def test_dashboard_counts(client: TestClient, auth_headers: dict[str, str]) -> N
 
 
 def test_dashboard_merges_request_log_scalar_queries(client: TestClient, auth_headers: dict[str, str]) -> None:
-    """仪表盘的今日/累计标量统计必须合并成一次 request_logs 聚合。"""
+    """仪表盘标量统计只读取今天的 request_logs 分区，并额外读取日聚合范围起点。"""
     from sqlalchemy import event
 
     from app.db import get_engine
@@ -67,7 +67,7 @@ def test_dashboard_merges_request_log_scalar_queries(client: TestClient, auth_he
         event.remove(engine, "before_cursor_execute", before_cursor_execute)
 
     assert response.status_code == 200, response.text
-    assert request_log_queries["count"] == 1
+    assert request_log_queries["count"] == 2
 
 
 def test_logs_are_paginated(client: TestClient, auth_headers: dict[str, str]) -> None:

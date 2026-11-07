@@ -2,11 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.clock import shanghai_day_start_utc, utcnow
+from app.clock import utcnow
 from app.config import get_settings
 from app.db import get_db
 from app.deps import resolve_api_key
-from app.models import ApiKey, ModelAlias, RequestLog
+from app.models import ApiKey, ModelAlias
 from app.providers import find_provider
 from app.schemas import (
     LeaderboardOut,
@@ -66,28 +66,7 @@ def _account_availability_status(account) -> str:
 
 
 def _key_token_totals(db: Session, api_key_id: int) -> tuple[int, int]:
-    cached = key_usage_totals(db, [api_key_id])
-    if cached is not None:
-        return cached.get(api_key_id, (0, 0))
-    today = shanghai_day_start_utc()
-    today_tokens = (
-        db.scalar(
-            select(func.coalesce(func.sum(RequestLog.total_tokens), 0)).where(
-                RequestLog.api_key_id == api_key_id,
-                RequestLog.created_at >= today,
-            )
-        )
-        or 0
-    )
-    total_tokens = (
-        db.scalar(
-            select(func.coalesce(func.sum(RequestLog.total_tokens), 0)).where(
-                RequestLog.api_key_id == api_key_id,
-            )
-        )
-        or 0
-    )
-    return int(today_tokens), int(total_tokens)
+    return key_usage_totals(db, [api_key_id]).get(api_key_id, (0, 0))
 
 
 @router.post("/lookup")
