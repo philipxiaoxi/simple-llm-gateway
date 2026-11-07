@@ -1409,3 +1409,101 @@ class SecuritySettings(Base):
     trusted_locations_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     ip_allowlist_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class AssistantSettings(Base):
+    """站内 AI 助手的全局单例设置。模型复用上游账号，不单独存密钥。"""
+
+    __tablename__ = "assistant_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    model: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    system_prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    temperature: Mapped[float] = mapped_column(Float, default=0.7, nullable=False)
+    max_tokens: Mapped[int] = mapped_column(Integer, default=2048, nullable=False)
+    max_tool_rounds: Mapped[int] = mapped_column(Integer, default=6, nullable=False)
+    history_message_limit: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class AssistantConversation(Base):
+    """一个管理员的助手会话，消息按 id 顺序追加。"""
+
+    __tablename__ = "assistant_conversations"
+    __table_args__ = (Index("ix_assistant_conversations_admin_updated", "admin_id", "updated_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    admin_id: Mapped[int] = mapped_column(
+        ForeignKey("admins.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(200), default="新对话", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class AssistantMessage(Base):
+    """助手会话中的一条消息。assistant 消息可带 tool_calls，tool 消息用 tool_call_id 关联。"""
+
+    __tablename__ = "assistant_messages"
+    __table_args__ = (Index("ix_assistant_messages_conversation_id_id", "conversation_id", "id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("assistant_conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    tool_calls_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tool_call_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    tool_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    meta_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class AssistantIdentity(Base):
+    """管理员关联的历史隐藏 MCP Key；保留用于从 MCP Key 列表隐藏旧助手密钥。"""
+
+    __tablename__ = "assistant_identities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    admin_id: Mapped[int] = mapped_column(
+        ForeignKey("admins.id", ondelete="CASCADE"), unique=True, nullable=False, index=True
+    )
+    mcp_key_id: Mapped[int | None] = mapped_column(
+        ForeignKey("mcp_keys.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class AssistantApproval(Base):
+    """助手发起的写操作审批。只读接口直接执行，POST/PUT/PATCH/DELETE 先落审批。"""
+
+    __tablename__ = "assistant_approvals"
+    __table_args__ = (Index("ix_assistant_approvals_conversation_status", "conversation_id", "status"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("assistant_conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    admin_id: Mapped[int] = mapped_column(
+        ForeignKey("admins.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    tool_call_id: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
+    api_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    method: Mapped[str] = mapped_column(String(8), nullable=False)
+    path: Mapped[str] = mapped_column(String(512), nullable=False)
+    path_params_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    query_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    body_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    summary: Mapped[str] = mapped_column(String(300), default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

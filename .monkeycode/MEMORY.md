@@ -172,3 +172,12 @@ Entries discovered by the Agent during task execution should follow this format:
   - 能调用能力写接口的 Agent 都持有管理员签发的 MCP Key，视为可信来源
   - 对外能力写入口默认不做内容审查/防滥用校验；护栏用 Key 白名单 + 限流 + 总开关即可
   - 同源存储型 XSS 等技术性媒体校验（类型白名单、解码校验）仍需保留，与是否信任上传者无关
+
+[提交与推送语义]
+- Date: 2026-11-06
+- Context: 用户说明仓库操作的触发词边界
+- Category: Workflow & Collaboration
+- Instructions:
+  - 用户说「提交，推送，合并」时，依次提交当前分支、推送分支、合并并推送 main
+  - 用户说「提交合并到 main」时，只做提交和本地合并，不执行推送
+  - 用户未明确提到推送时，不执行 `git push`

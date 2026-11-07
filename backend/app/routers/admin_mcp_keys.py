@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.crypto import decrypt_secret
 from app.db import get_db
 from app.deps import get_current_admin
-from app.models import McpKey
+from app.models import AssistantIdentity, McpKey
 from app.schemas import McpCapabilityConfigUpdate, McpKeyCapabilitiesUpdate, McpKeyCreate, McpKeyOut, McpKeyUpdate
 from app.services.mcp_auth import allowed_capability_ids, create_mcp_key_record, replace_mcp_key_capabilities
 from app.services.mcp_key_config import all_capability_configs, set_capability_config
@@ -39,7 +39,13 @@ def _out(item: McpKey, key: str | None = None) -> McpKeyOut:
 
 @router.get("", response_model=list[McpKeyOut])
 def list_keys(db: Session = Depends(get_db)):
-    items = db.scalars(select(McpKey).options(selectinload(McpKey.capabilities)).order_by(McpKey.id.desc())).all()
+    hidden = select(AssistantIdentity.mcp_key_id).where(AssistantIdentity.mcp_key_id.is_not(None))
+    items = db.scalars(
+        select(McpKey)
+        .where(McpKey.id.notin_(hidden))
+        .options(selectinload(McpKey.capabilities))
+        .order_by(McpKey.id.desc())
+    ).all()
     return [_out(item) for item in items]
 
 

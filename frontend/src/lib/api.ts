@@ -854,7 +854,112 @@ export type SecuritySettings = {
   ip_allowlist: string[]
 }
 
+export type AssistantApproval = {
+  id: string
+  status: 'pending' | 'approved' | 'rejected' | 'executed' | 'failed' | string
+  method: string
+  path: string
+  api_id: string
+  summary: string
+  reason: string
+  path_params: Record<string, unknown>
+  query: Record<string, unknown>
+  body: unknown
+  error: string
+  created_at: string | null
+  decided_at: string | null
+  executed_at: string | null
+  preview?: {
+    method: string
+    path: string
+    query: Record<string, unknown>
+    body: unknown
+  }
+}
+
+export type AssistantToolCall = {
+  id: string
+  name: string
+  arguments: Record<string, unknown>
+  result: unknown
+  ok: boolean
+  summary: string
+  error: string
+  latency_ms?: number
+  approval?: AssistantApproval
+}
+
+export type AssistantMessage = {
+  id: number
+  role: 'user' | 'assistant'
+  content: string
+  reasoning: string
+  tool_calls: AssistantToolCall[]
+  created_at: string | null
+  prompt_tokens: number
+  completion_tokens: number
+  error?: string
+}
+
+export type AssistantConversationSummary = {
+  id: string
+  title: string
+  message_count: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type AssistantConversation = {
+  id: string
+  title: string
+  created_at: string | null
+  updated_at: string | null
+  messages: AssistantMessage[]
+}
+
+export type AssistantSettings = {
+  enabled: boolean
+  account_id: number | null
+  account_name: string | null
+  account_status: string | null
+  model: string
+  configured: boolean
+  system_prompt: string
+  temperature: number
+  max_tokens: number
+  max_tool_rounds: number
+  history_message_limit: number
+  updated_at: string | null
+}
+
+export type AssistantModelOption = {
+  id: number
+  name: string
+  provider: string
+  status: string
+  has_credential: boolean
+  models: string[]
+}
+
 export const api = {
+  assistantSettings: () => request<AssistantSettings>('/api/admin/assistant/settings'),
+  saveAssistantSettings: (payload: Partial<AssistantSettings>) =>
+    request<AssistantSettings>('/api/admin/assistant/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  assistantModels: () => request<{ items: AssistantModelOption[] }>('/api/admin/assistant/models'),
+  assistantConversations: () =>
+    request<{ items: AssistantConversationSummary[] }>('/api/admin/assistant/conversations'),
+  assistantConversation: (id: string) =>
+    request<AssistantConversation>(`/api/admin/assistant/conversations/${id}`),
+  createAssistantConversation: (payload: { title?: string } = {}) =>
+    request<AssistantConversationSummary>('/api/admin/assistant/conversations', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteAssistantConversation: (id: string) =>
+    request<void>(`/api/admin/assistant/conversations/${id}`, { method: 'DELETE' }),
   login: (username: string, password: string) =>
     request<{ token: string; username: string; home_path?: string | null }>('/api/admin/login', {
       method: 'POST',
