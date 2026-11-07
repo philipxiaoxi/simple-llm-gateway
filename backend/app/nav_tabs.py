@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.clock import utcnow
 from app.models import Admin, NavTabPreference
-from app.permissions import WILDCARD
+from app.permissions import MCP_PLAZA_GRANTS, WILDCARD
 from app.services.permission_guard import permissions_for_admin
 
 MAX_TABS = 5
@@ -57,21 +57,6 @@ NAV_TAB_CATALOG: tuple[dict[str, str], ...] = (
 BUILTIN_PATHS: tuple[str, ...] = ("/", "/accounts", "/keys", "/logs", "/skills")
 
 _BY_PATH = {item["path"]: item for item in NAV_TAB_CATALOG}
-_MCP_PLAZA_GRANTS = (
-    "mcp_knowledge:view",
-    "mcp_docparse:view",
-    "mcp_sites:view",
-    "mcp_douyin:view",
-    "mcp_browser:view",
-    "mcp_portraits:view",
-    "mcp_poses:view",
-    "mcp_costumes:view",
-    "mcp_diagrams:view",
-    "generation:settings",
-    "mcp_info:view",
-    "mcp_keys:view",
-    "mcp_calls:view",
-)
 
 
 def can_view(permissions: set[str], perm: str) -> bool:
@@ -83,7 +68,7 @@ def can_view(permissions: set[str], perm: str) -> bool:
     if f"{resource}:*" in permissions:
         return True
     if perm == "mcp_catalog:view":
-        return any(can_view(permissions, code) for code in _MCP_PLAZA_GRANTS)
+        return any(can_view(permissions, code) for code in MCP_PLAZA_GRANTS)
     return False
 
 

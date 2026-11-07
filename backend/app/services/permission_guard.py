@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import Admin, GenerationTask, Role
-from app.permissions import WILDCARD, code_label, validate_codes
+from app.permissions import MCP_PLAZA_GRANTS, WILDCARD, code_label, validate_codes
 
 DEFAULT_ACTIONS = {
     "GET": "view",
@@ -200,6 +200,7 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("POST", "/api/admin/info/sources/collect-batch"): "info:collect",
     ("POST", "/api/admin/info/sources/batch-interval"): "info:source_update",
     ("POST", "/api/admin/info/sources/{source_id}/collect"): "info:collect",
+    ("GET", "/api/admin/mcp/catalog"): "mcp_catalog:view",
     ("PUT", "/api/admin/assistant/settings"): "assistant:manage",
     ("GET", "/api/admin/assistant/models"): "assistant:manage",
     ("POST", "/api/admin/assistant/conversations"): "assistant:view",
@@ -489,7 +490,11 @@ def permissions_for_admin(db: Session, admin: Admin) -> set[str]:
 
 
 def has_permission(permissions: set[str], code: str) -> bool:
-    return WILDCARD in permissions or code in permissions
+    if WILDCARD in permissions or code in permissions:
+        return True
+    if code == "mcp_catalog:view":
+        return any(has_permission(permissions, item) for item in MCP_PLAZA_GRANTS)
+    return False
 
 
 def permission_denied(code: str) -> HTTPException:

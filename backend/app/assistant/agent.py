@@ -286,6 +286,7 @@ async def run_turn(
     system_prompt = build_system_prompt(
         admin_name=admin_name,
         page=page,
+        permissions=permissions,
         custom_prompt=runtime.system_prompt,
     )
     try:

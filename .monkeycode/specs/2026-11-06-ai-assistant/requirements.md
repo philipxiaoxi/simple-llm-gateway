@@ -45,6 +45,7 @@
 2. THE 接口目录 SHALL 由 FastAPI OpenAPI 自动生成，新增管理接口无需额外注册能力。
 3. WHEN 助手需要参数详情，THE 助手 SHALL 调用 `api_describe` 读取参数、请求体 schema 和示例。
 4. THE 接口目录 SHALL 按当前管理员权限过滤搜索结果。
+5. THE 页面目录 SHALL 按当前管理员权限过滤，助手只看到可访问的页面。
 
 ### Requirement 4 以当前账号执行只读接口
 
@@ -77,7 +78,8 @@
 
 1. WHEN 用户要求打开站内页面，THE 助手 SHALL 调用 `ui_navigate` 并传入站内路径。
 2. WHEN 前端收到跳转事件，THE 前端 SHALL 使用路由跳转到目标页面并关闭助手面板。
-3. IF 目标路径不属于管理后台，THEN THE 后端 SHALL 拒绝跳转并返回可用页面列表。
+3. IF 目标路径不属于管理后台或当前账号没有页面权限，THEN THE 后端 SHALL 拒绝跳转并返回当前账号可用的页面列表。
+4. WHEN 助手找不到接口或页面，THE 助手 SHALL 直接说明无法做到，并给出可用替代。
 
 ### Requirement 7 流式展示
 

@@ -15,8 +15,24 @@ from collections.abc import Iterable, Iterator
 ADMIN_ROLE_NAME = "管理员"
 WILDCARD = "*"
 
+MCP_PLAZA_GRANTS = (
+    "mcp_knowledge:view",
+    "mcp_docparse:view",
+    "mcp_sites:view",
+    "mcp_douyin:view",
+    "mcp_browser:view",
+    "mcp_portraits:view",
+    "mcp_poses:view",
+    "mcp_costumes:view",
+    "mcp_diagrams:view",
+    "generation:settings",
+    "mcp_info:view",
+    "mcp_keys:view",
+    "mcp_calls:view",
+)
+
 # 仅用于控制页面入口、没有对应管理接口的权限码（覆盖率测试会放行这些）
-PAGE_ONLY_CODES: frozenset[str] = frozenset()
+PAGE_ONLY_CODES: frozenset[str] = frozenset({"mcp_catalog:view"})
 
 # 资源 -> (页面名, ((动作, 动作名), ...))
 CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
@@ -139,6 +155,7 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
         "安全中心",
         (("view", "查看"), ("event_detail", "查看事件详情"), ("settings", "安全设置")),
     ),
+    "mcp_catalog": ("MCP 广场", (("view", "查看广场"),)),
     "mcp_calls": ("MCP 调用日志", (("view", "查看"),)),
     "mcp_info": ("MCP 资讯上报", (("view", "查看上报历史"),)),
     "mcp_keys": (
