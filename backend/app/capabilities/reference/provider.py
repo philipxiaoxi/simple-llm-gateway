@@ -1,4 +1,4 @@
-"""参考图库 MCP 能力：人像 / 姿势 / 服装各注册一个 provider。
+"""参考图库 MCP 能力：人像 / 姿势 / 服装 / 手绘风格各注册一个 provider。
 
 调用方拿到 `image_url` 后，直接作为 `image_generate.images` 的参考图传入即可。
 姿势与服装库含 18+ 分类，默认过滤；显式传 `include_adult=true` 才会返回。

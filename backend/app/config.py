@@ -163,7 +163,7 @@ class Settings(BaseSettings):
     # TikHub 凭据：抖音下载与资讯收集共享。中立命名，优先级高于 DOUYIN_* / INFO_*
     tikhub_base_url: str = ""
     tikhub_api_key: str = ""
-    # ---- 参考图库（人像 / 姿势 / 服装，GitHub 静态图库外链）----
+    # ---- 参考图库（人像 / 姿势 / 服装 / 手绘风格，GitHub 静态图库外链）----
     # 只读外部仓库的元数据与图片，不在本地镜像整库
     references_enabled: bool = True
     references_source_base: str = "https://raw.githubusercontent.com/philipxiaoxi/ai-pose-gallery-zh/main"

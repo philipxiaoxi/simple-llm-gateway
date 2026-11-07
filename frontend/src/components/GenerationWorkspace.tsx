@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Cog, Plus, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { api, type GenerationTask } from '../lib/api'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { api, type GenerationTask, type ReferenceItem } from '../lib/api'
 import { isTaskActive, presetFromTask, type GenerationPreset } from '../lib/generation'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { cn, errorMessage } from '../lib/utils'
@@ -31,6 +32,9 @@ export function GenerationWorkspace({ kind }: { kind: 'image' | 'video' }) {
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<string | null>(null)
   const [preset, setPreset] = useState<GenerationPreset | null>(null)
+  const [styleReference, setStyleReference] = useState<ReferenceItem | null>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
 
   const tasksQuery = useQuery({
     queryKey: ['generation-tasks', kind, status, page],
@@ -90,6 +94,15 @@ export function GenerationWorkspace({ kind }: { kind: 'image' | 'video' }) {
     setPreset(next ?? null)
     setCreateOpen(true)
   }
+
+  useEffect(() => {
+    const incoming = (location.state as { styleReference?: ReferenceItem } | null)?.styleReference
+    if (!incoming || kind !== 'image') return
+    setStyleReference(incoming)
+    setPreset(null)
+    setCreateOpen(true)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [kind, location.pathname, location.state, navigate])
 
   function handleReuse(task: GenerationTask) {
     openCreate(presetFromTask(task))
@@ -168,6 +181,8 @@ export function GenerationWorkspace({ kind }: { kind: 'image' | 'video' }) {
               kind={kind}
               settings={settings.data}
               preset={preset}
+              styleReference={kind === 'image' ? styleReference : null}
+              onStyleReferenceConsumed={() => setStyleReference(null)}
               onCreated={() => {
                 setCreateOpen(false)
                 setPage(1)

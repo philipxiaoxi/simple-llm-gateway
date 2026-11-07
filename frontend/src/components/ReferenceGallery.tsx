@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Copy, ExternalLink, Image as ImageIcon, Link2, Loader2, Plus, Search, Trash2 } from 'lucide-react'
+import { Copy, ExternalLink, Image as ImageIcon, Link2, Loader2, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import {
   api,
@@ -26,6 +27,7 @@ const KINDS: { value: ReferenceKind; label: string }[] = [
   { value: 'portrait', label: '人像' },
   { value: 'pose', label: '姿势' },
   { value: 'costume', label: '服装' },
+  { value: 'handdraw', label: '手绘' },
 ]
 const DEFAULT_LABELS: ReferenceLabels = { group: '分类', category: '分类', detail: '细节', tag: '标签' }
 
@@ -52,6 +54,7 @@ export function ReferenceGallery({
   const [adding, setAdding] = useState(false)
   const canCreate = useCan(`mcp_${kind}s:create`)
   const canDelete = useCan(`mcp_${kind}s:delete`)
+  const canGenerate = useCan('image_gen:task_create')
 
   useEffect(() => {
     const timer = window.setTimeout(() => setQuery(queryInput.trim()), 300)
@@ -96,7 +99,7 @@ export function ReferenceGallery({
   const hiddenAdult = data?.hidden_adult ?? meta.data?.hidden_adult ?? 0
   const pageCount = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE))
   const isPortrait = kind === 'portrait'
-  const supportsAdultToggle = kind !== 'portrait'
+  const supportsAdultToggle = kind === 'pose' || kind === 'costume'
 
   async function handlePick(item: ReferenceItem) {
     if (!onPick) return
@@ -108,6 +111,7 @@ export function ReferenceGallery({
     }
   }
 
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const remove = useMutation({
     mutationFn: (id: string) => api.referenceDelete(kind, id),
@@ -118,6 +122,10 @@ export function ReferenceGallery({
     },
     onError: (error) => notifyBad(errorMessage(error, '删除失败')),
   })
+
+  function generateWith(item: ReferenceItem) {
+    navigate('/image-gen', { state: { styleReference: item } })
+  }
 
   async function copyText(text: string, label: string) {
     try {
@@ -234,6 +242,7 @@ export function ReferenceGallery({
               picking={pickingId === item.id}
               onPreview={() => setPreview(item)}
               onPick={onPick ? () => void handlePick(item) : undefined}
+              onGenerate={kind === 'handdraw' && canGenerate && !onPick ? () => generateWith(item) : undefined}
               onCopy={copyText}
               onDelete={canDelete && item.source === 'local' ? () => remove.mutate(item.id) : undefined}
             />
@@ -269,14 +278,25 @@ export function ReferenceGallery({
               className="max-h-[70vh] w-full rounded-lg border border-line object-contain"
             />
             <div className="text-xs text-mist">
-              {[preview.group, preview.category, preview.detail].filter(Boolean).join(' · ')} · {preview.width}×
-              {preview.height}
+              {[
+                preview.group,
+                preview.category,
+                preview.detail,
+                preview.width && preview.height ? `${preview.width}×${preview.height}` : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </div>
             {preview.tags.length ? <div className="text-xs text-mist">{preview.tags.join('、')}</div> : null}
             <div className="rounded-md border border-line bg-panel-2 px-3 py-2 text-sm text-paper">
               {preview.prompt}
             </div>
             <div className="flex flex-wrap gap-2">
+              {kind === 'handdraw' && canGenerate && !onPick ? (
+                <Button type="button" onClick={() => generateWith(preview)}>
+                  <Sparkles size={14} /> 去生成
+                </Button>
+              ) : null}
               {onPick ? (
                 <Button type="button" onClick={() => void handlePick(preview)} disabled={Boolean(pickingId)}>
                   {pickingId ? '添加中…' : '用作参考'}
@@ -430,7 +450,7 @@ function ReferenceCreateDialog({
             className="w-full rounded-md border border-line bg-control px-3 py-2 text-sm text-paper outline-none focus:border-signal"
           />
         </label>
-        {kind !== 'portrait' ? (
+        {kind === 'pose' || kind === 'costume' ? (
           <div className="flex items-center justify-between rounded-md border border-line px-3 py-2 sm:col-span-2">
             <span className="text-xs text-mist">标记为 18+</span>
             <Switch checked={adult} onCheckedChange={setAdult} />
@@ -453,6 +473,7 @@ function ReferenceCard({
   picking,
   onPreview,
   onPick,
+  onGenerate,
   onCopy,
   onDelete,
 }: {
@@ -461,6 +482,7 @@ function ReferenceCard({
   picking: boolean
   onPreview: () => void
   onPick?: () => void
+  onGenerate?: () => void
   onCopy: (text: string, label: string) => void
   onDelete?: () => void
 }) {
@@ -533,6 +555,11 @@ function ReferenceCard({
             >
               {picking ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />}
               用作参考
+            </Button>
+          ) : null}
+          {onGenerate ? (
+            <Button type="button" className="min-h-8 px-2 py-1 text-xs" onClick={onGenerate}>
+              <Sparkles size={13} /> 去生成
             </Button>
           ) : null}
           <Button

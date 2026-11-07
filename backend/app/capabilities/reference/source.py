@@ -1,4 +1,4 @@
-"""参考图库数据源：只读外部 GitHub 静态图库（人像 / 姿势 / 服装）。
+"""参考图库数据源：只读外部 GitHub 静态图库（人像 / 姿势 / 服装 / 手绘风格）。
 
 - 三套库共用同一套拉取、缓存、检索逻辑，字段差异由 `ReferenceSpec` 描述；
 - 元数据缓存在内存与磁盘，按 TTL 刷新；图片不做本地镜像，按相对路径拼上游直链；
@@ -193,8 +193,8 @@ class ReferenceSource:
                 "detail": spec.detail_label,
                 "tag": spec.tag_label,
             },
-            "attribution": ATTRIBUTION,
-            "source": SOURCE_LABEL,
+            "attribution": spec.source_attribution or ATTRIBUTION,
+            "source": spec.source_label or SOURCE_LABEL,
             "synced_at": self._iso(self._synced_at),
             "stale": self._stale,
         }
@@ -235,6 +235,8 @@ class ReferenceSource:
         }
 
     def _prompt(self, record: ReferenceRecord) -> str:
+        if self.spec.kind == "handdraw":
+            return _handdraw_prompt(record)
         spec = self.spec
         parts: list[str] = []
         if record.group:
@@ -272,7 +274,7 @@ class ReferenceSource:
         with self._lock:
             if self._loaded and not force and time.time() < self._retry_at:
                 return
-            base = settings.references_source_base.rstrip("/")
+            base = (self.spec.source_base or settings.references_source_base).rstrip("/")
             try:
                 raw_records = self._fetch_json(f"{base}/{self.spec.data_path}")
                 meta: dict[str, Any] = {}
@@ -377,7 +379,10 @@ class ReferenceSource:
             raw = raw.get("items") or raw.get("records") or []
         if not isinstance(raw, list):
             raise ReferenceError(f"{self.spec.name}数据格式异常", status_code=502, error_type="upstream_error")
-        return [item for item in raw if isinstance(item, dict)]
+        items = [item for item in raw if isinstance(item, dict)]
+        if self.spec.kind == "handdraw":
+            return [item if _is_handdraw_item(item) else _handdraw_item(item) for item in items]
+        return items
 
     def _fetch_json(self, url: str) -> Any:
         settings = get_settings()
@@ -438,6 +443,56 @@ class ReferenceSource:
         if not timestamp:
             return ""
         return datetime.fromtimestamp(timestamp, tz=UTC).isoformat()
+
+
+def _handdraw_prompt(record: ReferenceRecord) -> str:
+    """按 handdraw-style-prompter 的纯图规则拼提示词。
+
+    提示词正文只放风格名、参考作者、正向核心特征和用户主题占位，不放编号，避免模型把编号画进画面。
+    """
+    traits = next((value for name, value in record.extra if name == "核心特征" and value), "")
+    author = record.category
+    parts = [f"风格名称：{record.title}。"]
+    if author:
+        parts.append(f"参考作者/风格名称：{author}。")
+    parts.append("主题：【请在此输入画面主题，或在生图模型中垫入你的照片】。")
+    if traits:
+        parts.append(f"核心风格特征：{traits}。")
+    parts.append(
+        "所附图片仅用于参考画风。只提取参考图的风格特征，例如线条、笔触、媒介、材质、色彩倾向和整体视觉语言；"
+        "不要使用、复制或延续参考图中的任何主体、人物、动物、服装、道具、动作、姿态、场景、背景、构图、布局、文字或故事。"
+        "最终画面内容完全以用户提供的主题为准。"
+    )
+    return "".join(parts)
+
+
+def _is_handdraw_item(item: dict[str, Any]) -> bool:
+    return all(key in item for key in ("generation_name", "family", "image", "number"))
+
+
+def _handdraw_item(item: dict[str, Any]) -> dict[str, Any]:
+    """把 handdraw-style 的 styles.json 记录映射为通用参考图字段。"""
+    number = _text(item.get("number"))
+    family = _text(item.get("group"))
+    family_code = number.split("-", 1)[0] if "-" in number else family.split(" ", 1)[0]
+    reference = _text(item.get("reference"))
+    generation_name = _text(item.get("generation_name"))
+    traits = _text(item.get("traits"))
+    image = f"individual/{family_code}/{number}.webp" if number else ""
+    search_text = traits.lower()
+    return {
+        "id": number,
+        "generation_name": generation_name,
+        "family": family,
+        "reference": reference,
+        "number": number,
+        "tags": [family_code] if family_code else [],
+        "keywords": traits,
+        "image": image,
+        "thumb": image,
+        "核心特征": traits,
+        "检索": search_text,
+    }
 
 
 def _scope(value: str) -> str:

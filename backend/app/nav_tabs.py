@@ -46,6 +46,7 @@ NAV_TAB_CATALOG: tuple[dict[str, str], ...] = (
     {"path": "/mcp-plaza/portraits", "label": "人像参考库", "perm": "mcp_portraits:view"},
     {"path": "/mcp-plaza/poses", "label": "姿势参考库", "perm": "mcp_poses:view"},
     {"path": "/mcp-plaza/costumes", "label": "服装参考库", "perm": "mcp_costumes:view"},
+    {"path": "/mcp-plaza/handdraws", "label": "手绘风格库", "perm": "mcp_handdraws:view"},
     {"path": "/mcp-plaza/diagrams", "label": "图表生成", "perm": "mcp_diagrams:view"},
     {"path": "/mcp-plaza/generation", "label": "图片 / 视频生成配置", "perm": "generation:settings"},
     {"path": "/mcp-plaza/info-report", "label": "资讯上报", "perm": "mcp_info:view"},

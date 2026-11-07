@@ -16,6 +16,7 @@ docker-compose.yml
 *.pem
 /data/
 backend/app/data/
+backend/data/
 *.db
 frontend/node_modules/
 frontend/dist/

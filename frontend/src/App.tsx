@@ -123,6 +123,7 @@ const PAGE_PERMS: { pattern: string; perm: string }[] = [
   { pattern: '/mcp-plaza/portraits', perm: 'mcp_portraits:view' },
   { pattern: '/mcp-plaza/poses', perm: 'mcp_poses:view' },
   { pattern: '/mcp-plaza/costumes', perm: 'mcp_costumes:view' },
+  { pattern: '/mcp-plaza/handdraws', perm: 'mcp_handdraws:view' },
   { pattern: '/mcp-plaza/generation', perm: 'generation:settings' },
   { pattern: '/mcp-plaza/keys', perm: 'mcp_keys:view' },
   { pattern: '/mcp-plaza/calls', perm: 'mcp_calls:view' },
@@ -243,6 +244,7 @@ export default function App() {
                 <Route path="portraits" element={<McpReferencePage kind="portrait" />} />
                 <Route path="poses" element={<McpReferencePage kind="pose" />} />
                 <Route path="costumes" element={<McpReferencePage kind="costume" />} />
+                <Route path="handdraws" element={<McpReferencePage kind="handdraw" />} />
                 <Route path="generation" element={<McpGenerationPage />} />
                 <Route path="keys" element={<McpKeysPage />} />
                 <Route path="calls" element={<McpCallsPage />} />

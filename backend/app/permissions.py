@@ -24,6 +24,7 @@ MCP_PLAZA_GRANTS = (
     "mcp_portraits:view",
     "mcp_poses:view",
     "mcp_costumes:view",
+    "mcp_handdraws:view",
     "mcp_diagrams:view",
     "generation:settings",
     "mcp_info:view",
@@ -245,6 +246,15 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
             ("delete", "删除参考"),
         ),
     ),
+    "mcp_handdraws": (
+        "MCP 手绘风格库",
+        (
+            ("view", "查看"),
+            ("sync", "同步数据"),
+            ("create", "添加参考"),
+            ("delete", "删除参考"),
+        ),
+    ),
     "mcp_diagrams": (
         "MCP 图表",
         (
@@ -307,6 +317,7 @@ CAPABILITY_VIEW_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "portrait": ("mcp_portraits:view",),
     "pose": ("mcp_poses:view",),
     "costume": ("mcp_costumes:view",),
+    "handdraw": ("mcp_handdraws:view",),
     "diagram": ("mcp_diagrams:view",),
     "info": ("mcp_info:view",),
     "generation": ("generation:settings",),

@@ -56,12 +56,16 @@ export function GenerationComposer({
   kind,
   settings,
   preset,
+  styleReference,
+  onStyleReferenceConsumed,
   onCreated,
   onOpenConfig,
 }: {
   kind: 'image' | 'video'
   settings: GenerationSettings
   preset?: GenerationPreset | null
+  styleReference?: ReferenceItem | null
+  onStyleReferenceConsumed?: () => void
   onCreated: () => void
   onOpenConfig: () => void
 }) {
@@ -86,6 +90,42 @@ export function GenerationComposer({
   // 目录里有多家供应商时，只认「当前模型所属那家」是否可用
   const providerSetting = settings.providers.find((item) => item.provider === model?.provider)
   const configured = Boolean(providerSetting?.configured && providerSetting.enabled)
+
+  useEffect(() => {
+    if (!styleReference || kind !== 'image') return
+    setPrompt(styleReference.prompt)
+    if (!model?.supports_images) {
+      notifyBad('当前模型不支持参考图片，已填入风格提示词')
+      onStyleReferenceConsumed?.()
+      return
+    }
+    const seq = cloneSeq.current + 1
+    cloneSeq.current = seq
+    setUploading(true)
+    void fetchReferenceBlob(styleReference)
+      .then(async (blob) => {
+        if (seq !== cloneSeq.current) return
+        const subtype = blob.type.split('/')[1] || 'webp'
+        const file = new File([blob], `handdraw-${styleReference.id}.${subtype === 'jpeg' ? 'jpg' : subtype}`, {
+          type: blob.type || 'image/webp',
+        })
+        const asset = await api.generationUpload(file)
+        if (seq === cloneSeq.current) {
+          setInputs((current) => [...current, asset])
+          notifyOk('已带入风格提示词和参考图')
+        }
+      })
+      .catch((caught) => {
+        if (seq === cloneSeq.current) notifyBad(errorMessage(caught, '带入风格参考图失败'))
+      })
+      .finally(() => {
+        if (seq === cloneSeq.current) {
+          setUploading(false)
+          onStyleReferenceConsumed?.()
+        }
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [styleReference?.id])
 
   // 复用某个作品：一次性填充模型/提示词/参数，并复制回参考素材
   useEffect(() => {
@@ -386,7 +426,7 @@ export function GenerationComposer({
             ) : null}
           </div>
           <div className="text-[11px] text-mist">
-            支持本地上传与参考图库（人像 / 姿势 / 服装）
+            支持本地上传与参考图库（人像 / 姿势 / 服装 / 手绘风格）
             {model.supports_images ? `，参考图最多 ${model.max_images} 张` : ''}
             {model.supports_audios ? `，参考音频最多 ${model.max_audios} 个` : ''}
           </div>

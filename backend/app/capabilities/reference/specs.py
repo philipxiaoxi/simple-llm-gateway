@@ -1,4 +1,4 @@
-"""三套参考图库（人像 / 姿势 / 服装）的字段映射与内容边界。
+"""参考图库（人像 / 姿势 / 服装 / 手绘风格）的字段映射与内容边界。
 
 上游仓库的 JSON 使用中文键，且三套库的字段并不一致；这里把差异收敛到
 `ReferenceSpec`，source / provider / 管理接口只处理统一后的记录。
@@ -36,6 +36,10 @@ class ReferenceSpec:
     icon: str
     prompt_prefix: str
     extra_prompt_fields: tuple[str, ...] = field(default_factory=tuple)
+    source_base: str = ""
+    image_base: str = ""
+    source_label: str = ""
+    source_attribution: str = ""
 
 
 PORTRAIT = ReferenceSpec(
@@ -93,6 +97,38 @@ POSE = ReferenceSpec(
     extra_prompt_fields=("姿势编号",),
 )
 
+HANDDRAW = ReferenceSpec(
+    kind="handdraw",
+    route="handdraws",
+    name="手绘风格库",
+    description="按风格家族 / 编号 / 关键词检索手绘风格图例，返回示例图直链与核心特征提示词，可直接用于图片生成",
+    data_path="skills/handdraw-style-prompter/references/styles.json",
+    meta_path=None,
+    title_field="generation_name",
+    group_field="family",
+    category_field="reference",
+    detail_field="number",
+    tag_field="tags",
+    keyword_field=None,
+    image_field="image",
+    thumb_field="thumb",
+    curated_field=None,
+    hot_field=None,
+    adult_groups=frozenset(),
+    adult_categories=frozenset(),
+    group_label="风格家族",
+    category_label="参考作者",
+    detail_label="风格编号",
+    tag_label="标签",
+    icon="image",
+    prompt_prefix="手绘风格",
+    extra_prompt_fields=("核心特征",),
+    source_base="https://raw.githubusercontent.com/philipxiaoxi/handraw-style/master",
+    image_base="https://raw.githubusercontent.com/philipxiaoxi/handraw-style/master/images",
+    source_label="philipxiaoxi/handraw-style",
+    source_attribution="手绘风格库来自 philipxiaoxi/handraw-style（原作者 yang0），MIT with Attribution。",
+)
+
 COSTUME = ReferenceSpec(
     kind="costume",
     route="costumes",
@@ -124,6 +160,7 @@ SPECS: dict[str, ReferenceSpec] = {
     PORTRAIT.kind: PORTRAIT,
     POSE.kind: POSE,
     COSTUME.kind: COSTUME,
+    HANDDRAW.kind: HANDDRAW,
 }
 
 KINDS = tuple(SPECS)
