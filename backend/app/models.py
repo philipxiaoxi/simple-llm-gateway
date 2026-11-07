@@ -1422,9 +1422,9 @@ class AssistantSettings(Base):
     model: Mapped[str] = mapped_column(String(256), default="", nullable=False)
     system_prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
     temperature: Mapped[float] = mapped_column(Float, default=0.7, nullable=False)
-    max_tokens: Mapped[int] = mapped_column(Integer, default=2048, nullable=False)
-    max_tool_rounds: Mapped[int] = mapped_column(Integer, default=6, nullable=False)
-    history_message_limit: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    max_tokens: Mapped[int] = mapped_column(Integer, default=16384, nullable=False)
+    max_tool_rounds: Mapped[int] = mapped_column(Integer, default=20, nullable=False)
+    history_message_limit: Mapped[int] = mapped_column(Integer, default=300, nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
