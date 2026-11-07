@@ -187,6 +187,7 @@ export function toolLink(name: string, result: unknown): string | null {
   if (name.startsWith('portrait')) return '/mcp-plaza/portraits'
   if (name.startsWith('pose')) return '/mcp-plaza/poses'
   if (name.startsWith('costume')) return '/mcp-plaza/costumes'
+  if (name.startsWith('handdraw')) return '/mcp-plaza/handdraws'
   return null
 }
 

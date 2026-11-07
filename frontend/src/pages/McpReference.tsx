@@ -14,6 +14,7 @@ const TITLES: Record<ReferenceKind, string> = {
   portrait: '人像参考库',
   pose: '姿势参考库',
   costume: '服装参考库',
+  handdraw: '手绘风格库',
 }
 
 export function McpReferencePage({ kind }: { kind: ReferenceKind }) {

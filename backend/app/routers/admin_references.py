@@ -13,7 +13,7 @@ from app.capabilities.reference.catalog import ReferenceCatalog, resolve_file
 from app.capabilities.reference.images import cached_image, image_token, image_token_valid, safe_image_path
 from app.capabilities.reference.errors import ReferenceError
 from app.capabilities.reference.source import SCOPES, get_source
-from app.capabilities.reference.specs import COSTUME, PORTRAIT, POSE, ReferenceSpec
+from app.capabilities.reference.specs import COSTUME, HANDDRAW, PORTRAIT, POSE, ReferenceSpec
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import ReferenceAsset
@@ -78,7 +78,7 @@ def _build_router(spec: ReferenceSpec) -> tuple[APIRouter, APIRouter]:
         if not image_token_valid(request_path, token):
             raise HTTPException(status_code=401, detail="需要有效的图片令牌")
         try:
-            path, media_type = cached_image(spec.kind, safe_image_path(image_path))
+            path, media_type = cached_image(spec.kind, safe_image_path(image_path), base_url=spec.image_base or spec.source_base)
         except ReferenceError as error:
             _raise(error)
         return FileResponse(
@@ -175,3 +175,4 @@ def _build_router(spec: ReferenceSpec) -> tuple[APIRouter, APIRouter]:
 portrait_router, portrait_media_router = _build_router(PORTRAIT)
 pose_router, pose_media_router = _build_router(POSE)
 costume_router, costume_media_router = _build_router(COSTUME)
+handdraw_router, handdraw_media_router = _build_router(HANDDRAW)

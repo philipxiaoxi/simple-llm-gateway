@@ -30,6 +30,7 @@ const APP_PATH_PERMS: { prefix: string; perm: string }[] = [
   { prefix: '/mcp-plaza/portraits', perm: 'mcp_portraits:view' },
   { prefix: '/mcp-plaza/poses', perm: 'mcp_poses:view' },
   { prefix: '/mcp-plaza/costumes', perm: 'mcp_costumes:view' },
+  { prefix: '/mcp-plaza/handdraws', perm: 'mcp_handdraws:view' },
   { prefix: '/mcp-plaza/diagrams', perm: 'mcp_diagrams:view' },
   { prefix: '/mcp-plaza/generation', perm: 'generation:settings' },
   { prefix: '/mcp-plaza/keys', perm: 'mcp_keys:view' },

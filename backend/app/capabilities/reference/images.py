@@ -44,16 +44,16 @@ def image_token_valid(path: str, token: str) -> bool:
     return verify_token(path, token)
 
 
-def upstream_url(relative_path: str) -> str:
+def upstream_url(relative_path: str, base_url: str | None = None) -> str:
     settings = get_settings()
-    base = (settings.references_image_cdn or settings.references_source_base).rstrip("/")
+    base = (base_url or settings.references_image_cdn or settings.references_source_base).rstrip("/")
     relative = quote(safe_image_path(relative_path), safe="/")
     return f"{base}/{relative}"
 
 
-def cached_image(kind: str, relative_path: str) -> tuple[Path, str]:
-    url = upstream_url(relative_path)
-    _validate_upstream(url)
+def cached_image(kind: str, relative_path: str, base_url: str | None = None) -> tuple[Path, str]:
+    url = upstream_url(relative_path, base_url)
+    _validate_upstream(url, base_url)
     path = _cache_path(url)
     if path.is_file() and path.stat().st_size > 0:
         return path, _media_type(path)
@@ -89,12 +89,14 @@ def _download(url: str) -> tuple[bytes, str]:
     return response.content, media_type
 
 
-def _validate_upstream(url: str) -> None:
+def _validate_upstream(url: str, base_url: str | None = None) -> None:
     settings = get_settings()
     allowed = {
         urlsplit(settings.references_source_base).netloc.lower(),
         urlsplit(settings.references_image_cdn).netloc.lower(),
     }
+    if base_url:
+        allowed.add(urlsplit(base_url).netloc.lower())
     allowed.discard("")
     host = urlsplit(url).netloc.lower()
     if host not in allowed:

@@ -2375,7 +2375,7 @@ export type McpCapabilityIntegration = {
   notes?: string[]
 }
 
-export type ReferenceKind = 'portrait' | 'pose' | 'costume'
+export type ReferenceKind = 'portrait' | 'pose' | 'costume' | 'handdraw'
 
 export type ReferenceItem = {
   id: string

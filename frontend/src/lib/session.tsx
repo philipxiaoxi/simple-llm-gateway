@@ -21,6 +21,7 @@ const MCP_PLAZA_GRANTS = [
   'mcp_portraits:view',
   'mcp_poses:view',
   'mcp_costumes:view',
+  'mcp_handdraws:view',
   'mcp_diagrams:view',
   'generation:settings',
   'mcp_info:view',

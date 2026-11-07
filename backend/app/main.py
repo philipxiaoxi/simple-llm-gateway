@@ -263,6 +263,7 @@ for admin_router in (
     admin_references.portrait_router,
     admin_references.pose_router,
     admin_references.costume_router,
+    admin_references.handdraw_router,
     admin_mcp_knowledge.router,
     admin_mcp_knowledge_jobs.router,
     admin_mcp_calls.router,
@@ -271,6 +272,7 @@ for admin_router in (
 app.include_router(admin_references.portrait_media_router)
 app.include_router(admin_references.pose_media_router)
 app.include_router(admin_references.costume_media_router)
+app.include_router(admin_references.handdraw_media_router)
 app.include_router(admin_skills.download_router)
 app.include_router(admin_skill_bundles.download_router)
 app.include_router(admin_tools.download_router)

@@ -94,12 +94,36 @@ RAW: dict[str, list[dict[str, Any]]] = {
             "检索": "c2 内衣・睡衣 真丝睡裙 silk nightgown",
         },
     ],
+    "handdraw": [
+        {
+            "number": "FA-001",
+            "group": "FA 国际社论幽默 / Editorial & Humor Doodle",
+            "reference": "Gemma Correll",
+            "generation_name": "Playful Deadpan Doodle",
+            "traits": "松散黑线、怪萌人物、少量点色、白底、日常吐槽与尴尬幽默",
+        },
+        {
+            "number": "FB-006",
+            "group": "FB 经典绘本叙事 / Picture Book & Watercolor",
+            "reference": "Dr. Seuss",
+            "generation_name": "Bendy Absurd Storybook",
+            "traits": "极端比例、弯曲结构、怪生物、流动线条、疯狂想象",
+        },
+        {
+            "number": "FC-001",
+            "group": "FC 现代平面艺术 / Modern Graphic & Pop",
+            "reference": "Jon Burgerman",
+            "generation_name": "Chaotic Color Doodle Crowd",
+            "traits": "",
+        },
+    ],
 }
 
 META: dict[str, dict[str, Any]] = {
     "portrait": {"total": 2, "分区列表": ["正脸参考", "造型氛围"], "发长列表": ["短发", "长发"]},
     "pose": {},
     "costume": {"total": 2, "分类列表": ["春季穿搭", "内衣・睡衣"]},
+    "handdraw": {},
 }
 
 
@@ -134,7 +158,7 @@ def _key(client: TestClient, auth: dict[str, str], capabilities: list[str]) -> s
 
 
 def test_reference_search_and_prompt(client: TestClient, auth_headers: dict[str, str], reference_sources) -> None:
-    key = _key(client, auth_headers, ["portrait", "pose", "costume"])
+    key = _key(client, auth_headers, ["portrait", "pose", "costume", "handdraw"])
     auth = {"Authorization": f"Bearer {key}"}
 
     portrait = client.post("/v1/capabilities/portrait/search", headers=auth, json={"query": "短发"})
@@ -164,6 +188,24 @@ def test_reference_search_and_prompt(client: TestClient, auth_headers: dict[str,
     assert costume.status_code == 200, costume.text
     assert costume.json()["total"] == 1
     assert "英文关键词：ivory knit" in costume.json()["items"][0]["prompt"]
+
+    handdraw = client.post("/v1/capabilities/handdraw/search", headers=auth, json={"query": "Seuss"})
+    assert handdraw.status_code == 200, handdraw.text
+    assert handdraw.json()["items"][0]["id"] == "FB-006"
+    assert handdraw.json()["items"][0]["image_url"].startswith(
+        "http://testserver/api/admin/mcp/handdraws/images/individual/FB/FB-006.webp?token="
+    )
+    prompt = handdraw.json()["items"][0]["prompt"]
+    assert prompt.startswith("风格名称：Bendy Absurd Storybook。")
+    assert "参考作者/风格名称：Dr. Seuss。" in prompt
+    assert "主题：【请在此输入画面主题" in prompt
+    assert "核心风格特征：" in prompt
+    assert "FB-006" not in prompt
+
+    burgerman = client.post("/v1/capabilities/handdraw/search", headers=auth, json={"query": "Burgerman"})
+    assert burgerman.status_code == 200, burgerman.text
+    assert burgerman.json()["items"][0]["id"] == "FC-001"
+    assert burgerman.json()["items"][0]["group"] == "FC 现代平面艺术 / Modern Graphic & Pop"
 
 
 def test_reference_filters_adult_by_default(
@@ -254,6 +296,7 @@ def test_reference_catalog_permissions(client: TestClient, auth_headers: dict[st
     assert items["portrait"]["permissions"] == ["mcp_portraits:view"]
     assert items["pose"]["permissions"] == ["mcp_poses:view"]
     assert items["costume"]["permissions"] == ["mcp_costumes:view"]
+    assert items["handdraw"]["permissions"] == ["mcp_handdraws:view"]
     assert items["pose"]["admin_path"] == "/mcp-plaza/poses"
     assert {tool["name"] for tool in items["costume"]["tools"]} == {
         "costume_search",
