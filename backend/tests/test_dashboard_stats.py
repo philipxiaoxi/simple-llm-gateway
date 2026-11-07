@@ -263,10 +263,10 @@ def test_dashboard_reads_history_from_rollups_and_today_live(
 
     assert response.status_code == 200, response.text
     body = response.json()
-    # 历史读日聚合；request_logs 只允许 min(created_at) 与今天的聚合两次查询
+    # 历史读日聚合；request_logs 只允许范围起点与今天的聚合两次查询
     assert scanned["count"] == 2
-    # 日聚合只做「完整性计数 + 明细读取」两次查询，不能按行懒加载
-    assert scanned["rollups"] == 2
+    # 日聚合只做一次明细读取，不能按行懒加载
+    assert scanned["rollups"] == 1
     assert body["today_requests"] == 1
     assert body["today_tokens"] == 70
     assert body["total_requests"] == 2
@@ -286,7 +286,7 @@ def test_dashboard_reads_history_from_rollups_and_today_live(
     assert body["total_tokens"] == 120
 
 
-def test_dashboard_falls_back_when_rollups_have_gaps(
+def test_dashboard_uses_available_rollups_when_gaps_exist(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:
     from sqlalchemy import delete
@@ -314,12 +314,12 @@ def test_dashboard_falls_back_when_rollups_have_gaps(
             )
         )
         session.commit()
-        # 中间日缺口不能静默少算，必须让调用方回退实时查询
-        assert dashboard_stats.dashboard_totals(session) is None
-        assert dashboard_stats.key_usage_totals(session, [key_id]) is None
+        # 中间日缺口由后台补齐；页面读取已有日聚合，不能退回扫描整张日志表
+        assert dashboard_stats.dashboard_totals(session)["total_requests"] == 1
+        assert dashboard_stats.key_usage_totals(session, [key_id])[key_id][1] == 10
     finally:
         session.close()
 
     body = client.get("/api/admin/dashboard", headers=auth_headers).json()
-    assert body["total_requests"] == 2
-    assert body["total_tokens"] == 30
+    assert body["total_requests"] == 1
+    assert body["total_tokens"] == 10

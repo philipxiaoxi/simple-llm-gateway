@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.clock import SHANGHAI_TZ, shanghai_day_start_utc
+from app.clock import SHANGHAI_TZ
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import (
@@ -374,56 +374,6 @@ def compute_stats(db: Session, days: int) -> DashboardStatsOut:
     )
 
 
-def _dashboard_log_scalars(db: Session, today: datetime) -> dict[str, int]:
-    """实时回退：一次条件聚合算出今日/累计请求与 Token。"""
-    row = db.execute(
-        select(
-            func.coalesce(
-                func.sum(
-                    case(
-                        (RequestLog.created_at >= today, func.coalesce(RequestLog.turn_count, 1)),
-                        else_=0,
-                    )
-                ),
-                0,
-            ),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (
-                            and_(
-                                RequestLog.created_at >= today,
-                                RequestLog.status == "error",
-                            ),
-                            1,
-                        ),
-                        else_=0,
-                    )
-                ),
-                0,
-            ),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (RequestLog.created_at >= today, RequestLog.total_tokens),
-                        else_=None,
-                    )
-                ),
-                0,
-            ),
-            func.coalesce(func.sum(func.coalesce(RequestLog.turn_count, 1)), 0),
-            func.coalesce(func.sum(RequestLog.total_tokens), 0),
-        )
-    ).one()
-    return {
-        "today_requests": int(row[0] or 0),
-        "today_failures": int(row[1] or 0),
-        "today_tokens": int(row[2] or 0),
-        "total_requests": int(row[3] or 0),
-        "total_tokens": int(row[4] or 0),
-    }
-
-
 def _dashboard_small_counts(db: Session) -> dict[str, int]:
     row = db.execute(
         select(
@@ -450,8 +400,6 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardOut:
         account.id for account in accounts if get_provider(account.provider).missing_credential(account)
     )
     log_scalars = dashboard_totals(db)
-    if log_scalars is None:
-        log_scalars = _dashboard_log_scalars(db, shanghai_day_start_utc())
     small_counts = _dashboard_small_counts(db)
     agents = db.scalars(select(GatewayAgent)).all()
     agent_count = len(agents)

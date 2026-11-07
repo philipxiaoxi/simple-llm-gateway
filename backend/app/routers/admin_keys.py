@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.clock import shanghai_day_start_utc, utcnow
+from app.clock import utcnow
 from app.config import get_settings
 from app.crypto import decrypt_secret, encrypt_secret, generate_api_key, hash_api_key, key_prefix
 from app.db import get_db
@@ -300,23 +300,7 @@ def _display_name(item: ApiKey) -> str:
 def _token_usage_by_key(db: Session, key_ids: list[int]) -> dict[int, tuple[int, int]]:
     if not key_ids:
         return {}
-    cached = key_usage_totals(db, key_ids)
-    if cached is not None:
-        return cached
-    today = shanghai_day_start_utc()
-    rows = db.execute(
-        select(
-            RequestLog.api_key_id,
-            func.coalesce(
-                func.sum(case((RequestLog.created_at >= today, RequestLog.total_tokens), else_=0)),
-                0,
-            ),
-            func.coalesce(func.sum(RequestLog.total_tokens), 0),
-        )
-        .where(RequestLog.api_key_id.in_(key_ids))
-        .group_by(RequestLog.api_key_id)
-    ).all()
-    return {int(key_id): (int(today_tokens), int(total_tokens)) for key_id, today_tokens, total_tokens in rows}
+    return key_usage_totals(db, key_ids)
 
 
 def _key_out(db: Session, item: ApiKey, reveal: bool = False) -> KeyOut:

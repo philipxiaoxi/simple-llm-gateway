@@ -383,11 +383,11 @@ def ensure_daily_rollups(db: Session) -> None:
     db.commit()
 
 
-def _load_history_rollups(db: Session, *, include_keys: bool = False) -> list[Any] | None:
-    """读取「今天以前」的完整日聚合；未就绪或存在缺口时返回 None。"""
-    meta = db.get(DashboardStatsMeta, 1)
-    if meta is None or int(meta.rollup_schema or 0) != ROLLUP_SCHEMA:
-        return None
+def _load_history_rollups(db: Session, *, include_keys: bool = False) -> list[Any]:
+    """读取「今天以前」已有的日聚合。
+
+    缺口由后台任务补齐。页面读取不能因为缺一天就退回扫描整张请求日志。
+    """
     bounds = _rollup_range(db)
     if bounds is None:
         return []
@@ -395,18 +395,24 @@ def _load_history_rollups(db: Session, *, include_keys: bool = False) -> list[An
     history_end = today - timedelta(days=1)
     if oldest > history_end:
         return []
-    expected = (history_end - oldest).days + 1
-    count = db.scalar(
-        select(func.count())
-        .select_from(RequestLogDailyStats)
+    columns = [
+        RequestLogDailyStats.day,
+        RequestLogDailyStats.requests,
+        RequestLogDailyStats.failures,
+        RequestLogDailyStats.tokens,
+    ]
+    if include_keys:
+        columns.append(RequestLogDailyStats.keys_json)
+    rows = db.execute(
+        select(*columns)
         .where(
             RequestLogDailyStats.day >= oldest.isoformat(),
             RequestLogDailyStats.day <= history_end.isoformat(),
         )
-    )
-    if int(count or 0) != expected:
-        db.rollback()
-        return None
+        .order_by(RequestLogDailyStats.day)
+    ).all()
+    db.rollback()
+    return list(rows)
     columns = [
         RequestLogDailyStats.day,
         RequestLogDailyStats.requests,
@@ -429,7 +435,27 @@ def _load_history_rollups(db: Session, *, include_keys: bool = False) -> list[An
 
 def rollups_complete(db: Session) -> bool:
     """历史日聚合是否已按当前结构完整覆盖。"""
-    return _load_history_rollups(db) is not None
+    meta = db.get(DashboardStatsMeta, 1)
+    if meta is None or int(meta.rollup_schema or 0) != ROLLUP_SCHEMA:
+        return False
+    bounds = _rollup_range(db)
+    if bounds is None:
+        return True
+    oldest, today = bounds
+    history_end = today - timedelta(days=1)
+    if oldest > history_end:
+        return True
+    expected = (history_end - oldest).days + 1
+    count = db.scalar(
+        select(func.count())
+        .select_from(RequestLogDailyStats)
+        .where(
+            RequestLogDailyStats.day >= oldest.isoformat(),
+            RequestLogDailyStats.day <= history_end.isoformat(),
+        )
+    )
+    db.rollback()
+    return int(count or 0) == expected
 
 
 def _today_log_scalars(db: Session, today_start: datetime) -> tuple[int, int, int]:
@@ -439,14 +465,12 @@ def _today_log_scalars(db: Session, today_start: datetime) -> tuple[int, int, in
     return int(row[0] or 0), int(row[1] or 0), int(row[2] or 0)
 
 
-def dashboard_totals(db: Session) -> dict[str, int] | None:
+def dashboard_totals(db: Session) -> dict[str, int]:
     """仪表盘今日/累计标量。
 
-    今天实时读取（当天分区很小），历史走日聚合；日聚合未就绪时返回 None。
+    今天实时读取当天分区，历史读取已有日聚合。
     """
     rows = _load_history_rollups(db)
-    if rows is None:
-        return None
     today_requests, today_failures, today_tokens = _today_log_scalars(db, shanghai_day_start_utc())
     total_requests = sum(int(row.requests or 0) for row in rows) + today_requests
     total_tokens = sum(int(row.tokens or 0) for row in rows) + today_tokens
@@ -459,13 +483,11 @@ def dashboard_totals(db: Session) -> dict[str, int] | None:
     }
 
 
-def key_usage_totals(db: Session, key_ids: list[int]) -> dict[int, tuple[int, int]] | None:
+def key_usage_totals(db: Session, key_ids: list[int]) -> dict[int, tuple[int, int]]:
     """按 Key 的今日/累计 Token；历史走日聚合，今天实时读取。"""
     if not key_ids:
         return {}
     rows = _load_history_rollups(db, include_keys=True)
-    if rows is None:
-        return None
     totals: dict[int, list[int]] = {key_id: [0, 0] for key_id in key_ids}
     wanted = {str(key_id) for key_id in key_ids}
     for row in rows:
