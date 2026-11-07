@@ -26,6 +26,7 @@ from app.services.ccswitch import (
     build_vscode_config,
     describe_ccswitch_targets,
 )
+from app.services.dashboard_stats import key_usage_totals
 from app.services.gateway_rate_limit import gateway_limiter, invalidate_gateway_key
 from app.services.key_models import (
     ALIAS_ERROR,
@@ -299,6 +300,9 @@ def _display_name(item: ApiKey) -> str:
 def _token_usage_by_key(db: Session, key_ids: list[int]) -> dict[int, tuple[int, int]]:
     if not key_ids:
         return {}
+    cached = key_usage_totals(db, key_ids)
+    if cached is not None:
+        return cached
     today = shanghai_day_start_utc()
     rows = db.execute(
         select(

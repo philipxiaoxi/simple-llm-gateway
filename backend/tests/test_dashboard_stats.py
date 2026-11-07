@@ -209,5 +209,117 @@ def test_dashboard_job_uses_incremental_daily_rollups(
 
         full = compute_stats(session, 30)
         assert snapshot.model_dump(exclude={"computed_at"}) == full.model_dump(exclude={"computed_at"})
+
+        totals = dashboard_stats.dashboard_totals(session)
+        assert totals == {
+            "today_requests": 1,
+            "today_failures": 0,
+            "today_tokens": 50,
+            "total_requests": 2,
+            "total_tokens": 150,
+        }
+        assert dashboard_stats.key_usage_totals(session, [key_id]) == {key_id: (50, 150)}
     finally:
         session.close()
+
+
+def test_dashboard_reads_history_from_rollups_and_today_live(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    from sqlalchemy import event
+
+    from app.db import get_engine, get_session_factory
+    from app.services import dashboard_stats
+
+    account_id, key_id = _seed(client, auth_headers)
+    _add_log(account_id, key_id, "glm-5.2", total_tokens=70)
+    _add_log(
+        account_id,
+        key_id,
+        "glm-5.2",
+        total_tokens=30,
+        created_at=_to_utc_naive(_shanghai_today() - timedelta(days=5)),
+    )
+    session = get_session_factory()()
+    try:
+        dashboard_stats.refresh_all(session)
+    finally:
+        session.close()
+
+    scanned = {"count": 0, "rollups": 0}
+
+    def before_cursor_execute(_conn, _cursor, statement, _parameters, _context, _executemany) -> None:
+        if statement.lstrip().upper().startswith("SELECT") and "request_logs" in statement:
+            scanned["count"] += 1
+        if statement.lstrip().upper().startswith("SELECT") and "request_log_daily_stats" in statement:
+            scanned["rollups"] += 1
+
+    engine = get_engine()
+    event.listen(engine, "before_cursor_execute", before_cursor_execute)
+    try:
+        response = client.get("/api/admin/dashboard", headers=auth_headers)
+    finally:
+        event.remove(engine, "before_cursor_execute", before_cursor_execute)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # 历史读日聚合；request_logs 只允许 min(created_at) 与今天的聚合两次查询
+    assert scanned["count"] == 2
+    # 日聚合只做「完整性计数 + 明细读取」两次查询，不能按行懒加载
+    assert scanned["rollups"] == 2
+    assert body["today_requests"] == 1
+    assert body["today_tokens"] == 70
+    assert body["total_requests"] == 2
+    assert body["total_tokens"] == 100
+
+    keys = client.get("/api/admin/keys", headers=auth_headers).json()
+    key = next(item for item in keys if item["id"] == key_id)
+    assert key["today_tokens"] == 70
+    assert key["total_tokens"] == 100
+
+    # 今天新增的日志立即反映，不用等定时任务
+    _add_log(account_id, key_id, "glm-5.2", total_tokens=20)
+    body = client.get("/api/admin/dashboard", headers=auth_headers).json()
+    assert body["today_requests"] == 2
+    assert body["today_tokens"] == 90
+    assert body["total_requests"] == 3
+    assert body["total_tokens"] == 120
+
+
+def test_dashboard_falls_back_when_rollups_have_gaps(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    from sqlalchemy import delete
+
+    from app.db import get_session_factory
+    from app.models import RequestLogDailyStats
+    from app.services import dashboard_stats
+
+    account_id, key_id = _seed(client, auth_headers)
+    _add_log(account_id, key_id, "glm-5.2", total_tokens=10)
+    _add_log(
+        account_id,
+        key_id,
+        "glm-5.2",
+        total_tokens=20,
+        created_at=_to_utc_naive(_shanghai_today() - timedelta(days=3)),
+    )
+    session = get_session_factory()()
+    try:
+        dashboard_stats.refresh_all(session)
+        assert dashboard_stats.dashboard_totals(session) is not None
+        session.execute(
+            delete(RequestLogDailyStats).where(
+                RequestLogDailyStats.day == (_shanghai_today() - timedelta(days=3)).strftime("%Y-%m-%d")
+            )
+        )
+        session.commit()
+        # 中间日缺口不能静默少算，必须让调用方回退实时查询
+        assert dashboard_stats.dashboard_totals(session) is None
+        assert dashboard_stats.key_usage_totals(session, [key_id]) is None
+    finally:
+        session.close()
+
+    body = client.get("/api/admin/dashboard", headers=auth_headers).json()
+    assert body["total_requests"] == 2
+    assert body["total_tokens"] == 30

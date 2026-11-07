@@ -217,6 +217,20 @@ def _ensure_columns(engine: Engine) -> None:
         for column, statement in skill_statements.items():
             if column not in skill_columns:
                 connection.execute(text(statement))
+        daily_stats_columns = {
+            row[1] for row in connection.execute(text("PRAGMA table_info(request_log_daily_stats)"))
+        }
+        if daily_stats_columns and "keys_json" not in daily_stats_columns:
+            connection.execute(
+                text("ALTER TABLE request_log_daily_stats ADD COLUMN keys_json TEXT DEFAULT '{}' NOT NULL")
+            )
+        stats_meta_columns = {
+            row[1] for row in connection.execute(text("PRAGMA table_info(dashboard_stats_meta)"))
+        }
+        if stats_meta_columns and "rollup_schema" not in stats_meta_columns:
+            connection.execute(
+                text("ALTER TABLE dashboard_stats_meta ADD COLUMN rollup_schema INTEGER DEFAULT 0 NOT NULL")
+            )
         # 网关限速：按 Key 的 RPM 与并发额度（0 表示不限）
         for table in ("api_keys", "mcp_keys"):
             key_columns = {row[1] for row in connection.execute(text(f"PRAGMA table_info({table})"))}

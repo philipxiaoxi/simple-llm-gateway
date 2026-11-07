@@ -103,9 +103,10 @@ def _save_snapshot(db: Session, days: int, stats: McpCallStatsOut) -> McpCallSta
 
 
 def refresh_snapshot(db: Session, days: int) -> McpCallStatsOut:
+    """手动刷新：先补齐日聚合，再从聚合拼快照，避免当场扫描整段日志。"""
     bounded = max(1, min(int(days), STATS_MAX_DAYS))
-    stats = compute_stats(db, bounded)
-    return _save_snapshot(db, bounded, stats)
+    ensure_daily_rollups(db)
+    return refresh_snapshot_from_rollups(db, bounded)
 
 
 def record_snapshot_error(db: Session, days: int, message: str) -> None:
@@ -554,19 +555,26 @@ def ensure_daily_rollups(db: Session) -> None:
     db.commit()
 
 
-def _load_rollups(db: Session, start: date, end: date) -> list[McpCallDailyStats]:
-    rows = list(
-        db.scalars(
-            select(McpCallDailyStats)
-            .where(
-                McpCallDailyStats.day >= start.isoformat(),
-                McpCallDailyStats.day <= end.isoformat(),
-            )
-            .order_by(McpCallDailyStats.day)
-        ).all()
-    )
+def _load_rollups(db: Session, start: date, end: date) -> list[Any]:
+    rows = db.execute(
+        select(
+            McpCallDailyStats.day,
+            McpCallDailyStats.total,
+            McpCallDailyStats.success,
+            McpCallDailyStats.latency_sum,
+            McpCallDailyStats.hourly_json,
+            McpCallDailyStats.operations_json,
+            McpCallDailyStats.latency_hist_json,
+            McpCallDailyStats.latency_buckets_json,
+        )
+        .where(
+            McpCallDailyStats.day >= start.isoformat(),
+            McpCallDailyStats.day <= end.isoformat(),
+        )
+        .order_by(McpCallDailyStats.day)
+    ).all()
     db.rollback()
-    return rows
+    return list(rows)
 
 
 def _merge_operations(target: dict[str, dict], raw: str | None) -> None:

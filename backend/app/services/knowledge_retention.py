@@ -42,10 +42,10 @@ def cleanup_once() -> dict[str, int]:
             cutoff = now - timedelta(days=call_days)
             result = session.execute(delete(McpCallLog).where(McpCallLog.created_at < cutoff))
             removed_calls = int(result.rowcount or 0)
-            # 日聚合跟源日志一起清理；cutoff 所在日也删掉，下次刷新会按剩余日志重算。
-            session.execute(
-                delete(McpCallDailyStats).where(McpCallDailyStats.day <= to_shanghai(cutoff).date().isoformat())
-            )
+            # 日聚合只保留计数，保留期至少覆盖 90 天图表窗口，避免被反复回填成 0。
+            rollup_days = max(call_days, 90)
+            rollup_cutoff = (to_shanghai(now) - timedelta(days=rollup_days - 1)).date().isoformat()
+            session.execute(delete(McpCallDailyStats).where(McpCallDailyStats.day < rollup_cutoff))
 
         # 清理没有对应任务记录的原文文件
         active_ids = set(session.scalars(select(KnowledgeIngestJob.id)).all())
