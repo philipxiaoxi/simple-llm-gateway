@@ -170,7 +170,7 @@ export function AssistantPanel() {
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
             <header className="relative shrink-0 overflow-hidden border-b border-line-strong bg-panel-2 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] lg:pt-3">
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_20%_0%,rgba(200,245,66,0.14),transparent_58%),radial-gradient(circle_at_90%_10%,rgba(110,200,255,0.12),transparent_48%)]" />
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(200,245,66,0.14),transparent_58%),radial-gradient(circle_at_90%_10%,rgba(110,200,255,0.12),transparent_48%)]" />
               <div className="relative flex items-center gap-3">
                 <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-signal/30 bg-gradient-to-br from-signal/25 via-panel-2 to-info/15 text-signal shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
                   <Sparkles size={18} />
@@ -198,16 +198,6 @@ export function AssistantPanel() {
                     onClick={() => setHistoryOpen(true)}
                   >
                     <History size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="新建对话"
-                    title="新建对话"
-                    disabled={streaming}
-                    className="flex h-8 w-8 items-center justify-center rounded-md text-mist transition-colors hover:bg-elevate hover:text-paper disabled:opacity-35"
-                    onClick={newConversation}
-                  >
-                    <SquarePen size={16} />
                   </button>
                   {canManage ? (
                     <button
@@ -347,6 +337,16 @@ export function AssistantPanel() {
             <div className="shrink-0 border-t border-line bg-panel px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
               <div className="mx-auto w-full max-w-2xl">
                 <div className="flex items-end gap-2 rounded-2xl border border-line-strong bg-control p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-[border-color,box-shadow] focus-within:border-signal/60 focus-within:ring-2 focus-within:ring-signal/15">
+                  <button
+                    type="button"
+                    aria-label="新建对话"
+                    title="新建对话"
+                    disabled={streaming}
+                    className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-mist transition-colors hover:bg-elevate hover:text-paper disabled:opacity-35"
+                    onClick={newConversation}
+                  >
+                    <SquarePen size={16} />
+                  </button>
                   <textarea
                     ref={inputRef}
                     value={draft}
