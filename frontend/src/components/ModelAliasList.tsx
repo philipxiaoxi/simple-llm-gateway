@@ -75,7 +75,12 @@ export function ModelAliasList({
   return (
     <>
       <div className="hidden overflow-hidden rounded-lg border border-line bg-ink/40 lg:block">
-        <table className="w-full text-left text-sm">
+        <table className="w-full table-fixed text-left text-sm">
+          <colgroup>
+            <col className="w-40" />
+            <col />
+            <col className="w-28" />
+          </colgroup>
           <thead className="bg-panel-2 text-mist">
             <tr>
               <th className="whitespace-nowrap px-3 py-2 font-medium">别名</th>

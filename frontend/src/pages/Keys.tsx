@@ -339,7 +339,7 @@ function KeyAliasesDialog({ keyId, keyName, onClose }: { keyId: number; keyName:
   }
 
   return (
-    <Dialog title={`模型别名 · ${keyName}`} onClose={onClose}>
+    <Dialog title={`模型别名 · ${keyName}`} onClose={onClose} className="max-w-3xl">
       <div className="grid gap-3">
         <p className="text-sm text-mist">
           自定义名字映射到该 Key 的任意可用模型。客户端模型名填别名，切换背后的模型后客户端无需改配置，自助查询页同步生效。
