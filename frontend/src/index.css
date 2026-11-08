@@ -113,6 +113,8 @@
   --app-header: 3rem;
   --app-tab: 3.5rem;
   --app-content-max: 1600px;
+  /* 顶部安全区默认 0，仅在独立窗口下取 env()，避免普通标签页重复留白 */
+  --safe-top: 0px;
   /* 密度：舒适（默认）→ 紧凑，由侧栏密度按钮切换 data-density */
   --card-pad: 1rem;
   --row-py: 0.5rem;
@@ -269,15 +271,24 @@ html[data-modal-open='true'] [data-app-scroll] {
 }
 
 .safe-area-drawer {
-  padding-top: env(safe-area-inset-top);
+  padding-top: var(--safe-top);
 }
 
 .safe-area-modal {
   padding:
-    max(1rem, env(safe-area-inset-top))
+    max(1rem, var(--safe-top))
     max(1rem, env(safe-area-inset-right))
     max(1rem, env(safe-area-inset-bottom))
     max(1rem, env(safe-area-inset-left));
+}
+
+/* 顶部安全区只在独立窗口（安装到主屏 / PWA / 全屏）生效。
+   普通浏览器标签页的地址栏已经避让了状态栏和挖孔摄像头，
+   部分 WebView 仍会返回非零的 env()，直接叠加会多出一条空白。 */
+@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+  :root {
+    --safe-top: env(safe-area-inset-top);
+  }
 }
 
 * {

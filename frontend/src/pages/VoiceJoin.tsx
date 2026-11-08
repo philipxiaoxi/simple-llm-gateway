@@ -82,7 +82,7 @@ export function VoiceJoinPage() {
   }
 
   return (
-    <div className="page-enter flex min-h-svh flex-col items-center justify-center bg-ink px-4 py-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+    <div className="page-enter flex min-h-svh flex-col items-center justify-center bg-ink px-4 py-[max(1.5rem,var(--safe-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-md space-y-4">
         <div className="flex flex-col items-center gap-2 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-signal/15 text-signal">

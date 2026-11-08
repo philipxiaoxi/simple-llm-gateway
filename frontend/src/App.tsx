@@ -193,7 +193,7 @@ export default function App() {
         richColors
         closeButton
         // 顶部提示避开 iOS 安全区（灵动岛/刘海），否则会被灵动岛挡住
-        mobileOffset={{ top: 'calc(env(safe-area-inset-top) + 12px)' }}
+        mobileOffset={{ top: 'calc(var(--safe-top) + 12px)' }}
       />
       <BrowserRouter>
         <Suspense fallback={<RouteFallback />}>

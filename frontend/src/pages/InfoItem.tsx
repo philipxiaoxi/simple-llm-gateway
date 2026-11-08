@@ -256,7 +256,7 @@ export function InfoItemPage() {
       }}
       className="fixed inset-0 z-40 flex flex-col bg-ink/95 backdrop-blur-sm"
     >
-      <div className="flex items-center justify-between gap-2 border-b border-line bg-panel/95 px-2 pt-[env(safe-area-inset-top)]">
+      <div className="flex items-center justify-between gap-2 border-b border-line bg-panel/95 px-2 pt-[var(--safe-top)]">
         <button
           type="button"
           onClick={close}

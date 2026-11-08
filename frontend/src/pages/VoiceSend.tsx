@@ -380,7 +380,7 @@ export function VoiceSendPage() {
   return (
     <div className="page-enter flex h-svh flex-col bg-ink">
       {/* 顶部状态条 */}
-      <header className="flex items-center gap-2 border-b border-line px-3 py-[max(0.6rem,env(safe-area-inset-top))]">
+      <header className="flex items-center gap-2 border-b border-line px-3 py-[max(0.6rem,var(--safe-top))]">
         <Link
           to="/voice/join"
           className="flex h-9 w-9 items-center justify-center rounded-lg text-mist hover:bg-elevate"

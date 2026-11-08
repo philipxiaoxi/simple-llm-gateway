@@ -73,7 +73,7 @@ export function Sheet({
             // 移动：底部抽屉（长表单可直接占满视口）
             // 占满视口时为灵动岛/刘海留出顶部安全区，否则标题会被状态栏遮住
             mobileFull
-              ? 'h-[100dvh] max-h-[100dvh] rounded-none border-0 pt-[env(safe-area-inset-top)] lg:pt-0'
+              ? 'h-[100dvh] max-h-[100dvh] rounded-none border-0 pt-[var(--safe-top)] lg:pt-0'
               : 'rounded-t-2xl border-t',
             'pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-sheet',
             // 桌面：居中弹窗
