@@ -11,7 +11,7 @@ export function PublicLeaderboardPage() {
   })
 
   return (
-    <div className="page-enter min-h-svh bg-ink px-4 pt-[max(2.5rem,calc(env(safe-area-inset-top)+1.5rem))] pb-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))]">
+    <div className="page-enter min-h-svh bg-ink px-4 pt-[max(2.5rem,calc(var(--safe-top)+1.5rem))] pb-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))]">
       <div className="mx-auto w-full max-w-6xl space-y-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">

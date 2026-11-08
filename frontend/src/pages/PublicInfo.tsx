@@ -393,7 +393,7 @@ export function PublicInfoPage() {
   const entries = items.map((item) => ({ item, ratio: measured[item.id] || infoItemRatio(item) }))
 
   return (
-    <div className="page-enter min-h-svh bg-ink px-4 pt-[max(2rem,calc(env(safe-area-inset-top)+1.25rem))] pb-[max(3rem,calc(env(safe-area-inset-bottom)+2rem))]">
+    <div className="page-enter min-h-svh bg-ink px-4 pt-[max(2rem,calc(var(--safe-top)+1.25rem))] pb-[max(3rem,calc(env(safe-area-inset-bottom)+2rem))]">
       <div className="mx-auto w-full max-w-[1280px] space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
@@ -604,7 +604,7 @@ export function PublicInfoItemPage() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-ink">
-      <header className="sticky top-0 z-10 flex items-center border-b border-line bg-ink/95 px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur">
+      <header className="sticky top-0 z-10 flex items-center border-b border-line bg-ink/95 px-4 py-2 pt-[max(0.5rem,var(--safe-top))] backdrop-blur">
         <button
           type="button"
           onClick={close}

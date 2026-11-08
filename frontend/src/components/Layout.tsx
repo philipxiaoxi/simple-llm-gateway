@@ -489,7 +489,7 @@ export function Layout() {
         {currentPageLabel(location.pathname)}
       </div>
 
-      <header className="fixed inset-x-0 top-0 z-30 border-b border-line bg-panel/95 pt-[env(safe-area-inset-top)] backdrop-blur-md md:hidden">
+      <header className="fixed inset-x-0 top-0 z-30 border-b border-line bg-panel/95 pt-[var(--safe-top)] backdrop-blur-md md:hidden">
         <div className="flex h-12 items-center justify-between px-2">
           <button
             type="button"
@@ -802,7 +802,7 @@ export function Layout() {
       <main
         ref={mainRef}
         data-app-scroll
-        className="min-w-0 overflow-x-clip bg-ink px-4 pb-[calc(var(--app-tab)+env(safe-area-inset-bottom)+0.75rem)] pt-[calc(var(--app-header)+env(safe-area-inset-top)+0.75rem)] md:h-svh md:overflow-y-auto md:px-6 md:pb-6 md:pt-6 lg:px-8"
+        className="min-w-0 overflow-x-clip bg-ink px-4 pb-[calc(var(--app-tab)+env(safe-area-inset-bottom)+0.75rem)] pt-[calc(var(--app-header)+var(--safe-top)+0.75rem)] md:h-svh md:overflow-y-auto md:px-6 md:pb-6 md:pt-6 lg:px-8"
       >
         <PageContainer>
           {/* 按一级路径分组：/info 与 /info/:id 共用一次过渡，避免打开详情时重挂载瀑布流 */}
