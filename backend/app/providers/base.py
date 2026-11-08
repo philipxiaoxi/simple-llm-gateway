@@ -92,6 +92,9 @@ class Provider:
     def can_passthrough(self, inbound_protocol: str) -> bool:
         return False
 
+    def supports_quota(self) -> bool:
+        return True
+
     def initial_quota(self) -> QuotaView | None:
         return None
 

@@ -41,6 +41,8 @@ def accounts_due_for_quota_refresh(
     ).all()
     due: list[UpstreamAccount] = []
     for account in rows:
+        if not get_provider(account.provider).supports_quota():
+            continue
         if not get_upstream_credential(account, allow_expired=True):
             continue
         if account.quota_updated_at is None or account.quota_updated_at <= cutoff:

@@ -180,6 +180,7 @@ def _ensure_columns(engine: Engine) -> None:
         "website_url": "ALTER TABLE upstream_accounts ADD COLUMN website_url VARCHAR(512)",
         "model_prefix": "ALTER TABLE upstream_accounts ADD COLUMN model_prefix VARCHAR(32)",
         "header_spoof": "ALTER TABLE upstream_accounts ADD COLUMN header_spoof VARCHAR(16) DEFAULT 'none' NOT NULL",
+        "pinned": "ALTER TABLE upstream_accounts ADD COLUMN pinned BOOLEAN DEFAULT 0 NOT NULL",
     }
     skill_settings_statements = {
         "report_account_id": "ALTER TABLE skill_classification_settings ADD COLUMN report_account_id INTEGER",

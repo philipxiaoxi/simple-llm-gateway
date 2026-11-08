@@ -135,8 +135,11 @@ class AnthropicGenericProvider(Provider):
             response = await client.post(url, headers=headers, json=body)
         return response.status_code, _json_or_error(response)
 
+    def supports_quota(self) -> bool:
+        return False
+
     def initial_quota(self) -> QuotaView | None:
-        return QuotaView(ok=False, message=GENERIC_QUOTA_UNSUPPORTED)
+        return None
 
     async def load_quota(self, account: UpstreamAccount, token: str) -> QuotaView:
         return QuotaView(ok=False, message=GENERIC_QUOTA_UNSUPPORTED)

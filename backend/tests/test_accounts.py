@@ -17,6 +17,31 @@ def test_list_providers(client: TestClient, auth_headers: dict[str, str]) -> Non
     assert by_id["zhipu"]["base_url"] == "https://open.bigmodel.cn/api/paas/v4"
 
 
+def test_pin_account_sorts_before_others(client: TestClient, auth_headers: dict[str, str]) -> None:
+    first = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "先创建", "provider": "deepseek", "api_key": "sk-first"},
+    ).json()
+    second = client.post(
+        "/api/admin/accounts",
+        headers=auth_headers,
+        json={"name": "后创建", "provider": "deepseek", "api_key": "sk-second"},
+    ).json()
+    assert first["pinned"] is False
+
+    pinned = client.patch(
+        f"/api/admin/accounts/{second['id']}",
+        headers=auth_headers,
+        json={"pinned": True},
+    )
+    assert pinned.status_code == 200
+    assert pinned.json()["pinned"] is True
+
+    listed = client.get("/api/admin/accounts", headers=auth_headers)
+    assert [item["id"] for item in listed.json()][:2] == [second["id"], first["id"]]
+
+
 def test_create_account_encrypts_key(client: TestClient, auth_headers: dict[str, str]) -> None:
     created = client.post(
         "/api/admin/accounts",
@@ -820,8 +845,7 @@ def test_quota_generic_providers_skip_network(client: TestClient, auth_headers: 
         )
         assert created.status_code == 200
         assert created.json()["base_url"] in {"https://api.openai.com/v1", "https://api.anthropic.com/v1"}
-        assert created.json()["quota"]["ok"] is False
-        assert created.json()["quota"]["message"] == "通用供应商不支持查询余额"
+        assert created.json()["quota"] is None
 
         with patch("app.providers.base.httpx.AsyncClient") as client_cls:
             response = client.post(f"/api/admin/accounts/{created.json()['id']}/quota", headers=auth_headers)

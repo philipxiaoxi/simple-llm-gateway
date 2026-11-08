@@ -1,8 +1,23 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, FileJson, MoreHorizontal, Upload } from 'lucide-react'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import {
+  Activity,
+  Coins,
+  ExternalLink,
+  FileJson,
+  Heart,
+  KeyRound,
+  ListTree,
+  MoreHorizontal,
+  Pencil,
+  Power,
+  Trash2,
+  Upload,
+  type LucideIcon,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { ActionSheet, type ActionSheetAction, Badge, Button, Card, Dialog, Field, IconButton, Input, Select, Sheet, Switch } from '../components/ui'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Badge, Button, Card, Dialog, Field, Input, Select, Sheet, Switch } from '../components/ui'
 import { api, type Account, type AccountUsage, type ModelCaps, type Provider, type QuotaItem } from '../lib/api'
 import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { Can, useCan } from '../lib/session'
@@ -292,15 +307,17 @@ function AccountEditor({
             转向上游时带上对应客户端的请求头。Grok 额度查询走 cli-chat-proxy 时需要 Grok CLI 伪装。
           </div>
         </div>
-        <div className="sm:col-span-2">
+        <div className="min-w-0 sm:col-span-2">
           <Field label="风险等级">
             <Select value={riskLevel} onChange={(event) => setRiskLevel(event.target.value)}>
-              <option value="low">低风险 · 官方模型或数据泄露可能性较低</option>
-              <option value="medium">中风险 · 非官方，可能是中转站或内部部署的模型</option>
-              <option value="high">高风险 · 非官方的低价或廉价站点模型，可能存在信息收集</option>
+              <option value="low">{RISK_LEVELS.low.label}</option>
+              <option value="medium">{RISK_LEVELS.medium.label}</option>
+              <option value="high">{RISK_LEVELS.high.label}</option>
             </Select>
           </Field>
-          <div className="mt-1.5 text-xs text-mist">风险指上游账号来源，与本站无关。</div>
+          <div className="mt-1.5 break-words text-xs text-mist">
+            {RISK_LEVELS[riskLevel]?.hint ?? '风险指上游账号来源，与本站无关。'}
+          </div>
         </div>
       </div>
     </Sheet>
@@ -495,85 +512,170 @@ function QuotaItems({ items }: { items: QuotaItem[] }) {
   )
 }
 
-function ProbeSummary({ account }: { account: Account }) {
-  const message = account.last_probe_message?.trim() ?? ''
-  const matched = message.match(/^(\d{3})\s+(https?:\/\/\S+)$/)
-  const status = matched?.[1]
-  const url = matched?.[2]
-  const meta = [
-    `上次探测：${formatTime(account.last_probe_at)}`,
-    account.last_probe_latency_ms != null ? `${account.last_probe_latency_ms}ms` : '',
-    status || (!url && message ? message : ''),
-  ]
-    .filter(Boolean)
-    .join(' · ')
+const MODELS_COLLAPSED_COUNT = 8
+
+type AccountAction = {
+  key: string
+  label: string
+  icon: LucideIcon
+  onSelect: () => void
+  danger?: boolean
+}
+
+function AccountActionButton({
+  action,
+  disabled,
+  className,
+}: {
+  action: AccountAction
+  disabled?: boolean
+  className?: string
+}) {
+  const Icon = action.icon
   return (
-    <div className="min-w-0 text-sm text-mist">
-      <div className="break-words">{meta}</div>
-      {url ? (
-        <div className="mt-0.5 truncate font-mono text-xs" title={url}>
-          {url}
-        </div>
-      ) : null}
-    </div>
+    <Button
+      type="button"
+      variant={action.danger ? 'danger' : 'line'}
+      size="sm"
+      className={cn('min-w-0 shrink-0', className)}
+      disabled={disabled}
+      onClick={action.onSelect}
+    >
+      <Icon size={14} />
+      {action.label}
+    </Button>
   )
 }
 
-// 卡片默认折叠高度：内容超出时截断，点击「展开全部」查看完整内容。
-const CARD_COLLAPSED_HEIGHT = 300
+function AccountActionMenu({ actions }: { actions: AccountAction[] }) {
+  if (!actions.length) return null
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <Button type="button" variant="line" size="sm" className="shrink-0">
+          <MoreHorizontal size={14} />
+          更多
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={4}
+          collisionPadding={12}
+          className={cn(
+            'z-[70] max-h-[min(70dvh,20rem)] min-w-40 overflow-y-auto overscroll-contain rounded-md border border-line bg-panel-2 p-1 shadow-menu',
+            'motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:zoom-in-95 motion-safe:data-[state=open]:duration-150',
+          )}
+        >
+          {actions.map((action) => {
+            const Icon = action.icon
+            return (
+              <DropdownMenu.Item
+                key={action.key}
+                onSelect={action.onSelect}
+                className={cn(
+                  'flex cursor-pointer select-none items-center gap-2 rounded-md px-3 py-2 text-sm outline-none transition',
+                  action.danger
+                    ? 'bg-danger/15 text-danger data-[highlighted]:bg-danger/25'
+                    : 'text-paper data-[highlighted]:bg-elevate',
+                )}
+              >
+                <Icon size={14} />
+                {action.label}
+              </DropdownMenu.Item>
+            )
+          })}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
+}
 
-function CollapsibleSection({ children }: { children: ReactNode }) {
-  const [expanded, setExpanded] = useState(false)
-  const [overflowing, setOverflowing] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
+function AccountActionRow({ actions, disabled }: { actions: AccountAction[]; disabled?: boolean }) {
+  const rowRef = useRef<HTMLDivElement>(null)
+  const measureRef = useRef<HTMLDivElement>(null)
+  const [visibleCount, setVisibleCount] = useState(actions.length)
 
   useEffect(() => {
-    const container = containerRef.current
-    const content = contentRef.current
-    if (!container || !content) return
+    const row = rowRef.current
+    const measure = measureRef.current
+    if (!row || !measure) return
     const update = () => {
-      // 只在折叠状态下判断是否溢出；展开时保持上次结果，避免按钮消失
-      if (!expanded) {
-        setOverflowing(content.scrollHeight > container.clientHeight + 1)
+      const widths = Array.from(measure.children, (node) => (node as HTMLElement).offsetWidth)
+      const gap = 8
+      const moreWidth = widths[widths.length - 1] ?? 0
+      const actionWidths = widths.slice(0, actions.length)
+      let used = 0
+      let count = 0
+      for (let index = 0; index < actionWidths.length; index += 1) {
+        const remaining = actionWidths.length - index - 1
+        const next = used + (count > 0 ? gap : 0) + actionWidths[index]
+        const reserved = remaining > 0 ? gap + moreWidth : 0
+        if (next + reserved > row.clientWidth && count > 0) break
+        used = next
+        count += 1
       }
+      setVisibleCount(count)
     }
     const observer = new ResizeObserver(update)
-    observer.observe(content)
+    observer.observe(row)
     update()
     return () => observer.disconnect()
-  }, [expanded])
+  }, [actions])
 
+  if (!actions.length) return null
+  const inline = actions.slice(0, visibleCount)
+  const overflow = actions.slice(visibleCount)
   return (
-    <div className="relative">
+    <div ref={rowRef} className="relative min-w-0">
       <div
-        ref={containerRef}
-        className={cn('overflow-hidden', !expanded && 'max-h-[300px]')}
-        style={!expanded ? { maxHeight: CARD_COLLAPSED_HEIGHT } : undefined}
+        ref={measureRef}
+        aria-hidden="true"
+        className="pointer-events-none invisible absolute flex w-max gap-2"
       >
-        <div ref={contentRef} className="space-y-3">
-          {children}
-        </div>
+        {actions.map((action) => (
+          <AccountActionButton key={action.key} action={action} />
+        ))}
+        <Button type="button" variant="line" size="sm" className="shrink-0">
+          <MoreHorizontal size={14} />
+          更多
+        </Button>
       </div>
-      {overflowing ? (
-        <div className="relative mt-3 flex justify-center">
-          {!expanded ? (
-            <div className="pointer-events-none absolute inset-x-0 -top-14 h-14 bg-gradient-to-t from-panel to-transparent" />
-          ) : null}
-          <button
-            type="button"
-            onClick={() => setExpanded((current) => !current)}
-            className="rounded-full bg-elevate-strong px-4 py-1.5 text-xs font-medium text-paper transition hover:bg-elevate-strong"
-          >
-            {expanded ? '收起' : '展开全部'}
-          </button>
-        </div>
-      ) : null}
+      <div className="flex min-w-0 items-center gap-2">
+        {inline.map((action) => (
+          <AccountActionButton key={action.key} action={action} disabled={disabled} />
+        ))}
+        <AccountActionMenu actions={overflow} />
+      </div>
     </div>
   )
 }
 
-const MODELS_COLLAPSED_COUNT = 8
+function PinButton({
+  pinned,
+  disabled,
+  onToggle,
+}: {
+  pinned: boolean
+  disabled?: boolean
+  onToggle: () => void
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      aria-pressed={pinned}
+      aria-label={pinned ? '取消特别关心' : '特别关心'}
+      title={pinned ? '取消特别关心' : '特别关心'}
+      disabled={disabled}
+      onClick={onToggle}
+      className={cn('shrink-0', pinned ? 'text-signal' : 'text-mist')}
+    >
+      <Heart size={16} className={cn(pinned && 'fill-signal')} />
+    </Button>
+  )
+}
 
 function ModelList({
   models,
@@ -760,7 +862,7 @@ function ModelOverrideDialog({
           {model.id}
         </div>
         <p className="text-xs leading-5 text-mist">这里改的是本站保存的窗口、思考和模态，刷新模型列表时不会覆盖你的手改。</p>
-        <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid min-w-0 gap-3 sm:grid-cols-2">
           <Field label="上下文窗口">
             <Input value={contextWindow} onChange={(event) => setContextWindow(event.target.value)} placeholder="128000" inputMode="numeric" />
           </Field>
@@ -1007,11 +1109,15 @@ function CustomModelDialog({
 }
 
 export function AccountsPage() {
+  const { accountId } = useParams()
+  const selectedId = accountId ? Number(accountId) : null
   const canQuota = useCan('accounts:quota')
   const canModels = useCan('accounts:models_manage')
+  const canProbe = useCan('accounts:probe')
   const canUpdate = useCan('accounts:update')
   const canDelete = useCan('accounts:delete')
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: api.providers })
   const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: api.accounts })
   const [editor, setEditor] = useState<Account | 'new' | null>(null)
@@ -1027,7 +1133,6 @@ export function AccountsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [providerFilter, setProviderFilter] = useState('')
-  const [actionAccount, setActionAccount] = useState<Account | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
 
   useEffect(() => {
@@ -1148,32 +1253,122 @@ export function AccountsPage() {
     }
   }
 
-  function removeAccount(account: Account) {
-    setDeletingAccount(account)
+  async function togglePinned(account: Account) {
+    setBusyId(account.id)
+    try {
+      await api.updateAccount(account.id, { pinned: !account.pinned })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      notifyOk(account.pinned ? `已取消特别关心 ${account.name}` : `已特别关心 ${account.name}`)
+    } catch (error) {
+      notifyBad(errorMessage(error, '更新特别关心失败'))
+    } finally {
+      setBusyId(null)
+    }
   }
 
-  const hasAccountActions = canQuota || canModels || canUpdate || canDelete
-  const actionSheetActions: ActionSheetAction[] = actionAccount
-    ? [
-        ...(canQuota ? [{ label: '刷新额度', onSelect: () => void runQuota(actionAccount.id) }] : []),
-        ...(canModels ? [{ label: '获取模型', onSelect: () => void runModels(actionAccount.id) }] : []),
-        ...(actionAccount.auth_type === 'oauth' && canUpdate
-          ? [{ label: '去授权', onSelect: () => void startOauth(actionAccount.id) }]
-          : []),
-        ...(canUpdate ? [{ label: '编辑账号', onSelect: () => setEditor(actionAccount) }] : []),
-        ...(canUpdate
-          ? [
-              {
-                label: actionAccount.status === 'active' ? '停用账号' : '启用账号',
-                onSelect: () => void toggle(actionAccount),
-              },
-            ]
-          : []),
-        ...(canDelete
-          ? [{ label: '删除账号', tone: 'danger' as const, onSelect: () => setDeletingAccount(actionAccount) }]
-          : []),
-      ]
-    : []
+  function accountActions(account: Account, includeModels: boolean): AccountAction[] {
+    return [
+      {
+        key: 'detail',
+        label: '详情',
+        icon: ListTree,
+        onSelect: () => navigate(`/accounts/${account.id}`),
+      },
+      ...(canProbe
+        ? [{ key: 'probe', label: '探测', icon: Activity, onSelect: () => void runProbe(account.id) }]
+        : []),
+      ...(canQuota && providers.find((item) => item.id === account.provider)?.supports_quota !== false
+        ? [{ key: 'quota', label: '刷新额度', icon: Coins, onSelect: () => void runQuota(account.id) }]
+        : []),
+      ...(includeModels && canModels
+        ? [{ key: 'models', label: '获取模型', icon: ListTree, onSelect: () => void runModels(account.id) }]
+        : []),
+      ...(account.auth_type === 'oauth' && canUpdate
+        ? [{ key: 'oauth', label: '去授权', icon: KeyRound, onSelect: () => void startOauth(account.id) }]
+        : []),
+      ...(canUpdate ? [{ key: 'edit', label: '编辑', icon: Pencil, onSelect: () => setEditor(account) }] : []),
+      ...(canUpdate
+        ? [
+            {
+              key: 'toggle',
+              label: account.status === 'active' ? '停用' : '启用',
+              icon: Power,
+              onSelect: () => void toggle(account),
+            },
+          ]
+        : []),
+      ...(canDelete
+        ? [{ key: 'delete', label: '删除', icon: Trash2, danger: true, onSelect: () => setDeletingAccount(account) }]
+        : []),
+    ]
+  }
+
+  const selectedAccount =
+    selectedId != null && Number.isFinite(selectedId)
+      ? accounts.find((account) => account.id === selectedId) ?? null
+      : null
+  if (selectedId != null) {
+    return (
+      <>
+        <AccountDetailPage
+          account={selectedAccount}
+          providers={providers}
+          supportsQuota={
+            selectedAccount
+              ? providers.find((item) => item.id === selectedAccount.provider)?.supports_quota !== false
+              : false
+          }
+          loading={!accounts.length}
+          busy={busyId === selectedAccount?.id}
+          canUpdate={canUpdate}
+          actions={selectedAccount ? accountActions(selectedAccount, true) : []}
+          expanded={selectedAccount ? expandedModels.has(selectedAccount.id) : false}
+          onBack={() => navigate('/accounts')}
+          onTogglePinned={() => {
+            if (selectedAccount) void togglePinned(selectedAccount)
+          }}
+          onToggleModels={() => {
+            if (!selectedAccount) return
+            setExpandedModels((current) => {
+              const next = new Set(current)
+              if (next.has(selectedAccount.id)) next.delete(selectedAccount.id)
+              else next.add(selectedAccount.id)
+              return next
+            })
+          }}
+          onAddModel={() => {
+            if (selectedAccount) setCustomModelAccountId(selectedAccount.id)
+          }}
+          onEditModel={(model) => {
+            if (selectedAccount) setEditingModel({ accountId: selectedAccount.id, model })
+          }}
+          onToggleModel={(model) => {
+            if (selectedAccount) void toggleModelEnabled(selectedAccount.id, model)
+          }}
+        />
+        <AccountDialogs
+          providers={providers}
+          editor={editor}
+          setEditor={setEditor}
+          transfer={transfer}
+          setTransfer={setTransfer}
+          editingModel={editingModel}
+          setEditingModel={setEditingModel}
+          customModelAccountId={customModelAccountId}
+          setCustomModelAccountId={setCustomModelAccountId}
+          deletingAccount={deletingAccount}
+          setDeletingAccount={setDeletingAccount}
+          oauthDialog={oauthDialog}
+          setOauthDialog={setOauthDialog}
+          oauthPaste={oauthPaste}
+          setOauthPaste={setOauthPaste}
+          oauthAccountId={oauthAccountId}
+          setOauthAccountId={setOauthAccountId}
+          queryClient={queryClient}
+        />
+      </>
+    )
+  }
 
   return (
     <div className="space-y-5">
@@ -1249,7 +1444,7 @@ export function AccountsPage() {
         {filteredAccounts.map((account) => (
           <Card key={account.id} className="flex min-w-0 flex-col space-y-3">
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="truncate text-lg font-medium" title={account.name}>
                   {account.name}
                 </div>
@@ -1269,21 +1464,18 @@ export function AccountsPage() {
                   </a>
                 ) : null}
               </div>
-              <span className="flex shrink-0 items-center gap-1">
+              <div className="flex shrink-0 items-center gap-1">
+                {canUpdate ? (
+                  <PinButton
+                    pinned={account.pinned}
+                    disabled={busyId === account.id}
+                    onToggle={() => void togglePinned(account)}
+                  />
+                ) : null}
                 <Badge tone={account.status === 'active' ? 'ok' : 'mist'}>
                   {account.status === 'active' ? '启用' : '停用'}
                 </Badge>
-                {hasAccountActions ? (
-                <IconButton
-                  label={`${account.name} 更多操作`}
-                  className="md:hidden"
-                  aria-haspopup="dialog"
-                  onClick={() => setActionAccount(account)}
-                >
-                  <MoreHorizontal size={18} />
-                </IconButton>
-                ) : null}
-              </span>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge
@@ -1301,77 +1493,9 @@ export function AccountsPage() {
               {account.last_probe_ok === true ? <Badge tone="ok">探测正常</Badge> : null}
               {account.last_probe_ok === false ? <Badge tone="bad">探测失败</Badge> : null}
             </div>
-            <CollapsibleSection>
-              <ProbeSummary account={account} />
-              <div className="space-y-2 border-t border-line pt-3">
-                <div className="grid grid-cols-2 gap-2">
-<Can code="accounts:probe">
-                  <Button
-                    variant="line"
-                    className="w-full"
-                    disabled={busyId === account.id}
-                    onClick={() => runProbe(account.id)}
-                  >
-                    探测
-                  </Button>
-</Can>
-<Can code="accounts:quota">
-                  <Button
-                    variant="line"
-                    className="w-full"
-                    disabled={busyId === account.id}
-                    onClick={() => runQuota(account.id)}
-                  >
-                    刷新额度
-                  </Button>
-</Can>
-<Can code="accounts:models_manage">
-                  <Button
-                    type="button"
-                    variant="line"
-                    className="w-full"
-                    disabled={busyId === account.id}
-                    onClick={() => runModels(account.id)}
-                  >
-                    获取模型
-                  </Button>
-</Can>
-                  {account.auth_type === 'oauth' ? (
-                    <Can code="accounts:update">
-                    <Button
-                      type="button"
-                      variant="line"
-                      className="w-full"
-                      disabled={busyId === account.id}
-                      onClick={() => startOauth(account.id)}
-                    >
-                      去授权
-                    </Button>
-                    </Can>
-                  ) : null}
-<Can code="accounts:update">
-                  <Button variant="line" className="w-full" onClick={() => setEditor(account)}>
-                    编辑
-                  </Button>
-</Can>
-<Can code="accounts:update">
-                  <Button variant="line" className="w-full" onClick={() => toggle(account)}>
-                    {account.status === 'active' ? '停用' : '启用'}
-                  </Button>
-</Can>
-<Can code="accounts:delete">
-                  <Button
-                    variant="danger"
-                    className="w-full"
-                    disabled={busyId === account.id}
-                    onClick={() => void removeAccount(account)}
-                  >
-                    删除
-                  </Button>
-</Can>
-                </div>
-              </div>
-              <div>
+            <AccountActionRow actions={accountActions(account, false)} disabled={busyId === account.id} />
+            {providers.find((item) => item.id === account.provider)?.supports_quota !== false ? (
+              <div className="border-t border-line pt-3">
                 <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
                   额度{account.quota_updated_at ? ` · ${formatTime(account.quota_updated_at)}` : ''}
                 </div>
@@ -1381,47 +1505,78 @@ export function AccountsPage() {
                   <div className="text-sm text-mist">{account.quota?.message || '还没有额度，点「刷新额度」拉取。'}</div>
                 )}
               </div>
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="text-xs uppercase tracking-[0.16em] text-mist">
-                    模型{account.models_updated_at ? ` · ${formatTime(account.models_updated_at)}` : ''}
-                  </div>
-                  <Can code="accounts:models_manage">
-                  <button
-                    type="button"
-                    onClick={() => setCustomModelAccountId(account.id)}
-                    className="text-xs text-mist underline-offset-2 hover:text-paper hover:underline"
-                  >
-                    添加模型
-                  </button>
-                  </Can>
-                </div>
-                {account.models?.length ? (
-                  <ModelList
-                    models={account.models}
-                    expanded={expandedModels.has(account.id)}
-                    onToggle={() =>
-                      setExpandedModels((current) => {
-                        const next = new Set(current)
-                        if (next.has(account.id)) next.delete(account.id)
-                        else next.add(account.id)
-                        return next
-                      })
-                    }
-                    onEdit={(model) => setEditingModel({ accountId: account.id, model })}
-                    onToggleEnabled={(model) => void toggleModelEnabled(account.id, model)}
-                  />
-                ) : (
-                  <div className="text-sm text-mist">还没有模型，点「获取模型」从上游拉取并入库。</div>
-                )}
-              </div>
-            </CollapsibleSection>
+            ) : null}
           </Card>
         ))}
         {filteredAccounts.length === 0 ? (
           <Card className="col-span-full px-4 py-10 text-center text-sm text-mist">暂无匹配账号</Card>
         ) : null}
       </div>
+      <AccountDialogs
+        providers={providers}
+        editor={editor}
+        setEditor={setEditor}
+        transfer={transfer}
+        setTransfer={setTransfer}
+        editingModel={editingModel}
+        setEditingModel={setEditingModel}
+        customModelAccountId={customModelAccountId}
+        setCustomModelAccountId={setCustomModelAccountId}
+        deletingAccount={deletingAccount}
+        setDeletingAccount={setDeletingAccount}
+        oauthDialog={oauthDialog}
+        setOauthDialog={setOauthDialog}
+        oauthPaste={oauthPaste}
+        setOauthPaste={setOauthPaste}
+        oauthAccountId={oauthAccountId}
+        setOauthAccountId={setOauthAccountId}
+        queryClient={queryClient}
+      />
+    </div>
+  )
+}
+
+function AccountDialogs({
+  providers,
+  editor,
+  setEditor,
+  transfer,
+  setTransfer,
+  editingModel,
+  setEditingModel,
+  customModelAccountId,
+  setCustomModelAccountId,
+  deletingAccount,
+  setDeletingAccount,
+  oauthDialog,
+  setOauthDialog,
+  oauthPaste,
+  setOauthPaste,
+  oauthAccountId,
+  setOauthAccountId,
+  queryClient,
+}: {
+  providers: Provider[]
+  editor: Account | 'new' | null
+  setEditor: (value: Account | 'new' | null) => void
+  transfer: 'export' | 'import' | null
+  setTransfer: (value: 'export' | 'import' | null) => void
+  editingModel: { accountId: number; model: ModelCaps } | null
+  setEditingModel: (value: { accountId: number; model: ModelCaps } | null) => void
+  customModelAccountId: number | null
+  setCustomModelAccountId: (value: number | null) => void
+  deletingAccount: Account | null
+  setDeletingAccount: (value: Account | null) => void
+  oauthDialog: boolean
+  setOauthDialog: (value: boolean) => void
+  oauthPaste: string
+  setOauthPaste: (value: string) => void
+  oauthAccountId: number | null
+  setOauthAccountId: (value: number | null) => void
+  queryClient: ReturnType<typeof useQueryClient>
+}) {
+  return (
+    <>
       {transfer === 'export' ? <ExportDialog onClose={() => setTransfer(null)} /> : null}
       {transfer === 'import' ? (
         <ImportDialog
@@ -1525,12 +1680,211 @@ export function AccountsPage() {
           </div>
         </Dialog>
       ) : null}
-      <ActionSheet
-        open={Boolean(actionAccount)}
-        title={actionAccount?.name ?? ''}
-        actions={actionSheetActions}
-        onClose={() => setActionAccount(null)}
-      />
+    </>
+  )
+}
+
+const AUTH_TYPE_LABELS: Record<string, string> = {
+  api_key: 'API Key',
+  oauth: 'OAuth',
+}
+
+function DetailRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-1 border-b border-line/70 py-2.5 last:border-b-0 sm:grid-cols-[7.5rem_minmax(0,1fr)] sm:items-start sm:gap-3">
+      <div className="text-xs text-mist">{label}</div>
+      <div className="min-w-0 break-words text-sm text-paper">{children}</div>
+    </div>
+  )
+}
+
+function AccountDetailPage({
+  account,
+  providers,
+  supportsQuota,
+  loading,
+  busy,
+  canUpdate,
+  actions,
+  expanded,
+  onBack,
+  onTogglePinned,
+  onToggleModels,
+  onAddModel,
+  onEditModel,
+  onToggleModel,
+}: {
+  account: Account | null
+  providers: Provider[]
+  supportsQuota: boolean
+  loading: boolean
+  busy: boolean
+  canUpdate: boolean
+  actions: AccountAction[]
+  expanded: boolean
+  onBack: () => void
+  onTogglePinned: () => void
+  onToggleModels: () => void
+  onAddModel: () => void
+  onEditModel: (model: ModelCaps) => void
+  onToggleModel: (model: ModelCaps) => void
+}) {
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button type="button" variant="ghost" size="sm" className="px-0" onClick={onBack}>
+          返回账号列表
+        </Button>
+        {account && canUpdate ? (
+          <PinButton pinned={account.pinned} disabled={busy} onToggle={onTogglePinned} />
+        ) : null}
+      </div>
+      {loading && !account ? <Card className="px-4 py-10 text-center text-sm text-mist">正在读取账号</Card> : null}
+      {!loading && !account ? <Card className="px-4 py-10 text-center text-sm text-mist">账号不存在或已删除</Card> : null}
+      {account ? (
+        <>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <h1 className="truncate text-2xl font-semibold" title={account.name}>
+                {account.name}
+              </h1>
+              <div className="mt-1 truncate font-mono text-xs text-mist" title={account.base_url}>
+                {account.provider} · {account.base_url}
+              </div>
+            </div>
+            <AccountActionRow actions={actions} disabled={busy} />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone={account.status === 'active' ? 'ok' : 'mist'}>
+              {account.status === 'active' ? '启用' : '停用'}
+            </Badge>
+            <Badge
+              tone={RISK_LEVELS[account.risk_level]?.tone ?? 'mist'}
+              title={`上游账号风险：${RISK_LEVELS[account.risk_level]?.hint ?? ''}`}
+            >
+              {RISK_LEVELS[account.risk_level]?.label ?? account.risk_level}
+            </Badge>
+            <Badge tone={account.has_credential ? 'info' : 'warn'}>
+              {account.has_credential ? '已配置凭证' : '缺凭证'}
+            </Badge>
+            {account.header_spoof && account.header_spoof !== 'none' ? (
+              <Badge tone="info">{HEADER_SPOOF_LABELS[account.header_spoof] || '已伪装'}</Badge>
+            ) : null}
+            {account.last_probe_ok === true ? <Badge tone="ok">探测正常</Badge> : null}
+            {account.last_probe_ok === false ? <Badge tone="bad">探测失败</Badge> : null}
+            {account.pinned ? <Badge tone="info">特别关心</Badge> : null}
+          </div>
+          <div className="grid gap-3 xl:grid-cols-2">
+            <Card>
+              <div className="mb-1 text-xs uppercase tracking-[0.16em] text-mist">账号信息</div>
+              <DetailRow label="显示名">{account.name}</DetailRow>
+              <DetailRow label="供应商">
+                {providers.find((item) => item.id === account.provider)?.label ?? account.provider}
+                <span className="ml-2 font-mono text-xs text-mist">{account.provider}</span>
+              </DetailRow>
+              <DetailRow label="来源">{account.source === 'agent' ? '网关代理' : '上游账号'}</DetailRow>
+              <DetailRow label="鉴权">{AUTH_TYPE_LABELS[account.auth_type] ?? account.auth_type}</DetailRow>
+              <DetailRow label="状态">{account.status === 'active' ? '启用' : '停用'}</DetailRow>
+              <DetailRow label="风险">
+                {RISK_LEVELS[account.risk_level]?.label ?? account.risk_level}
+                <div className="mt-0.5 text-xs text-mist">{RISK_LEVELS[account.risk_level]?.hint}</div>
+              </DetailRow>
+              <DetailRow label="特别关心">{account.pinned ? '已置顶' : '未标记'}</DetailRow>
+              <DetailRow label="创建时间">{formatTime(account.created_at)}</DetailRow>
+            </Card>
+            <Card>
+              <div className="mb-1 text-xs uppercase tracking-[0.16em] text-mist">连接与凭证</div>
+              <DetailRow label="Base URL">
+                <span className="font-mono text-xs">{account.base_url}</span>
+              </DetailRow>
+              <DetailRow label="官网">
+                {account.website_url ? (
+                  <a
+                    className="inline-flex max-w-full items-center gap-1 text-signal hover:underline"
+                    href={account.website_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span className="truncate">{account.website_url}</span>
+                    <ExternalLink className="h-3 w-3 shrink-0" />
+                  </a>
+                ) : (
+                  <span className="text-mist">未填写</span>
+                )}
+              </DetailRow>
+              <DetailRow label="凭证">{account.has_credential ? '已配置' : '缺少凭证'}</DetailRow>
+              <DetailRow label="请求头伪装">
+                {account.header_spoof && account.header_spoof !== 'none'
+                  ? HEADER_SPOOF_LABELS[account.header_spoof] || account.header_spoof
+                  : '关闭'}
+              </DetailRow>
+              <DetailRow label="模型前缀">
+                <span className="font-mono text-xs">{account.model_prefix || '未设置'}</span>
+              </DetailRow>
+              {account.agent_route_id ? (
+                <DetailRow label="代理路由">
+                  <span className="font-mono text-xs">{account.agent_route_id}</span>
+                </DetailRow>
+              ) : null}
+              {account.auth_type === 'oauth' ? (
+                <DetailRow label="授权到期">
+                  {account.oauth_expires_at ? formatTime(account.oauth_expires_at) : '未授权或不会过期'}
+                </DetailRow>
+              ) : null}
+            </Card>
+            <Card>
+              <div className="mb-1 text-xs uppercase tracking-[0.16em] text-mist">探测</div>
+              <DetailRow label="结果">
+                {account.last_probe_ok == null ? '还没有探测' : account.last_probe_ok ? '正常' : '失败'}
+              </DetailRow>
+              <DetailRow label="耗时">
+                {account.last_probe_latency_ms != null ? `${account.last_probe_latency_ms}ms` : '无'}
+              </DetailRow>
+              <DetailRow label="时间">{formatTime(account.last_probe_at)}</DetailRow>
+              <DetailRow label="返回">
+                <span className="whitespace-pre-wrap font-mono text-xs">
+                  {account.last_probe_message?.trim() || '无'}
+                </span>
+              </DetailRow>
+            </Card>
+            {supportsQuota ? (
+              <Card>
+                <div className="mb-2 text-xs uppercase tracking-[0.16em] text-mist">
+                  额度{account.quota_updated_at ? ` · ${formatTime(account.quota_updated_at)}` : ''}
+                </div>
+                {account.quota?.items?.length ? (
+                  <QuotaItems items={account.quota.items} />
+                ) : (
+                  <div className="text-sm text-mist">{account.quota?.message || '还没有额度，点「刷新额度」拉取。'}</div>
+                )}
+              </Card>
+            ) : null}
+          </div>
+          <Card className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs uppercase tracking-[0.16em] text-mist">
+                  模型{account.models_updated_at ? ` · ${formatTime(account.models_updated_at)}` : ''}
+                </div>
+                <Can code="accounts:models_manage">
+                  <Button type="button" variant="line" size="sm" onClick={onAddModel}>
+                    添加模型
+                  </Button>
+                </Can>
+              </div>
+              {account.models?.length ? (
+                <ModelList
+                  models={account.models}
+                  expanded={expanded}
+                  onToggle={onToggleModels}
+                  onEdit={onEditModel}
+                  onToggleEnabled={onToggleModel}
+                />
+              ) : (
+                <div className="text-sm text-mist">还没有模型，点「获取模型」从上游拉取并入库。</div>
+              )}
+            </Card>
+        </>
+      ) : null}
     </div>
   )
 }

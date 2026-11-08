@@ -53,10 +53,16 @@ def test_accounts_due_for_quota_refresh_skips_fresh_disabled_and_empty(
         json={"status": "disabled"},
     )
 
+    generic = client.post(
+            "/api/admin/accounts",
+            headers=auth_headers,
+            json={"name": "通用", "provider": "openai_generic", "api_key": "sk-up"},
+        ).json()
     session = get_session_factory()()
     try:
         due_ids = {account.id for account in accounts_due_for_quota_refresh(session, now=now)}
         assert due_ids == {stale["id"], never["id"]}
+        assert generic["id"] not in due_ids
         assert empty["id"] not in due_ids
         assert disabled["id"] not in due_ids
         assert fresh["id"] not in due_ids

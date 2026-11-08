@@ -213,6 +213,7 @@ class AccountUpdate(BaseModel):
     model_prefix: str | None = None
     risk_level: str | None = None
     header_spoof: str | None = None
+    pinned: bool | None = None
 
     _normalize_website_url = field_validator("website_url")(normalize_website_url)
     _normalize_header_spoof = field_validator("header_spoof")(optional_header_spoof)
@@ -316,6 +317,7 @@ class AccountOut(BaseModel):
     header_spoof: str = "none"
     models_updated_at: datetime | None = None
     oauth_expires_at: datetime | None = None
+    pinned: bool = False
     created_at: datetime
 
 
@@ -856,6 +858,7 @@ class ProviderOut(BaseModel):
     label: str
     auth_type: str
     base_url: str
+    supports_quota: bool = True
     models: list[str] = Field(default_factory=list)
 
 

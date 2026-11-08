@@ -221,6 +221,7 @@ export default function App() {
             >
               <Route path="/" element={<DashboardPage />} />
               <Route path="/accounts" element={<AccountsPage />} />
+              <Route path="/accounts/:accountId" element={<AccountsPage />} />
               <Route path="/agents" element={<AgentsPage />} />
               <Route path="/agents/:agentId" element={<AgentDetailPage />} />
               <Route path="/keys" element={<KeysPage />} />
