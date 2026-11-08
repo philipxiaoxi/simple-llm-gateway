@@ -23,6 +23,7 @@ import { notifyBad, notifyInfo, notifyOk } from '../lib/toast'
 import { Can, useCan } from '../lib/session'
 import { MIN_PASSWORD_LENGTH, RISK_LEVELS, cn, errorMessage, formatEmbeddedTimes, formatTime, modelCapsHint } from '../lib/utils'
 import { FilterBar } from '../components/filter-bar'
+import { InfoMasonry } from '../components/InfoMasonry'
 
 const QUOTA_WARN_HIGH = 90
 const QUOTA_WARN_MEDIUM = 70
@@ -1108,6 +1109,19 @@ function CustomModelDialog({
   )
 }
 
+function estimateAccountCardHeight(account: Account, providers: Provider[]): number {
+  // 粗略估算，仅用于瀑布流分配到最短列；偏差只会让列底轻微不齐。
+  let height = 160
+  if (account.website_url) height += 24
+  if (providers.find((item) => item.id === account.provider)?.supports_quota !== false) {
+    height += 69
+    for (const item of account.quota?.items ?? []) {
+      height += item.type === 'progress' ? 44 : 20
+    }
+  }
+  return height
+}
+
 export function AccountsPage() {
   const { accountId } = useParams()
   const selectedId = accountId ? Number(accountId) : null
@@ -1440,9 +1454,15 @@ export function AccountsPage() {
           </Select>
         </Field>
       </FilterBar>
-      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-        {filteredAccounts.map((account) => (
-          <Card key={account.id} className="flex min-w-0 flex-col space-y-3">
+      <InfoMasonry
+        items={filteredAccounts}
+        itemKey={(account) => String(account.id)}
+        baseColumns={1}
+        tabletColumns={2}
+        desktopColumns={3}
+        estimateHeight={(account) => estimateAccountCardHeight(account, providers)}
+        renderItem={(account) => (
+          <Card className="flex min-w-0 flex-col space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="truncate text-lg font-medium" title={account.name}>
@@ -1507,11 +1527,11 @@ export function AccountsPage() {
               </div>
             ) : null}
           </Card>
-        ))}
-        {filteredAccounts.length === 0 ? (
-          <Card className="col-span-full px-4 py-10 text-center text-sm text-mist">暂无匹配账号</Card>
-        ) : null}
-      </div>
+        )}
+      />
+      {filteredAccounts.length === 0 ? (
+        <Card className="px-4 py-10 text-center text-sm text-mist">暂无匹配账号</Card>
+      ) : null}
       <AccountDialogs
         providers={providers}
         editor={editor}

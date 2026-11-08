@@ -15,8 +15,12 @@ export type InfoMasonryProps<T> = {
   /** 估算卡片总高度（px，不含列间距）；入参为当前列宽 */
   estimateHeight: (item: T, columnWidth: number) => number
   renderItem: (item: T) => ReactNode
-  /** 固定列数；不传则按断点 2 / 3 / 4 */
+  /** 固定列数；不传则按断点 base / tablet / desktop 自动切换 */
   columns?: number
+  /** 各断点列数，默认 2 / 3 / 4 */
+  baseColumns?: number
+  tabletColumns?: number
+  desktopColumns?: number
   gap?: number
   className?: string
 }
@@ -24,23 +28,26 @@ export type InfoMasonryProps<T> = {
 const TABLET_QUERY = '(min-width: 768px)'
 const DESKTOP_QUERY = '(min-width: 1024px)'
 
-function columnsForViewport() {
-  if (typeof window === 'undefined') return 2
-  if (window.matchMedia(DESKTOP_QUERY).matches) return 4
-  if (window.matchMedia(TABLET_QUERY).matches) return 3
-  return 2
+type ColumnCounts = { base: number; tablet: number; desktop: number }
+
+function columnsForViewport(counts: ColumnCounts) {
+  if (typeof window === 'undefined') return counts.base
+  if (window.matchMedia(DESKTOP_QUERY).matches) return counts.desktop
+  if (window.matchMedia(TABLET_QUERY).matches) return counts.tablet
+  return counts.base
 }
 
-function useResponsiveColumns() {
-  const [columns, setColumns] = useState(columnsForViewport)
+function useResponsiveColumns(base: number, tablet: number, desktop: number) {
+  const [columns, setColumns] = useState(() => columnsForViewport({ base, tablet, desktop }))
 
   useEffect(() => {
     const queries = [DESKTOP_QUERY, TABLET_QUERY].map((query) => window.matchMedia(query))
-    const update = () => setColumns(columnsForViewport())
+    const counts = { base, tablet, desktop }
+    const update = () => setColumns(columnsForViewport(counts))
     queries.forEach((query) => query.addEventListener('change', update))
     update()
     return () => queries.forEach((query) => query.removeEventListener('change', update))
-  }, [])
+  }, [base, tablet, desktop])
 
   return columns
 }
@@ -95,10 +102,13 @@ export function InfoMasonry<T>({
   estimateHeight,
   renderItem,
   columns,
+  baseColumns = 2,
+  tabletColumns = 3,
+  desktopColumns = 4,
   gap = 12,
   className,
 }: InfoMasonryProps<T>) {
-  const responsive = useResponsiveColumns()
+  const responsive = useResponsiveColumns(baseColumns, tabletColumns, desktopColumns)
   const [ref, width] = useElementWidth<HTMLDivElement>()
   const count = Math.max(1, Math.round(columns ?? responsive))
   const columnWidth = width > 0 ? (width - gap * (count - 1)) / count : 0
