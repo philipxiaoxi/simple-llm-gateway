@@ -144,6 +144,7 @@ export type Provider = {
   label: string
   auth_type: string
   base_url: string
+  supports_quota: boolean
   models: string[]
 }
 
@@ -196,6 +197,7 @@ export type Account = {
   header_spoof: 'none' | 'grok' | 'opencode' | 'claude_code' | 'codex'
   models_updated_at: string | null
   oauth_expires_at: string | null
+  pinned: boolean
   created_at: string
 }
 

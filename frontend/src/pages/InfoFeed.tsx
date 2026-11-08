@@ -818,7 +818,7 @@ function InfoCard({
         </div>
 
         {image && excerpt ? (
-          <p className="line-clamp-2 px-3 pt-2 text-[13px] leading-5 text-paper">{excerpt}</p>
+          <p className="line-clamp-2 px-3 pt-2 text-[13px] leading-5 text-paper [overflow-wrap:anywhere]">{excerpt}</p>
         ) : null}
         {/* 纯文字卡片的文本已经在封面内（装饰层 aria-hidden），这里补一份可读文本 */}
         {!image && excerpt ? <span className="sr-only">{excerpt}</span> : null}

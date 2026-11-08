@@ -51,6 +51,7 @@ def admin_list_providers() -> list[ProviderOut]:
             label=provider.label,
             auth_type=provider.auth_type,
             base_url=provider.default_base_url,
+            supports_quota=provider.supports_quota(),
             models=list(provider.default_models),
         )
         for provider in list_providers()
@@ -59,7 +60,11 @@ def admin_list_providers() -> list[ProviderOut]:
 
 @router.get("/accounts", response_model=list[AccountOut])
 def list_accounts(include_agent: bool = Query(default=False), db: Session = Depends(get_db)) -> list[AccountOut]:
-    statement = select(UpstreamAccount).options(joinedload(UpstreamAccount.oauth_token)).order_by(UpstreamAccount.id)
+    statement = (
+        select(UpstreamAccount)
+        .options(joinedload(UpstreamAccount.oauth_token))
+        .order_by(UpstreamAccount.pinned.desc(), UpstreamAccount.id)
+    )
     if not include_agent:
         statement = statement.where(UpstreamAccount.source == "upstream")
     rows = db.scalars(statement).all()
@@ -185,6 +190,8 @@ def update_account(
         account.model_prefix = prefix or ensure_account_prefix(account)
     if payload.header_spoof is not None:
         account.header_spoof = normalize_header_spoof(payload.header_spoof)
+    if payload.pinned is not None:
+        account.pinned = payload.pinned
     account.updated_at = utcnow()
     return account_to_out(account)
 

@@ -159,7 +159,7 @@ DESCRIPTION_OVERRIDES: dict[tuple[str, str], str] = {
     ("GET", "/api/admin/logs/{log_id}"): "查看单条网关请求日志的摘要与用量",
     ("GET", "/api/admin/info/sources"): "列出资讯采集源",
     ("POST", "/api/admin/info/sources/collect-batch"): "批量触发资讯源采集",
-    ("GET", "/api/admin/accounts"): "列出现有上游账号，返回名称、供应商、状态与模型目录",
+    ("GET", "/api/admin/accounts"): "列出现有上游账号，特别关心的账号排在前面，返回名称、供应商、状态、额度与模型目录",
     ("POST", "/api/admin/accounts"): "新增上游账号；需要 provider、name、base_url、api_key 等字段",
     ("GET", "/api/admin/keys"): "列出网关 API Key，返回名称、前缀、状态与额度",
     ("POST", "/api/admin/keys"): "创建网关 API Key，返回明文密钥；明文只在创建时出现一次",

@@ -480,7 +480,9 @@ export function Layout() {
     <div
       className={cn(
         'min-h-screen min-h-lvh bg-ink md:grid md:h-svh md:min-h-0 md:overflow-hidden',
-        collapsed ? 'md:grid-cols-[72px_1fr] lg:grid-cols-[72px_1fr]' : 'md:grid-cols-[72px_1fr] lg:grid-cols-[240px_1fr]',
+        collapsed
+          ? 'md:grid-cols-[72px_minmax(0,1fr)] lg:grid-cols-[72px_minmax(0,1fr)]'
+          : 'md:grid-cols-[72px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)]',
       )}
     >
       <div className="sr-only" aria-live="polite" aria-atomic="true">
@@ -800,7 +802,7 @@ export function Layout() {
       <main
         ref={mainRef}
         data-app-scroll
-        className="overflow-x-clip bg-ink px-4 pb-[calc(var(--app-tab)+env(safe-area-inset-bottom)+0.75rem)] pt-[calc(var(--app-header)+env(safe-area-inset-top)+0.75rem)] md:h-svh md:overflow-y-auto md:px-6 md:pb-6 md:pt-6 lg:px-8"
+        className="min-w-0 overflow-x-clip bg-ink px-4 pb-[calc(var(--app-tab)+env(safe-area-inset-bottom)+0.75rem)] pt-[calc(var(--app-header)+env(safe-area-inset-top)+0.75rem)] md:h-svh md:overflow-y-auto md:px-6 md:pb-6 md:pt-6 lg:px-8"
       >
         <PageContainer>
           {/* 按一级路径分组：/info 与 /info/:id 共用一次过渡，避免打开详情时重挂载瀑布流 */}
