@@ -18,6 +18,20 @@ from app.services.gateway_rate_limit import gateway_limiter, invalidate_gateway_
 router = APIRouter(prefix="/api/admin/mcp/keys", tags=["admin-mcp-keys"], dependencies=[Depends(get_current_admin)])
 
 
+def _is_assistant_key(db: Session, key_id: int) -> bool:
+    """内置助手使用的隐藏 Key：任何管理接口都不可见、不可改、不可删。"""
+
+    return (
+        db.scalar(select(AssistantIdentity.id).where(AssistantIdentity.mcp_key_id == key_id))
+        is not None
+    )
+
+
+def _reject_assistant_key(db: Session, key_id: int) -> None:
+    if _is_assistant_key(db, key_id):
+        raise HTTPException(404, "MCP Key 不存在")
+
+
 def _out(item: McpKey, key: str | None = None) -> McpKeyOut:
     rpm_used, concurrency_used = gateway_limiter.usage("mcp").get(item.id, (0, 0))
     return McpKeyOut(
@@ -80,6 +94,7 @@ def key_usage() -> dict:
 
 @router.patch("/{key_id}", response_model=McpKeyOut)
 def update_key(key_id: int, payload: McpKeyUpdate, db: Session = Depends(get_db)):
+    _reject_assistant_key(db, key_id)
     item = db.scalar(select(McpKey).where(McpKey.id == key_id).options(selectinload(McpKey.capabilities)))
     if item is None:
         raise HTTPException(404, "MCP Key 不存在")
@@ -102,6 +117,7 @@ def update_key(key_id: int, payload: McpKeyUpdate, db: Session = Depends(get_db)
 
 @router.put("/{key_id}/capabilities", response_model=McpKeyOut)
 def put_capabilities(key_id: int, payload: McpKeyCapabilitiesUpdate, db: Session = Depends(get_db)):
+    _reject_assistant_key(db, key_id)
     item = db.scalar(select(McpKey).where(McpKey.id == key_id).options(selectinload(McpKey.capabilities)))
     if item is None:
         raise HTTPException(404, "MCP Key 不存在")
@@ -119,6 +135,7 @@ def put_capability_config(
     db: Session = Depends(get_db),
 ):
     """写入某 Key 在某能力下的专属配置（如生成能力选用的模型）。"""
+    _reject_assistant_key(db, key_id)
     try:
         set_capability_config(db, key_id, capability_id, payload.config)
     except ValueError as error:
@@ -131,6 +148,7 @@ def put_capability_config(
 @router.get("/{key_id}/reveal")
 def reveal_key(key_id: int, db: Session = Depends(get_db)):
     """管理员可再次查看完整 MCP Key，便于复制到下游配置。"""
+    _reject_assistant_key(db, key_id)
     item = db.get(McpKey, key_id)
     if item is None:
         raise HTTPException(404, "MCP Key 不存在")
@@ -144,6 +162,7 @@ def reveal_key(key_id: int, db: Session = Depends(get_db)):
 @router.get("/{key_id}/integration")
 def key_integration(key_id: int, request: Request, db: Session = Depends(get_db)):
     """按 Key 生成接入中心所需的端点、能力清单与授权标记，不返回明文密钥。"""
+    _reject_assistant_key(db, key_id)
     item = db.scalar(select(McpKey).where(McpKey.id == key_id).options(selectinload(McpKey.capabilities)))
     if item is None:
         raise HTTPException(404, "MCP Key 不存在")
@@ -172,6 +191,7 @@ def key_integration(key_id: int, request: Request, db: Session = Depends(get_db)
 
 @router.delete("/{key_id}", status_code=204)
 def delete_key(key_id: int, db: Session = Depends(get_db)):
+    _reject_assistant_key(db, key_id)
     item = db.get(McpKey, key_id)
     if item is None:
         raise HTTPException(404, "MCP Key 不存在")

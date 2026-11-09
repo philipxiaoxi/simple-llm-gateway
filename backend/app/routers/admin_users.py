@@ -10,7 +10,7 @@ from app.config import INSECURE_ADMIN_PASSWORDS, MIN_ADMIN_PASSWORD_LENGTH
 from app.crypto import hash_password
 from app.db import get_db
 from app.deps import get_current_admin
-from app.models import Admin, Role
+from app.models import Admin, AssistantIdentity, McpKey, Role
 from app.nav_tabs import resolve_for_admin, save_default
 from app.permissions import WILDCARD
 from app.schemas import (
@@ -271,6 +271,12 @@ def delete_user(
         raise HTTPException(status_code=409, detail="不能删除当前登录账号")
     _ensure_target_within_scope(db, admin, target)
     _ensure_not_last_wildcard(db, target, "不能删除最后一个管理员")
+    # 助手隐藏 Key 随账号一起清理，避免变成普通 Key 暴露在列表里
+    identity = db.scalar(select(AssistantIdentity).where(AssistantIdentity.admin_id == target.id))
+    if identity is not None and identity.mcp_key_id:
+        hidden_key = db.get(McpKey, identity.mcp_key_id)
+        if hidden_key is not None:
+            db.delete(hidden_key)
     db.delete(target)
     db.commit()
     _audit(request, "admin_user_deleted", admin.username, f"/api/admin/users/{admin_id}", 204)

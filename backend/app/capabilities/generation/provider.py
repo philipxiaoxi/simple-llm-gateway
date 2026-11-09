@@ -341,7 +341,7 @@ class GenerationProvider:
     # ------------------------------------------------------------------ #
 
     async def dispatch(self, operation: str, payload: dict[str, Any], ctx: CallContext) -> dict[str, Any]:
-        if ctx.mcp_key is None:
+        if ctx.mcp_key is None and not ctx.system:
             raise CapabilityError("需要 MCP Key", status_code=401, error_type="authentication_error")
         other = "video" if self.kind == "image" else "image"
         if operation == other or operation.startswith(f"{other}_"):
@@ -389,7 +389,8 @@ class GenerationProvider:
         return service.resolve_target(ctx.db, kind=self.kind, model=model, provider=provider)
 
     def _configured_ref(self, ctx: CallContext) -> str:
-        assert ctx.mcp_key is not None
+        if ctx.mcp_key is None:
+            return ""
         config = get_capability_config(ctx.mcp_key, self.capability_id)
         return str(config.get("model") or config.get(f"{self.kind}_model") or "").strip()
 
@@ -564,7 +565,8 @@ class GenerationProvider:
     # ------------------------------------------------------------------ #
 
     async def _generate(self, ctx: CallContext, payload: dict[str, Any]) -> dict[str, Any]:
-        assert ctx.mcp_key is not None
+        if ctx.mcp_key is None and not ctx.system:
+            raise CapabilityError("需要 MCP Key", status_code=401, error_type="authentication_error")
         provider, model, spec = self._resolve_target(ctx, payload.get("model"))
         prompt = str(payload.get("prompt") or "").strip()
         if not prompt:
@@ -578,7 +580,7 @@ class GenerationProvider:
             prompt=prompt,
             params=params,
             provider=provider,
-            mcp_key_id=ctx.mcp_key.id,
+            mcp_key_id=None if ctx.system else ctx.mcp_key.id,
         )
         max_bytes = get_settings().generation_max_input_bytes
         try:
@@ -677,9 +679,12 @@ class GenerationProvider:
         return raw, content_type
 
     async def _job(self, ctx: CallContext, payload: dict[str, Any]) -> dict[str, Any]:
-        assert ctx.mcp_key is not None
         task_id = str(payload.get("job_id") or "").strip()
-        task = service.get_task_for_key(ctx.db, task_id, ctx.mcp_key.id)
+        task = (
+            service.get_task(ctx.db, task_id)
+            if ctx.system
+            else service.get_task_for_key(ctx.db, task_id, ctx.mcp_key.id)  # type: ignore[union-attr]
+        )
         if task is None:
             raise CapabilityError("任务不存在", status_code=404, error_type="not_found")
         if task.status not in {"succeeded", "failed", "violation"}:
@@ -690,15 +695,17 @@ class GenerationProvider:
         return await asyncio.to_thread(self._payload, ctx, task_id)
 
     async def _result(self, ctx: CallContext, payload: dict[str, Any]) -> dict[str, Any]:
-        assert ctx.mcp_key is not None
         task_id = str(payload.get("job_id") or "").strip()
-        task = service.get_task_for_key(ctx.db, task_id, ctx.mcp_key.id)
+        task = (
+            service.get_task(ctx.db, task_id)
+            if ctx.system
+            else service.get_task_for_key(ctx.db, task_id, ctx.mcp_key.id)  # type: ignore[union-attr]
+        )
         if task is None:
             raise CapabilityError("任务不存在", status_code=404, error_type="not_found")
         return await asyncio.to_thread(self._payload, ctx, task_id)
 
     async def _list(self, ctx: CallContext, payload: dict[str, Any]) -> dict[str, Any]:
-        assert ctx.mcp_key is not None
         try:
             limit = int(payload.get("limit") or 20)
         except (TypeError, ValueError):
@@ -708,7 +715,7 @@ class GenerationProvider:
             kind=self.kind,
             page=1,
             page_size=max(1, min(limit, 100)),
-            mcp_key_id=ctx.mcp_key.id,
+            mcp_key_id=None if ctx.system else ctx.mcp_key.id,  # type: ignore[union-attr]
         )
         return {"items": data["items"], "total": data["total"]}
 

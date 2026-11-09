@@ -40,9 +40,9 @@ function pathOf(call: UiToolCall): string {
 }
 
 function ToolIcon({ call, size = 14 }: { call: UiToolCall; size?: number }) {
-  if (call.name === 'api_search') return <Search size={size} />
-  if (call.name === 'api_describe') return <FileSearch size={size} />
-  if (call.name === 'api_call') return <PlugZap size={size} />
+  if (call.name === 'api_search' || call.name === 'mcp_search') return <Search size={size} />
+  if (call.name === 'api_describe' || call.name === 'mcp_describe') return <FileSearch size={size} />
+  if (call.name === 'api_call' || call.name === 'mcp_call') return <PlugZap size={size} />
   if (call.name === 'ui_navigate') return <Compass size={size} />
   return <PlugZap size={size} />
 }
@@ -55,6 +55,10 @@ function methodTone(method: string) {
 }
 
 function apiLink(call: UiToolCall): string | null {
+  if (call.name === 'mcp_call') {
+    const inner = String(call.arguments.tool_name || '')
+    if (inner) return toolLink(inner, call.result)
+  }
   const apiId = apiIdFor(call)
   const data = asRecord(call.result)
   const id = String(data?.id ?? data?.job_id ?? data?.site_id ?? '')
@@ -192,6 +196,7 @@ export function ToolCallCard({
   const isSearch = call.name === 'api_search'
   const isDescribe = call.name === 'api_describe'
   const isNavigate = call.name === 'ui_navigate'
+  const innerTool = call.name === 'mcp_call' ? String(call.arguments.tool_name || '') : ''
   const rawNavigatePath = isNavigate && call.ok ? String(asRecord(call.result)?.path || call.arguments.path || '') : ''
   const navigatePath = rawNavigatePath.startsWith('/') ? rawNavigatePath : ''
   const externalHref = safeUrl(download || link)
@@ -229,7 +234,7 @@ export function ToolCallCard({
                 {method}
               </span>
             ) : null}
-            <span className="truncate font-medium text-paper">{toolLabel(call.name)}</span>
+            <span className="truncate font-medium text-paper">{toolLabel(innerTool || call.name)}</span>
             {statusText ? <span className="shrink-0 text-mist-soft">· {statusText}</span> : null}
           </div>
           {path ? <div className="mt-0.5 truncate font-mono text-[10px] text-mist-soft">{path}</div> : null}

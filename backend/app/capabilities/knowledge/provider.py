@@ -87,7 +87,7 @@ class KnowledgeProvider:
         ]
 
     def _access(self, ctx: CallContext) -> Access:
-        if ctx.mcp_key is not None:
+        if ctx.mcp_key is not None and not ctx.system:
             return Access.for_key(ctx.mcp_key)
         return Access.for_system()
 

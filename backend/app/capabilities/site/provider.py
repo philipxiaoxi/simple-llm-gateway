@@ -209,9 +209,9 @@ class SiteProvider:
         ]
 
     async def dispatch(self, operation: str, payload: dict[str, Any], ctx: CallContext) -> dict[str, Any]:
-        if ctx.mcp_key is None:
+        if ctx.mcp_key is None and not ctx.system:
             raise SiteError("需要 MCP Key", status_code=401, error_type="authentication_error")
-        key_id = ctx.mcp_key.id
+        key_id = None if ctx.system else ctx.mcp_key.id
         if operation in {"deploy", "site_deploy"}:
             return self._deploy(ctx, payload, key_id)
         if operation in {"list", "site_list"}:
@@ -260,7 +260,7 @@ class SiteProvider:
             return service.site_detail_payload(ctx.db, site)
         raise SiteError(f"未知操作: {operation}", status_code=404, error_type="not_found")
 
-    def _deploy(self, ctx: CallContext, payload: dict[str, Any], key_id: int) -> dict[str, Any]:
+    def _deploy(self, ctx: CallContext, payload: dict[str, Any], key_id: int | None) -> dict[str, Any]:
         filename = str(payload.get("filename") or "")
         encoded = str(payload.get("archive_base64") or "")
         if not filename or not encoded:

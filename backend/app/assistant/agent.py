@@ -238,6 +238,7 @@ async def run_turn(
     token: str,
     app,
     continuation: bool = False,
+    public_origin: str = "",
 ) -> AsyncIterator[Event]:
     factory = get_session_factory()
     session = factory()
@@ -431,6 +432,7 @@ async def run_turn(
                             tool_call_id=call["id"],
                             name=name,
                             arguments=arguments,
+                            public_origin=public_origin,
                         )
                     except Exception as error:  # noqa: BLE001
                         outcome = {

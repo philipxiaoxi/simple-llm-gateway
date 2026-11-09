@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from app.assistant.agent import run_turn
 from app.assistant.api_catalog import get_operation, page_directory
 from app.assistant.api_client import execute_api
+from app.assistant.links import public_origin_from_request, rewrite_public_links
+from app.assistant.mcp_bridge import invoke_for_admin
 from app.assistant.store import (
     append_message,
     approval_payload,
@@ -29,6 +31,7 @@ from app.assistant.store import (
     update_settings,
 )
 from app.assistant.tools import build_tool_defs, llm_result
+from app.capabilities.base import CapabilityError
 from app.db import get_db, get_session_factory
 from app.deps import get_current_admin
 from app.models import Admin, AssistantApproval
@@ -246,6 +249,7 @@ async def post_message(
     admin_id = int(admin.id)
     admin_name = str(admin.username)
     token = _request_token(request)
+    public_origin = public_origin_from_request(request)
 
     async def stream():
         async for chunk in _with_heartbeat(
@@ -259,6 +263,7 @@ async def post_message(
                 token=token,
                 app=request.app,
                 continuation=False,
+                public_origin=public_origin,
             )
         ):
             yield chunk
@@ -302,6 +307,7 @@ async def decide_approval(
     conversation_id = row.conversation_id
     tool_call_id = row.tool_call_id
     api_id = row.api_id
+    tool_name = "mcp_call" if api_id.startswith("MCP ") else "api_call"
     method = row.method
     path = row.path
     summary = row.summary
@@ -313,6 +319,7 @@ async def decide_approval(
     page_context = page if isinstance(page, dict) else None
     token = _request_token(request)
     app = request.app
+    public_origin = public_origin_from_request(request)
 
     started = time.perf_counter()
     ok = False
@@ -331,34 +338,24 @@ async def decide_approval(
             )
             mark_approval(session, approval_row, status="rejected", error=error_message)
         else:
-            operation = get_operation(app, api_id)
-            if operation is None:
-                error_message = "接口不存在或已下线"
-                tool_content = json.dumps({"error": error_message}, ensure_ascii=False)
-                mark_approval(session, approval_row, status="failed", error=error_message)
-            elif not operation.supported:
-                error_message = "该接口需要文件或表单上传，请在对应页面操作"
-                tool_content = json.dumps({"error": error_message}, ensure_ascii=False)
-                mark_approval(session, approval_row, status="failed", error=error_message)
-            else:
-                outcome = await execute_api(
-                    app,
-                    token,
-                    operation,
-                    path_params=path_params,
-                    query=query,
-                    body=request_body,
-                    timeout_seconds=120.0,
-                )
-                ok = bool(outcome.get("ok"))
-                result_payload = outcome.get("data") if ok else None
-                error_message = str(outcome.get("error") or "")
+            if tool_name == "mcp_call":
+                try:
+                    result_payload = await invoke_for_admin(
+                        session,
+                        admin=admin,
+                        tool_name=api_id[4:].strip(),
+                        payload=request_body if isinstance(request_body, dict) else {},
+                    )
+                    result_payload = rewrite_public_links(result_payload, public_origin)
+                    ok = True
+                    error_message = ""
+                    tool_content = llm_result(result_payload)
+                except CapabilityError as error:
+                    ok = False
+                    result_payload = None
+                    error_message = error.message
+                    tool_content = json.dumps({"error": error_message}, ensure_ascii=False)
                 latency_ms = int((time.perf_counter() - started) * 1000)
-                tool_content = (
-                    llm_result(result_payload)
-                    if ok
-                    else json.dumps({"error": error_message or "执行失败"}, ensure_ascii=False)
-                )
                 mark_approval(
                     session,
                     approval_row,
@@ -366,13 +363,49 @@ async def decide_approval(
                     result=result_payload,
                     error=error_message,
                 )
+            else:
+                operation = get_operation(app, api_id)
+                if operation is None:
+                    error_message = "接口不存在或已下线"
+                    tool_content = json.dumps({"error": error_message}, ensure_ascii=False)
+                    mark_approval(session, approval_row, status="failed", error=error_message)
+                elif not operation.supported:
+                    error_message = "该接口需要文件或表单上传，请在对应页面操作"
+                    tool_content = json.dumps({"error": error_message}, ensure_ascii=False)
+                    mark_approval(session, approval_row, status="failed", error=error_message)
+                else:
+                    outcome = await execute_api(
+                        app,
+                        token,
+                        operation,
+                        path_params=path_params,
+                        query=query,
+                        body=request_body,
+                        timeout_seconds=120.0,
+                    )
+                    ok = bool(outcome.get("ok"))
+                    result_payload = rewrite_public_links(outcome.get("data"), public_origin) if ok else None
+                    error_message = str(outcome.get("error") or "")
+                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    tool_content = (
+                        llm_result(result_payload)
+                        if ok
+                        else json.dumps({"error": error_message or "执行失败"}, ensure_ascii=False)
+                    )
+                    mark_approval(
+                        session,
+                        approval_row,
+                        status="executed" if ok else "failed",
+                        result=result_payload,
+                        error=error_message,
+                    )
         append_message(
             session,
             conversation_id,
             "tool",
             tool_content,
             tool_call_id=tool_call_id,
-            tool_name="api_call",
+            tool_name=tool_name,
             meta={
                 "ok": ok,
                 "result": result_payload,
@@ -400,7 +433,7 @@ async def decide_approval(
                     "tool",
                     json.dumps({"error": error_message}, ensure_ascii=False),
                     tool_call_id=tool_call_id,
-                    tool_name="api_call",
+                    tool_name=tool_name,
                     meta={"ok": False, "result": None, "summary": error_message, "error": error_message, "latency_ms": 0},
                 )
                 fallback.commit()
@@ -413,7 +446,7 @@ async def decide_approval(
 
     tool_result_payload = {
         "id": tool_call_id,
-        "name": "api_call",
+        "name": tool_name,
         "ok": ok,
         "summary": summary if ok else (error_message or "执行失败"),
         "result": result_payload,
@@ -438,6 +471,7 @@ async def decide_approval(
             token=token,
             app=app,
             continuation=True,
+            public_origin=public_origin,
         ):
             yield item
 

@@ -98,9 +98,9 @@ class DocParseProvider:
         ]
 
     async def dispatch(self, operation: str, payload: dict[str, Any], ctx: CallContext) -> dict[str, Any]:
-        if ctx.mcp_key is None:
+        if ctx.mcp_key is None and not ctx.system:
             raise DocParseError("需要 MCP Key", status_code=401, error_type="authentication_error")
-        key_id = ctx.mcp_key.id
+        key_id = None if ctx.system else ctx.mcp_key.id
         if operation in {"convert", "docparse_convert"}:
             return await self._convert(ctx, payload, key_id)
         if operation in {"job", "docparse_job"}:

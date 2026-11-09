@@ -13,6 +13,8 @@ class CallContext:
     db: Session
     mcp_key: McpKey | None = None
     request_id: str = ""
+    # 内置助手等系统调用：不做 Key 级数据隔离（列表看全量、新建不归属某个 Key）
+    system: bool = False
 
 
 @dataclass

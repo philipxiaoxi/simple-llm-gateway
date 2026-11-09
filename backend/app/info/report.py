@@ -169,14 +169,17 @@ def _serialize(record: InfoItem, source_id: str, *, duplicate: bool) -> dict[str
     }
 
 
-def _check_rate(mcp_key: McpKey) -> None:
+def _check_rate(mcp_key: McpKey | None) -> None:
+    identity = f"key:{mcp_key.id}" if mcp_key is not None else "system"
     try:
-        info_report_gate.check(f"key:{mcp_key.id}")
+        info_report_gate.check(identity)
     except InfoReportRateLimited:
         raise InfoError("上报过于频繁，请稍后重试", status_code=429, error_type="rate_limited") from None
 
 
-def save_report(db: Session, *, mcp_key: McpKey, item: ReportInput) -> dict[str, Any]:
+def save_report(
+    db: Session, *, mcp_key: McpKey | None, item: ReportInput, actor: str = ""
+) -> dict[str, Any]:
     """写入一条上报。返回 id / 状态 / 去重标记。"""
     settings = get_settings()
     if not settings.info_report_enabled:
@@ -201,7 +204,7 @@ def save_report(db: Session, *, mcp_key: McpKey, item: ReportInput) -> dict[str,
         raise InfoError("单条媒体总大小超过上限", status_code=413, error_type="too_large")
 
     external_id = _dedupe_key(item, text)
-    author = (item.author.strip() or mcp_key.name or "").strip()[:128]
+    author = (item.author.strip() or (mcp_key.name if mcp_key is not None else actor) or "").strip()[:128]
     source = sources.ensure_manual_source(db)
 
     existing = db.scalar(
@@ -300,7 +303,9 @@ def save_report(db: Session, *, mcp_key: McpKey, item: ReportInput) -> dict[str,
     return _serialize(record, source.id, duplicate=False)
 
 
-def save_reports(db: Session, *, mcp_key: McpKey, items: list[ReportInput]) -> dict[str, Any]:
+def save_reports(
+    db: Session, *, mcp_key: McpKey | None, items: list[ReportInput], actor: str = ""
+) -> dict[str, Any]:
     """批量上报：逐条独立处理，单条失败不影响其余。"""
     settings = get_settings()
     if not settings.info_report_enabled:
@@ -317,7 +322,7 @@ def save_reports(db: Session, *, mcp_key: McpKey, items: list[ReportInput]) -> d
     for index, entry in enumerate(items):
         try:
             with db.begin_nested():
-                outcome = save_report(db, mcp_key=mcp_key, item=entry)
+                outcome = save_report(db, mcp_key=mcp_key, item=entry, actor=actor)
         except InfoError as error:
             failed += 1
             results.append(

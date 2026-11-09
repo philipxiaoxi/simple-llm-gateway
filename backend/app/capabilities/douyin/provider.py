@@ -109,9 +109,9 @@ class DouyinProvider:
         ]
 
     async def dispatch(self, operation: str, payload: dict[str, Any], ctx: CallContext) -> dict[str, Any]:
-        if ctx.mcp_key is None:
+        if ctx.mcp_key is None and not ctx.system:
             raise DouyinError("需要 MCP Key", status_code=401, error_type="authentication_error")
-        key_id = ctx.mcp_key.id
+        key_id = None if ctx.system else ctx.mcp_key.id
         if operation in {"parse", "douyin_parse"}:
             return self._parse(ctx, payload, key_id)
         if operation in {"job", "douyin_job"}:
@@ -133,7 +133,7 @@ class DouyinProvider:
             return {"items": [jobs.job_payload(job) for job in rows]}
         raise DouyinError(f"未知操作: {operation}", status_code=404, error_type="not_found")
 
-    def _parse(self, ctx: CallContext, payload: dict[str, Any], key_id: int) -> dict[str, Any]:
+    def _parse(self, ctx: CallContext, payload: dict[str, Any], key_id: int | None) -> dict[str, Any]:
         raw = self._raw_input(payload)
         rehost_value = payload.get("rehost", True)
         rehost = True if rehost_value is None else bool(rehost_value)
