@@ -128,6 +128,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   const refreshConversations = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ['assistant', 'conversations'] })
+    // 会话变化后下次打开空状态应重新推导建议
+    await queryClient.invalidateQueries({ queryKey: ['assistant', 'suggestions'] })
   }, [queryClient])
 
   const updateAssistant = useCallback((assistantId: string, updater: (message: UiMessage) => UiMessage) => {

@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import {
   ArrowDown,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
+import { api, type AssistantSuggestion } from '../../lib/api'
 import { cn } from '../../lib/utils'
 import { useCan } from '../../lib/session'
 import { notifyBad } from '../../lib/toast'
@@ -23,7 +25,7 @@ import { AssistantSettingsDialog } from './AssistantSettingsDialog'
 import { MessageBubble } from './MessageBubble'
 import { useAssistant } from './AssistantProvider'
 
-const SUGGESTIONS = [
+const FALLBACK_SUGGESTIONS: AssistantSuggestion[] = [
   { label: '打开 MCP 广场', prompt: '帮我打开 MCP 广场' },
   { label: '查看最近的日志', prompt: '帮我看看最近的请求日志' },
   { label: '下载抖音视频', prompt: '帮我下载这个抖音视频：' },
@@ -69,6 +71,15 @@ export function AssistantPanel() {
 
   const configured = Boolean(settings?.configured)
   const hasMessages = messages.length > 0
+  const suggestionsQuery = useQuery({
+    queryKey: ['assistant', 'suggestions'],
+    queryFn: api.assistantSuggestions,
+    enabled: open && !hasMessages,
+    staleTime: 60_000,
+    retry: false,
+  })
+  const suggestions =
+    suggestionsQuery.data?.items?.length ? suggestionsQuery.data.items.slice(0, 6) : FALLBACK_SUGGESTIONS
 
   useEffect(() => {
     if (!open) return
@@ -314,7 +325,7 @@ export function AssistantPanel() {
                     我可以查询站内数据、执行操作、打开页面。写操作会先暂停，等你审批。
                   </p>
                   <div className="mt-5 grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
-                    {SUGGESTIONS.map((item) => (
+                    {suggestions.map((item) => (
                       <button
                         key={item.prompt}
                         type="button"
