@@ -166,7 +166,7 @@ class ReferenceProvider:
         ]
 
     async def dispatch(self, operation: str, payload: dict[str, Any], ctx: CallContext) -> dict[str, Any]:
-        if ctx.mcp_key is None:
+        if ctx.mcp_key is None and not ctx.system:
             raise ReferenceError("需要 MCP Key", status_code=401, error_type="authentication_error")
         source = ReferenceCatalog(self.library, get_source(self.library.kind))
         db = ctx.db

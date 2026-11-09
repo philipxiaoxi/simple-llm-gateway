@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy.exc import OperationalError
@@ -17,7 +19,16 @@ from app.assistant.api_catalog import (
     search_operations,
 )
 from app.assistant.api_client import execute_api, preview_request, redact_value
+from app.assistant.links import rewrite_public_links
+from app.assistant.mcp_bridge import (
+    describe_tools,
+    find_authorized_tool,
+    invoke_as_assistant,
+    search_tools,
+    tool_access,
+)
 from app.assistant.store import approval_payload, create_approval
+from app.capabilities.base import CapabilityError
 from app.db import get_session_factory
 from app.services.permission_guard import has_permission, required_codes
 
@@ -87,6 +98,65 @@ API_CALL_TOOL: dict[str, Any] = {
     },
 }
 
+MCP_SEARCH_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "mcp_search",
+        "description": (
+            "搜索 MCP 广场能力。助手可直接调用这些能力，不需要用户配置 MCP Key。"
+            "按意图传入关键词（如 图片生成、抖音、知识库、站点），返回工具名、能力、访问方式。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "搜索关键词，支持中文"},
+                "capability": {"type": "string", "description": "可选，限定能力 id，如 image_gen"},
+                "limit": {"type": "integer", "description": "返回数量，1-20，默认 8", "default": 8},
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+MCP_DESCRIBE_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "mcp_describe",
+        "description": "读取 MCP 工具的完整入参、返回结构与是否需要审批。tool_names 来自 mcp_search，最多 5 个。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "tool_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "mcp_search 返回的工具名，如 image_generate",
+                }
+            },
+            "required": ["tool_names"],
+        },
+    },
+}
+
+MCP_CALL_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "mcp_call",
+        "description": (
+            "调用 MCP 广场工具。读取与创建类操作直接执行；删除、回滚、修改、访问模式变更会先生成审批，"
+            "由用户确认后执行。参数不明确时先用 mcp_describe。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "tool_name": {"type": "string", "description": "mcp_search 返回的工具名"},
+                "arguments": {"type": "object", "description": "工具入参，按 mcp_describe 的 input_schema 填写"},
+                "reason": {"type": "string", "description": "需要审批的操作给用户看的执行原因"},
+            },
+            "required": ["tool_name"],
+        },
+    },
+}
+
 UI_NAVIGATE_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
@@ -106,7 +176,15 @@ UI_NAVIGATE_TOOL: dict[str, Any] = {
     },
 }
 
-TOOL_DEFS = [API_SEARCH_TOOL, API_DESCRIBE_TOOL, API_CALL_TOOL, UI_NAVIGATE_TOOL]
+TOOL_DEFS = [
+    API_SEARCH_TOOL,
+    API_DESCRIBE_TOOL,
+    API_CALL_TOOL,
+    MCP_SEARCH_TOOL,
+    MCP_DESCRIBE_TOOL,
+    MCP_CALL_TOOL,
+    UI_NAVIGATE_TOOL,
+]
 
 _DROP_KEYS = frozenset(
     {
@@ -126,6 +204,7 @@ _MAX_STRING = 1200
 _MAX_LIST = 8
 _MAX_RESULT_CHARS = 20000
 _MAX_LLM_CHARS = 8000
+_MCP_CALL_TIMEOUT_SECONDS = 120
 
 
 def build_tool_defs() -> list[dict[str, Any]]:
@@ -230,7 +309,7 @@ def _create_approval_sync(
     conversation_id: str,
     admin_id: int,
     tool_call_id: str,
-    operation: ApiOperation,
+    operation: Any,
     path_params: dict[str, Any],
     query: dict[str, Any],
     body: Any,
@@ -276,6 +355,30 @@ def _error(name: str, message: str) -> dict[str, Any]:
     }
 
 
+async def _invoke_mcp_tool(
+    *, admin_id: int, permissions: set[str], tool_name: str, arguments: dict[str, Any]
+) -> dict[str, Any]:
+    session = get_session_factory()()
+    try:
+        try:
+            return await asyncio.wait_for(
+                invoke_as_assistant(
+                    session,
+                    admin_id=admin_id,
+                    permissions=permissions,
+                    tool_name=tool_name,
+                    payload=arguments,
+                ),
+                timeout=_MCP_CALL_TIMEOUT_SECONDS,
+            )
+        except TimeoutError as error:
+            raise CapabilityError(
+                "MCP 工具执行超时", status_code=504, error_type="timeout"
+            ) from error
+    finally:
+        session.close()
+
+
 async def execute_tool(
     *,
     app,
@@ -286,6 +389,7 @@ async def execute_tool(
     tool_call_id: str,
     name: str,
     arguments: dict[str, Any],
+    public_origin: str = "",
 ) -> dict[str, Any]:
     started = time.perf_counter()
 
@@ -356,6 +460,126 @@ async def execute_tool(
             "navigate": None,
         }
 
+    if name == "mcp_search":
+        query = str(arguments.get("query") or "").strip()
+        if not query:
+            return _error(name, "请提供搜索关键词")
+        capability = str(arguments.get("capability") or "").strip()
+        try:
+            limit = int(arguments.get("limit") or 8)
+        except (TypeError, ValueError):
+            limit = 8
+        items = search_tools(permissions, query, capability=capability, limit=limit)
+        result = {
+            "query": query,
+            "items": items,
+            "total": len(items),
+            "hint": "" if items else "没有匹配的 MCP 工具，换更短的关键词，或先用 mcp_describe 查看工具名。",
+        }
+        return {
+            "kind": "result",
+            "ok": True,
+            "result": result,
+            "error": "",
+            "summary": f"找到 {len(items)} 个 MCP 工具",
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+            "approval": None,
+            "navigate": None,
+        }
+
+    if name == "mcp_describe":
+        raw_names = arguments.get("tool_names")
+        if isinstance(raw_names, str):
+            names = [item.strip() for item in raw_names.split(",") if item.strip()]
+        elif isinstance(raw_names, list):
+            names = [str(item).strip() for item in raw_names if str(item).strip()]
+        else:
+            names = []
+        if not names:
+            return _error(name, "请提供 tool_names")
+        result = describe_tools(permissions, names)
+        return {
+            "kind": "result",
+            "ok": bool(result["items"]),
+            "result": result,
+            "error": "" if result["items"] else "没有找到可用的 MCP 工具",
+            "summary": f"读取 {len(result['items'])} 个 MCP 工具定义",
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+            "approval": None,
+            "navigate": None,
+        }
+
+    if name == "mcp_call":
+        tool_name = str(arguments.get("tool_name") or "").strip()
+        found = find_authorized_tool(permissions, tool_name) if tool_name else None
+        if found is None:
+            return _error(name, f"没有可用的 MCP 工具：{tool_name or '未提供'}。先用 mcp_search 搜索。")
+        capability_id, tool = found
+        raw_arguments = arguments.get("arguments")
+        mcp_arguments = raw_arguments if isinstance(raw_arguments, dict) else {}
+        reason = str(arguments.get("reason") or "").strip() or tool.description[:200]
+        access = tool_access(tool_name)
+
+        if access == "approval":
+            signature = SimpleNamespace(
+                id=f"MCP {tool_name}",
+                method="MCP",
+                path=f"/v1/capabilities/{capability_id}/{tool.resolved_operation()}",
+                summary=tool.description[:300],
+            )
+            try:
+                approval = _create_approval_sync(
+                    conversation_id=conversation_id,
+                    admin_id=admin_id,
+                    tool_call_id=tool_call_id,
+                    operation=signature,
+                    path_params={},
+                    query={},
+                    body=mcp_arguments,
+                    reason=reason,
+                )
+            except Exception as error:  # noqa: BLE001
+                return _error(name, f"创建审批失败：{error}")
+            approval["preview"] = {
+                "method": "MCP",
+                "path": signature.path,
+                "query": {},
+                "body": redact_value(mcp_arguments),
+            }
+            return {
+                "kind": "approval",
+                "ok": True,
+                "result": None,
+                "error": "",
+                "summary": f"等待确认：{tool_name}",
+                "latency_ms": int((time.perf_counter() - started) * 1000),
+                "approval": approval,
+                "navigate": None,
+            }
+
+        try:
+            result = await _invoke_mcp_tool(
+                admin_id=admin_id,
+                permissions=permissions,
+                tool_name=tool_name,
+                arguments=mcp_arguments,
+            )
+        except CapabilityError as error:
+            return _error(name, error.message)
+        except Exception as error:  # noqa: BLE001
+            return _error(name, str(error))
+        result = rewrite_public_links(result, public_origin)
+        return {
+            "kind": "result",
+            "ok": True,
+            "result": compact_result(result),
+            "error": "",
+            "summary": f"{tool_name} 完成",
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+            "approval": None,
+            "navigate": None,
+        }
+
     if name == "ui_navigate":
         path = normalize_navigation_path(str(arguments.get("path") or ""), permissions)
         if path is None:
@@ -413,10 +637,11 @@ async def execute_tool(
                 body=body,
                 timeout_seconds=60.0,
             )
+            data = rewrite_public_links(outcome.get("data"), public_origin)
             return {
                 "kind": "result",
                 "ok": bool(outcome.get("ok")),
-                "result": compact_result(outcome.get("data")) if outcome.get("ok") else None,
+                "result": compact_result(data) if outcome.get("ok") else None,
                 "error": str(outcome.get("error") or ""),
                 "summary": _summary_from_result(operation, outcome),
                 "latency_ms": int((time.perf_counter() - started) * 1000),

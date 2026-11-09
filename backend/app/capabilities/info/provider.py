@@ -130,17 +130,17 @@ class InfoReportProvider:
     async def dispatch(
         self, operation: str, payload: dict[str, Any], ctx: CallContext
     ) -> dict[str, Any]:
-        if ctx.mcp_key is None:
+        if ctx.mcp_key is None and not ctx.system:
             raise InfoError("需要 MCP Key", status_code=401, error_type="authentication_error")
         if operation in {"report", "info_report"}:
             item = self._parse_item(payload)
-            return report.save_report(ctx.db, mcp_key=ctx.mcp_key, item=item)
+            return report.save_report(ctx.db, mcp_key=ctx.mcp_key, item=item, actor="AI 助手")
         if operation in {"report_batch", "info_report_batch"}:
             raw_items = payload.get("items")
             if not isinstance(raw_items, list):
                 raise InfoError("items 必须为数组", status_code=400, error_type="invalid_request")
             items = [self._parse_item(entry) for entry in raw_items if isinstance(entry, dict)]
-            return report.save_reports(ctx.db, mcp_key=ctx.mcp_key, items=items)
+            return report.save_reports(ctx.db, mcp_key=ctx.mcp_key, items=items, actor="AI 助手")
         if operation in {"config", "info_report_config"}:
             return report.limits()
         raise InfoError(f"未知操作: {operation}", status_code=404, error_type="not_found")

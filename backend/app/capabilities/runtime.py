@@ -44,6 +44,7 @@ async def invoke_capability(
     capability_id: str,
     operation: str,
     payload: dict[str, Any] | None = None,
+    system: bool = False,
 ) -> dict[str, Any]:
     ensure_provider = get_provider(capability_id)
     if ensure_provider is None or ensure_provider.spec.status != "enabled":
@@ -54,7 +55,9 @@ async def invoke_capability(
     started = time.perf_counter()
     body = payload or {}
     try:
-        result = await ensure_provider.dispatch(operation, body, CallContext(db=db, mcp_key=mcp_key))
+        result = await ensure_provider.dispatch(
+            operation, body, CallContext(db=db, mcp_key=mcp_key, system=system)
+        )
         normalized = result if isinstance(result, dict) else {"result": result}
         record_mcp_call(
             db,
@@ -91,6 +94,7 @@ async def invoke_tool(
     mcp_key: McpKey,
     tool_name: str,
     payload: dict[str, Any] | None = None,
+    system: bool = False,
 ) -> dict[str, Any]:
     resolved = resolve_tool(tool_name)
     if resolved is None:
@@ -102,6 +106,7 @@ async def invoke_tool(
         capability_id=capability_id,
         operation=operation,
         payload=payload,
+        system=system,
     )
 
 

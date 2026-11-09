@@ -18,6 +18,14 @@ export function AssistantMarkdown({ content }: { content: string }) {
               {children}
             </a>
           ),
+          img: ({ src, alt }) => (
+            <img
+              src={src}
+              alt={alt ?? ''}
+              loading="lazy"
+              className="my-2 max-h-72 w-auto max-w-full rounded-lg border border-line bg-ink/40 object-contain"
+            />
+          ),
           strong: ({ children }) => <strong className="font-semibold text-paper">{children}</strong>,
           em: ({ children }) => <em className="text-mist-strong">{children}</em>,
           ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5 marker:text-signal">{children}</ul>,
