@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.assistant.agent import run_turn
+from app.assistant.agent import _prepare_turn, run_turn
 from app.assistant.api_catalog import get_operation, page_directory
 from app.assistant.api_client import execute_api
 from app.assistant.links import public_origin_from_request, rewrite_public_links
@@ -30,6 +30,7 @@ from app.assistant.store import (
     settings_payload,
     update_settings,
 )
+from app.assistant.suggestions import DEFAULT_SUGGESTIONS, build_suggestions
 from app.assistant.tools import build_tool_defs, llm_result
 from app.capabilities.base import CapabilityError
 from app.db import get_db, get_session_factory
@@ -121,6 +122,24 @@ def put_assistant_settings(payload: dict | None = None, db: Session = Depends(ge
 @router.get("/models")
 def get_assistant_models(db: Session = Depends(get_db)):
     return {"items": model_options(db)}
+
+
+@router.get("/suggestions")
+async def get_assistant_suggestions(admin: Admin = Depends(get_current_admin)):
+    """按最近会话生成快捷建议；无历史或生成失败时返回默认建议。"""
+
+    session = get_session_factory()()
+    try:
+        runtime, _permissions, _error = await _prepare_turn(int(admin.id))
+        try:
+            items, source = await asyncio.wait_for(
+                build_suggestions(session, int(admin.id), runtime), timeout=30
+            )
+        except TimeoutError:
+            items, source = DEFAULT_SUGGESTIONS, "default"
+        return {"items": items, "source": source}
+    finally:
+        session.close()
 
 
 @router.get("/tools")

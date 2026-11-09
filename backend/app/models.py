@@ -1492,6 +1492,21 @@ class AssistantSettings(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class AssistantSuggestionCache(Base):
+    """助手快捷建议的长期缓存：历史摘要不变时直接复用，不重复调用模型。"""
+
+    __tablename__ = "assistant_suggestion_cache"
+
+    admin_id: Mapped[int] = mapped_column(
+        ForeignKey("admins.id", ondelete="CASCADE"), primary_key=True
+    )
+    account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    model: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    history_hash: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    items_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
 class AssistantConversation(Base):
     """一个管理员的助手会话，消息按 id 顺序追加。"""
 

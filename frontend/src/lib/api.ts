@@ -911,6 +911,11 @@ export type AssistantConversationSummary = {
   updated_at: string | null
 }
 
+export type AssistantSuggestion = {
+  label: string
+  prompt: string
+}
+
 export type AssistantConversation = {
   id: string
   title: string
@@ -953,6 +958,8 @@ export const api = {
   assistantModels: () => request<{ items: AssistantModelOption[] }>('/api/admin/assistant/models'),
   assistantConversations: () =>
     request<{ items: AssistantConversationSummary[] }>('/api/admin/assistant/conversations'),
+  assistantSuggestions: () =>
+    request<{ items: AssistantSuggestion[]; source: string }>('/api/admin/assistant/suggestions'),
   assistantConversation: (id: string) =>
     request<AssistantConversation>(`/api/admin/assistant/conversations/${id}`),
   createAssistantConversation: (payload: { title?: string } = {}) =>
