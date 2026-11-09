@@ -11,7 +11,6 @@ import {
   type AssistantSettings,
 } from '../../lib/api'
 import { streamApprovalDecision, streamAssistantMessage, toolLabel } from '../../lib/assistant'
-import { useSession } from '../../lib/session'
 import { notifyBad, notifyOk } from '../../lib/toast'
 
 export type UiToolCall = {
@@ -52,6 +51,7 @@ type AssistantContextValue = {
   stage: string
   error: string | null
   conversationId: string | null
+  lastConversation: AssistantConversationSummary | null
   title: string
   settings?: AssistantSettings
   settingsLoading: boolean
@@ -69,10 +69,6 @@ type AssistantContextValue = {
 }
 
 const AssistantContext = createContext<AssistantContextValue | null>(null)
-
-function storageKey(username?: string) {
-  return `pivot:assistant:conversation:${username || 'default'}`
-}
 
 function serverMessages(data: AssistantConversation): UiMessage[] {
   return data.messages.map((message: AssistantMessage) => {
@@ -99,7 +95,6 @@ function serverMessages(data: AssistantConversation): UiMessage[] {
 }
 
 export function AssistantProvider({ children }: { children: ReactNode }) {
-  const { me } = useSession()
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -111,7 +106,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const [stage, setStage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
-  const autoLoadRef = useRef(false)
 
   const settingsQuery = useQuery({
     queryKey: ['assistant', 'settings'],
@@ -158,7 +152,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         if (nextTitle) setTitle(nextTitle)
         if (typeof data.conversation_id === 'string') {
           setConversationId(data.conversation_id)
-          localStorage.setItem(storageKey(me?.username), data.conversation_id)
         }
         return
       }
@@ -300,7 +293,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         if (data.awaiting_approval) setStage('等待审批')
       }
     },
-    [me?.username, navigate, updateAssistant, updateToolCall],
+    [navigate, updateAssistant, updateToolCall],
   )
 
   const stop = useCallback(() => {
@@ -330,8 +323,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setConversationId(null)
     setTitle('新对话')
     setMessages([])
-    localStorage.removeItem(storageKey(me?.username))
-  }, [me?.username])
+  }, [])
 
   const loadConversation = useCallback(
     async (id: string) => {
@@ -345,14 +337,12 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         setConversationId(data.id)
         setTitle(data.title)
         setMessages(serverMessages(data))
-        localStorage.setItem(storageKey(me?.username), data.id)
         setOpen(true)
       } catch (caught) {
-        localStorage.removeItem(storageKey(me?.username))
         notifyBad(caught instanceof Error ? caught.message : '会话加载失败')
       }
     },
-    [me?.username],
+    [],
   )
 
   const deleteConversation = useCallback(
@@ -363,13 +353,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     },
     [conversationId, newConversation, refreshConversations],
   )
-
-  useEffect(() => {
-    if (!open || autoLoadRef.current || conversationId || messages.length) return
-    autoLoadRef.current = true
-    const saved = localStorage.getItem(storageKey(me?.username))
-    if (saved) void loadConversation(saved)
-  }, [open, conversationId, messages.length, me?.username, loadConversation])
 
   useEffect(() => {
     return () => {
@@ -389,7 +372,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           activeId = created.id
           setConversationId(activeId)
           setTitle(created.title)
-          localStorage.setItem(storageKey(me?.username), activeId)
           await refreshConversations()
         } catch (caught) {
           setError(caught instanceof Error ? caught.message : '创建会话失败')
@@ -478,7 +460,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         setStage('')
       }
     },
-    [applyEvent, conversationId, location.pathname, me?.username, refreshConversations, streaming, updateAssistant],
+    [applyEvent, conversationId, location.pathname, refreshConversations, streaming, updateAssistant],
   )
 
   const decideApproval = useCallback(
@@ -558,6 +540,11 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     [applyEvent, conversationId, location.pathname, messages, refreshConversations, streaming, updateAssistant, updateToolCall],
   )
 
+  const lastConversation = useMemo(
+    () => conversationsQuery.data?.items.find((item) => item.id !== conversationId) ?? null,
+    [conversationsQuery.data?.items, conversationId],
+  )
+
   const hasPendingApproval = useMemo(
     () => messages.some((message) => message.toolCalls.some((call) => call.approval?.status === 'pending')),
     [messages],
@@ -572,6 +559,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       stage,
       error,
       conversationId,
+      lastConversation,
       title,
       settings: settingsQuery.data,
       settingsLoading: settingsQuery.isPending,
@@ -594,6 +582,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       stage,
       error,
       conversationId,
+      lastConversation,
       title,
       settingsQuery.data,
       settingsQuery.isPending,

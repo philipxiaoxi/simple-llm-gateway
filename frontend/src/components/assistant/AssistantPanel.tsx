@@ -6,6 +6,7 @@ import {
   History,
   Loader2,
   MessageCircle,
+  RotateCcw,
   Settings2,
   Sparkles,
   Square,
@@ -38,6 +39,7 @@ export function AssistantPanel() {
     stage,
     error,
     conversationId,
+    lastConversation,
     title,
     settings,
     settingsLoading,
@@ -190,6 +192,17 @@ export function AssistantPanel() {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-0.5">
+                  {lastConversation && !streaming ? (
+                    <button
+                      type="button"
+                      aria-label="回到上一次对话"
+                      title={`回到上一次对话：${lastConversation.title}`}
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-mist transition-colors hover:bg-elevate hover:text-paper"
+                      onClick={() => void loadConversation(lastConversation.id)}
+                    >
+                      <RotateCcw size={16} />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     aria-label="对话记录"
@@ -303,7 +316,7 @@ export function AssistantPanel() {
                   <div className="mt-5 grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
                     {SUGGESTIONS.map((item) => (
                       <button
-                        key={item.label}
+                        key={item.prompt}
                         type="button"
                         disabled={!configured}
                         onClick={() => applySuggestion(item.prompt)}
@@ -314,6 +327,18 @@ export function AssistantPanel() {
                       </button>
                     ))}
                   </div>
+                  {lastConversation ? (
+                    <button
+                      type="button"
+                      disabled={!configured}
+                      onClick={() => void loadConversation(lastConversation.id)}
+                      className="mt-4 inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-line bg-panel-2/60 px-3 text-xs text-paper transition-colors hover:border-signal/35 hover:bg-signal/5 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <RotateCcw size={13} className="text-signal" />
+                      回到上一次对话
+                      <span className="max-w-[180px] truncate text-mist-soft">· {lastConversation.title}</span>
+                    </button>
+                  ) : null}
                   <div className="mt-4 flex items-center gap-1.5 text-[10px] text-mist-soft">
                     <span className="h-1 w-1 rounded-full bg-signal" />
                     接口按当前账号权限调用，写操作需要审批
