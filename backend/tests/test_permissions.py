@@ -376,7 +376,7 @@ def test_mcp_catalog_plaza_scope_follows_capability_permissions(
         for row in client.get("/api/admin/mcp/catalog?scope=plaza", headers=page_reader).json()["items"]
     }
     assert "info" not in page_plaza
-    assert "generation" not in page_plaza
+    assert {"image_gen", "video_gen"}.isdisjoint(page_plaza)
 
     # 专属权限才控制对应能力入口
     cap_role = _create_role(
@@ -391,4 +391,4 @@ def test_mcp_catalog_plaza_scope_follows_capability_permissions(
         row["capability_id"]
         for row in client.get("/api/admin/mcp/catalog?scope=plaza", headers=cap_reader).json()["items"]
     }
-    assert {"info", "generation"} <= cap_plaza
+    assert {"info", "image_gen", "video_gen"} <= cap_plaza

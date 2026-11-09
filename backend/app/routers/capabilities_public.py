@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 
@@ -56,6 +56,28 @@ def list_capabilities(mcp_key=Depends(_mcp_key_dep)):
     ensure_defaults()
     allowed = allowed_capability_ids(mcp_key)
     return [_spec_out(spec) for spec in list_specs(only_enabled=True) if spec.capability_id in allowed]
+
+
+@router.get("/v1/capabilities/{capability_id}/models")
+async def capability_models(
+    capability_id: str,
+    available_only: bool | None = Query(default=None),
+    db: Session = Depends(get_db),
+    mcp_key=Depends(_mcp_key_dep),
+):
+    """列出能力可用的模型与参数；生成类能力用它做「先查后调」。"""
+    ensure_defaults()
+    payload: dict[str, Any] = {} if available_only is None else {"available_only": available_only}
+    try:
+        return await invoke_capability(
+            db,
+            mcp_key=mcp_key,
+            capability_id=capability_id,
+            operation="models",
+            payload=payload,
+        )
+    except CapabilityError as error:
+        return _error(error.status_code, error.error_type, error.message, error.diagnostics)
 
 
 @router.post("/v1/capabilities/{capability_id}/{operation}")
