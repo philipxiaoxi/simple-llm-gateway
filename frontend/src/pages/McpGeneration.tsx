@@ -1,13 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Cog, ExternalLink, Sparkles } from 'lucide-react'
+import { Cog, ExternalLink } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useCan } from '../lib/session'
-import { resolveModelKey } from '../lib/generation'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage } from '../lib/utils'
-import { GenerationModelSelect } from '../components/GenerationModelSelect'
 import { Button, Card, Field, Input, Switch } from '../components/ui'
 import { GENERATION_SETTINGS_KEY, useGenerationSettings } from '../components/useGenerationSettings'
 import { PageHeader } from '../components/layout-primitives'
@@ -28,8 +26,8 @@ const KIND_LABEL: Record<string, string> = { image: '图片', video: '视频' }
 /**
  * 「图片 / 视频生成」能力的服务目录管理页。
  *
- * 这里配置两件事：各家生成供应商的凭据，以及该能力对外提供的图片 / 视频模型 —— 后者会作为
- * MCP / REST 调用固定使用的模型（下游只能传参数、不能切换模型）。
+ * 这里只配置各家生成供应商的凭据。图片 / 视频模型由下游调用时通过 model 参数选择，
+ * 参数与返回值可先用 image_models / video_models 工具查询。
  *
  * 供应商列表来自后端注册表（`app/generation/providers/`），新增供应商后这里会自动多出一张卡片。
  */
@@ -39,8 +37,6 @@ export function McpGenerationPage() {
   const queryClient = useQueryClient()
   const settings = useGenerationSettings()
   const [providers, setProviders] = useState<ProviderForm[]>([])
-  const [imageModel, setImageModel] = useState('')
-  const [videoModel, setVideoModel] = useState('')
   const [clearing, setClearing] = useState('')
 
   useEffect(() => {
@@ -57,8 +53,6 @@ export function McpGenerationPage() {
         has_key: item.has_key,
       })),
     )
-    setImageModel(resolveModelKey(settings.data.catalog.image, settings.data.default_image_model))
-    setVideoModel(resolveModelKey(settings.data.catalog.video, settings.data.default_video_model))
   }, [settings.data])
 
   function patchProvider(index: number, next: Partial<ProviderForm>) {
@@ -75,8 +69,6 @@ export function McpGenerationPage() {
           extra_models: item.extra_models,
           enabled: item.enabled,
         })),
-        default_image_model: imageModel,
-        default_video_model: videoModel,
       }),
     onSuccess: async () => {
       notifyOk('生成配置已保存')
@@ -105,7 +97,7 @@ export function McpGenerationPage() {
     <div className="space-y-4">
       <PageHeader
         title="图片 / 视频生成"
-        description="配置生成供应商凭据，并选定该能力对外提供的模型。MCP / REST 调用固定使用所选模型，只能传提示词与参数，不能切换模型。"
+        description="配置生成供应商凭据。模型由下游调用时通过 model 参数选择，可先用 image_models / video_models 工具查询参数与返回值。"
       />
 
       {!settings.data ? (
@@ -177,30 +169,10 @@ export function McpGenerationPage() {
           ))}
 
           <Card className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-medium text-paper">
-              <Sparkles size={16} className="text-signal" /> 对外提供的模型
-            </div>
             <p className="text-xs text-mist">
-              下游调用只能配置参数（比例 / 尺寸 / 时长等），无法切换模型。
+              模型由下游调用时通过 model 参数选择（provider:model 或模型名）；不传则使用 Key 配置或服务端默认模型。
+              调用前可先用 image_models / video_models 工具查询每个模型的参数与返回值。
             </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Field label="图片模型">
-                <GenerationModelSelect
-                  models={settings.data.catalog.image}
-                  value={imageModel}
-                  onChange={setImageModel}
-                  disabled={pending}
-                />
-              </Field>
-              <Field label="视频模型">
-                <GenerationModelSelect
-                  models={settings.data.catalog.video}
-                  value={videoModel}
-                  onChange={setVideoModel}
-                  disabled={pending}
-                />
-              </Field>
-            </div>
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
               <div className="flex gap-2 text-sm">
                 {canImage ? (

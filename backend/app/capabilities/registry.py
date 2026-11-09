@@ -99,10 +99,13 @@ def ensure_defaults() -> None:
         from app.capabilities.info.provider import InfoReportProvider
 
         register(InfoReportProvider())
-    if "generation" not in _providers:
+    if "image_gen" not in _providers or "video_gen" not in _providers:
         from app.capabilities.generation.provider import GenerationProvider
 
-        register(GenerationProvider())
+        if "image_gen" not in _providers:
+            register(GenerationProvider("image"))
+        if "video_gen" not in _providers:
+            register(GenerationProvider("video"))
     from app.config import get_settings
 
     settings = get_settings()

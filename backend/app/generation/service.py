@@ -183,6 +183,61 @@ def _qualified_default(db: Session, stored: str, kind: str) -> str:
     return f"{provider}:{model}"
 
 
+def provider_unavailable_reason(db: Session, provider: str) -> str:
+    """供应商不可用的原因；可用时返回空串。"""
+
+    info = registry.provider_info(provider)
+    if info is None:
+        return "供应商不存在"
+    row = _provider_row(db, provider)
+    if row is not None and not row.enabled:
+        return "供应商已停用"
+    base_url, api_key = resolve_credentials(db, provider)
+    if not base_url:
+        return "未配置 Base URL"
+    if not api_key:
+        return "未配置 API Key"
+    return ""
+
+
+def is_provider_usable(db: Session, provider: str) -> bool:
+    """供应商可接单：已启用且配置了 API Key（Base URL 有默认值兜底）。"""
+
+    return not provider_unavailable_reason(db, provider)
+
+
+def models_for_provider(db: Session, provider: str, kind: str) -> list[catalog.ModelSpec]:
+    """某供应商在指定类型下的全部模型（静态清单 + 自定义），已带 provider 信息。"""
+
+    info = registry.provider_info(provider)
+    if info is None or not info.supports(kind):
+        return []
+    specs = list(info.models_for(kind))
+    specs += [spec.with_provider(provider, info.label) for spec in _extra_specs(db, provider) if spec.kind == kind]
+    return specs
+
+
+def usable_models(db: Session, kind: str) -> list[tuple[str, catalog.ModelSpec]]:
+    """当前可用的模型：按供应商注册顺序，含自定义模型，且供应商已启用并配置 Key。"""
+
+    items: list[tuple[str, catalog.ModelSpec]] = []
+    for code, info in registry.PROVIDERS.items():
+        if not info.supports(kind) or not is_provider_usable(db, code):
+            continue
+        items.extend((code, spec) for spec in models_for_provider(db, code, kind))
+    return items
+
+
+def default_model_ref(db: Session, kind: str) -> str:
+    """服务端默认模型（`provider:model`）；未配置时返回空串。"""
+
+    row = _settings_row(db)
+    stored = ""
+    if row is not None:
+        stored = row.default_image_model if kind == "image" else row.default_video_model
+    return _qualified_default(db, stored, kind)
+
+
 def parse_model_ref(value: str) -> tuple[str, str]:
     """拆 `provider:model`；裸模型名返回 ('', model)。
 

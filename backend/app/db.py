@@ -75,6 +75,7 @@ def init_db() -> None:
     _ensure_columns(engine)
     _migrate_douyin_settings_to_tikhub(engine)
     _migrate_info_poll_interval(engine)
+    _migrate_generation_capabilities(engine)
     _ensure_api_keys_account_id_nullable(engine)
     _ensure_info_items_source_nullable(engine)
     _ensure_request_logs_have_no_parent_fks(engine)
@@ -554,6 +555,60 @@ def _migrate_douyin_settings_to_tikhub(engine: Engine) -> None:
                 "VALUES (1, :base_url, :encrypted, :updated_at)"
             ),
             {"base_url": base_url, "encrypted": encrypted, "updated_at": legacy[2]},
+        )
+
+
+def _migrate_generation_capabilities(engine: Engine) -> None:
+    """把旧的 generation 能力授权拆成 image_gen / video_gen（幂等，只执行一次）。"""
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS app_migrations "
+                "(key VARCHAR(64) PRIMARY KEY, applied_at DATETIME)"
+            )
+        )
+        done = connection.execute(
+            text("SELECT 1 FROM app_migrations WHERE key = :key"),
+            {"key": "generation_capability_split_v2"},
+        ).first()
+        if done is not None:
+            return
+        tables = {
+            row[0]
+            for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+        }
+        if "mcp_key_capabilities" in tables:
+            rows = connection.execute(
+                text(
+                    "SELECT mcp_key_id, config_json FROM mcp_key_capabilities "
+                    "WHERE capability_id = 'generation'"
+                )
+            ).fetchall()
+            for key_id, config_json in rows:
+                for capability_id in ("image_gen", "video_gen"):
+                    connection.execute(
+                        text(
+                            "INSERT OR IGNORE INTO mcp_key_capabilities "
+                            "(mcp_key_id, capability_id, config_json) "
+                            "VALUES (:key_id, :capability_id, :config_json)"
+                        ),
+                        {
+                            "key_id": key_id,
+                            "capability_id": capability_id,
+                            "config_json": config_json or "{}",
+                        },
+                    )
+                connection.execute(
+                    text(
+                        "DELETE FROM mcp_key_capabilities "
+                        "WHERE mcp_key_id = :key_id AND capability_id = 'generation'"
+                    ),
+                    {"key_id": key_id},
+                )
+        connection.execute(
+            text("INSERT OR IGNORE INTO app_migrations (key, applied_at) VALUES (:key, :applied_at)"),
+            {"key": "generation_capability_split_v2", "applied_at": utcnow()},
         )
 
 

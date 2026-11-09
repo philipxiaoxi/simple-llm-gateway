@@ -320,7 +320,8 @@ CAPABILITY_VIEW_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "handdraw": ("mcp_handdraws:view",),
     "diagram": ("mcp_diagrams:view",),
     "info": ("mcp_info:view",),
-    "generation": ("generation:settings",),
+    "image_gen": ("generation:settings",),
+    "video_gen": ("generation:settings",),
 }
 
 
