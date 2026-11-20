@@ -253,6 +253,9 @@ def update_key(key_id: int, payload: KeyUpdate, db: Session = Depends(get_db)) -
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
     invalidate_gateway_key(item.key_hash)
+    # _key_out 会读 Token 用量，而 key_usage_totals 结束时 rollback 释放读事务。
+    # 先提交本次改动，避免绑定/状态/限额被这次 rollback 一起丢掉。
+    db.commit()
     return _key_out(db, item)
 
 

@@ -126,6 +126,41 @@ def test_disable_key(client: TestClient, auth_headers: dict[str, str]) -> None:
     key_id = created.json()["id"]
     updated = client.patch(f"/api/admin/keys/{key_id}", headers=auth_headers, json={"status": "disabled"})
     assert updated.json()["status"] == "disabled"
+    detail = client.get(f"/api/admin/keys/{key_id}", headers=auth_headers)
+    assert detail.json()["status"] == "disabled"
+
+
+def test_update_key_replaces_bound_accounts(client: TestClient, auth_headers: dict[str, str]) -> None:
+    first = _account(client, auth_headers)
+    second = _account(client, auth_headers)
+    third = _account(client, auth_headers)
+    created = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "多账号", "account_ids": [first, second]},
+    ).json()
+
+    updated = client.patch(
+        f"/api/admin/keys/{created['id']}",
+        headers=auth_headers,
+        json={"account_ids": [second, third]},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["account_ids"] == [second, third]
+    assert updated.json()["account_id"] == second
+
+    detail = client.get(f"/api/admin/keys/{created['id']}", headers=auth_headers)
+    assert detail.json()["account_ids"] == [second, third]
+    assert detail.json()["account_id"] == second
+
+    reordered = client.patch(
+        f"/api/admin/keys/{created['id']}",
+        headers=auth_headers,
+        json={"account_ids": [third, second]},
+    )
+    assert reordered.status_code == 200
+    assert reordered.json()["account_ids"] == [third, second]
+    assert reordered.json()["account_id"] == third
 
 
 def test_delete_key_keeps_request_logs(client: TestClient, auth_headers: dict[str, str]) -> None:
