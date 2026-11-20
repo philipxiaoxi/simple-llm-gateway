@@ -354,6 +354,7 @@ export type ApiKeyItem = {
   status: string
   rpm_limit: number
   concurrency_limit: number
+  log_content_enabled: boolean
   rpm_used?: number
   concurrency_used?: number
   created_at: string
@@ -1096,6 +1097,7 @@ export const api = {
     account_ids: number[]
     rpm_limit?: number
     concurrency_limit?: number
+    log_content_enabled?: boolean
   }) =>
     request<ApiKeyItem>('/api/admin/keys', { method: 'POST', body: JSON.stringify(payload) }),
   key: (id: number) => request<ApiKeyItem>(`/api/admin/keys/${id}`),

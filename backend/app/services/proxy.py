@@ -343,6 +343,8 @@ def save_log(
     now = utcnow()
     session_key = extract_session_key(request_body if isinstance(request_body, dict) else None, request_headers)
     meta = client_meta(request_headers, peer=peer)
+    stored_key = db.get(ApiKey, api_key_id)
+    record_content = stored_key is None or bool(stored_key.log_content_enabled)
     existing = find_continuation_log(
         db,
         account_id=account_id,
@@ -350,8 +352,8 @@ def save_log(
         protocol=protocol,
         session_key=session_key,
     )
-    inbound = extract_request_messages(request_body) if isinstance(request_body, dict) else []
-    assistant = extract_assistant_message(protocol, response_body)
+    inbound = extract_request_messages(request_body) if record_content and isinstance(request_body, dict) else []
+    assistant = extract_assistant_message(protocol, response_body) if record_content else None
     if existing is not None:
         existing.model = model
         if model_resolution is not None:
@@ -374,25 +376,25 @@ def save_log(
         if session_key:
             existing.session_key = session_key
         _apply_client_meta(existing, meta)
-        stored_headers = dump_headers(request_headers)
-        if stored_headers:
-            existing.request_headers = stored_headers
-        if reasoning_map:
-            existing.reasoning_json = dump_reasoning_json(
-                merge_reasoning_maps(parse_reasoning_json(existing.reasoning_json), reasoning_map)
+        if record_content:
+            stored_headers = dump_headers(request_headers)
+            if stored_headers:
+                existing.request_headers = stored_headers
+            if reasoning_map:
+                existing.reasoning_json = dump_reasoning_json(
+                    merge_reasoning_maps(parse_reasoning_json(existing.reasoning_json), reasoning_map)
+                )
+            # 热路径只读最后一条已存消息；头部前缀匹配作为兜底按需加载
+            tail = load_log_messages_tail(db, existing.id, 1)
+            to_store = new_messages_to_store(
+                tail,
+                inbound,
+                assistant,
+                head_loader=lambda: load_log_messages_head(db, existing.id, len(inbound)),
             )
-        # 热路径只读最后一条已存消息；头部前缀匹配作为兜底按需加载
-        tail = load_log_messages_tail(db, existing.id, 1)
-        to_store = new_messages_to_store(
-            tail,
-            inbound,
-            assistant,
-            head_loader=lambda: load_log_messages_head(db, existing.id, len(inbound)),
-        )
-        append_log_messages(db, existing.id, to_store)
+            append_log_messages(db, existing.id, to_store)
         db.flush()
         return existing
-    stored_key = db.get(ApiKey, api_key_id)
     stored_account = db.get(UpstreamAccount, account_id)
     log = RequestLog(
         account_id=account_id,
@@ -418,20 +420,21 @@ def save_log(
         created_at=now,
         updated_at=now,
         session_key=session_key,
-        reasoning_json=dump_reasoning_json(reasoning_map or {}),
+        reasoning_json=dump_reasoning_json(reasoning_map or {}) if record_content else None,
         client_ip=meta["client_ip"],
         user_agent=meta["user_agent"],
         client_name=meta["client_name"],
         ip_location=ip_location,
-        request_headers=dump_headers(request_headers),
+        request_headers=dump_headers(request_headers) if record_content else None,
     )
     db.add(log)
     db.flush()
-    to_store = list(inbound)
-    if assistant is not None:
-        to_store.append(assistant)
-    append_log_messages(db, log.id, to_store)
-    db.flush()
+    if record_content:
+        to_store = list(inbound)
+        if assistant is not None:
+            to_store.append(assistant)
+        append_log_messages(db, log.id, to_store)
+        db.flush()
     return log
 
 

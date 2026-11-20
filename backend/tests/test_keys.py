@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 
 from app.db import get_session_factory
-from app.models import ApiKey, RequestLog
+from app.models import ApiKey, RequestLog, RequestLogMessage
+from app.services.proxy import save_log
 
 
 def _account(client: TestClient, auth_headers: dict[str, str]) -> int:
@@ -161,6 +163,182 @@ def test_update_key_replaces_bound_accounts(client: TestClient, auth_headers: di
     assert reordered.status_code == 200
     assert reordered.json()["account_ids"] == [third, second]
     assert reordered.json()["account_id"] == third
+
+
+def test_key_log_content_toggle_persists(client: TestClient, auth_headers: dict[str, str]) -> None:
+    account_id = _account(client, auth_headers)
+    created = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "隐私 Key", "account_id": account_id, "log_content_enabled": False},
+    ).json()
+    assert created["log_content_enabled"] is False
+
+    updated = client.patch(
+        f"/api/admin/keys/{created['id']}",
+        headers=auth_headers,
+        json={"log_content_enabled": True},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["log_content_enabled"] is True
+
+    detail = client.get(f"/api/admin/keys/{created['id']}", headers=auth_headers)
+    assert detail.json()["log_content_enabled"] is True
+
+
+def _save_sample_log(
+    account_id: int,
+    api_key_id: int,
+    *,
+    session_id: str,
+) -> tuple[dict[str, object], int]:
+    session = get_session_factory()()
+    try:
+        log = save_log(
+            session,
+            account_id=account_id,
+            api_key_id=api_key_id,
+            protocol="openai",
+            model="deepseek-chat",
+            stream=False,
+            status="success",
+            http_status=200,
+            error_message=None,
+            usage=(3, 4, 7),
+            latency_ms=12,
+            request_body={
+                "messages": [{"role": "user", "content": "secret prompt"}],
+                "metadata": {"session_id": session_id},
+            },
+            response_body={"choices": [{"message": {"role": "assistant", "content": "secret answer"}}]},
+            request_headers={"Authorization": "Bearer secret", "x-session-id": session_id},
+            reasoning_map={"call-1": "secret reasoning"},
+        )
+        session.commit()
+        message_count = session.scalar(
+            select(func.count()).select_from(RequestLogMessage).where(RequestLogMessage.log_id == log.id)
+        )
+        snapshot = {
+            "prompt_tokens": log.prompt_tokens,
+            "completion_tokens": log.completion_tokens,
+            "total_tokens": log.total_tokens,
+            "reasoning_json": log.reasoning_json,
+            "request_headers": log.request_headers,
+        }
+        return snapshot, int(message_count or 0)
+    finally:
+        session.close()
+
+
+def test_log_content_disabled_skips_messages_headers_and_reasoning(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    account_id = _account(client, auth_headers)
+    created = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "不记内容", "account_id": account_id, "log_content_enabled": False},
+    ).json()
+
+    log, message_count = _save_sample_log(account_id, created["id"], session_id="privacy-session")
+
+    assert log["prompt_tokens"] == 3
+    assert log["completion_tokens"] == 4
+    assert log["total_tokens"] == 7
+    assert log["reasoning_json"] is None
+    assert log["request_headers"] is None
+    assert message_count == 0
+
+
+def test_log_content_enabled_records_messages_headers_and_reasoning(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    account_id = _account(client, auth_headers)
+    created = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "记录内容", "account_id": account_id},
+    ).json()
+    assert created["log_content_enabled"] is True
+
+    log, message_count = _save_sample_log(account_id, created["id"], session_id="content-session")
+
+    assert log["reasoning_json"] is not None
+    assert log["request_headers"] is not None
+    assert message_count == 2
+
+
+def test_disabling_content_stops_appending_to_existing_session(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    account_id = _account(client, auth_headers)
+    created = client.post(
+        "/api/admin/keys",
+        headers=auth_headers,
+        json={"name": "中途关闭", "account_id": account_id},
+    ).json()
+
+    session = get_session_factory()()
+    try:
+        first = save_log(
+            session,
+            account_id=account_id,
+            api_key_id=created["id"],
+            protocol="openai",
+            model="deepseek-chat",
+            stream=False,
+            status="success",
+            http_status=200,
+            error_message=None,
+            usage=(1, 1, 2),
+            latency_ms=5,
+            request_body={"messages": [{"role": "user", "content": "first"}]},
+            response_body={"choices": [{"message": {"role": "assistant", "content": "answer"}}]},
+            request_headers={"x-session-id": "switch-session"},
+            reasoning_map={"call-1": "first reasoning"},
+        )
+        session.commit()
+
+        stored_key = session.get(ApiKey, created["id"])
+        assert stored_key is not None
+        stored_key.log_content_enabled = False
+        session.commit()
+
+        second = save_log(
+            session,
+            account_id=account_id,
+            api_key_id=created["id"],
+            protocol="openai",
+            model="deepseek-chat",
+            stream=False,
+            status="success",
+            http_status=200,
+            error_message=None,
+            usage=(2, 2, 4),
+            latency_ms=6,
+            request_body={
+                "messages": [
+                    {"role": "user", "content": "first"},
+                    {"role": "assistant", "content": "answer"},
+                    {"role": "user", "content": "second"},
+                ]
+            },
+            response_body={"choices": [{"message": {"role": "assistant", "content": "next"}}]},
+            request_headers={"x-session-id": "switch-session"},
+            reasoning_map={"call-2": "second reasoning"},
+        )
+        session.commit()
+
+        message_count = session.scalar(
+            select(func.count()).select_from(RequestLogMessage).where(RequestLogMessage.log_id == first.id)
+        )
+        assert second.id == first.id
+        assert second.turn_count == 2
+        assert int(message_count or 0) == 2
+        assert "call-1" in (second.reasoning_json or "")
+        assert "call-2" not in (second.reasoning_json or "")
+    finally:
+        session.close()
 
 
 def test_delete_key_keeps_request_logs(client: TestClient, auth_headers: dict[str, str]) -> None:

@@ -141,6 +141,8 @@ class ApiKey(Base):
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
     rpm_limit: Mapped[int] = mapped_column(Integer, default=400, server_default="400", nullable=False)
     concurrency_limit: Mapped[int] = mapped_column(Integer, default=200, server_default="200", nullable=False)
+    # 中转请求是否落盘会话消息、思考内容与请求头；关闭后只保留统计元数据
+    log_content_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

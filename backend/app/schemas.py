@@ -417,6 +417,7 @@ class KeyCreate(BaseModel):
     account_ids: list[int] | None = None
     rpm_limit: int | None = Field(default=None, ge=0, le=1_000_000)
     concurrency_limit: int | None = Field(default=None, ge=0, le=1_000_000)
+    log_content_enabled: bool = True
 
     @model_validator(mode="after")
     def require_accounts(self) -> KeyCreate:
@@ -439,6 +440,7 @@ class KeyUpdate(BaseModel):
     account_ids: list[int] | None = None
     rpm_limit: int | None = Field(default=None, ge=0, le=1_000_000)
     concurrency_limit: int | None = Field(default=None, ge=0, le=1_000_000)
+    log_content_enabled: bool | None = None
 
     def resolved_account_ids(self) -> list[int] | None:
         if self.account_ids is not None:
@@ -463,6 +465,7 @@ class KeyOut(BaseModel):
     last_used_at: datetime | None
     rpm_limit: int = 400
     concurrency_limit: int = 200
+    log_content_enabled: bool = True
     rpm_used: int = 0
     concurrency_used: int = 0
     today_tokens: int = 0

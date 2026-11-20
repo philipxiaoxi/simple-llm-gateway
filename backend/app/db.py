@@ -72,11 +72,13 @@ def init_db() -> None:
     engine = get_engine()
     _migrate_legacy_logs(engine)
     Base.metadata.create_all(bind=engine)
+    # 旧库会重建 api_keys 表（account_id 改为可空），必须在补列之前完成，
+    # 否则重建会丢掉 _ensure_columns 刚落下的限速与日志开关字段。
+    _ensure_api_keys_account_id_nullable(engine)
     _ensure_columns(engine)
     _migrate_douyin_settings_to_tikhub(engine)
     _migrate_info_poll_interval(engine)
     _migrate_generation_capabilities(engine)
-    _ensure_api_keys_account_id_nullable(engine)
     _ensure_info_items_source_nullable(engine)
     _ensure_request_logs_have_no_parent_fks(engine)
     _ensure_knowledge_fts(engine)
@@ -246,6 +248,11 @@ def _ensure_columns(engine: Engine) -> None:
                 connection.execute(
                     text(f"ALTER TABLE {table} ADD COLUMN concurrency_limit INTEGER DEFAULT 200 NOT NULL")
                 )
+        api_key_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(api_keys)"))}
+        if api_key_columns and "log_content_enabled" not in api_key_columns:
+            connection.execute(
+                text("ALTER TABLE api_keys ADD COLUMN log_content_enabled BOOLEAN DEFAULT 1 NOT NULL")
+            )
         generation_provider_columns = {
             row[1] for row in connection.execute(text("PRAGMA table_info(generation_providers)"))
         }

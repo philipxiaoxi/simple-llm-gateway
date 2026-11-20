@@ -94,6 +94,7 @@ def create_key(payload: KeyCreate, db: Session = Depends(get_db)) -> KeyOut:
             if payload.concurrency_limit is not None
             else settings.security_gateway_key_concurrency
         ),
+        log_content_enabled=payload.log_content_enabled,
     )
     db.add(item)
     db.flush()
@@ -246,6 +247,8 @@ def update_key(key_id: int, payload: KeyUpdate, db: Session = Depends(get_db)) -
         item.rpm_limit = payload.rpm_limit
     if payload.concurrency_limit is not None:
         item.concurrency_limit = payload.concurrency_limit
+    if payload.log_content_enabled is not None:
+        item.log_content_enabled = payload.log_content_enabled
     account_ids = payload.resolved_account_ids()
     if account_ids is not None:
         try:

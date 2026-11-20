@@ -4,7 +4,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { CcSwitchDialog, type CcSwitchValues } from '../components/CcSwitchDialog'
 import { ModelAliasList } from '../components/ModelAliasList'
 import { VscodeImportDialog } from '../components/VscodeImportDialog'
-import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
+import { Badge, Button, Card, Dialog, Field, Input, Select, Switch } from '../components/ui'
 import { modelOptions } from '../lib/modelOptions'
 import { api, type Account, type ApiKeyItem, type ApiKeySort, type CcSwitchTarget, type GatewayAgent, type ShareAlias, type ShareModelEntry } from '../lib/api'
 import { openShareWithApiKey } from '../lib/shareTransfer'
@@ -213,12 +213,40 @@ function RateLimitFields({
   )
 }
 
+function LogContentField({
+  enabled,
+  onChange,
+}: {
+  enabled: boolean
+  onChange: (enabled: boolean) => void
+}) {
+  return (
+    <Field label="请求内容记录">
+      <div className="grid gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Switch
+            checked={enabled}
+            onCheckedChange={onChange}
+            onLabel="记录详细内容"
+            offLabel="不记录详细内容"
+          />
+          <span className="text-xs text-mist">会话消息、思考内容与请求头</span>
+        </div>
+        <div className="text-xs text-mist">
+          关闭后只保留模型、Token、耗时、状态等统计元数据；已有历史记录不受影响。
+        </div>
+      </div>
+    </Field>
+  )
+}
+
 function KeyEditDialog({
   keyId,
   initialName,
   initialAccountIds,
   initialRpm,
   initialConcurrency,
+  initialLogContentEnabled,
   accounts,
   onClose,
   onSaved,
@@ -228,6 +256,7 @@ function KeyEditDialog({
   initialAccountIds: number[]
   initialRpm: number
   initialConcurrency: number
+  initialLogContentEnabled: boolean
   accounts: Account[]
   onClose: () => void
   onSaved: () => void
@@ -236,6 +265,7 @@ function KeyEditDialog({
   const [accountIds, setAccountIds] = useState<number[]>(initialAccountIds)
   const [rpm, setRpm] = useState(String(initialRpm))
   const [concurrency, setConcurrency] = useState(String(initialConcurrency))
+  const [logContentEnabled, setLogContentEnabled] = useState(initialLogContentEnabled)
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
 
@@ -257,6 +287,7 @@ function KeyEditDialog({
         account_ids: accountIds,
         rpm_limit: parseLimit(rpm) ?? 0,
         concurrency_limit: parseLimit(concurrency) ?? 0,
+        log_content_enabled: logContentEnabled,
       })
       onSaved()
     } catch (caught) {
@@ -281,6 +312,7 @@ function KeyEditDialog({
           onRpm={setRpm}
           onConcurrency={setConcurrency}
         />
+        <LogContentField enabled={logContentEnabled} onChange={setLogContentEnabled} />
         {error ? <div className="text-sm text-danger">{error}</div> : null}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
@@ -437,6 +469,7 @@ export function KeysPage() {
   const [accountIds, setAccountIds] = useState<number[]>([])
   const [rpm, setRpm] = useState('400')
   const [concurrency, setConcurrency] = useState('200')
+  const [logContentEnabled, setLogContentEnabled] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [accountFilter, setAccountFilter] = useState('')
@@ -462,6 +495,7 @@ export function KeysPage() {
     accountIds: number[]
     rpm: number
     concurrency: number
+    logContentEnabled: boolean
   } | null>(null)
   const [aliasesDialog, setAliasesDialog] = useState<{ keyId: number; keyName: string } | null>(null)
 
@@ -485,6 +519,7 @@ export function KeysPage() {
         account_ids: accountIds,
         rpm_limit: parseLimit(rpm) ?? 0,
         concurrency_limit: parseLimit(concurrency) ?? 0,
+        log_content_enabled: logContentEnabled,
       }),
     onSuccess: (item) => {
       queryClient.invalidateQueries({ queryKey: ['keys'] })
@@ -501,6 +536,7 @@ export function KeysPage() {
       setAccountIds([])
       setRpm('400')
       setConcurrency('200')
+      setLogContentEnabled(true)
       setCreateDialog(false)
     },
     onError: (error: Error) => notifyBad(error.message),
@@ -774,6 +810,11 @@ export function KeysPage() {
                       </Badge>
                     )}
                     <Badge tone={item.status === 'active' ? 'ok' : 'mist'}>{item.status}</Badge>
+                    {item.log_content_enabled === false ? (
+                      <Badge tone="mist" title="该 Key 的请求不记录会话消息、思考内容和请求头">
+                        不记内容
+                      </Badge>
+                    ) : null}
                   </div>
                   <div className="mt-1 font-mono text-xs text-mist">{item.key_prefix}</div>
                   <div className="mt-2 grid gap-1 text-xs text-mist">
@@ -865,6 +906,7 @@ export function KeysPage() {
                         accountIds: keyBoundIds(item),
                         rpm: item.rpm_limit,
                         concurrency: item.concurrency_limit,
+                        logContentEnabled: item.log_content_enabled ?? true,
                       })
                     }
                   >
@@ -961,6 +1003,7 @@ export function KeysPage() {
               onRpm={setRpm}
               onConcurrency={setConcurrency}
             />
+            <LogContentField enabled={logContentEnabled} onChange={setLogContentEnabled} />
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" onClick={() => setCreateDialog(false)}>
                 取消
@@ -1021,6 +1064,7 @@ export function KeysPage() {
           initialAccountIds={editDialog.accountIds}
           initialRpm={editDialog.rpm}
           initialConcurrency={editDialog.concurrency}
+          initialLogContentEnabled={editDialog.logContentEnabled}
           accounts={accounts.filter(
             (account) => availableAccounts.includes(account) || editDialog.accountIds.includes(account.id),
           )}

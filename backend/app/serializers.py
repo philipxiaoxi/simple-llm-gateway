@@ -92,6 +92,7 @@ def key_to_out(
         last_used_at=item.last_used_at,
         rpm_limit=item.rpm_limit,
         concurrency_limit=item.concurrency_limit,
+        log_content_enabled=item.log_content_enabled,
         rpm_used=rpm_used,
         concurrency_used=concurrency_used,
         today_tokens=today_tokens,
