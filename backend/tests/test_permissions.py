@@ -62,6 +62,7 @@ def test_log_content_migration_requires_builtin_administrator(client, auth_heade
     assert client.get("/api/admin/logs", headers=reader).status_code == 200
     assert client.get(base, headers=reader).status_code == 403
     assert client.post(f"{base}/start", headers=reader).status_code == 403
+    assert client.post(f"{base}/scan", headers=reader).status_code == 403
     assert client.post(f"{base}/pause", headers=reader).status_code == 403
     assert client.get(base, headers=auth_headers).json()["state"] == "idle"
     cleanup = "/api/admin/logs/content-cleanup"

@@ -50,7 +50,7 @@ def _source_path() -> Path:
 
 def _idle() -> dict:
     return {
-        "state": "idle", "phase": None, "elapsed_seconds": 0.0, "error": None,
+        "state": "idle", "phase": None, "elapsed_seconds": 0.0, "error": None, "scan_only": False,
         **{f"{stage}_{unit}": 0 for stage in ("total", *_COUNTER.values()) for unit in ("rows", "bytes")},
     }
 
@@ -164,8 +164,12 @@ def _run(checkpoint: Path, source_path: Path, job: dict) -> None:
                 table = job["table"]
                 if table == len(_TABLES):
                     if phase == "scanning":
-                        advance(state="copying", phase="copying", phase_seconds=0.0, table=0, after=None,
+                        scan_only = job.get("scan_only", False)
+                        advance(state="ready" if scan_only else "copying", phase=None if scan_only else "copying",
+                                phase_seconds=0.0, table=0, after=None,
                                 total_rows=job["scanned_rows"], total_bytes=job["scanned_bytes"])
+                        if scan_only:
+                            return
                     elif phase == "copying":
                         if (job["copied_rows"], job["copied_bytes"]) != (job["total_rows"], job["total_bytes"]):
                             raise _VerificationError("Legacy source totals changed during copy.")
@@ -236,7 +240,7 @@ def _status(checkpoint: Path) -> dict:
         job = _failure[1] if _failure is not None and _failure[0] == checkpoint else _load(checkpoint)
     except (OSError, ValueError) as exc:
         job = {**_idle(), "state": "failed", "error": f"Cannot read the migration checkpoint: {exc}"}
-    result = {key: job[key] for key in _idle()}
+    result = {key: job.get(key, default) for key, default in _idle().items()}
     phase = job["phase"]
     if job["state"] in _COUNTER and (_worker is None or not _worker.is_alive()):
         result["state"] = "paused"
@@ -272,8 +276,8 @@ def migration_status() -> dict:
         return _status(_checkpoint())
 
 
-def migration_start() -> dict:
-    """Start or resume the job. Repeated calls during work or after completion are idempotent."""
+def migration_start(*, scan_only: bool = False) -> dict:
+    """Start a scan or migration explicitly; reuse completed scan totals for migration."""
     global _worker, _failure
     with _lock:
         checkpoint = _checkpoint()
@@ -287,14 +291,19 @@ def migration_start() -> dict:
                 raise ValueError("Migration checkpoint belongs to a different main database.")
             if job["state"] == "completed":
                 return _status(checkpoint)
-            if job["phase"] is None:
+            if scan_only and job["phase"] not in {None, "scanning"}:
+                raise ValueError("A migration has already started; resume it to continue.")
+            if job["state"] == "ready" and not scan_only:
+                job.update(phase="copying", elapsed_seconds=0.0)
+            elif job["phase"] is None:
+                job = _idle()
                 job.update(source=str(source), phase="scanning", phase_seconds=0.0, high_water=None,
                            table=0, after=None)
             elif job.get("retry_copy"):
                 # Repair and re-verify the same scope against the original scan totals.
                 job.update(phase="copying", phase_seconds=0.0, table=0, after=None,
                            copied_rows=0, copied_bytes=0, verified_rows=0, verified_bytes=0)
-            job.update(state=job["phase"], error=None, retry_copy=False)
+            job.update(state=job["phase"], error=None, retry_copy=False, scan_only=scan_only)
             checkpoint.parent.mkdir(parents=True, exist_ok=True)
             _save(checkpoint, job)
             _failure = None

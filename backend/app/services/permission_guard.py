@@ -424,6 +424,7 @@ EXEMPT_PATHS = frozenset(
         # Migration routes enforce the administrator wildcard directly.
         "/api/admin/logs/content-migration",
         "/api/admin/logs/content-migration/start",
+        "/api/admin/logs/content-migration/scan",
         "/api/admin/logs/content-migration/pause",
         "/api/admin/logs/content-cleanup",
         "/api/admin/logs/content-cleanup/start",

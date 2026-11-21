@@ -111,6 +111,27 @@ def test_migrates_and_verifies_every_field_without_touching_source(migration):
     assert job.migration_start()["state"] == "completed"
 
 
+def test_scan_only_reports_totals_without_copying_then_migration_reuses_scan(migration, monkeypatch):
+    job, source, archive_connection = migration
+    original = source.read_bytes()
+    job.migration_start(scan_only=True)
+    ready = _wait(job, "ready")
+    assert (ready["total_rows"], ready["total_bytes"], ready["copied_rows"]) == (5, 74, 0)
+    assert not job.legacy_content_archived()
+    assert source.read_bytes() == original
+    with archive_connection() as archive:
+        assert archive.execute("SELECT count(*) FROM legacy_log_content").fetchone()[0] == 0
+    batch = job._batch
+
+    def no_rescan(*args, scan):
+        assert not scan
+        return batch(*args, scan=scan)
+
+    monkeypatch.setattr(job, "_batch", no_rescan)
+    job.migration_start()
+    assert _wait(job, "completed")["verified_rows"] == 5
+
+
 def test_pause_and_restart_preserve_cursor_and_high_water(migration, monkeypatch):
     job, source, archive_connection = migration
     copied = threading.Event()

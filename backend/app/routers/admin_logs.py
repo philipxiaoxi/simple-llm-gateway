@@ -144,6 +144,11 @@ def start_content_migration() -> dict:
     return {**migration_start(), "dropped_content": dropped_content()}
 
 
+@router.post("/content-migration/scan", dependencies=[Depends(require_permission("*"))])
+def scan_content_migration() -> dict:
+    return {**migration_start(scan_only=True), "dropped_content": dropped_content()}
+
+
 @router.post("/content-migration/pause", dependencies=[Depends(require_permission("*"))])
 def pause_content_migration() -> dict:
     return {**migration_pause(), "dropped_content": dropped_content()}

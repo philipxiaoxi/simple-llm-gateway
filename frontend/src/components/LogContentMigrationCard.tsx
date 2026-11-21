@@ -11,6 +11,7 @@ type State = LogContentMigration['state']
 const STATES = {
   idle: { label: '未开始', tone: 'mist' },
   scanning: { label: '扫描中', tone: 'info' },
+  ready: { label: '扫描完成', tone: 'ok' },
   copying: { label: '复制中', tone: 'info' },
   verifying: { label: '校验中', tone: 'info' },
   paused: { label: '已暂停', tone: 'warn' },
@@ -75,8 +76,11 @@ export function LogContentMigrationCard({ username }: { username: string }) {
   const state = migration?.state
   const active = isActive(state)
   const status = state ? STATES[state] : undefined
-  const action = active ? 'pause' : state === 'idle' || state === 'paused' || state === 'failed' ? 'start' : null
-  const actionLabel = active ? '暂停迁移' : state === 'idle' ? '迁移全部历史正文' : '继续迁移'
+  const canScan = state === 'idle' || state === 'ready' || (state === 'paused' || state === 'failed') && migration?.phase === 'scanning'
+  const action = active ? 'pause' : canScan || state === 'paused' || state === 'failed' ? 'start' : null
+  const actionLabel = active ? migration?.scan_only ? '暂停扫描' : '暂停迁移'
+    : canScan ? '迁移全部历史正文' : '继续迁移'
+  const scanLabel = state === 'ready' ? '重新扫描' : state === 'paused' || state === 'failed' ? '继续扫描' : '扫描待迁移正文'
   const phaseLabel = migration?.phase
     ? PHASES.find((phase) => phase.state === migration.phase)?.label ?? migration.phase
     : null
@@ -99,7 +103,7 @@ export function LogContentMigrationCard({ username }: { username: string }) {
                 {status ? <Badge tone={status.tone}>{status.label}</Badge> : null}
               </span>
             </div>
-            <p className="mt-1 text-sm text-mist">扫描、复制并校验日志内容。迁移步骤会保留原始数据。</p>
+            <p className="mt-1 text-sm text-mist">可先扫描待迁移正文。扫描仅统计数量和大小，迁移需单独启动。</p>
           </div>
           {!denied ? (
             <div className="flex flex-wrap gap-2 sm:shrink-0">
@@ -112,6 +116,11 @@ export function LogContentMigrationCard({ username }: { username: string }) {
                 <RefreshCw size={14} className={cn(query.isFetching && 'animate-spin')} aria-hidden="true" />
                 {query.isError ? '重试查询' : '刷新状态'}
               </Button>
+              {canScan ? (
+                <Button type="button" variant="line" disabled={mutation.isPending || query.isError} onClick={() => mutation.mutate('scan')}>
+                  {scanLabel}
+                </Button>
+              ) : null}
               {action ? (
                 <Button
                   type="button"
@@ -140,8 +149,15 @@ export function LogContentMigrationCard({ username }: { username: string }) {
         ) : null}
         {migration ? (
           <>
+            {state === 'ready' ? (
+              <div className="rounded-lg border border-line/70 bg-elevate/40 px-3 py-2 text-sm text-paper">
+                预计迁移 <strong>{migration.total_rows.toLocaleString('zh-CN')} 条</strong>正文记录，共{' '}
+                <strong>{new Intl.NumberFormat('zh-CN', { maximumSignificantDigits: 4 }).format(migration.total_bytes / 1e9)} GB</strong>。
+                <p className="mt-1 text-xs text-mist">条数包含历史正文记录和独立消息；大小按正文数据计算，归档文件还会占用索引等空间。</p>
+              </div>
+            ) : null}
             {migration.error || state === 'failed' ? (
-              <p role="alert" className="break-words text-sm text-danger">{migration.error || '迁移失败，可继续迁移。'}</p>
+              <p role="alert" className="break-words text-sm text-danger">{migration.error || (migration.scan_only ? '扫描失败，可继续扫描。' : '迁移失败，可继续迁移。')}</p>
             ) : null}
             {migration.dropped_content ? (
               <p className="text-sm text-warn">本次服务运行期间有 {migration.dropped_content.toLocaleString('zh-CN')} 次新正文采集被跳过或写入失败。</p>

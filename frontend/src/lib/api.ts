@@ -378,11 +378,12 @@ export type ReasoningSummaryItem = {
   preview: string
 }
 
-export type LogContentMigrationAction = 'start' | 'pause'
+export type LogContentMigrationAction = 'start' | 'pause' | 'scan'
 
 export type LogContentMigration = {
-  state: 'idle' | 'scanning' | 'copying' | 'verifying' | 'paused' | 'failed' | 'completed'
+  state: 'idle' | 'scanning' | 'ready' | 'copying' | 'verifying' | 'paused' | 'failed' | 'completed'
   phase: string | null
+  scan_only: boolean
   total_bytes: number
   total_rows: number
   scanned_bytes: number
