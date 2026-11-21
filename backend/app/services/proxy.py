@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import httpx
+from anyio import CancelScope
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -182,28 +183,30 @@ async def _finalize_request_log_async(
     model_resolution: ModelResolution | None = None,
     peer: str | None = None,
 ) -> None:
-    ip = client_meta(request_headers, peer=peer).get("client_ip")
-    location = await lookup_ip_location(ip)
-    await asyncio.to_thread(
-        _finalize_request_log,
-        account_id=account_id,
-        api_key_id=api_key_id,
-        protocol=protocol,
-        model=model,
-        stream=stream,
-        status=status,
-        http_status=http_status,
-        error_text=error_text,
-        usage=usage,
-        started=started,
-        request_body=request_body,
-        response_body=response_body,
-        request_headers=request_headers,
-        reasoning_map=reasoning_map,
-        model_resolution=model_resolution,
-        ip_location=location,
-        peer=peer,
-    )
+    # Starlette cancels the streaming scope when the peer disconnects.
+    with CancelScope(shield=True):
+        ip = client_meta(request_headers, peer=peer).get("client_ip")
+        location = await lookup_ip_location(ip)
+        await asyncio.to_thread(
+            _finalize_request_log,
+            account_id=account_id,
+            api_key_id=api_key_id,
+            protocol=protocol,
+            model=model,
+            stream=stream,
+            status=status,
+            http_status=http_status,
+            error_text=error_text,
+            usage=usage,
+            started=started,
+            request_body=request_body,
+            response_body=response_body,
+            request_headers=request_headers,
+            reasoning_map=reasoning_map,
+            model_resolution=model_resolution,
+            ip_location=location,
+            peer=peer,
+        )
 
 
 def _output_text_from_openai(payload: dict[str, Any]) -> str:
@@ -676,6 +679,7 @@ async def _stream_response(
         http_status = 200
         response_body: Any = None
         response_map: dict[str, str] = {}
+        terminal_events: list[bytes] = []
         try:
             if protocol == "anthropic_messages":
                 for event in translator.start():
@@ -685,7 +689,11 @@ async def _stream_response(
                 async for event in result:
                     data = responses_event_to_dict(event)
                     responses_collector.feed(data)
-                    yield responses_sse(data)
+                    encoded = responses_sse(data)
+                    if data.get("type") in {"response.completed", "response.incomplete", "response.failed"}:
+                        terminal_events.append(encoded)
+                    else:
+                        yield encoded
             else:
                 async for chunk in stream_openai_chunks(result):
                     usage_candidate = pick_usage_from_chunk(chunk)
@@ -702,14 +710,12 @@ async def _stream_response(
                         collector.feed(chunk)
                         yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode()
             if protocol == "anthropic_messages":
-                for event in translator.finish():
-                    yield event
+                terminal_events.extend(translator.finish())
                 response_body = translator.payload()
                 response_map = translator.reasoning_map()
                 usage = translator.usage
             elif responses_translator is not None:
-                for event in responses_translator.finish():
-                    yield event
+                terminal_events.extend(responses_translator.finish())
                 response_body = responses_translator.payload()
                 response_map = responses_translator.reasoning_map()
                 usage = responses_translator.usage
@@ -718,7 +724,7 @@ async def _stream_response(
                 response_map = responses_collector.reasoning_map()
                 usage = responses_collector.usage
             else:
-                yield b"data: [DONE]\n\n"
+                terminal_events.append(b"data: [DONE]\n\n")
                 response_body = {"choices": [{"message": collector.message()}]}
                 response_map = collector.reasoning_map()
             if usage[0] is None and usage[1] is None and usage[2] is None:
@@ -729,6 +735,7 @@ async def _stream_response(
                 else:
                     usage = await estimate_usage(model, messages, _stream_output_text(protocol, collector, translator))
         except Exception as error:
+            terminal_events.clear()
             status = "error"
             http_status, error_text = classify_upstream_error(error)
             if protocol == "anthropic_messages":
@@ -775,6 +782,8 @@ async def _stream_response(
                 model_resolution=model_resolution,
                 peer=peer,
             )
+        for event in terminal_events:
+            yield event
 
     return StreamingResponse(event_source(), media_type="text/event-stream")
 

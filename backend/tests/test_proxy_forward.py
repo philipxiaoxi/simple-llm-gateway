@@ -1,7 +1,64 @@
+import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+
+
+def test_chat_stream_commits_log_before_done(monkeypatch):
+    from app.services import proxy
+
+    async def chunks():
+        yield {"choices": [{"delta": {"content": "ok"}}],
+               "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}}
+
+    finalize = AsyncMock()
+    monkeypatch.setattr(proxy, "call_chat", AsyncMock(return_value=chunks()))
+    monkeypatch.setattr(proxy, "_finalize_request_log_async", finalize)
+
+    async def run():
+        response = await proxy._stream_response(
+            None, SimpleNamespace(id=1), SimpleNamespace(id=1), {}, "openai_chat",
+            "test-model", [], {}, "", 0,
+        )
+        try:
+            async for event in response.body_iterator:
+                if b"[DONE]" in event:
+                    finalize.assert_awaited_once()
+                    return
+            pytest.fail("Stream ended without [DONE]")
+        finally:
+            await response.body_iterator.aclose()
+
+    asyncio.run(run())
+
+
+def test_cancelled_stream_scope_still_finalizes_metadata(monkeypatch):
+    from anyio import CancelScope, sleep
+
+    from app.services import proxy
+
+    calls = []
+
+    async def lookup(_):
+        await sleep(0)
+        return None
+
+    monkeypatch.setattr(proxy, "lookup_ip_location", lookup)
+    monkeypatch.setattr(proxy, "_finalize_request_log", lambda **kwargs: calls.append(kwargs))
+
+    async def run():
+        with CancelScope() as scope:
+            scope.cancel()
+            await proxy._finalize_request_log_async(
+                account_id=1, api_key_id=1, protocol="openai_chat", model="test-model", stream=True,
+                status="success", http_status=200, error_text=None, usage=(1, 1, 2), started=0,
+                request_body={}, response_body=None, request_headers=None,
+            )
+
+    asyncio.run(run())
+    assert len(calls) == 1 and calls[0]["usage"] == (1, 1, 2)
 
 
 def _messages(client: TestClient, auth_headers: dict[str, str], log_id: int) -> dict:
