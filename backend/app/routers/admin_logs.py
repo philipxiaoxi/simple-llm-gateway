@@ -30,7 +30,7 @@ from app.services.conversation import (
     decode_stored_message,
     tool_calls_summary,
 )
-from app.services.log_content import dropped_content, read_content
+from app.services.log_content import capture_diagnostics, read_content
 from app.services.log_content_cleanup import cleanup_pause, cleanup_start, cleanup_status
 from app.services.log_content_migration import (
     legacy_content_archived,
@@ -136,22 +136,22 @@ def list_logs(
 
 @router.get("/content-migration", dependencies=[Depends(require_permission("*"))])
 def get_content_migration() -> dict:
-    return {**migration_status(), "dropped_content": dropped_content()}
+    return {**migration_status(), **capture_diagnostics()}
 
 
 @router.post("/content-migration/start", dependencies=[Depends(require_permission("*"))])
 def start_content_migration() -> dict:
-    return {**migration_start(), "dropped_content": dropped_content()}
+    return {**migration_start(), **capture_diagnostics()}
 
 
 @router.post("/content-migration/scan", dependencies=[Depends(require_permission("*"))])
 def scan_content_migration() -> dict:
-    return {**migration_start(scan_only=True), "dropped_content": dropped_content()}
+    return {**migration_start(scan_only=True), **capture_diagnostics()}
 
 
 @router.post("/content-migration/pause", dependencies=[Depends(require_permission("*"))])
 def pause_content_migration() -> dict:
-    return {**migration_pause(), "dropped_content": dropped_content()}
+    return {**migration_pause(), **capture_diagnostics()}
 
 
 class CleanupConfirmation(BaseModel):

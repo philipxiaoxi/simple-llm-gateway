@@ -20,7 +20,7 @@ from app.errors import protocol_error
 from app.models import ApiKey, RequestLog, UpstreamAccount
 from app.providers import get_provider
 from app.services.client_meta import client_meta, lookup_ip_location
-from app.services.log_content import enqueue_content, note_dropped_content, remember_replay, replay_for_calls
+from app.services.log_content import enqueue_content, remember_replay, replay_for_calls
 from app.services.key_models import ModelResolution, build_model_catalog
 from app.services.model_caps import serialize_record
 from app.services.bridge import (
@@ -160,10 +160,7 @@ def _finalize_request_log(
         session.close()
     remember_replay(api_key_id, account_id, session_key, reasoning_map)
     if capture:
-        if response_body is ...:
-            note_dropped_content()
-        else:
-            enqueue_content(log_id, protocol, request_body, response_body, request_headers, reasoning_map)
+        enqueue_content(log_id, protocol, request_body, response_body, request_headers, reasoning_map)
 
 
 async def _finalize_request_log_async(

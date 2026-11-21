@@ -34,6 +34,17 @@ const PHASES = [
   { state: 'verifying', label: '校验', bytes: 'verified_bytes', rows: 'verified_rows' },
 ] as const
 
+const CAPTURE_REASONS: Record<string, string> = {
+  partial: '超限，已尝试记录部分正文',
+  oversized: '超限，未能保留正文',
+  queue_full: '采集队列已满',
+  database_busy: '归档库忙，重试后仍失败',
+  database_unwritable: '归档库无法写入，请检查挂载路径或目录权限',
+  disk_full: '归档库所在磁盘空间不足',
+  write_failed: '其他写入失败',
+  shutdown: '服务停止时队列尚未写完',
+}
+
 function isActive(state: State | undefined) {
   return PHASES.some((phase) => phase.state === state)
 }
@@ -159,7 +170,17 @@ export function LogContentMigrationCard({ username }: { username: string }) {
             {migration.error || state === 'failed' ? (
               <p role="alert" className="break-words text-sm text-danger">{migration.error || (migration.scan_only ? '扫描失败，可继续扫描。' : '迁移失败，可继续迁移。')}</p>
             ) : null}
-            {migration.dropped_content ? (
+            {migration.capture_enabled === false ? <p className="text-sm text-warn">服务端已关闭新正文采集。</p> : null}
+            {migration.capture_diagnostics && Object.keys(migration.capture_diagnostics).length ? (
+              <div className="text-sm text-warn">
+                <p>本次服务运行期间的正文采集异常：</p>
+                <ul className="mt-1 list-inside list-disc">
+                  {Object.entries(migration.capture_diagnostics).map(([reason, count]) => (
+                    <li key={reason}>{CAPTURE_REASONS[reason] ?? reason}：{count.toLocaleString('zh-CN')} 次</li>
+                  ))}
+                </ul>
+              </div>
+            ) : migration.dropped_content ? (
               <p className="text-sm text-warn">本次服务运行期间有 {migration.dropped_content.toLocaleString('zh-CN')} 次新正文采集被跳过或写入失败。</p>
             ) : null}
             {phaseLabel ? <p className="break-words text-sm text-mist">当前阶段：{phaseLabel}</p> : null}

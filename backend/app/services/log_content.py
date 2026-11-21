@@ -32,7 +32,8 @@ _REPLAY_LIMIT = 2048
 _replay: OrderedDict[tuple, tuple[float, str]] = OrderedDict()
 _replay_lock = threading.Lock()
 _queue: Queue = Queue(maxsize=32)
-_drops = 0
+_capture_lock = threading.Lock()
+_capture_counts: dict[str, int] = {}
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS legacy_log_content (
@@ -109,22 +110,65 @@ def _within_budget(*values) -> bool:
 
 
 def enqueue_content(log_id, protocol, request, response, headers, reasoning) -> None:
-    if not _queue.full() and _within_budget(request, response, headers, reasoning):
-        try:
-            _queue.put_nowait((log_id, protocol, request, response, headers, reasoning))
+    if _queue.full():
+        _count_capture("queue_full")
+        return
+    partial = response is ... or not _within_budget(request, response, headers, reasoning)
+    if partial:
+        if response is ... or not _within_budget(response):
+            response = None
+        if not _within_budget(response, headers, reasoning):
+            reasoning = None
+        if not _within_budget(response, headers, reasoning):
+            headers = None
+        original = request if isinstance(request, dict) else {}
+        request = {"model": str(original.get("model") or "")[:256]}
+        for field in ("messages", "input"):
+            history = original.get(field)
+            if isinstance(history, list):
+                recent = []
+                for message in reversed(history[-8:]):
+                    if not _within_budget(request, response, headers, reasoning, message, recent):
+                        break
+                    recent.insert(0, message)
+                request[field] = recent
+            elif isinstance(history, str) and _within_budget(request, response, headers, reasoning, history):
+                request[field] = history
+        if not any(request.get(field) for field in ("messages", "input")) and response is None:
+            _count_capture("oversized")
             return
-        except Full:
-            pass
-    note_dropped_content()
+    try:
+        _queue.put_nowait((log_id, protocol, request, response, headers, reasoning))
+    except Full:
+        _count_capture("queue_full")
+    else:
+        if partial:
+            _count_capture("partial")
 
 
-def note_dropped_content() -> None:
-    global _drops
-    _drops += 1
+def _count_capture(reason: str) -> None:
+    with _capture_lock:
+        _capture_counts[reason] = _capture_counts.get(reason, 0) + 1
 
 
-def dropped_content() -> int:
-    return _drops
+def capture_diagnostics() -> dict:
+    with _capture_lock:
+        counts = dict(_capture_counts)
+    return {"capture_enabled": get_settings().request_content_capture_enabled,
+            "dropped_content": sum(count for reason, count in counts.items() if reason != "partial"),
+            "capture_diagnostics": counts}
+
+
+def _write_with_retry(item) -> None:
+    for attempt in range(3):
+        try:
+            _write_content(*item)
+            return
+        except sqlite3.OperationalError as exc:
+            code = getattr(exc, "sqlite_errorcode", 0) & 255
+            if code not in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED} or attempt == 2:
+                raise
+            time.sleep(0.1 * (attempt + 1))
 
 
 def remember_replay(api_key_id, account_id, session_key, reasoning) -> None:
@@ -243,9 +287,15 @@ def content_worker():
                         _LOG.warning("Request content retention deferred", exc_info=True)
                 continue
             try:
-                _write_content(*item)
-            except Exception:
-                note_dropped_content()
+                _write_with_retry(item)
+            except Exception as exc:
+                code = getattr(exc, "sqlite_errorcode", 0) & 255
+                reason = {
+                    sqlite3.SQLITE_BUSY: "database_busy", sqlite3.SQLITE_LOCKED: "database_busy",
+                    sqlite3.SQLITE_READONLY: "database_unwritable", sqlite3.SQLITE_CANTOPEN: "database_unwritable",
+                    sqlite3.SQLITE_PERM: "database_unwritable", sqlite3.SQLITE_FULL: "disk_full",
+                }.get(code, "database_unwritable" if isinstance(exc, PermissionError | IsADirectoryError) else "write_failed")
+                _count_capture(reason)
                 _LOG.warning("Request content write failed", exc_info=True)
             finally:
                 _queue.task_done()
@@ -256,12 +306,12 @@ def content_worker():
         yield
     finally:
         stop.set()
-        worker.join(timeout=2)
+        worker.join(timeout=4)
         while True:
             try:
                 _queue.get_nowait()
                 _queue.task_done()
-                note_dropped_content()
+                _count_capture("shutdown")
             except Empty:
                 break
         with _replay_lock:

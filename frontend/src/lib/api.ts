@@ -399,6 +399,8 @@ export type LogContentMigration = {
   error: string | null
   free_bytes?: number | null
   dropped_content?: number
+  capture_enabled?: boolean
+  capture_diagnostics?: Record<string, number>
 }
 
 export type LogContentCleanup = {

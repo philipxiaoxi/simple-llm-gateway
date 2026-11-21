@@ -7,6 +7,8 @@ services:
       - .env
     environment:
       DATABASE_PATH: /data/gateway.db
+      # The archive defaults to /data/gateway.request-content.db on the same writable volume.
+      # Set REQUEST_CONTENT_PATH in .env only when the alternate path is also on a writable volume.
       FRONTEND_DIST: /app/frontend/dist
       APP_BASE_URL: ${APP_BASE_URL:-http://127.0.0.1:8000}
     volumes:
