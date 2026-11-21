@@ -224,10 +224,11 @@ def _finalize_sample_log(
     )
 
 
-@pytest.mark.parametrize("request_content_capture", [True, False], indirect=True)
+@pytest.mark.parametrize("request_content_capture", [None, False], indirect=True)
 @pytest.mark.parametrize("key_capture", [True, False])
-def test_request_log_capture_requires_global_and_key_opt_in(
-    client: TestClient, auth_headers: dict[str, str], wait_for_log_content, request_content_capture: bool, key_capture: bool
+def test_request_log_captures_by_default_and_respects_opt_out(
+    client: TestClient, auth_headers: dict[str, str], wait_for_log_content, request_content_capture: bool | None,
+    key_capture: bool,
 ) -> None:
     account_id = _account(client, auth_headers)
     created = client.post(
@@ -246,7 +247,7 @@ def test_request_log_capture_requires_global_and_key_opt_in(
     assert log["prompt_tokens"] == 3
     assert log["completion_tokens"] == 4
     assert log["total_tokens"] == 7
-    if request_content_capture and key_capture:
+    if request_content_capture is not False and key_capture:
         assert log["request_headers"]["x-session-id"] == "capture-session"
         assert [item["content"] for item in exported["messages"]] == ["secret prompt", "secret answer"]
         assert exported["reasoning"] == {"call-1": "secret reasoning"}

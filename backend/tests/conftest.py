@@ -52,7 +52,9 @@ def client(tmp_path, monkeypatch, request_content_capture) -> TestClient:
     monkeypatch.setenv("APP_BASE_URL", "http://testserver")
     monkeypatch.setenv("LOCAL_AGENT_TOKEN", "unit-test-local-agent-token")
     monkeypatch.setenv("MCP_CHROMA_PATH", str(tmp_path / "chroma"))
-    if request_content_capture is not None:
+    if request_content_capture is None:
+        monkeypatch.delenv("REQUEST_CONTENT_CAPTURE_ENABLED", raising=False)
+    else:
         monkeypatch.setenv("REQUEST_CONTENT_CAPTURE_ENABLED", str(request_content_capture).lower())
 
     from app.config import reset_settings

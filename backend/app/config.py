@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     admin_password: str = "changeme"
     database_path: str = "data/gateway.db"
     request_content_path: str = ""
-    request_content_capture_enabled: bool = False
+    request_content_capture_enabled: bool = True
     request_content_retention_days: int = 7
     app_base_url: str = "http://127.0.0.1:8000"
     request_timeout_seconds: int = 120

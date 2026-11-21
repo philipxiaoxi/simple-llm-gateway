@@ -43,8 +43,22 @@ def _state(client, headers, kind, expected):
 
 
 def test_cleanup_requires_confirmation_and_preserves_metadata_and_archive(client, auth_headers, migrated):
+    from app.services.log_content import _write_content
+
     base = "/api/admin/logs/content-cleanup"
     start = {"backup_confirmed": True}
+    _write_content(1, "openai_chat", {"messages": [{"role": "user", "content": "new"}]}, None,
+                   {"x-session-id": "new"}, {"tool": "new thought"})
+
+    def assert_merged_detail():
+        detail = client.get("/api/admin/logs/1?include_bodies=true", headers=auth_headers).json()
+        assert detail["request_body"] == {"prompt": "test"}
+        assert detail["request_headers"] == {"x-session-id": "new"}
+        export = client.get("/api/admin/logs/1/export", headers=auth_headers).json()
+        assert [message["content"] for message in export["messages"]] == ["hello", "new"]
+        assert export["reasoning"] == {"tool": "new thought"}
+
+    assert_merged_detail()
     assert client.post(f"{base}/start", headers=auth_headers, json=start).status_code == 409
     client.post("/api/admin/logs/content-migration/start", headers=auth_headers).raise_for_status()
     _state(client, auth_headers, "migration", "completed")
@@ -59,7 +73,7 @@ def test_cleanup_requires_confirmation_and_preserves_metadata_and_archive(client
         assert db.execute("SELECT total_tokens, turn_count, request_body, response_body, reasoning_json, request_headers "
                           "FROM request_logs ORDER BY id").fetchall() == [(12, 3, None, None, None, None)] * 2
         assert db.execute("SELECT count(*) FROM request_log_messages").fetchone()[0] == 0
-    assert client.get("/api/admin/logs/1?include_bodies=true", headers=auth_headers).json()["request_body"] == {"prompt": "test"}
+    assert_merged_detail()
     assert client.get("/api/admin/logs/1/messages/0", headers=auth_headers).json()["content"] == "hello"
     assert client.post(f"{base}/start", headers=auth_headers, json=start).json()["state"] == "completed"
 
