@@ -421,6 +421,13 @@ EXEMPT_PATHS = frozenset(
         "/api/admin/me/preferences",
         "/api/admin/oauth/grok/callback",
         "/api/admin/security/beacon",
+        # Migration routes enforce the administrator wildcard directly.
+        "/api/admin/logs/content-migration",
+        "/api/admin/logs/content-migration/start",
+        "/api/admin/logs/content-migration/pause",
+        "/api/admin/logs/content-cleanup",
+        "/api/admin/logs/content-cleanup/start",
+        "/api/admin/logs/content-cleanup/pause",
         # 服务目录只返回能力元数据，供广场与 MCP Key 授权页使用；可见性由前端按各能力权限过滤
         "/api/admin/mcp/catalog",
     }

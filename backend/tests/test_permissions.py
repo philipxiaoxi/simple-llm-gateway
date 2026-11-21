@@ -54,6 +54,23 @@ def _has_admin_dep(route: APIRoute) -> bool:
     return False
 
 
+def test_log_content_migration_requires_builtin_administrator(client, auth_headers) -> None:
+    role = _create_role(client, auth_headers, "Log reader", ["logs:view", "logs:detail"])
+    _create_user(client, auth_headers, "log-reader", role["id"])
+    reader = _login(client, "log-reader")
+    base = "/api/admin/logs/content-migration"
+    assert client.get("/api/admin/logs", headers=reader).status_code == 200
+    assert client.get(base, headers=reader).status_code == 403
+    assert client.post(f"{base}/start", headers=reader).status_code == 403
+    assert client.post(f"{base}/pause", headers=reader).status_code == 403
+    assert client.get(base, headers=auth_headers).json()["state"] == "idle"
+    cleanup = "/api/admin/logs/content-cleanup"
+    assert client.get(cleanup, headers=reader).status_code == 403
+    assert client.post(f"{cleanup}/start", headers=reader, json={"backup_confirmed": True}).status_code == 403
+    assert client.post(f"{cleanup}/pause", headers=reader).status_code == 403
+    assert client.get(cleanup, headers=auth_headers).json()["state"] == "unavailable"
+
+
 # ---------------------------------------------------------------- 目录与映射完整性
 
 

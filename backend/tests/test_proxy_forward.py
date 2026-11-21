@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -155,7 +156,8 @@ def test_openai_keeps_reasoning_on_tool_calls(client: TestClient, auth_headers: 
     assert message["tool_calls"][0]["id"] == "call_1"
 
 
-def test_openai_forward_and_log(client: TestClient, auth_headers: dict[str, str]) -> None:
+@pytest.mark.parametrize("request_content_capture", [True], indirect=True)
+def test_openai_forward_and_log(client: TestClient, auth_headers: dict[str, str], wait_for_log_content) -> None:
     key = _make_key(client, auth_headers)
     with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=FakeResponse())):
         response = client.post(
@@ -169,12 +171,16 @@ def test_openai_forward_and_log(client: TestClient, auth_headers: dict[str, str]
     logs = client.get("/api/admin/logs", headers=auth_headers)
     assert logs.status_code == 200
     assert logs.json()["items"][0]["status"] == "success"
+    wait_for_log_content()
     items = _messages(client, auth_headers, logs.json()["items"][0]["id"])["items"]
     assert items[0]["content"] == "你好"
     assert items[1]["content"] == "hi"
 
 
-def test_follow_up_without_session_creates_new_log(client: TestClient, auth_headers: dict[str, str]) -> None:
+@pytest.mark.parametrize("request_content_capture", [True], indirect=True)
+def test_follow_up_without_session_creates_new_log(
+    client: TestClient, auth_headers: dict[str, str], wait_for_log_content
+) -> None:
     key = _make_key(client, auth_headers)
     with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=FakeResponse())):
         first = client.post(
@@ -206,11 +212,15 @@ def test_follow_up_without_session_creates_new_log(client: TestClient, auth_head
     # 无 session 时不猜测会话边界，每条请求独立成一条 log
     listed = client.get("/api/admin/logs", headers=auth_headers).json()
     assert listed["total"] == 3
+    wait_for_log_content()
     totals = sorted(_messages(client, auth_headers, item["id"])["total"] for item in listed["items"])
     assert totals == [2, 2, 4]
 
 
-def test_claude_session_id_merges_same_length_turns(client: TestClient, auth_headers: dict[str, str]) -> None:
+@pytest.mark.parametrize("request_content_capture", [True], indirect=True)
+def test_claude_session_id_merges_same_length_turns(
+    client: TestClient, auth_headers: dict[str, str], wait_for_log_content
+) -> None:
     key = _make_key(client, auth_headers)
     metadata = {
         "user_id": '{"device_id":"dev","account_uuid":"","session_id":"11111111-2222-3333-4444-555555555555"}'
@@ -253,6 +263,10 @@ def test_claude_session_id_merges_same_length_turns(client: TestClient, auth_hea
     assert third.status_code == 200
     listed = client.get("/api/admin/logs", headers=auth_headers).json()
     assert listed["total"] == 2
+    wait_for_log_content()
+    assert sorted(item["turn_count"] for item in listed["items"]) == [1, 2]
+    merged = next(item for item in listed["items"] if item["turn_count"] == 2)
+    assert _messages(client, auth_headers, merged["id"])["total"] == 2
 
 
 class FakeToolResponse:
@@ -512,7 +526,8 @@ def test_follow_up_does_not_wipe_tokens(client: TestClient, auth_headers: dict[s
     assert detail["total_tokens"] == 71
 
 
-def test_stream_reconstructs_log(client: TestClient, auth_headers: dict[str, str]) -> None:
+@pytest.mark.parametrize("request_content_capture", [True], indirect=True)
+def test_stream_reconstructs_log(client: TestClient, auth_headers: dict[str, str], wait_for_log_content) -> None:
     key = _make_key(client, auth_headers)
 
     async def fake_stream(*_args, **_kwargs):
@@ -542,6 +557,7 @@ def test_stream_reconstructs_log(client: TestClient, auth_headers: dict[str, str
             text = "".join(response.iter_text())
     assert "data:" in text
     logs = client.get("/api/admin/logs", headers=auth_headers).json()
+    wait_for_log_content()
     detail = client.get(f"/api/admin/logs/{logs['items'][0]['id']}", headers=auth_headers).json()
     assert detail["stream"] is True
     items = _messages(client, auth_headers, logs["items"][0]["id"])["items"]
@@ -636,7 +652,8 @@ def test_models_endpoint_hides_disabled_and_chat_rejects(
     assert "已关闭" in rejected.json()["error"]["message"]
 
 
-def test_anthropic_followup_injects_stored_reasoning(client: TestClient, auth_headers: dict[str, str]) -> None:
+@pytest.mark.parametrize("request_content_capture", [False], indirect=True)
+def test_anthropic_followup_replays_reasoning_with_capture_disabled(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
     captured: list[list] = []
 
@@ -695,7 +712,8 @@ def test_anthropic_followup_injects_stored_reasoning(client: TestClient, auth_he
     assert assistant["reasoning_content"] == "逐步思考后决定读文件"
 
 
-def test_openai_followup_injects_stored_reasoning(client: TestClient, auth_headers: dict[str, str]) -> None:
+@pytest.mark.parametrize("request_content_capture", [False], indirect=True)
+def test_openai_followup_replays_reasoning_with_capture_disabled(client: TestClient, auth_headers: dict[str, str]) -> None:
     key = _make_key(client, auth_headers)
     captured: list[list] = []
     session_id = "sess-reason-openai-1"
@@ -746,7 +764,10 @@ def test_openai_followup_injects_stored_reasoning(client: TestClient, auth_heade
     assert assistant["reasoning_content"] == "逐步思考后决定读文件"
 
 
-def test_anthropic_stream_thinking_and_tools(client: TestClient, auth_headers: dict[str, str]) -> None:
+@pytest.mark.parametrize("request_content_capture", [True], indirect=True)
+def test_anthropic_stream_thinking_and_tools(
+    client: TestClient, auth_headers: dict[str, str], wait_for_log_content
+) -> None:
     key = _make_key(client, auth_headers)
 
     async def fake_stream(*_args, **_kwargs):
@@ -791,12 +812,14 @@ def test_anthropic_stream_thinking_and_tools(client: TestClient, auth_headers: d
     assert "text_delta" in text
     assert "tool_use" in text
     logs = client.get("/api/admin/logs", headers=auth_headers).json()
+    wait_for_log_content()
     items = _messages(client, auth_headers, logs["items"][0]["id"])["items"]
     types = [block["type"] for block in items[0]["content"]]
     assert types == ["thinking", "text", "tool_use"]
 
 
-def test_missing_reasoning_uses_placeholder(client: TestClient, auth_headers: dict[str, str]) -> None:
+@pytest.mark.parametrize("request_content_capture", [True], indirect=True)
+def test_missing_reasoning_uses_placeholder(client: TestClient, auth_headers: dict[str, str], wait_for_log_content) -> None:
     key = _make_key(client, auth_headers)
     captured: list[list] = []
 
@@ -829,6 +852,7 @@ def test_missing_reasoning_uses_placeholder(client: TestClient, auth_headers: di
     assert response.status_code == 200
     assistant = next(item for item in captured[0] if item.get("tool_calls"))
     assert assistant["reasoning_content"] == " "
+    wait_for_log_content()
     items = _messages(client, auth_headers, client.get("/api/admin/logs", headers=auth_headers).json()["items"][0]["id"])[
         "items"
     ]
@@ -909,7 +933,10 @@ def test_openai_inbound_to_anthropic_upstream_uses_anthropic_prefix(
     assert captured["extra_headers"]["x-api-key"] == "sk-up"
 
 
-def test_anthropic_upstream_stream_passthrough(client: TestClient, auth_headers: dict[str, str]) -> None:
+@pytest.mark.parametrize("request_content_capture", [True], indirect=True)
+def test_anthropic_upstream_stream_passthrough(
+    client: TestClient, auth_headers: dict[str, str], wait_for_log_content
+) -> None:
     key = _make_key(client, auth_headers, provider="anthropic_generic")
     sse = (
         b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_s","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"usage":{"input_tokens":3,"output_tokens":0}}}\n\n'
@@ -963,6 +990,7 @@ def test_anthropic_upstream_stream_passthrough(client: TestClient, auth_headers:
     assert captured["url"] == "https://api.anthropic.com/v1/messages"
     assert captured["json"]["stream"] is True
     assert captured["headers"]["x-api-key"] == "sk-up"
+    wait_for_log_content()
     items = _messages(
         client,
         auth_headers,

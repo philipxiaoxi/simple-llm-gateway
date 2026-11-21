@@ -2,10 +2,11 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { ArrowUp, RefreshCw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { LogContentMigrationCard } from '../components/LogContentMigrationCard'
 import { Pagination } from '../components/Pagination'
 import { Badge, Button, Card, Field, Input, Select } from '../components/ui'
 import { api, type LogItem } from '../lib/api'
-import { useCan } from '../lib/session'
+import { useCan, useSession } from '../lib/session'
 import {
   accountText,
   formatClock,
@@ -123,6 +124,8 @@ function SessionRow({ item }: { item: LogItem }) {
 }
 
 export function LogsPage() {
+  const { me } = useSession()
+  const isAdmin = me?.role?.builtin === true || me?.permissions.includes('*') === true
   const queryClient = useQueryClient()
   const { data: accounts = [] } = useQuery({ queryKey: ['key-accounts'], queryFn: api.keyAccounts })
   const { data: keys = [] } = useQuery({ queryKey: ['keys', 'last_used'], queryFn: () => api.keys('last_used') })
@@ -252,6 +255,8 @@ export function LogsPage() {
           刷新
         </Button>
       </div>
+
+      {me && isAdmin ? <LogContentMigrationCard key={me.username} username={me.username} /> : null}
 
       <Card className="grid grid-cols-2 gap-3 lg:flex lg:flex-nowrap lg:items-end">
         <div className="col-span-2 min-w-0 lg:min-w-48 lg:flex-1">

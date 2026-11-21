@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -335,7 +336,8 @@ def test_responses_stream_collector() -> None:
 # ---------------------------------------------------------------- end to end
 
 
-def test_responses_endpoint_non_stream(client: TestClient, auth_headers: dict[str, str]) -> None:
+@pytest.mark.parametrize("request_content_capture", [True], indirect=True)
+def test_responses_endpoint_non_stream(client: TestClient, auth_headers: dict[str, str], wait_for_log_content) -> None:
     key = _make_key(client, auth_headers)
     captured: dict = {}
 
@@ -369,12 +371,14 @@ def test_responses_endpoint_non_stream(client: TestClient, auth_headers: dict[st
 
     log_id = _log_id(client, auth_headers)
     assert client.get(f"/api/admin/logs/{log_id}", headers=auth_headers).json()["protocol"] == "openai_responses"
+    wait_for_log_content()
     items = _messages(client, auth_headers, log_id)["items"]
     assert items[0]["content"] == "你好，世界"
     assert items[1]["content"] == "hi"
 
 
-def test_responses_endpoint_stream(client: TestClient, auth_headers: dict[str, str]) -> None:
+@pytest.mark.parametrize("request_content_capture", [True], indirect=True)
+def test_responses_endpoint_stream(client: TestClient, auth_headers: dict[str, str], wait_for_log_content) -> None:
     key = _make_key(client, auth_headers)
 
     async def fake_stream(*_args, **_kwargs):
@@ -433,6 +437,7 @@ def test_responses_endpoint_stream(client: TestClient, auth_headers: dict[str, s
     assert detail["stream"] is True
     assert detail["prompt_tokens"] == 2
     assert detail["completion_tokens"] == 2
+    wait_for_log_content()
     items = _messages(client, auth_headers, log_id)["items"]
     assert items[0]["content"] == "你好"
 
@@ -691,7 +696,9 @@ def test_classify_upstream_error() -> None:
     assert classify_upstream_error(FakeAuthError("personal-team-blocked:spending-limit"))[0] == 502
 
 
-def test_responses_follow_up_without_session_creates_new_log(client: TestClient, auth_headers: dict[str, str]) -> None:
+@pytest.mark.parametrize("request_content_capture", [True], indirect=True)
+def test_responses_follow_up_without_session_creates_new_log(client: TestClient, auth_headers: dict[str, str],
+                                                           wait_for_log_content) -> None:
     key = _make_key(client, auth_headers)
     with patch("app.services.proxy.call_responses", new=AsyncMock(return_value=FakeResponsesResponse())):
         first = client.post(
@@ -723,7 +730,7 @@ def test_responses_follow_up_without_session_creates_new_log(client: TestClient,
     # 无 session 时不猜测会话边界，每条请求独立成一条 log
     listed = client.get("/api/admin/logs", headers=auth_headers).json()
     assert listed["total"] == 3
+    wait_for_log_content()
     totals = sorted(_messages(client, auth_headers, item["id"])["total"] for item in listed["items"])
     assert totals == [2, 2, 4]
-
 

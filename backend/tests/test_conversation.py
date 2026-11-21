@@ -11,7 +11,7 @@ from app.services.conversation import (
     new_messages_to_store,
 )
 from app.services.proxy import save_log
-from app.services.reasoning import load_reasoning_map
+from app.services.reasoning import dump_reasoning_json, load_reasoning_map
 
 
 def test_extract_claude_code_session_id() -> None:
@@ -68,6 +68,8 @@ def test_continuation_log_is_scoped_to_selected_account(client, auth_headers) ->
             latency_ms=1,
             request_body=request_body,
             response_body=response_body,
+            request_headers={"Authorization": "Bearer secret"},
+            reasoning_map={"call-1": "reasoning"},
         )
         second_log = save_log(
             session,
@@ -87,6 +89,12 @@ def test_continuation_log_is_scoped_to_selected_account(client, auth_headers) ->
         session.commit()
         assert first_log.id != second_log.id
         assert {first_log.account_id, second_log.account_id} == {first["id"], second["id"]}
+        assert first_log.session_key == second_log.session_key == "same-session"
+        assert first_log.request_body is None
+        assert first_log.response_body is None
+        assert first_log.request_headers is None
+        assert first_log.reasoning_json is None
+        assert session.scalar(select(func.count()).select_from(RequestLogMessage)) == 0
     finally:
         session.close()
 
@@ -155,7 +163,7 @@ def test_continuation_log_not_reused_across_days(client) -> None:
         session.close()
 
 
-def test_reasoning_map_is_scoped_to_selected_account(client, auth_headers) -> None:
+def test_legacy_reasoning_map_is_scoped_to_selected_account(client, auth_headers) -> None:
     first = client.post(
         "/api/admin/accounts",
         headers=auth_headers,
@@ -175,7 +183,7 @@ def test_reasoning_map_is_scoped_to_selected_account(client, auth_headers) -> No
     session = get_session_factory()()
     try:
         for account_id, reasoning in ((first["id"], "账号一推理"), (second["id"], "账号二推理")):
-            save_log(
+            log = save_log(
                 session,
                 account_id=account_id,
                 api_key_id=created["id"],
@@ -189,8 +197,8 @@ def test_reasoning_map_is_scoped_to_selected_account(client, auth_headers) -> No
                 latency_ms=1,
                 request_body=request_body,
                 response_body={"choices": [{"message": {"role": "assistant", "content": "好"}}]},
-                reasoning_map={"call_shared": reasoning},
             )
+            log.reasoning_json = dump_reasoning_json({"call_shared": reasoning})
         session.commit()
         assert load_reasoning_map(session, created["id"], first["id"], "shared-session") == {
             "call_shared": "账号一推理"
@@ -276,7 +284,7 @@ def test_load_reasoning_map_without_session_is_empty() -> None:
         session.close()
 
 
-def test_append_log_messages_rolls_window_at_max(client) -> None:
+def test_legacy_append_log_messages_rolls_window_at_max(client) -> None:
     import json
 
     session = get_session_factory()()

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -23,7 +25,26 @@ def _empty_model_catalog(monkeypatch) -> None:
 
 
 @pytest.fixture()
-def client(tmp_path, monkeypatch) -> TestClient:
+def request_content_capture(request: pytest.FixtureRequest) -> bool | None:
+    return getattr(request, "param", None)
+
+
+@pytest.fixture()
+def wait_for_log_content() -> Callable[[], None]:
+    from app.services.log_content import _queue
+
+    def wait() -> None:
+        # Use Queue.join's completion condition with a timeout for failed workers.
+        with _queue.all_tasks_done:
+            assert _queue.all_tasks_done.wait_for(lambda: _queue.unfinished_tasks == 0, timeout=5), (
+                "Request content worker did not drain the queue"
+            )
+
+    return wait
+
+
+@pytest.fixture()
+def client(tmp_path, monkeypatch, request_content_capture) -> TestClient:
     monkeypatch.setenv("APP_SECRET_KEY", "unit-test-secret-key")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ADMIN_PASSWORD", "admin123")
@@ -31,6 +52,8 @@ def client(tmp_path, monkeypatch) -> TestClient:
     monkeypatch.setenv("APP_BASE_URL", "http://testserver")
     monkeypatch.setenv("LOCAL_AGENT_TOKEN", "unit-test-local-agent-token")
     monkeypatch.setenv("MCP_CHROMA_PATH", str(tmp_path / "chroma"))
+    if request_content_capture is not None:
+        monkeypatch.setenv("REQUEST_CONTENT_CAPTURE_ENABLED", str(request_content_capture).lower())
 
     from app.config import reset_settings
     from app.db import reset_db_runtime

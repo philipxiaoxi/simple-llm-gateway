@@ -233,7 +233,7 @@ function LogContentField({
           <span className="text-xs text-mist">会话消息、思考内容与请求头</span>
         </div>
         <div className="text-xs text-mist">
-          关闭后只保留模型、Token、耗时、状态等统计元数据；已有历史记录不受影响。
+          服务端开启正文采集后，此开关决定是否异步保存本 Key 的正文；已有历史记录不受影响。
         </div>
       </div>
     </Field>

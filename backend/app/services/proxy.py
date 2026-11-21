@@ -20,7 +20,7 @@ from app.errors import protocol_error
 from app.models import ApiKey, RequestLog, UpstreamAccount
 from app.providers import get_provider
 from app.services.client_meta import client_meta, lookup_ip_location
-from app.services.headers_redact import dump_headers
+from app.services.log_content import enqueue_content, note_dropped_content, remember_replay, replay_for_calls
 from app.services.key_models import ModelResolution, build_model_catalog
 from app.services.model_caps import serialize_record
 from app.services.bridge import (
@@ -57,24 +57,16 @@ from app.services.bridge import (
     _passthrough_keys,
 )
 from app.services.conversation import (
-    append_log_messages,
     conversation_fingerprint,
-    extract_assistant_message,
-    extract_request_messages,
     extract_session_key,
     find_continuation_log,
-    load_log_messages_head,
-    load_log_messages_tail,
-    new_messages_to_store,
 )
 from app.services.credentials import CredentialError
 from app.services.header_spoof import spoof_identity
 from app.services.reasoning import (
-    dump_reasoning_json,
     inject_reasoning_into_messages,
-    load_reasoning_map,
     merge_reasoning_maps,
-    parse_reasoning_json,
+    tool_call_ids_from_message,
     reasoning_map_from_anthropic_content,
     reasoning_map_from_anthropic_messages,
     reasoning_map_from_messages,
@@ -143,7 +135,7 @@ def _finalize_request_log(
             stream=stream,
             status=status,
             http_status=http_status,
-            error_message=error_text,
+            error_message="Upstream request failed" if error_text else None,
             usage=usage,
             latency_ms=elapsed_ms(started),
             request_body=request_body,
@@ -155,15 +147,23 @@ def _finalize_request_log(
             peer=peer,
         )
         stored_key = session.get(ApiKey, api_key_id)
+        capture = get_settings().request_content_capture_enabled and stored_key is not None and stored_key.log_content_enabled
         if stored_key is not None:
             # last_used_at 按分钟节流：高频请求下避免每请求都 UPDATE 一行、放大 SQLite 写锁
             now = utcnow()
             last_used = stored_key.last_used_at
             if last_used is None or (now - last_used).total_seconds() >= 60:
                 stored_key.last_used_at = now
+        log_id, session_key = log.id, log.session_key
         session.commit()
     finally:
         session.close()
+    remember_replay(api_key_id, account_id, session_key, reasoning_map)
+    if capture:
+        if response_body is ...:
+            note_dropped_content()
+        else:
+            enqueue_content(log_id, protocol, request_body, response_body, request_headers, reasoning_map)
 
 
 async def _finalize_request_log_async(
@@ -344,7 +344,6 @@ def save_log(
     session_key = extract_session_key(request_body if isinstance(request_body, dict) else None, request_headers)
     meta = client_meta(request_headers, peer=peer)
     stored_key = db.get(ApiKey, api_key_id)
-    record_content = stored_key is None or bool(stored_key.log_content_enabled)
     existing = find_continuation_log(
         db,
         account_id=account_id,
@@ -352,8 +351,6 @@ def save_log(
         protocol=protocol,
         session_key=session_key,
     )
-    inbound = extract_request_messages(request_body) if record_content and isinstance(request_body, dict) else []
-    assistant = extract_assistant_message(protocol, response_body) if record_content else None
     if existing is not None:
         existing.model = model
         if model_resolution is not None:
@@ -376,23 +373,6 @@ def save_log(
         if session_key:
             existing.session_key = session_key
         _apply_client_meta(existing, meta)
-        if record_content:
-            stored_headers = dump_headers(request_headers)
-            if stored_headers:
-                existing.request_headers = stored_headers
-            if reasoning_map:
-                existing.reasoning_json = dump_reasoning_json(
-                    merge_reasoning_maps(parse_reasoning_json(existing.reasoning_json), reasoning_map)
-                )
-            # 热路径只读最后一条已存消息；头部前缀匹配作为兜底按需加载
-            tail = load_log_messages_tail(db, existing.id, 1)
-            to_store = new_messages_to_store(
-                tail,
-                inbound,
-                assistant,
-                head_loader=lambda: load_log_messages_head(db, existing.id, len(inbound)),
-            )
-            append_log_messages(db, existing.id, to_store)
         db.flush()
         return existing
     stored_account = db.get(UpstreamAccount, account_id)
@@ -420,21 +400,13 @@ def save_log(
         created_at=now,
         updated_at=now,
         session_key=session_key,
-        reasoning_json=dump_reasoning_json(reasoning_map or {}) if record_content else None,
         client_ip=meta["client_ip"],
         user_agent=meta["user_agent"],
         client_name=meta["client_name"],
         ip_location=ip_location,
-        request_headers=dump_headers(request_headers) if record_content else None,
     )
     db.add(log)
     db.flush()
-    if record_content:
-        to_store = list(inbound)
-        if assistant is not None:
-            to_store.append(assistant)
-        append_log_messages(db, log.id, to_store)
-        db.flush()
     return log
 
 
@@ -528,7 +500,10 @@ async def handle_chat(
     session_key = extract_session_key(body, request_headers)
     inbound_reasoning = reasoning_map_from_messages(messages)
     stored_reasoning = merge_reasoning_maps(
-        load_reasoning_map(db, api_key.id, account.id, session_key),
+        replay_for_calls(api_key.id, account.id, session_key, (
+            call_id for message in messages if isinstance(message, dict) and message.get("role") == "assistant"
+            for call_id in tool_call_ids_from_message(message)
+        )),
         inbound_reasoning,
     )
     account_snapshot = {
@@ -723,11 +698,11 @@ async def _stream_response(
                         for event in responses_translator.feed(chunk):
                             yield event
                         continue
-                    collector.feed(chunk)
                     if protocol == "anthropic_messages":
                         for event in translator.feed(chunk):
                             yield event
                     else:
+                        collector.feed(chunk)
                         yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode()
             if protocol == "anthropic_messages":
                 for event in translator.finish():
@@ -1005,9 +980,14 @@ def _stream_anthropic_passthrough(
     account_id = account.id
     api_key_id = api_key.id
     model = str(body.get("model") or "")
+    capture = get_settings().request_content_capture_enabled and api_key.log_content_enabled
 
     async def event_source() -> AsyncIterator[bytes]:
         collected = bytearray()
+        line_buffer = bytearray()
+        skip_line = False
+        capture_overflow = False
+        native_usage = {}
         status = "success"
         http_status = 200
         error_text: str | None = None
@@ -1032,11 +1012,43 @@ def _stream_anthropic_passthrough(
                         yield sse_event("error", payload if payload.get("type") == "error" else {"type": "error", "error": payload})
                     else:
                         async for chunk in response.aiter_bytes():
-                            collected.extend(chunk)
+                            if capture and not capture_overflow:
+                                if len(collected) + len(chunk) <= 256 * 1024:
+                                    collected.extend(chunk)
+                                else:
+                                    capture_overflow = True
+                                    collected.clear()
                             yield chunk
-                        sse_text = collected.decode("utf-8", errors="replace")
-                        response_body = reconstruct_anthropic_from_sse(sse_text, model)
-                        usage = extract_usage(response_body)
+                            start = 0
+                            while start < len(chunk):
+                                end = chunk.find(b"\n", start)
+                                stop = len(chunk) if end == -1 else end
+                                if not skip_line and len(line_buffer) + stop - start <= 32 * 1024:
+                                    line_buffer.extend(memoryview(chunk)[start:stop])
+                                else:
+                                    skip_line = True
+                                if end == -1:
+                                    break
+                                if not skip_line and line_buffer.startswith(b"data:") and (
+                                    b'"message_start"' in line_buffer or b'"message_delta"' in line_buffer
+                                ):
+                                    try:
+                                        event = json.loads(line_buffer[5:].strip())
+                                        event_type = event.get("type")
+                                        if event_type == "message_start":
+                                            native_usage.update((event.get("message") or {}).get("usage") or {})
+                                        elif event_type == "message_delta":
+                                            native_usage.update(event.get("usage") or {})
+                                    except (ValueError, AttributeError, TypeError):
+                                        pass
+                                line_buffer.clear()
+                                skip_line = False
+                                start = end + 1
+                        usage = extract_usage({"usage": native_usage})
+                        if capture_overflow:
+                            response_body = ...
+                        elif collected:
+                            response_body = bytes(collected)
         except Exception as error:
             status = "error"
             http_status = 504 if "timeout" in str(error).lower() else 502

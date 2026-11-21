@@ -46,31 +46,32 @@ def test_seed_rejects_example_password(tmp_path, monkeypatch) -> None:
         reset_settings()
 
 
-def test_legacy_log_migration_preserves_log_metadata(tmp_path) -> None:
-    from app.db import _migrate_legacy_logs
-
+def test_startup_preserves_legacy_log_bodies(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "legacy.db"))
+    reset_settings()
+    reset_db_runtime()
     engine = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                "CREATE TABLE request_logs ("
-                "id INTEGER PRIMARY KEY, request_body TEXT, response_body TEXT, status TEXT, http_status INTEGER)"
-            )
-        )
-        connection.execute(
-            text(
-                "INSERT INTO request_logs (id, request_body, response_body, status, http_status) "
-                "VALUES (1, '{\"prompt\":\"secret\"}', '{\"answer\":\"ok\"}', 'success', 200)"
-            )
-        )
+    from app.models import RequestLog
 
-    _migrate_legacy_logs(engine)
-
-    with engine.connect() as connection:
-        row = connection.execute(
-            text("SELECT id, request_body, response_body, status, http_status FROM request_logs")
-        ).one()
-    assert row == (1, None, None, "success", 200)
+    try:
+        RequestLog.__table__.create(engine)
+        with engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO request_logs (id, account_id, account_source, protocol, stream, status,
+                    http_status, latency_ms, created_at, request_body, response_body)
+                VALUES (1, 1, 'upstream', 'openai', 0, 'success', 200, 20, CURRENT_TIMESTAMP,
+                    '{"prompt":"secret"}', '{"answer":"ok"}')
+            """))
+        init_db()
+        with engine.connect() as connection:
+            row = connection.execute(
+                text("SELECT id, request_body, response_body, status, http_status FROM request_logs")
+            ).one()
+        assert row == (1, '{"prompt":"secret"}', '{"answer":"ok"}', "success", 200)
+    finally:
+        engine.dispose()
+        reset_db_runtime()
+        reset_settings()
 
 
 def test_legacy_api_keys_get_log_content_column_after_rebuild(tmp_path, monkeypatch) -> None:

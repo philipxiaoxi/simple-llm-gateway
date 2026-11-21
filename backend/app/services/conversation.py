@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import delete, func, select
-from sqlalchemy.orm import Session, load_only
+from sqlalchemy.orm import Session, defer, load_only
 
 from app.clock import shanghai_day_start_utc, utcnow
 from app.models import RequestLog, RequestLogMessage
@@ -423,6 +423,8 @@ def find_continuation_log(
     day_start = shanghai_day_start_utc()
     return db.scalar(
         select(RequestLog)
+        .options(defer(RequestLog.request_body), defer(RequestLog.response_body),
+                 defer(RequestLog.request_headers), defer(RequestLog.reasoning_json))
         .where(
             RequestLog.account_id == account_id,
             RequestLog.api_key_id == api_key_id,

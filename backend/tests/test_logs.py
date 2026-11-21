@@ -1,6 +1,8 @@
 import json
+from threading import Event
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -11,6 +13,42 @@ class FakeResponse:
             "choices": [{"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         }
+
+
+@pytest.mark.parametrize("request_content_capture", [True], indirect=True)
+def test_content_writer_can_stall_without_blocking_json_or_sse(client, auth_headers, monkeypatch):
+    from app.services import log_content
+
+    account = client.post("/api/admin/accounts", headers=auth_headers,
+                          json={"name": "DS", "provider": "deepseek", "api_key": "sk-up"}).json()
+    key = client.post("/api/admin/keys", headers=auth_headers,
+                      json={"name": "k", "account_id": account["id"]}).json()["key"]
+    entered, release = Event(), Event()
+
+    def blocked(*_):
+        entered.set()
+        assert release.wait(8), "Response waited for the content writer"
+
+    monkeypatch.setattr(log_content, "_write_content", blocked)
+    headers = {"Authorization": f"Bearer {key}"}
+    body = {"model": "deepseek-chat", "messages": [{"role": "user", "content": "hello"}]}
+
+    async def chunks():
+        yield {"choices": [{"delta": {"content": "ok"}, "finish_reason": "stop"}],
+               "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}}
+
+    try:
+        with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=FakeResponse())):
+            response = client.post("/v1/chat/completions", headers=headers, json=body)
+        assert response.status_code == 200 and entered.wait(2)
+        with patch("app.services.proxy.call_chat", new=AsyncMock(return_value=chunks())):
+            response = client.post("/v1/chat/completions", headers=headers, json={**body, "stream": True})
+        assert response.status_code == 200 and "data: [DONE]" in response.text
+        assert not release.is_set() and log_content._queue.unfinished_tasks >= 2
+        logs = client.get("/api/admin/logs", headers=auth_headers).json()
+        assert logs["total"] == 2 and all(row["total_tokens"] == 2 for row in logs["items"])
+    finally:
+        release.set()
 
 
 def test_dashboard_counts(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -45,6 +83,23 @@ def test_dashboard_counts(client: TestClient, auth_headers: dict[str, str]) -> N
     assert body["agent_online_count"] == 0
     assert body["leaderboard_top"] == []
     assert body["benchmark_speed_top"] == []
+
+
+def test_details_are_readable_while_archive_is_being_created(client, auth_headers):
+    from app.db import get_session_factory
+    from app.models import RequestLog
+    from app.services.log_content import archive_path
+
+    with get_session_factory()() as session:
+        log = RequestLog(account_id=1, protocol="openai_chat", status="success", http_status=200,
+                         request_body='{"legacy": true}')
+        session.add(log)
+        session.flush()
+        log_id = log.id
+        session.commit()
+    archive_path().touch(exist_ok=False)
+    detail = client.get(f"/api/admin/logs/{log_id}?include_bodies=true", headers=auth_headers)
+    assert detail.status_code == 200 and detail.json()["request_body"] == {"legacy": True}
 
 
 def test_dashboard_merges_request_log_scalar_queries(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -105,7 +160,10 @@ def test_logs_are_paginated(client: TestClient, auth_headers: dict[str, str]) ->
     assert body["items"][0]["account_source"] == "upstream"
 
 
-def test_log_messages_are_paginated_newest_first(client: TestClient, auth_headers: dict[str, str]) -> None:
+@pytest.mark.parametrize("request_content_capture", [True], indirect=True)
+def test_log_messages_are_paginated_newest_first(
+    client: TestClient, auth_headers: dict[str, str], wait_for_log_content
+) -> None:
     account = client.post(
         "/api/admin/accounts",
         headers=auth_headers,
@@ -124,6 +182,7 @@ def test_log_messages_are_paginated_newest_first(client: TestClient, auth_header
             json={"model": "deepseek-chat", "messages": history},
         )
     log_id = client.get("/api/admin/logs", headers=auth_headers).json()["items"][0]["id"]
+    wait_for_log_content()
     header = client.get(f"/api/admin/logs/{log_id}", headers=auth_headers, params={"include_bodies": False})
     assert header.status_code == 200
     assert header.json()["request_body"] is None
@@ -139,7 +198,8 @@ def test_log_messages_are_paginated_newest_first(client: TestClient, auth_header
     assert body["total"] == 6
     assert body["page"] == 1
     assert [item["role"] for item in body["items"]] == ["assistant", "user", "user"]
-    assert [item["seq"] for item in body["items"]] == [5, 4, 3]
+    newest_seq = body["items"][0]["seq"]
+    assert [item["seq"] for item in body["items"]] == [newest_seq, newest_seq - 1, newest_seq - 2]
     assert body["items"][0]["content_preview"] == "ok"
     assert body["items"][0]["content_truncated"] is False
     assert [item["content_preview"] for item in body["items"][1:]] == ["turn-4", "turn-3"]
@@ -150,10 +210,12 @@ def test_log_messages_are_paginated_newest_first(client: TestClient, auth_header
         params={"page": 2, "page_size": 3},
     )
     assert [item["content_preview"] for item in second.json()["items"]] == ["turn-2", "turn-1", "turn-0"]
+    assert [item["seq"] for item in second.json()["items"]] == [newest_seq - 3, newest_seq - 4, newest_seq - 5]
 
 
+@pytest.mark.parametrize("request_content_capture", [True], indirect=True)
 def test_log_message_detail_range_export_and_reasoning(
-    client: TestClient, auth_headers: dict[str, str]
+    client: TestClient, auth_headers: dict[str, str], wait_for_log_content
 ) -> None:
     account = client.post(
         "/api/admin/accounts",
@@ -173,6 +235,7 @@ def test_log_message_detail_range_export_and_reasoning(
             json={"model": "deepseek-chat", "messages": history},
         )
     log_id = client.get("/api/admin/logs", headers=auth_headers).json()["items"][0]["id"]
+    wait_for_log_content()
 
     # 列表默认只带预览，不带全文
     listed = client.get(
@@ -180,22 +243,23 @@ def test_log_message_detail_range_export_and_reasoning(
     ).json()
     assert "content" not in listed["items"][0] or listed["items"][0]["content"] is None
     assert listed["items"][0]["content_length"] >= 0
+    first_seq = listed["items"][-1]["seq"]
 
     # 范围 + detail 返回全文
     ranged = client.get(
         f"/api/admin/logs/{log_id}/messages",
         headers=auth_headers,
-        params={"from_seq": 0, "to_seq": 1, "detail": True},
+        params={"from_seq": first_seq, "to_seq": first_seq + 1, "detail": True},
     ).json()
     assert ranged["total"] == 2
-    assert {item["seq"] for item in ranged["items"]} == {0, 1}
-    assert all(item["content"] is not None for item in ranged["items"])
+    assert [item["seq"] for item in ranged["items"]] == [first_seq + 1, first_seq]
+    assert [item["content"] for item in ranged["items"]] == ["turn-1", "turn-0"]
 
     # 单条全文端点
-    single = client.get(f"/api/admin/logs/{log_id}/messages/0", headers=auth_headers)
+    single = client.get(f"/api/admin/logs/{log_id}/messages/{first_seq}", headers=auth_headers)
     assert single.status_code == 200
     assert single.json()["content"] == "turn-0"
-    assert client.get(f"/api/admin/logs/{log_id}/messages/999", headers=auth_headers).status_code == 404
+    assert client.get(f"/api/admin/logs/{log_id}/messages/{first_seq + 4}", headers=auth_headers).status_code == 404
 
     # 导出端点
     exported = client.get(f"/api/admin/logs/{log_id}/export", headers=auth_headers)
@@ -210,11 +274,11 @@ def test_log_message_detail_range_export_and_reasoning(
     outline = client.get(f"/api/admin/logs/{log_id}/turns", headers=auth_headers).json()["items"]
     assert len(outline) == 3
     assert outline[0]["index"] == 1
-    assert outline[0]["anchor_seq"] == 0
+    assert outline[0]["anchor_seq"] == first_seq
     assert outline[0]["message_count"] == 1
     assert outline[2]["index"] == 3
-    assert outline[2]["anchor_seq"] == 2
-    assert outline[2]["to_seq"] == 3
+    assert outline[2]["anchor_seq"] == first_seq + 2
+    assert outline[2]["to_seq"] == first_seq + 3
     assert outline[2]["message_count"] == 2
 
     # 详情：模型解析链按请求时记录（无模型目录时只记录请求名）+ 截断标记
@@ -253,7 +317,7 @@ def _make_raw_log(session, **kwargs) -> int:
     return int(log.id)
 
 
-def test_rolling_window_keeps_system_head_and_latest(client: TestClient, monkeypatch) -> None:
+def test_legacy_rolling_window_keeps_system_head_and_latest(client: TestClient, monkeypatch) -> None:
     """滚动窗口：超上限后保留头部系统消息 + 最新 N 条，最旧普通消息被清理。"""
     import json
 
@@ -312,38 +376,24 @@ def test_rolling_window_keeps_system_head_and_latest(client: TestClient, monkeyp
         session.close()
 
 
-def test_message_dedup_without_rolling(client: TestClient) -> None:
-    """未滚动时续写去重行为保持：全量重发不再入库，新消息只补最后一条。"""
+def test_live_message_dedup_without_rolling(client: TestClient, auth_headers: dict[str, str]) -> None:
     from app.db import get_session_factory
-    from app.services.conversation import (
-        append_log_messages,
-        load_log_messages_head,
-        load_log_messages_tail,
-        new_messages_to_store,
-    )
+    from app.services.log_content import _write_content
 
-    session = get_session_factory()()
-    try:
+    with get_session_factory()() as session:
         log_id = _make_raw_log(session)
-        append_log_messages(session, log_id, [{"role": "system", "content": "sys-head"}])
-        append_log_messages(session, log_id, [{"role": "user", "content": "u-0"}, {"role": "assistant", "content": "a-0"}])
         session.commit()
 
-        # 全量重发：无新增
-        inbound = [
-            {"role": "system", "content": "sys-head"},
-            {"role": "user", "content": "u-0"},
-            {"role": "assistant", "content": "a-0"},
-        ]
-        head = load_log_messages_head(session, log_id, len(inbound))
-        tail = load_log_messages_tail(session, log_id, 1)
-        assert new_messages_to_store(tail, inbound, None, head_loader=lambda: head) == []
+    initial = [{"role": "system", "content": "sys-head"}, {"role": "user", "content": "u-0"}]
+    assistant = {"role": "assistant", "content": "a-0"}
+    response = {"choices": [{"message": assistant}]}
+    _write_content(log_id, "openai_chat", {"messages": initial}, response, None, None)
+    _write_content(log_id, "openai_chat", {"messages": initial}, response, None, None)
 
-        # 追加一条新用户消息
-        inbound = inbound[:-1] + [{"role": "user", "content": "u-1"}]
-        head = load_log_messages_head(session, log_id, len(inbound))
-        tail = load_log_messages_tail(session, log_id, 1)
-        to_store = new_messages_to_store(tail, inbound, None, head_loader=lambda: head)
-        assert len(to_store) == 1 and to_store[0]["content"] == "u-1"
-    finally:
-        session.close()
+    inbound = initial + [assistant, {"role": "user", "content": "u-1"}]
+    _write_content(log_id, "openai_chat", {"messages": inbound}, None, None, None)
+    exported = client.get(f"/api/admin/logs/{log_id}/export", headers=auth_headers)
+    assert exported.status_code == 200
+    assert [(item["role"], item["content"]) for item in exported.json()["messages"]] == [
+        (message["role"], message["content"]) for message in inbound
+    ]

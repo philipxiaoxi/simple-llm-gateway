@@ -84,6 +84,9 @@ from app.services.client_meta import client_meta
 from app.services.gateway_rate_limit import GatewayRateLimitMiddleware
 from app.services.mcp_logs import CallMeta, reset_call_meta, set_call_meta
 from app.services.permission_guard import require_admin_permission
+from app.services.log_content import content_worker
+from app.services.log_content_cleanup import cleanup_shutdown
+from app.services.log_content_migration import migration_shutdown
 from app.services.security_audit import SecurityAuditMiddleware, audit_worker
 from app.services.security_retention import retention_loop as security_retention_loop
 from app.services.site_retention import retention_loop as site_retention_loop
@@ -178,8 +181,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         background_tasks.append(asyncio.create_task(audit_worker()))
         background_tasks.append(asyncio.create_task(security_retention_loop()))
         try:
-            yield
+            with content_worker():
+                yield
         finally:
+            await asyncio.to_thread(migration_shutdown)
+            await asyncio.to_thread(cleanup_shutdown)
             for task in background_tasks:
                 task.cancel()
             for task in background_tasks:

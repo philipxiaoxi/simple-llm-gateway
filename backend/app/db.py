@@ -70,7 +70,6 @@ def get_session_factory() -> sessionmaker[Session]:
 
 def init_db() -> None:
     engine = get_engine()
-    _migrate_legacy_logs(engine)
     Base.metadata.create_all(bind=engine)
     # 旧库会重建 api_keys 表（account_id 改为可空），必须在补列之前完成，
     # 否则重建会丢掉 _ensure_columns 刚落下的限速与日志开关字段。
@@ -149,28 +148,6 @@ def _ensure_knowledge_fts(engine: Engine) -> None:
         if doc_columns:
             if "content_hash" not in doc_columns:
                 connection.execute(text("ALTER TABLE knowledge_documents ADD COLUMN content_hash VARCHAR(64)"))
-
-
-def _migrate_legacy_logs(engine: Engine) -> None:
-    """旧版本把消息存在 request_logs.request_body，新版本拆到 request_log_messages。
-
-    仅当 request_log_messages 表尚不存在（旧库首次升级）时清除已被新表替代的正文，
-    保留可用于审计和统计的历史日志元数据。
-    """
-    with engine.begin() as connection:
-        tables = {
-            row[0]
-            for row in connection.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            )
-        }
-        if "request_log_messages" in tables or "request_logs" not in tables:
-            return
-        has_old_bodies = connection.execute(
-            text("SELECT 1 FROM request_logs WHERE request_body IS NOT NULL OR response_body IS NOT NULL LIMIT 1")
-        ).first() is not None
-        if has_old_bodies:
-            connection.execute(text("UPDATE request_logs SET request_body = NULL, response_body = NULL"))
 
 
 def _ensure_columns(engine: Engine) -> None:
@@ -1142,6 +1119,7 @@ def _ensure_request_logs_have_no_parent_fks(engine: Engine) -> None:
                 response_body TEXT,
                 session_key VARCHAR(128),
                 reasoning_json TEXT,
+                request_headers TEXT,
                 created_at DATETIME NOT NULL,
                 updated_at DATETIME
             )
@@ -1152,7 +1130,7 @@ def _ensure_request_logs_have_no_parent_fks(engine: Engine) -> None:
             INSERT INTO request_logs_new (
                 id, account_id, account_name, account_source, api_key_id, api_key_name, protocol, model, stream, status,
                 http_status, error_message, prompt_tokens, completion_tokens, total_tokens,
-                latency_ms, request_body, response_body, session_key, reasoning_json,
+                latency_ms, request_body, response_body, session_key, reasoning_json, request_headers,
                 created_at, updated_at
             )
             SELECT
@@ -1176,6 +1154,7 @@ def _ensure_request_logs_have_no_parent_fks(engine: Engine) -> None:
                 request_logs.response_body,
                 request_logs.session_key,
                 request_logs.reasoning_json,
+                request_logs.request_headers,
                 request_logs.created_at,
                 request_logs.updated_at
             FROM request_logs

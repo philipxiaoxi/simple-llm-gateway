@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "changeme"
     database_path: str = "data/gateway.db"
+    request_content_path: str = ""
+    request_content_capture_enabled: bool = False
+    request_content_retention_days: int = 7
     app_base_url: str = "http://127.0.0.1:8000"
     request_timeout_seconds: int = 120
     # 额度/余额查询走独立短超时：上游不可达时管理页要快速失败，而不是挂到 request_timeout

@@ -378,6 +378,41 @@ export type ReasoningSummaryItem = {
   preview: string
 }
 
+export type LogContentMigrationAction = 'start' | 'pause'
+
+export type LogContentMigration = {
+  state: 'idle' | 'scanning' | 'copying' | 'verifying' | 'paused' | 'failed' | 'completed'
+  phase: string | null
+  total_bytes: number
+  total_rows: number
+  scanned_bytes: number
+  scanned_rows: number
+  copied_bytes: number
+  copied_rows: number
+  verified_bytes: number
+  verified_rows: number
+  elapsed_seconds: number
+  bytes_per_second: number | null
+  remaining_seconds: number | null
+  estimated_finish_at: string | null
+  error: string | null
+  free_bytes?: number | null
+  dropped_content?: number
+}
+
+export type LogContentCleanup = {
+  state: 'unavailable' | 'idle' | 'cleaning' | 'paused' | 'failed' | 'completed'
+  total_rows: number
+  total_bytes: number
+  cleaned_rows: number
+  cleaned_bytes: number
+  elapsed_seconds: number
+  remaining_seconds: number | null
+  estimated_finish_at: string | null
+  error: string | null
+  reusable_bytes: number | null
+}
+
 export type LogItem = {
   id: number
   account_id: number
@@ -1177,6 +1212,18 @@ export const api = {
     const suffix = params.toString() ? `?${params}` : ''
     return request<{ items: LogItem[]; total: number; page: number; page_size: number }>(`/api/admin/logs${suffix}`)
   },
+  logContentMigration: (signal?: AbortSignal) =>
+    request<LogContentMigration>('/api/admin/logs/content-migration', { signal }),
+  updateLogContentMigration: (action: LogContentMigrationAction) =>
+    request<LogContentMigration>(`/api/admin/logs/content-migration/${action}`, { method: 'POST' }),
+  logContentCleanup: (signal?: AbortSignal) =>
+    request<LogContentCleanup>('/api/admin/logs/content-cleanup', { signal }),
+  startLogContentCleanup: (backupConfirmed: true) =>
+    request<LogContentCleanup>('/api/admin/logs/content-cleanup/start', {
+      method: 'POST', body: JSON.stringify({ backup_confirmed: backupConfirmed }),
+    }),
+  pauseLogContentCleanup: () =>
+    request<LogContentCleanup>('/api/admin/logs/content-cleanup/pause', { method: 'POST' }),
   log: (id: number, includeBodies = false) =>
     request<LogItem>(`/api/admin/logs/${id}?include_bodies=${includeBodies ? 'true' : 'false'}`),
   logMessages: (
