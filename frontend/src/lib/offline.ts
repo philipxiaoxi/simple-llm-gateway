@@ -121,7 +121,7 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`
 }
 
-async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function requestJson<T>(path: string, init: RequestInit = {}, responseUrl?: (url: string) => void): Promise<T> {
   const headers = new Headers(init.headers)
   // 安全中心据此区分正规前端请求与直接探测
   headers.set('X-GW-Client', 'web')
@@ -149,6 +149,7 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
     }
     throw new ApiError(response.status, message)
   }
+  responseUrl?.(response.url)
   return response.json() as Promise<T>
 }
 
@@ -220,15 +221,38 @@ export function createOfflineApi(base: string) {
 
     cache: (limit = 100) =>
       requestJson<{ items: OfflineCacheItem[]; total_bytes: number }>(`${url('/cache')}?limit=${limit}`),
-    cacheDownloadUrl: (id: number) => `${url(`/cache/${id}/download`)}`,
     // 图标走免鉴权公开路由，<img> 无需携带令牌
     cacheIconUrl: (id: number) => `/api/public/offline/cache/${id}/icon`,
     deleteCache: (id: number) => requestJson<{ ok: boolean }>(`${url(`/cache/${id}`)}`, { method: 'DELETE' }),
     refreshCache: (id: number) =>
       requestJson<{ item: OfflineCacheItem }>(`${url(`/cache/${id}/refresh`)}`, { method: 'POST' }),
 
-    /** 统一下载入口（自动处理管理端鉴权）。 */
-    download: (target: string, filename?: string) => downloadWithAuth(base, target, filename),
+    download: async (id: number, filename?: string) => {
+      if (!base.startsWith('/api/admin')) {
+        triggerDownload(url(`/cache/${id}/download`), filename)
+        return
+      }
+
+      // 在点击事件中同步打开，避免等鉴权请求完成后被浏览器拦截。
+      const popup = window.open('about:blank', '_blank')
+      if (!popup) throw new Error('浏览器拦截了下载窗口，请允许弹出窗口后重试')
+      popup.opener = null
+      try {
+        const endpoint = url(`/cache/${id}/download-url`)
+        let requestPath = endpoint
+        const result = await requestJson<{ url: string }>(endpoint, { method: 'POST' }, (responseUrl) => {
+          if (responseUrl) requestPath = new URL(responseUrl).pathname
+        })
+        if (!requestPath.endsWith(endpoint) || !result.url.startsWith(`/api/offline/cache/${id}/download?`)) {
+          throw new Error('下载链接无效')
+        }
+        // 用签发请求的实际路径保留同源部署的前缀。
+        popup.location.replace(requestPath.slice(0, -endpoint.length) + result.url)
+      } catch (error) {
+        popup.close()
+        throw error
+      }
+    },
   }
 }
 
@@ -243,24 +267,4 @@ export function triggerDownload(url: string, filename?: string) {
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()
-}
-
-/**
- * 统一下载入口：公开端直接走链接（Cookie 鉴权、浏览器流式下载）；
- * 管理端带 JWT，锚点无法携带请求头，改为 fetch 取回 blob 再落地。
- */
-export async function downloadWithAuth(base: string, url: string, filename?: string) {
-  if (!base.startsWith('/api/admin')) {
-    triggerDownload(url, filename)
-    return
-  }
-  const token = getToken()
-  const headers: Record<string, string> = { 'X-GW-Client': 'web' }
-  if (token) headers.Authorization = `Bearer ${token}`
-  const response = await fetch(url, { headers })
-  if (!response.ok) throw new ApiError(response.status, '下载失败')
-  const blob = await response.blob()
-  const objectUrl = URL.createObjectURL(blob)
-  triggerDownload(objectUrl, filename)
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
 }

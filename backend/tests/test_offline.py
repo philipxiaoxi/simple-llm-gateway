@@ -162,6 +162,36 @@ def test_offline_cache_list_download_delete(client: TestClient, auth_headers: di
     assert client.get(f"/api/public/offline/cache/{item_id}/download").status_code == 404
 
 
+def test_offline_signed_download(client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import timedelta
+
+    from app.routers import offline
+
+    item_id = _store_cache(key="chrome:token-test:crx")
+    other_id = _store_cache(key="chrome:other-token-test:crx")
+    issue = f"/api/admin/offline/cache/{item_id}/download-url"
+    path = f"/api/offline/cache/{item_id}/download"
+    assert client.post(issue).status_code == 401
+    assert client.get(path).status_code == 401
+    assert client.get(path, params={"token": auth_headers["Authorization"].split()[1]}).status_code == 401
+    response = client.post(issue, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    signed_url = response.json()["url"]
+    download = client.get(signed_url)
+    assert download.status_code == 200
+    assert download.content == b"hello-world"
+    assert download.headers["content-disposition"].startswith("attachment;")
+    assert client.head(signed_url).status_code == 200
+    partial = client.get(signed_url, headers={"Range": "bytes=0-4"})
+    assert partial.status_code == 206 and partial.content == b"hello"
+    assert client.get(signed_url.replace(f"/{item_id}/download?", f"/{other_id}/download?")).status_code == 403
+    assert client.get(signed_url + "x").status_code == 401
+    monkeypatch.setattr(offline, "_DOWNLOAD_TTL", timedelta(seconds=-1))
+    expired = client.post(issue, headers=auth_headers).json()["url"]
+    assert client.get(expired).status_code == 401
+
+
 def test_offline_cache_refresh_refetches(
     client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

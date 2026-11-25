@@ -237,6 +237,7 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("GET", "/api/admin/offline/docker/layer"): "offline:resolve",
     ("GET", "/api/admin/offline/msstore/resolve"): "offline:resolve",
     ("GET", "/api/admin/offline/cache/{item_id}/download"): "offline:view",
+    ("POST", "/api/admin/offline/cache/{item_id}/download-url"): "offline:view",
     # Skills
     ("POST", "/api/admin/skills/upload"): "skills:upload",
     ("POST", "/api/admin/skills/upload-url"): "skills:upload",

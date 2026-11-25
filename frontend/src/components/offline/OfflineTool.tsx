@@ -56,6 +56,7 @@ function CacheCard({
   const FallbackIcon = meta?.icon ?? Globe
   const [imgFailed, setImgFailed] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [preparingDownload, setPreparingDownload] = useState(false)
   const format = (row.filename.split('.').pop() || '').toUpperCase()
   // 针对性展示：扩展显示格式+描述；vscode 显示版本；docker 显示架构；其余显示文件类型
   const badge = row.provider === 'vscode' || row.provider === 'docker' ? row.subtitle : format
@@ -147,9 +148,16 @@ function CacheCard({
           <Button
             type="button"
             className="flex-1"
-            onClick={() => void api.download(api.cacheDownloadUrl(row.id), row.filename)}
+            disabled={preparingDownload}
+            onClick={() => {
+              setPreparingDownload(true)
+              void api.download(row.id, row.filename)
+                .catch((caught) => notifyBad(errorMessage(caught, '下载失败')))
+                .finally(() => setPreparingDownload(false))
+            }}
           >
-            <Download size={14} /> 下载
+            {preparingDownload ? <RefreshCw size={14} className="motion-safe:animate-spin" /> : <Download size={14} />}
+            {preparingDownload ? '准备下载…' : '下载'}
           </Button>
         ) : (
           <Button type="button" className="flex-1" disabled>

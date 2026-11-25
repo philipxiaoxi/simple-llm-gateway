@@ -15,22 +15,33 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import AsyncIterator
+from datetime import timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.clock import utcnow
+from app.config import get_settings
 from app.db import get_db
-from app.models import OfflineDownload
+from app.deps import get_current_admin
+from app.models import Admin, OfflineDownload
 from app.offline import cache, chrome, docker, edge, msstore, vscode
 from app.offline.errors import OfflineError
 from app.offline.registry import serialize_providers
+from app.services.permission_guard import has_permission, permission_denied, permissions_for_admin
 
 router = APIRouter(tags=["offline"])
 admin_router = APIRouter(tags=["offline-admin"])
 # 图标是非敏感小文件，单独挂一个免鉴权路由，方便 <img> 直接引用
 icon_router = APIRouter(tags=["offline-icon"])
+download_router = APIRouter(tags=["offline-download"])
+
+_DOWNLOAD_AUDIENCE = "offline-cache-download"
+_DOWNLOAD_TTL = timedelta(minutes=5)
 
 
 def _http(error: OfflineError) -> HTTPException:
@@ -81,6 +92,59 @@ def download_cache(item_id: int, db: Session = Depends(get_db)) -> FileResponse:
     cache.touch(db, row)
     db.commit()
     return cache.file_response(row)
+
+
+@admin_router.post("/cache/{item_id}/download-url")
+def create_download_url(
+    item_id: int,
+    response: Response,
+    admin: Annotated[Admin, Depends(get_current_admin)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, str]:
+    try:
+        cache.require_cached(db, item_id)
+    except OfflineError as error:
+        raise _http(error) from error
+    token = jwt.encode(
+        {
+            "aud": _DOWNLOAD_AUDIENCE,
+            "sub": str(admin.id),
+            "ver": int(admin.token_version or 0),
+            "item_id": item_id,
+            "exp": utcnow() + _DOWNLOAD_TTL,
+        },
+        get_settings().app_secret_key,
+        algorithm="HS256",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return {"url": f"/api/offline/cache/{item_id}/download?token={token}"}
+
+
+@download_router.api_route("/cache/{item_id}/download", methods=["GET", "HEAD"])
+def download_with_token(item_id: int, db: Annotated[Session, Depends(get_db)], token: str = "") -> FileResponse:
+    try:
+        payload = jwt.decode(
+            token,
+            get_settings().app_secret_key,
+            algorithms=["HS256"],
+            audience=_DOWNLOAD_AUDIENCE,
+            options={"require": ["exp", "aud", "sub", "ver", "item_id"]},
+        )
+        admin_id = int(payload["sub"])
+    except (jwt.PyJWTError, ValueError) as error:
+        raise HTTPException(401, "下载链接无效或已过期") from error
+    if payload["item_id"] != item_id:
+        raise HTTPException(403, "下载链接与文件不匹配")
+    admin = db.get(Admin, admin_id)
+    if admin is None or not admin.is_enabled or payload["ver"] != int(admin.token_version or 0):
+        raise HTTPException(401, "下载链接已失效")
+    if not has_permission(permissions_for_admin(db, admin), "offline:view"):
+        raise permission_denied("offline:view")
+    response = download_cache(item_id, db)
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @icon_router.get("/cache/{item_id}/icon")

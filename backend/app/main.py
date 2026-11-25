@@ -304,6 +304,7 @@ app.include_router(
     dependencies=[Depends(build_gate_dependency("offline"))],
 )
 app.include_router(offline.icon_router, prefix="/api/public/offline")
+app.include_router(offline.download_router, prefix="/api/offline")
 app.include_router(voice_rooms.public_router)
 app.include_router(voice_rooms.router)
 _mcp_asgi_app = build_mcp_app()

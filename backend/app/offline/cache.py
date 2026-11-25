@@ -104,7 +104,8 @@ def touch(db: Session, row: OfflineDownload) -> None:
 
 
 def file_response(row: OfflineDownload) -> FileResponse:
-    return FileResponse(target_path(row), media_type=row.content_type or "application/octet-stream", filename=row.filename or None)
+    path = target_path(row)
+    return FileResponse(path, media_type=row.content_type or "application/octet-stream", filename=row.filename or path.name)
 
 
 def enqueue(
