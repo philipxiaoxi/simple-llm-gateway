@@ -11,6 +11,7 @@ from app.db import get_db
 from app.deps import get_current_admin
 from app.models import AssistantIdentity, McpKey
 from app.schemas import McpCapabilityConfigUpdate, McpKeyCapabilitiesUpdate, McpKeyCreate, McpKeyOut, McpKeyUpdate
+from app.services.external_mcp import catalog as external_catalog
 from app.services.mcp_auth import allowed_capability_ids, create_mcp_key_record, replace_mcp_key_capabilities
 from app.services.mcp_key_config import all_capability_configs, set_capability_config
 from app.services.gateway_rate_limit import gateway_limiter, invalidate_gateway_key
@@ -170,7 +171,7 @@ def key_integration(key_id: int, request: Request, db: Session = Depends(get_db)
     allowed = allowed_capability_ids(item)
     origin = (get_settings().app_base_url or str(request.base_url)).rstrip("/")
     capabilities = []
-    for row in catalog_payload(only_enabled=False):
+    for row in catalog_payload(only_enabled=False) + external_catalog(db, include_offline=True, allowed=allowed):
         entry = dict(row)
         entry["authorized"] = entry["capability_id"] in allowed
         capabilities.append(entry)

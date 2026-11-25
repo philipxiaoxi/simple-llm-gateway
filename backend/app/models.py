@@ -12,6 +12,70 @@ class Base(DeclarativeBase):
     pass
 
 
+class ExternalMcpService(Base):
+    __tablename__ = "external_mcp_services"
+
+    id: Mapped[str] = mapped_column(String(24), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    manifest: Mapped[str] = mapped_column(Text, default="")
+    pending_manifest: Mapped[str] = mapped_column(Text, default="")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class ExternalMcpCredential(Base):
+    __tablename__ = "external_mcp_credentials"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    service_id: Mapped[str] = mapped_column(ForeignKey("external_mcp_services.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    digest: Mapped[str] = mapped_column(String(64), unique=True)
+    prefix: Mapped[str] = mapped_column(String(16))
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    created_by: Mapped[int] = mapped_column(Integer)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class ExternalMcpInstance(Base):
+    __tablename__ = "external_mcp_instances"
+
+    service_id: Mapped[str] = mapped_column(ForeignKey("external_mcp_services.id"), primary_key=True)
+    instance_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    credential_id: Mapped[str] = mapped_column(ForeignKey("external_mcp_credentials.id"), index=True)
+    epoch: Mapped[str] = mapped_column(String(32))
+    revision: Mapped[str] = mapped_column(String(64))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class ExternalMcpCall(Base):
+    __tablename__ = "external_mcp_calls"
+    __table_args__ = (Index("ix_external_mcp_queue", "service_id", "state", "deadline"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    service_id: Mapped[str] = mapped_column(ForeignKey("external_mcp_services.id"))
+    revision: Mapped[str] = mapped_column(String(64))
+    operation: Mapped[str] = mapped_column(String(32))
+    arguments: Mapped[str] = mapped_column(Text)
+    deadline: Mapped[datetime] = mapped_column(DateTime, index=True)
+    state: Mapped[str] = mapped_column(String(16), default="queued")
+    epoch: Mapped[str | None] = mapped_column(String(32))
+    dispatch_id: Mapped[str | None] = mapped_column(String(32))
+    result: Mapped[str | None] = mapped_column(Text)
+
+
+class ExternalMcpAudit(Base):
+    __tablename__ = "external_mcp_audit"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    service_id: Mapped[str] = mapped_column(ForeignKey("external_mcp_services.id"), index=True)
+    actor_id: Mapped[int] = mapped_column(Integer)
+    action: Mapped[str] = mapped_column(String(32))
+    details: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Role(Base):
     __tablename__ = "roles"
 

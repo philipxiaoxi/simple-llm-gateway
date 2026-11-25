@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile
@@ -7,12 +8,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from app.capabilities import ensure_defaults, get_provider, invoke_capability, list_specs
+from app.capabilities.base import CapabilityError
 from app.capabilities.docparse.errors import DocParseError
 from app.capabilities.docparse.jobs import create_job, get_owned_job, job_payload, run_job
 from app.capabilities.docparse.storage import markdown_path
-from app.capabilities.base import CapabilityError
 from app.db import get_db
 from app.schemas import KnowledgeSearchRequest, KnowledgeSearchResponse, McpCapabilityOut
+from app.services import external_mcp
 from app.services.mcp_auth import allowed_capability_ids, get_mcp_key_from_headers
 from app.services.mcp_logs import begin_mcp_call
 
@@ -52,10 +54,12 @@ def _spec_out(spec) -> McpCapabilityOut:
 
 
 @router.get("/v1/capabilities", response_model=list[McpCapabilityOut])
-def list_capabilities(mcp_key=Depends(_mcp_key_dep)):
+def list_capabilities(mcp_key=Depends(_mcp_key_dep), db: Session = Depends(get_db)):
     ensure_defaults()
     allowed = allowed_capability_ids(mcp_key)
-    return [_spec_out(spec) for spec in list_specs(only_enabled=True) if spec.capability_id in allowed]
+    return [_spec_out(spec) for spec in list_specs(only_enabled=True) if spec.capability_id in allowed] + [
+        McpCapabilityOut(**row) for row in external_mcp.catalog(db, allowed=allowed)
+    ]
 
 
 @router.get("/v1/capabilities/{capability_id}/models")
@@ -91,7 +95,20 @@ async def dispatch_capability(
     """通用能力调用入口。新应用只需实现 Provider.dispatch，无需再加专用 REST 路由。"""
     ensure_defaults()
     payload: dict[str, Any] = {}
-    if request.headers.get("content-type", "").startswith("application/json"):
+    if capability_id.startswith(external_mcp.PREFIX):
+        raw = bytearray()
+        async for chunk in request.stream():
+            if len(raw) + len(chunk) > external_mcp.MAX_PAYLOAD:
+                return _error(413, "payload_too_large", "调用参数过大")
+            raw.extend(chunk)
+        try:
+            body = json.loads(raw) if raw else {}
+            if not isinstance(body, dict):
+                raise ValueError
+            payload = body
+        except (ValueError, RecursionError):
+            return _error(422, "invalid_request", "调用参数必须是 JSON 对象")
+    elif request.headers.get("content-type", "").startswith("application/json"):
         try:
             body = await request.json()
             if isinstance(body, dict):
@@ -231,8 +248,13 @@ def docparse_download(job_id: str, db: Session = Depends(get_db), mcp_key=Depend
 
 
 @router.get("/v1/capabilities/{capability_id}", response_model=McpCapabilityOut)
-def get_capability(capability_id: str, mcp_key=Depends(_mcp_key_dep)):
+def get_capability(capability_id: str, mcp_key=Depends(_mcp_key_dep), db: Session = Depends(get_db)):
     ensure_defaults()
+    if capability_id.startswith(external_mcp.PREFIX):
+        if capability_id not in allowed_capability_ids(mcp_key):
+            return _error(403, "permission_error", "MCP Key 未授权该能力")
+        rows = external_mcp.catalog(db, allowed={capability_id})
+        return McpCapabilityOut(**rows[0]) if rows else _error(404, "not_found", "外部能力不可用")
     provider = get_provider(capability_id)
     if provider is None or provider.spec.status != "enabled":
         raise HTTPException(

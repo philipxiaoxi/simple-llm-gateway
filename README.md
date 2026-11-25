@@ -132,6 +132,8 @@ base_url = https://你的站/v1
 
 ## MCP 广场与知识库
 
+独立部署的工具也可以通过 [外部 MCP SDK](docs/external-mcp/quickstart.md) 主动注册。注册后在 MCP Key 中授权，即可共用平台的 MCP、REST 和接入说明。
+
 管理后台「MCP 广场」提供能力目录、知识库、**独立 MCP Key**（与聊天 `sk-` 分离）和调用记录。
 
 1. 在「MCP Key」创建密钥，勾选 `knowledge` 等能力；密钥前缀 `mcp-`，创建后可在列表点「查看」再次获取并复制完整密钥。

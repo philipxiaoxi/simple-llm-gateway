@@ -71,6 +71,7 @@ const McpKnowledgeJobsPage = lazy(() =>
 const McpKeysPage = lazy(() => import('./pages/McpKeys').then((m) => ({ default: m.McpKeysPage })))
 const McpCallsPage = lazy(() => import('./pages/McpCalls').then((m) => ({ default: m.McpCallsPage })))
 const McpDocsPage = lazy(() => import('./pages/McpDocs').then((m) => ({ default: m.McpDocsPage })))
+const McpExternalPage = lazy(() => import('./pages/McpExternal'))
 const McpDocParsePage = lazy(() => import('./pages/McpDocParse').then((m) => ({ default: m.McpDocParsePage })))
 const McpSitesPage = lazy(() => import('./pages/McpSites').then((m) => ({ default: m.McpSitesPage })))
 const McpSiteDetailPage = lazy(() =>
@@ -250,6 +251,7 @@ export default function App() {
                 <Route path="keys" element={<McpKeysPage />} />
                 <Route path="calls" element={<McpCallsPage />} />
                 <Route path="docs" element={<McpDocsPage />} />
+                <Route path="external" element={<RequirePerm code="mcp_external:view"><McpExternalPage /></RequirePerm>} />
               </Route>
               <Route path="/tools" element={<ToolsPage />} />
               {/* 资讯收集：详情是浮层，挂在 /info 子路由上，瀑布流保持挂载（返回即回到原滚动位置） */}

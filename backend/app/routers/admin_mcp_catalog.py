@@ -7,6 +7,7 @@ from app.capabilities import catalog_payload, ensure_defaults
 from app.db import get_db
 from app.deps import get_current_admin
 from app.models import Admin
+from app.services.external_mcp import catalog as external_catalog
 from app.services.permission_guard import has_permission, permissions_for_admin
 
 router = APIRouter(
@@ -28,7 +29,7 @@ def list_catalog(
     - scope=plaza：只返回当前账号按功能有权限的能力，仅用于 MCP 广场入口展示。
     """
     ensure_defaults()
-    rows = catalog_payload(only_enabled=False)
+    rows = catalog_payload(only_enabled=False) + external_catalog(db, include_offline=True)
     if scope == "plaza":
         permissions = permissions_for_admin(db, admin)
         rows = [

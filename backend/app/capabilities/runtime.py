@@ -14,6 +14,7 @@ from app.capabilities.registry import get_provider, resolve_tool
 from app.capabilities.site.errors import SiteError
 from app.info.errors import InfoError
 from app.models import McpKey
+from app.services import external_mcp
 from app.services.knowledge import KnowledgeError
 from app.services.mcp_auth import allowed_capability_ids
 from app.services.mcp_logs import record_mcp_call
@@ -46,8 +47,9 @@ async def invoke_capability(
     payload: dict[str, Any] | None = None,
     system: bool = False,
 ) -> dict[str, Any]:
+    is_external = capability_id.startswith(external_mcp.PREFIX)
     ensure_provider = get_provider(capability_id)
-    if ensure_provider is None or ensure_provider.spec.status != "enabled":
+    if not is_external and (ensure_provider is None or ensure_provider.spec.status != "enabled"):
         raise CapabilityError("能力不存在或已停用", status_code=404, error_type="not_found")
     if capability_id not in allowed_capability_ids(mcp_key):
         raise CapabilityError(f"MCP Key 未授权能力 {capability_id}", status_code=403, error_type="permission_error")
@@ -55,9 +57,15 @@ async def invoke_capability(
     started = time.perf_counter()
     body = payload or {}
     try:
-        result = await ensure_provider.dispatch(
-            operation, body, CallContext(db=db, mcp_key=mcp_key, system=system)
-        )
+        if is_external:
+            if system:
+                raise CapabilityError("外部工具未向内置助手开放", 403, "permission_error")
+            # The authorization read transaction must not hold a connection while the worker runs.
+            db.commit()
+            result = await external_mcp.invoke(capability_id, operation, body)
+        else:
+            assert ensure_provider is not None
+            result = await ensure_provider.dispatch(operation, body, CallContext(db=db, mcp_key=mcp_key, system=system))
         normalized = result if isinstance(result, dict) else {"result": result}
         record_mcp_call(
             db,
@@ -67,8 +75,8 @@ async def invoke_capability(
             success=True,
             latency_ms=int((time.perf_counter() - started) * 1000),
             http_status=200,
-            request_body=body,
-            response_body=normalized,
+            request_body=None if is_external else body,
+            response_body=None if is_external else normalized,
         )
         return normalized
     except Exception as error:
@@ -83,7 +91,7 @@ async def invoke_capability(
             error_message=cap_error.message,
             error_type=cap_error.error_type,
             http_status=cap_error.status_code,
-            request_body=body,
+            request_body=None if is_external else body,
         )
         raise cap_error from error
 
@@ -96,7 +104,7 @@ async def invoke_tool(
     payload: dict[str, Any] | None = None,
     system: bool = False,
 ) -> dict[str, Any]:
-    resolved = resolve_tool(tool_name)
+    resolved = resolve_tool(tool_name) or external_mcp.split_tool(tool_name)
     if resolved is None:
         raise CapabilityError(f"未知工具: {tool_name}", status_code=404, error_type="not_found")
     capability_id, operation = resolved

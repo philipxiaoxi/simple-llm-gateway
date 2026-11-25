@@ -3,6 +3,7 @@ export type IntegrationRestEndpoint = {
   path: string
   summary?: string
   content_type?: string
+  example_body?: Record<string, unknown> | null
 }
 
 export type IntegrationTool = {
@@ -258,7 +259,7 @@ export function buildCapabilitySkill(input: IntegrationInput, capabilityId: stri
       `curl -sS -X ${example.method} "${input.restBaseUrl}${example.path}" \\`,
       `  -H "Authorization: Bearer ${input.keyValue}" \\`,
       '  -H "Content-Type: application/json" \\',
-      "  -d '<按请求参数表填写 JSON>'",
+      example.example_body ? `  -d '${JSON.stringify(example.example_body).replaceAll("'", "'\\''")}'` : "  -d '<按请求参数表填写 JSON>'",
       '```',
     )
   }

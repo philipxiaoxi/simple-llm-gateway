@@ -20,6 +20,7 @@ const tabs = [
   { to: '/mcp-plaza/keys', label: 'MCP Key', icon: KeyRound, perm: 'mcp_keys:view' },
   { to: '/mcp-plaza/calls', label: '调用记录', icon: ScrollText, perm: 'mcp_calls:view' },
   { to: '/mcp-plaza/docs', label: '接入说明', icon: Layers3, perm: 'mcp_catalog:view' },
+  { to: '/mcp-plaza/external', label: '外部服务', icon: Layers3, perm: 'mcp_external:view' },
 ]
 
 const APP_PATH_PERMS: { prefix: string; perm: string }[] = [
@@ -50,7 +51,7 @@ export function McpPlazaLayout() {
   const { can } = useSession()
   const visibleTabs = tabs.filter((tab) => can(tab.perm))
   const location = useLocation()
-  const platformPaths = ['/mcp-plaza/keys', '/mcp-plaza/calls', '/mcp-plaza/docs']
+  const platformPaths = ['/mcp-plaza/keys', '/mcp-plaza/calls', '/mcp-plaza/docs', '/mcp-plaza/external']
   const inApp =
     location.pathname.startsWith('/mcp-plaza/') &&
     location.pathname !== '/mcp-plaza' &&
@@ -96,12 +97,13 @@ export function McpPlazaCatalogPage() {
   const { data, isError, error, isFetching } = useQuery({
     queryKey: ['mcp-catalog', 'plaza'],
     queryFn: () => api.mcpCatalog('plaza'),
+    refetchInterval: 15_000,
   })
   const [keyword, setKeyword] = useState('')
   const query = keyword.trim().toLowerCase()
   const items = useMemo(() => {
     const visible = (data?.items || []).filter((item) => {
-      if (item.status !== 'enabled') return false
+      if (item.status !== 'enabled' && item.source !== 'external') return false
       if (!item.admin_path) return true
       // 优先用后端下发的各能力权限；旧后端没有该字段时回退到按路径推导
       if (item.permissions?.length) return item.permissions.some((code) => can(code))
@@ -153,7 +155,7 @@ export function McpPlazaCatalogPage() {
           const body = (
             <>
               <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-signal">
-                MCP / {category} / 能力
+                MCP / {item.source === 'external' ? `外部服务 · ${item.status === 'enabled' ? '在线' : '离线'}` : `${category} / 能力`}
               </div>
               <div className="mt-3 text-xl font-semibold tracking-tight text-paper">{item.name}</div>
               <p className="mt-2 line-clamp-3 text-sm leading-6 text-mist">{item.description}</p>
@@ -171,7 +173,7 @@ export function McpPlazaCatalogPage() {
             )
           }
           return (
-            <div key={item.capability_id} className={className}>
+            <div key={item.capability_id} className={cn(className, item.status === 'offline' && 'opacity-60')}>
               {body}
             </div>
           )

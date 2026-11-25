@@ -215,7 +215,7 @@ export function McpKeysPage() {
     queryFn: () => api.mcpCatalog('all'),
   })
   const capabilityOptions = (catalog.data?.items || [])
-    .filter((item) => item.status === 'enabled')
+    .filter((item) => item.status === 'enabled' || item.source === 'external')
     .map((item) => ({ id: item.capability_id, label: `${item.capability_id} · ${item.name}` }))
 
   useEffect(() => {

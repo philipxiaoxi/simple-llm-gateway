@@ -7,6 +7,7 @@ from contextvars import ContextVar
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import TextContent, Tool
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -18,6 +19,7 @@ from app.capabilities import ensure_defaults, invoke_tool, list_tool_defs, resol
 from app.capabilities.base import CapabilityError
 from app.db import get_session_factory
 from app.deps import extract_raw_api_key
+from app.services import external_mcp
 from app.services.mcp_auth import allowed_capability_ids, resolve_mcp_key
 from app.services.mcp_logs import record_mcp_call
 
@@ -79,7 +81,7 @@ def _record_mcp_failure(
     session, tool_name: str, error: CapabilityError, latency_ms: int, request_body: Any = None
 ) -> None:
     """回滚会丢弃 runtime 写入的失败日志，这里在回滚后补写一条并提交。"""
-    resolved = resolve_tool(tool_name)
+    resolved = resolve_tool(tool_name) or external_mcp.split_tool(tool_name)
     if resolved is None:
         return
     capability_id, operation = resolved
@@ -94,12 +96,12 @@ def _record_mcp_failure(
         error_message=error.message,
         error_type=error.error_type,
         http_status=error.status_code,
-        request_body=request_body,
+        request_body=None if capability_id.startswith(external_mcp.PREFIX) else request_body,
     )
     session.commit()
 
 
-async def _run_registered_tool(tool_name: str, arguments: dict[str, Any]) -> str:
+async def _run_registered_tool(tool_name: str, arguments: dict[str, Any], *, protocol_error: bool = False) -> str:
     ensure_defaults()
     key_id = _current_mcp_key_id.get()
     session = get_session_factory()()
@@ -107,6 +109,8 @@ async def _run_registered_tool(tool_name: str, arguments: dict[str, Any]) -> str
     try:
         mcp_key = _load_mcp_key(session, key_id)
         if mcp_key is None or mcp_key.status != "active":
+            if protocol_error:
+                raise CapabilityError("无效的 MCP Key", 401, "authentication_error")
             return json.dumps(
                 {"error": {"type": "authentication_error", "message": "无效的 MCP Key"}},
                 ensure_ascii=False,
@@ -120,9 +124,14 @@ async def _run_registered_tool(tool_name: str, arguments: dict[str, Any]) -> str
         payload: dict[str, Any] = {"error": {"type": error.error_type, "message": error.message}}
         if error.diagnostics:
             payload["error"]["diagnostics"] = error.diagnostics
-        return json.dumps(payload, ensure_ascii=False)
+        encoded = json.dumps(payload, ensure_ascii=False)
+        if protocol_error:
+            raise ValueError(encoded) from None
+        return encoded
     except Exception as error:
         session.rollback()
+        if protocol_error:
+            raise ValueError('{"error":{"type":"internal_error","message":"外部工具调用失败"}}') from None
         return json.dumps({"error": {"type": "internal_error", "message": str(error)}}, ensure_ascii=False)
     finally:
         session.close()
@@ -215,6 +224,10 @@ def register_all_tools() -> None:
             if mcp_key is None:
                 return []
             allowed = allowed_capability_ids(mcp_key)
+            external_tools = [
+                Tool(name=tool["name"], description=tool["description"], inputSchema=tool["input_schema"])
+                for row in external_mcp.catalog(session, allowed=allowed) for tool in row["tools"]
+            ]
         finally:
             session.close()
         filtered = []
@@ -225,8 +238,17 @@ def register_all_tools() -> None:
             capability_id, _operation = resolved
             if capability_id in allowed:
                 filtered.append(tool)
-        return filtered
+        return filtered + external_tools
 
+    async def call_tool_dynamic(name: str, arguments: dict[str, Any]):
+        if external_mcp.split_tool(name) is not None:
+            return [TextContent(type="text", text=await _run_registered_tool(name, arguments, protocol_error=True))]
+        return await mcp.call_tool(name, arguments)
+
+    # FastMCP captures the methods when registering low-level handlers; replacing the
+    # instance method alone does not update the live protocol handler.
+    mcp._mcp_server.list_tools()(list_tools_filtered)
+    mcp._mcp_server.call_tool(validate_input=False)(call_tool_dynamic)
     mcp.list_tools = list_tools_filtered  # type: ignore[method-assign]
     _tools_registered = True
 

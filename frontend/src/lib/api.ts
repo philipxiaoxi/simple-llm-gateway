@@ -1510,6 +1510,20 @@ export const api = {
   // ---- MCP 广场 ----
   mcpCatalog: (scope: 'plaza' | 'all' = 'all') =>
     request<{ items: McpCatalogItem[] }>(`/api/admin/mcp/catalog?scope=${scope}`),
+  externalMcpServices: () => request<{ items: ExternalMcpService[] }>('/api/admin/mcp/external-services'),
+  externalMcpCreate: (name: string) => request('/api/admin/mcp/external-services', { method: 'POST', body: JSON.stringify({ name }) }),
+  externalMcpRemove: (id: string) => request(`/api/admin/mcp/external-services/${id}/registration`, { method: 'DELETE' }),
+  externalMcpApprove: (id: string, revision: string) => request(`/api/admin/mcp/external-services/${id}/manifest/approve`, { method: 'POST', body: JSON.stringify({ revision }) }),
+  externalMcpCredentials: (id: string) => request<{ items: ExternalMcpCredential[] }>(`/api/admin/mcp/external-services/${id}/credentials`),
+  externalMcpIssue: (id: string, name: string, days: number, replaces_id?: string) => request<ExternalMcpCredential & { token: string }>(
+    `/api/admin/mcp/external-services/${id}/credentials`, { method: 'POST', body: JSON.stringify({ name, days, replaces_id }) },
+  ),
+  externalMcpRenew: (id: string, credential: string, days: number) => request(
+    `/api/admin/mcp/external-services/${id}/credentials/${credential}/renew`, { method: 'POST', body: JSON.stringify({ days }) },
+  ),
+  externalMcpRevoke: (id: string, credential: string) => request(
+    `/api/admin/mcp/external-services/${id}/credentials/${credential}`, { method: 'DELETE' },
+  ),
   referenceList: (kind: ReferenceKind, query: ReferenceQuery = {}) => {
     const params = new URLSearchParams()
     Object.entries(query).forEach(([key, value]) => {
@@ -2417,7 +2431,30 @@ export type McpKeyItem = {
   key?: string | null
 }
 
+export type ExternalMcpService = {
+  id: string
+  name: string
+  online: boolean
+  online_instances: number
+  last_seen_at: string | null
+  version: string | null
+  pending_revision: string | null
+  pending_manifest: Record<string, unknown> | null
+}
+
+export type ExternalMcpCredential = {
+  id: string
+  name: string
+  prefix: string
+  status: 'active' | 'expired' | 'revoked'
+  expires_at: string
+  created_at: string
+  created_by: number
+  last_used_at: string | null
+}
+
 export type McpCatalogItem = {
+  source?: 'external'
   capability_id: string
   name: string
   description: string
@@ -2432,7 +2469,7 @@ export type McpCatalogItem = {
 }
 
 export type McpCapabilityIntegration = {
-  rest_endpoints?: { method: string; path: string; summary?: string; content_type?: string }[]
+  rest_endpoints?: { method: string; path: string; summary?: string; content_type?: string; example_body?: Record<string, unknown> | null }[]
   notes?: string[]
 }
 
@@ -2509,6 +2546,7 @@ export type ReferenceMeta = {
 }
 
 export type McpIntegrationCapability = {
+  source?: 'external'
   capability_id: string
   name: string
   description: string

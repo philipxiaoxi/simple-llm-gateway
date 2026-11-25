@@ -30,6 +30,8 @@ MCP_PLAZA_GRANTS = (
     "mcp_info:view",
     "mcp_keys:view",
     "mcp_calls:view",
+    "mcp_external:view",
+    "mcp_external:manage",
 )
 
 # 仅用于控制页面入口、没有对应管理接口的权限码（覆盖率测试会放行这些）
@@ -37,6 +39,7 @@ PAGE_ONLY_CODES: frozenset[str] = frozenset({"mcp_catalog:view"})
 
 # 资源 -> (页面名, ((动作, 动作名), ...))
 CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
+    "mcp_external": ("MCP 外部服务", (("view", "查看服务和凭证"), ("manage", "管理注册和凭证"))),
     "dashboard": ("概览", (("view", "查看"),)),
     "accounts": (
         "上游账号",

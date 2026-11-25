@@ -56,6 +56,7 @@ from app.routers import (
     capabilities_public,
     diagrams_public,
     douyin_public,
+    external_mcp,
     health,
     info_public,
     info_report_public,
@@ -70,6 +71,7 @@ from app.routers import (
 )
 from app.seed import seed_admin, seed_desktop_tools, seed_skill_categories
 from app.services.desktop_tools import reconcile_stuck_downloads
+from app.services.external_mcp import cleanup_loop as external_mcp_cleanup_loop
 from app.services.docparse_retention import retention_loop as docparse_retention_loop
 from app.services.douyin_retention import retention_loop as douyin_retention_loop
 from app.services.grok_oauth import cleanup_expired_oauth_states
@@ -160,6 +162,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     mcp_session = start_mcp_session()
     async with mcp_session.run():
         background_tasks = start_job_loops()
+        background_tasks.append(asyncio.create_task(external_mcp_cleanup_loop()))
         # 知识库采集任务队列（入库 / 重新向量化）
         background_tasks.extend(start_knowledge_job_workers())
         # 离线下载的异步缓存队列（解析后后台缓存到服务器）
@@ -298,6 +301,8 @@ admin_guard.include_router(offline.admin_router, prefix="/api/admin/offline")
 admin_guard.include_router(voice_rooms.admin_router)
 # 所有管理路由登记完毕后统一挂载（父路由在 include 时复制当前路由表）
 app.include_router(admin_guard)
+app.include_router(external_mcp.router)
+app.include_router(external_mcp.admin_router)
 app.include_router(
     offline.router,
     prefix="/api/public/offline",

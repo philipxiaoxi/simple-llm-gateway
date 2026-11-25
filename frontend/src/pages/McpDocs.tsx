@@ -276,6 +276,7 @@ export function McpDocsPage() {
 
   const integration = useQuery({
     queryKey: ['mcp-key-integration', keyId],
+    refetchInterval: 15_000,
     queryFn: () => api.mcpKeyIntegration(keyId as number),
     enabled: Boolean(keyId),
   })
@@ -288,7 +289,7 @@ export function McpDocsPage() {
 
   const data = integration.data
   const capabilities = data?.capabilities ?? []
-  const authorized = capabilities.filter((capability) => capability.authorized)
+  const authorized = capabilities.filter((capability) => capability.authorized && capability.status !== 'offline')
   const keyValue = reveal.data?.key ?? ''
   const input: IntegrationInput | null =
     data && keyValue
@@ -297,7 +298,7 @@ export function McpDocsPage() {
           keyValue,
           mcpUrl: data.mcp_url,
           restBaseUrl: data.rest_base_url,
-          capabilities,
+          capabilities: authorized,
         }
       : null
   const toolCount = authorized.reduce((count, capability) => count + capability.tools.length, 0)
@@ -388,12 +389,12 @@ export function McpDocsPage() {
                   title={capability.authorized ? capability.description : '该 Key 未授权此能力'}
                   className={cn(
                     'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs',
-                    capability.authorized
+                    capability.authorized && capability.status !== 'offline'
                       ? 'border-signal/40 bg-signal/10 text-signal'
                       : 'border-line text-mist-soft',
                   )}
                 >
-                  {capability.capability_id}
+                  {capability.capability_id}{capability.status === 'offline' ? ' · 离线' : ''}
                 </span>
               ))}
             </div>
