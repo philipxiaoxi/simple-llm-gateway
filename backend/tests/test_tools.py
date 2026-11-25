@@ -123,6 +123,7 @@ def test_download_url_streams_cached_file_without_bearer_header(client: TestClie
 
     response = client.post(f"/api/admin/tools/{tool.id}/download-url", headers=auth_headers)
     assert response.status_code == 200
+    assert response.json()["expiresInSeconds"] == 3600
     download = client.get(response.json()["url"])
     assert download.status_code == 200, download.text
     assert download.content == b"large-file-content"

@@ -32,7 +32,6 @@ const SHARE_TTL_OPTIONS = [
   { label: '15 天', value: 15 * 86400 },
   { label: '30 天', value: 30 * 86400 },
 ]
-const DEFAULT_SHARE_TTL = 86400
 
 export function McpDouyinDetailPage() {
   const canRetry = useCan('mcp_douyin:job_retry')
@@ -366,7 +365,7 @@ function ShareDialog({
   kind?: string | null
   onClose: () => void
 }) {
-  const [ttl, setTtl] = useState(DEFAULT_SHARE_TTL)
+  const [ttl, setTtl] = useState<number>()
 
   const share = useMutation({
     mutationFn: () => api.shareMcpDouyinMedia(jobId, media.id, ttl),
@@ -388,10 +387,11 @@ function ShareDialog({
       <div className="space-y-3">
         <Field label="链接有效期">
           <Select
-            value={ttl}
+            value={ttl ?? ''}
             disabled={share.isPending}
-            onChange={(event) => setTtl(Number(event.target.value))}
+            onChange={(event) => setTtl(event.target.value ? Number(event.target.value) : undefined)}
           >
+            <option value="">系统默认</option>
             {SHARE_TTL_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}

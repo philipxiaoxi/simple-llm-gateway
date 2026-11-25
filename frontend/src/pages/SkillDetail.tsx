@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select } from '../components/ui'
 import { api, type SkillAnalysis } from '../lib/api'
 import { useCan } from '../lib/session'
-import { buildSkillInstallText } from '../lib/skillInstall'
+import { buildSkillInstallText, formatSkillLinkTtl } from '../lib/skillInstall'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { copyText, errorMessage, formatBytes, formatTime } from '../lib/utils'
 
@@ -80,9 +80,9 @@ export function SkillDetailPage() {
   async function copyInstall() {
     if (!data) return
     try {
-      const { url } = await api.skillDownloadUrl(data.id)
-      await copyText(buildSkillInstallText(data, `${window.location.origin}${url}`))
-      notifyOk('安装指令已复制，链接 5 分钟内有效')
+      const { url, expiresInSeconds } = await api.skillDownloadUrl(data.id)
+      await copyText(buildSkillInstallText(data, `${window.location.origin}${url}`, expiresInSeconds))
+      notifyOk(`安装指令已复制，链接 ${formatSkillLinkTtl(expiresInSeconds)}内有效`)
     } catch (caught) {
       notifyBad(errorMessage(caught, '复制安装指令失败'))
     }

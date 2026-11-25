@@ -41,7 +41,6 @@ icon_router = APIRouter(tags=["offline-icon"])
 download_router = APIRouter(tags=["offline-download"])
 
 _DOWNLOAD_AUDIENCE = "offline-cache-download"
-_DOWNLOAD_TTL = timedelta(minutes=5)
 
 
 def _http(error: OfflineError) -> HTTPException:
@@ -100,24 +99,26 @@ def create_download_url(
     response: Response,
     admin: Annotated[Admin, Depends(get_current_admin)],
     db: Annotated[Session, Depends(get_db)],
-) -> dict[str, str]:
+) -> dict[str, str | int]:
     try:
         cache.require_cached(db, item_id)
     except OfflineError as error:
         raise _http(error) from error
+    settings = get_settings()
+    ttl = settings.transfer_token_ttl_seconds
     token = jwt.encode(
         {
             "aud": _DOWNLOAD_AUDIENCE,
             "sub": str(admin.id),
             "ver": int(admin.token_version or 0),
             "item_id": item_id,
-            "exp": utcnow() + _DOWNLOAD_TTL,
+            "exp": utcnow() + timedelta(seconds=ttl),
         },
-        get_settings().app_secret_key,
+        settings.app_secret_key,
         algorithm="HS256",
     )
     response.headers["Cache-Control"] = "no-store"
-    return {"url": f"/api/offline/cache/{item_id}/download?token={token}"}
+    return {"url": f"/api/offline/cache/{item_id}/download?token={token}", "expiresInSeconds": ttl}
 
 
 @download_router.api_route("/cache/{item_id}/download", methods=["GET", "HEAD"])

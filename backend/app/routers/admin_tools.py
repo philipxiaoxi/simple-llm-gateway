@@ -23,7 +23,6 @@ from app.services.desktop_tools import active_run_id, has_active_job, job_done, 
 router = APIRouter(prefix="/api/admin/tools", tags=["admin-tools"], dependencies=[Depends(get_current_admin)])
 download_router = APIRouter(prefix="/api/tools", tags=["tool-downloads"])
 _SAFE_TOOL_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
-_DOWNLOAD_TOKEN_TTL = timedelta(minutes=5)
 
 @router.post("", response_model=DesktopToolOut, status_code=201)
 def create_tool(payload: DesktopToolCreate, db: Session = Depends(get_db)):
@@ -199,13 +198,15 @@ def create_download_url(tool_id: int, admin=Depends(get_current_admin), db: Sess
     if not path.is_file() or not path.resolve().is_relative_to(download_root):
         raise HTTPException(404, "缓存文件不存在")
     now = datetime.now(timezone.utc)
+    settings = get_settings()
+    ttl = settings.transfer_token_ttl_seconds
     token = jwt.encode(
         {"sub": admin.username, "ver": int(admin.token_version or 0), "tool_id": tool_id,
-         "iat": now, "exp": now + _DOWNLOAD_TOKEN_TTL},
-        get_settings().app_secret_key,
+         "iat": now, "exp": now + timedelta(seconds=ttl)},
+        settings.app_secret_key,
         algorithm="HS256",
     )
-    return {"url": f"/api/tools/{tool_id}/download?token={token}"}
+    return {"url": f"/api/tools/{tool_id}/download?token={token}", "expiresInSeconds": ttl}
 
 
 @download_router.get("/{tool_id}/download")

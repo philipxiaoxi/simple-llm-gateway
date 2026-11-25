@@ -383,7 +383,7 @@ def test_skill_download_url_streams_zip_without_bearer(client: TestClient, auth_
     response = client.post(f"/api/admin/skills/{item['id']}/download-url", headers=auth_headers)
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["expiresInSeconds"] == 300
+    assert body["expiresInSeconds"] == 3600
     assert body["url"].startswith(f"/api/skills/{item['id']}/download?token=")
 
     download = client.get(body["url"])
@@ -437,7 +437,7 @@ def test_skill_upload_url_imports_with_ai_stamp(client: TestClient, auth_headers
     issued = client.post("/api/admin/skills/upload-url", headers=auth_headers)
     assert issued.status_code == 200, issued.text
     body = issued.json()
-    assert body["expiresInSeconds"] == 300
+    assert body["expiresInSeconds"] == 3600
     assert body["url"].startswith("/api/skills/upload?token=")
 
     payload = _zip_bytes(

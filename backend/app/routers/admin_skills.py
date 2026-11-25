@@ -62,8 +62,6 @@ from app.services.skills import (
 router = APIRouter(prefix="/api/admin/skills", tags=["admin-skills"], dependencies=[Depends(get_current_admin)])
 download_router = APIRouter(prefix="/api/skills", tags=["skill-downloads"])
 # 复制给 AI 的安装/上传链接有效期固定 5 分钟，过期需重新生成。
-_DOWNLOAD_TOKEN_TTL = timedelta(minutes=5)
-_UPLOAD_TOKEN_TTL = timedelta(minutes=5)
 _UPLOAD_TOKEN_SCOPE = "skill_upload"
 
 
@@ -361,20 +359,22 @@ def create_upload_url(
 ) -> dict:
     """签发一条公开的短期上传链接，供用户复制上传指令后交给 AI 打包上传。"""
     now = datetime.now(timezone.utc)
+    settings = get_settings()
+    ttl = settings.transfer_token_ttl_seconds
     token = jwt.encode(
         {
             "scope": _UPLOAD_TOKEN_SCOPE,
             "sub": admin.username,
             "ver": int(admin.token_version or 0),
             "iat": now,
-            "exp": now + _UPLOAD_TOKEN_TTL,
+            "exp": now + timedelta(seconds=ttl),
         },
-        get_settings().app_secret_key,
+        settings.app_secret_key,
         algorithm="HS256",
     )
     return {
         "url": f"/api/skills/upload?token={token}",
-        "expiresInSeconds": int(_UPLOAD_TOKEN_TTL.total_seconds()),
+        "expiresInSeconds": ttl,
     }
 
 
@@ -387,6 +387,8 @@ def create_download_url(
     """签发一条公开的短期下载链接，供用户复制安装指令后交给 AI 下载。"""
     item = _get_skill(db, skill_id)
     now = datetime.now(timezone.utc)
+    settings = get_settings()
+    ttl = settings.transfer_token_ttl_seconds
     token = jwt.encode(
         {
             "scope": "skill",
@@ -394,14 +396,14 @@ def create_download_url(
             "sub": admin.username,
             "ver": int(admin.token_version or 0),
             "iat": now,
-            "exp": now + _DOWNLOAD_TOKEN_TTL,
+            "exp": now + timedelta(seconds=ttl),
         },
-        get_settings().app_secret_key,
+        settings.app_secret_key,
         algorithm="HS256",
     )
     return {
         "url": f"/api/skills/{item.id}/download?token={token}",
-        "expiresInSeconds": int(_DOWNLOAD_TOKEN_TTL.total_seconds()),
+        "expiresInSeconds": ttl,
     }
 
 

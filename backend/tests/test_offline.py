@@ -176,6 +176,7 @@ def test_offline_signed_download(client: TestClient, auth_headers: dict[str, str
     assert client.get(path, params={"token": auth_headers["Authorization"].split()[1]}).status_code == 401
     response = client.post(issue, headers=auth_headers)
     assert response.status_code == 200
+    assert response.json()["expiresInSeconds"] == 3600
     assert response.headers["cache-control"] == "no-store"
     signed_url = response.json()["url"]
     download = client.get(signed_url)
@@ -187,7 +188,8 @@ def test_offline_signed_download(client: TestClient, auth_headers: dict[str, str
     assert partial.status_code == 206 and partial.content == b"hello"
     assert client.get(signed_url.replace(f"/{item_id}/download?", f"/{other_id}/download?")).status_code == 403
     assert client.get(signed_url + "x").status_code == 401
-    monkeypatch.setattr(offline, "_DOWNLOAD_TTL", timedelta(seconds=-1))
+    now = offline.utcnow()
+    monkeypatch.setattr(offline, "utcnow", lambda: now - timedelta(hours=2))
     expired = client.post(issue, headers=auth_headers).json()["url"]
     assert client.get(expired).status_code == 401
 

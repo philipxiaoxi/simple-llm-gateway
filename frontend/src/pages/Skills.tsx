@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input, Select, Sheet } from '../components/ui'
 import { api, type Account, type SkillCategoryItem, type SkillItem } from '../lib/api'
 import { useCan } from '../lib/session'
-import { buildSkillInstallText, buildSkillUploadText } from '../lib/skillInstall'
+import { buildSkillInstallText, buildSkillUploadText, formatSkillLinkTtl } from '../lib/skillInstall'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { copyText, errorMessage, formatBytes, formatTime } from '../lib/utils'
 
@@ -197,9 +197,9 @@ export function SkillsPage() {
 
   async function copyInstall(item: SkillItem) {
     try {
-      const { url } = await api.skillDownloadUrl(item.id)
-      await copyText(buildSkillInstallText(item, `${window.location.origin}${url}`))
-      notifyOk('安装指令已复制，链接 5 分钟内有效')
+      const { url, expiresInSeconds } = await api.skillDownloadUrl(item.id)
+      await copyText(buildSkillInstallText(item, `${window.location.origin}${url}`, expiresInSeconds))
+      notifyOk(`安装指令已复制，链接 ${formatSkillLinkTtl(expiresInSeconds)}内有效`)
     } catch (caught) {
       notifyBad(errorMessage(caught, '复制安装指令失败'))
     }
@@ -207,9 +207,9 @@ export function SkillsPage() {
 
   async function copyUpload() {
     try {
-      const { url } = await api.skillUploadUrl()
-      await copyText(buildSkillUploadText(`${window.location.origin}${url}`))
-      notifyOk('上传指令已复制，链接 5 分钟内有效')
+      const { url, expiresInSeconds } = await api.skillUploadUrl()
+      await copyText(buildSkillUploadText(`${window.location.origin}${url}`, expiresInSeconds))
+      notifyOk(`上传指令已复制，链接 ${formatSkillLinkTtl(expiresInSeconds)}内有效`)
     } catch (caught) {
       notifyBad(errorMessage(caught, '复制上传指令失败'))
     }

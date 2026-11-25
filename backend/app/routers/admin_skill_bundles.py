@@ -47,7 +47,6 @@ router = APIRouter(
     dependencies=[Depends(get_current_admin)],
 )
 download_router = APIRouter(prefix="/api/skill-bundles", tags=["skill-bundle-downloads"])
-_DOWNLOAD_TOKEN_TTL = timedelta(minutes=5)
 _DOWNLOAD_TOKEN_SCOPE = "skill_bundle"
 
 
@@ -165,6 +164,8 @@ def create_download_url(
         status = 404 if str(error) == "组合包不存在" else 400
         raise _http_error(error, status_code=status) from error
     now = datetime.now(timezone.utc)
+    settings = get_settings()
+    ttl = settings.transfer_token_ttl_seconds
     token = jwt.encode(
         {
             "scope": _DOWNLOAD_TOKEN_SCOPE,
@@ -172,14 +173,14 @@ def create_download_url(
             "sub": admin.username,
             "ver": int(admin.token_version or 0),
             "iat": now,
-            "exp": now + _DOWNLOAD_TOKEN_TTL,
+            "exp": now + timedelta(seconds=ttl),
         },
-        get_settings().app_secret_key,
+        settings.app_secret_key,
         algorithm="HS256",
     )
     return {
         "url": f"/api/skill-bundles/{bundle.id}/download?token={token}",
-        "expiresInSeconds": int(_DOWNLOAD_TOKEN_TTL.total_seconds()),
+        "expiresInSeconds": ttl,
     }
 
 

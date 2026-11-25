@@ -516,12 +516,12 @@ def test_admin_share_media_configurable_expiry(
     def ttl_in_token(token: str) -> int:
         return int(token.split(".")[1]) - int(time_module.time())
 
-    # 不传有效期时默认 1 天
+    # 不传有效期时默认 1 小时
     default_share = client.post(url, headers=auth_headers, json={})
     assert default_share.status_code == 200, default_share.text
     default_body = default_share.json()
-    assert default_body["expires_in_seconds"] == 86400
-    assert abs(ttl_in_token(default_body["token"]) - 86400) <= 5
+    assert default_body["expires_in_seconds"] == 3600
+    assert abs(ttl_in_token(default_body["token"]) - 3600) <= 5
 
     # 自定义有效期
     custom = client.post(url, headers=auth_headers, json={"expires_in_seconds": 7 * 86400})
@@ -541,6 +541,5 @@ def test_admin_share_media_configurable_expiry(
     # 签发的令牌可直接打开公开分享页
     token = custom.json()["token"]
     assert client.get(f"/v1/douyin/share?token={token}").status_code == 200
-
 
 

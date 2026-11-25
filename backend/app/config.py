@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 INSECURE_APP_SECRET_KEYS = frozenset(
@@ -21,6 +22,7 @@ INSECURE_ADMIN_PASSWORDS = frozenset(
 )
 MIN_APP_SECRET_KEY_LENGTH = 16
 MIN_ADMIN_PASSWORD_LENGTH = 8
+DEFAULT_RESOURCE_TOKEN_TTL_SECONDS = 3600
 
 
 def validate_app_secret_key(secret_key: str) -> None:
@@ -55,6 +57,7 @@ class Settings(BaseSettings):
     trusted_proxy_cidrs: str = "172.20.0.0/16"
     quota_refresh_interval_seconds: int = 3600
     jwt_expire_days: int = 7
+    transfer_token_ttl_seconds: PositiveInt = DEFAULT_RESOURCE_TOKEN_TTL_SECONDS
     frontend_dist: str = ""
     skills_path: str = ""
     tools_path: str = ""
@@ -148,7 +151,7 @@ class Settings(BaseSettings):
     douyin_mcp_max_wait_seconds: int = 45
     douyin_max_redirects: int = 5
     # 分享/下载令牌默认有效期（秒），默认 1 天
-    douyin_download_token_ttl_seconds: int = 86400
+    douyin_download_token_ttl_seconds: int = DEFAULT_RESOURCE_TOKEN_TTL_SECONDS
     # 分享时可选过期时间的上下限（秒）
     douyin_share_token_min_ttl_seconds: int = 300
     douyin_share_token_max_ttl_seconds: int = 30 * 86400
@@ -173,7 +176,7 @@ class Settings(BaseSettings):
     # 图片直链前缀；需要 CDN 时把 CDN 地址填到 references_image_cdn
     references_image_cdn: str = ""
     references_cache_ttl_seconds: int = 86400
-    references_image_token_ttl_seconds: int = 43200
+    references_image_token_ttl_seconds: int = DEFAULT_RESOURCE_TOKEN_TTL_SECONDS
     references_timeout_seconds: int = 30
     references_max_results: int = 60
     # Archify 图表生成（diagram 能力）
@@ -197,7 +200,7 @@ class Settings(BaseSettings):
     info_max_concurrent_downloads: int = 3
     info_max_item_bytes: int = 200 * 1024 * 1024
     info_max_media_per_item: int = 20
-    info_media_token_ttl_seconds: int = 43200
+    info_media_token_ttl_seconds: int = DEFAULT_RESOURCE_TOKEN_TTL_SECONDS
     # 0 表示媒体永久保留，不做自动清理
     info_retention_days: int = 0
     info_http_timeout_seconds: int = 30
@@ -254,7 +257,7 @@ class Settings(BaseSettings):
     # 调用供应商接口的超时
     generation_http_timeout_seconds: int = 60
     # 作品与参考文件地址的签名令牌有效期
-    generation_token_ttl_seconds: int = 43200
+    generation_token_ttl_seconds: int = DEFAULT_RESOURCE_TOKEN_TTL_SECONDS
     # ---- 安全中心（登录审计 / 异常请求标记 / 前端埋点）----
     security_audit_enabled: bool = True
     security_beacon_enabled: bool = True

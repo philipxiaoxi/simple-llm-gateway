@@ -1,12 +1,19 @@
+export function formatSkillLinkTtl(seconds: number) {
+  if (seconds % 3600 === 0) return `${seconds / 3600} 小时`
+  if (seconds % 60 === 0) return `${seconds / 60} 分钟`
+  return `${seconds} 秒`
+}
+
 export function buildSkillInstallText(
   skill: { name: string; slug: string; description?: string | null },
   downloadUrl: string,
+  expiresInSeconds: number,
 ) {
   const lines = ['请把下面这个 Claude Code Skill 安装到本机。', '', `名称：${skill.name}`]
   const description = skill.description?.trim()
   if (description) lines.push(`说明：${description}`)
   lines.push(
-    `下载地址（5 分钟内有效，过期请重新生成）：${downloadUrl}`,
+    `下载地址（${formatSkillLinkTtl(expiresInSeconds)}内有效，过期请重新生成）：${downloadUrl}`,
     '',
     '安装步骤：',
     `1. 下载：curl -L -o /tmp/${skill.slug}.zip "${downloadUrl}"`,
@@ -18,11 +25,11 @@ export function buildSkillInstallText(
   return lines.join('\n')
 }
 
-export function buildSkillUploadText(uploadUrl: string) {
+export function buildSkillUploadText(uploadUrl: string, expiresInSeconds: number) {
   return [
     '请把本机各 Agent 的 skills 存放目录中的全部 Skills 上传到网关。',
     '',
-    `上传地址（5 分钟内有效，过期请重新生成）：${uploadUrl}`,
+    `上传地址（${formatSkillLinkTtl(expiresInSeconds)}内有效，过期请重新生成）：${uploadUrl}`,
     '',
     '步骤：',
     '1. 自行判断本机有哪些 Agent，以及各自的 skills 根目录。',
@@ -49,13 +56,14 @@ export function buildSkillUploadText(uploadUrl: string) {
 export function buildBundleInstallText(
   bundle: { name: string; description?: string | null; member_count?: number },
   downloadUrl: string,
+  expiresInSeconds: number,
 ) {
   const lines = ['请把下面这个 Skills 组合包安装到本机各 Agent 的 skills 目录。', '', `组合名称：${bundle.name}`]
   const description = bundle.description?.trim()
   if (description) lines.push(`说明：${description}`)
   if (typeof bundle.member_count === 'number') lines.push(`成员数量：${bundle.member_count}`)
   lines.push(
-    `下载地址（5 分钟内有效，过期请重新生成）：${downloadUrl}`,
+    `下载地址（${formatSkillLinkTtl(expiresInSeconds)}内有效，过期请重新生成）：${downloadUrl}`,
     '',
     '安装步骤：',
     '1. 下载：curl -L -o /tmp/skill-bundle.zip "' + downloadUrl + '"',

@@ -157,7 +157,7 @@ def test_bundle_download_token(client: TestClient, auth_headers: dict[str, str])
     issued = client.post(f"/api/admin/skill-bundles/{bundle_id}/download-url", headers=auth_headers)
     assert issued.status_code == 200, issued.text
     body = issued.json()
-    assert body["expiresInSeconds"] == 300
+    assert body["expiresInSeconds"] == 3600
     assert body["url"].startswith(f"/api/skill-bundles/{bundle_id}/download?token=")
 
     public = client.get(body["url"])
