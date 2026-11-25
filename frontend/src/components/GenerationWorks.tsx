@@ -8,6 +8,24 @@ import { cn } from '../lib/utils'
 import { useCan } from '../lib/session'
 import { Badge, Button } from './ui'
 
+const WORKS_GRID = 'grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4'
+
+export function GenerationWorksSkeleton() {
+  return (
+    <div role="status" aria-label="正在加载作品" className={WORKS_GRID}>
+      {Array.from({ length: 4 }, (_, index) => (
+        <div key={index} aria-hidden="true" className="overflow-hidden rounded-xl border border-line bg-panel/70">
+          <div className="aspect-square bg-elevate motion-safe:animate-pulse" />
+          <div className="space-y-2 p-2.5 motion-safe:animate-pulse">
+            <div className="h-3 w-3/4 rounded bg-elevate" />
+            <div className="h-3 w-1/2 rounded bg-elevate" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function ActionButton({
   title,
   onClick,
@@ -141,6 +159,7 @@ function WorkMedia({ task, onPreview }: { task: GenerationTask; onPreview: (url:
           src={image}
           alt={task.prompt}
           loading="lazy"
+          decoding="async"
           className="h-full w-full object-cover transition duration-300 group-hover/img:scale-[1.04]"
         />
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover/img:bg-black/20 group-hover/img:opacity-100">
@@ -194,7 +213,7 @@ export function GenerationWorks({
   }
   return (
     <>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+      <div className={WORKS_GRID}>
         {tasks.map((task) => {
           const thumb = resultThumb(task)
           const canDownload = Boolean(thumb?.url)

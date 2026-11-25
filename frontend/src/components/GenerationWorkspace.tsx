@@ -11,7 +11,7 @@ import { GenerationConfigDialog } from './GenerationConfigDialog'
 import { Pagination } from './Pagination'
 import { useGenerationSettings } from './useGenerationSettings'
 import { GenerationTaskDialog } from './GenerationTaskDialog'
-import { GenerationWorks } from './GenerationWorks'
+import { GenerationWorks, GenerationWorksSkeleton } from './GenerationWorks'
 import { useCan } from '../lib/session'
 import { Button, Dialog } from './ui'
 
@@ -25,9 +25,9 @@ const STATUS_FILTERS = [
 
 export function GenerationWorkspace({ kind }: { kind: 'image' | 'video' }) {
   const queryClient = useQueryClient()
-  const settings = useGenerationSettings()
   const [configOpen, setConfigOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const settings = useGenerationSettings(createOpen)
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<string | null>(null)
@@ -38,15 +38,13 @@ export function GenerationWorkspace({ kind }: { kind: 'image' | 'video' }) {
 
   const tasksQuery = useQuery({
     queryKey: ['generation-tasks', kind, status, page],
+    // 快速往返时复用正在进行的请求；已有列表切回后仍在后台更新。
     queryFn: () => api.generationTasks({ kind, status, page, page_size: PAGE_SIZE }),
+    staleTime: 0,
     refetchInterval: (q) => (q.state.data?.items.some((task) => isTaskActive(task.status)) ? 2500 : false),
   })
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['generation-tasks', kind] })
-
-  useEffect(() => {
-    setPage(1)
-  }, [status])
 
   const remove = useMutation({
     mutationFn: (id: string) => api.generationDelete(id),
@@ -118,8 +116,8 @@ export function GenerationWorkspace({ kind }: { kind: 'image' | 'video' }) {
             <Plus size={15} /> 生成{kind === 'image' ? '图片' : '视频'}
           </Button>
           ) : null}
-          <Button type="button" variant="line" onClick={() => void tasksQuery.refetch()}>
-            <RefreshCw size={15} /> 刷新
+          <Button type="button" variant="line" disabled={tasksQuery.isFetching} onClick={() => void tasksQuery.refetch()}>
+            <RefreshCw size={15} className={tasksQuery.isFetching ? 'motion-safe:animate-spin' : undefined} /> 刷新
           </Button>
           {canConfig ? (
           <Button type="button" variant="line" onClick={() => setConfigOpen(true)}>
@@ -142,10 +140,17 @@ export function GenerationWorkspace({ kind }: { kind: 'image' | 'video' }) {
           </h2>
           <div className="flex flex-wrap gap-1.5">
             {STATUS_FILTERS.map((filter) => (
-              <button
+              <Button
                 key={filter.value}
                 type="button"
-                onClick={() => setStatus(filter.value)}
+                variant="ghost"
+                size="sm"
+                aria-pressed={status === filter.value}
+                onClick={() => {
+                  if (status === filter.value) return
+                  setStatus(filter.value)
+                  setPage(1)
+                }}
                 className={cn(
                   'rounded-full border px-3 py-1 text-xs transition',
                   status === filter.value ? 'border-signal/50 bg-signal/15 text-signal' : 'border-line text-mist hover:text-paper',
@@ -153,14 +158,15 @@ export function GenerationWorkspace({ kind }: { kind: 'image' | 'video' }) {
               >
                 {filter.label}
                 {data ? ` ${countFor(filter.value)}` : ''}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
 
         {tasksQuery.isError ? (
-          <div className="text-sm text-danger">{errorMessage(tasksQuery.error, '加载作品失败')}</div>
-        ) : (
+          <div role="alert" className="text-sm text-danger">{errorMessage(tasksQuery.error, '加载作品失败')}</div>
+        ) : null}
+        {tasksQuery.isPending ? <GenerationWorksSkeleton /> : data ? (
           <GenerationWorks
             kind={kind}
             tasks={tasks}
@@ -169,7 +175,7 @@ export function GenerationWorkspace({ kind }: { kind: 'image' | 'video' }) {
             onReuse={handleReuse}
             onCreate={() => openCreate()}
           />
-        )}
+        ) : null}
 
         {total > PAGE_SIZE ? <Pagination page={page} pageCount={pageCount} total={total} unit="个作品" onPage={setPage} /> : null}
       </div>

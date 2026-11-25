@@ -19,13 +19,14 @@ import os
 import shutil
 import time
 import uuid
+from collections import defaultdict
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
@@ -1273,9 +1274,10 @@ def asset_to_dict(asset: GenerationAsset) -> dict[str, Any]:
         # 结果尚未转存完成时，调用方可先用上游地址
         payload["remote_url"] = asset.remote_url
     if asset.status == "ready" and asset.filename:
-        payload["url"] = _asset_url(asset)
+        url = _asset_url(asset)
+        payload["url"] = url
         if asset.thumb_filename:
-            payload["thumb_url"] = f"{_asset_url(asset)}&thumb=1"
+            payload["thumb_url"] = f"{url}&thumb=1"
     return payload
 
 
@@ -1343,32 +1345,35 @@ def list_tasks(
     if kinds is not None:
         # 管理端按登录者的图片/视频权限过滤；空集合表示两者都无权限，直接返回空
         filters.append(GenerationTask.kind.in_(sorted(kinds)))
-    if status:
-        filters.append(GenerationTask.status == status)
     if mcp_key_id is not None:
         filters.append(GenerationTask.mcp_key_id == mcp_key_id)
-    query = select(GenerationTask).where(*filters)
-    count_query = select(GenerationTask.id).where(*filters)
-    total = len(db.scalars(count_query).all())
     page = max(1, page)
     page_size = max(1, min(100, page_size))
+    counts = dict(db.execute(
+        select(GenerationTask.status, func.count()).where(*filters).group_by(GenerationTask.status)
+    ).all())
+    total = counts.get(status, 0) if status else sum(counts.values())
+    if status:
+        filters.append(GenerationTask.status == status)
     rows = list(
         db.scalars(
-            query.order_by(GenerationTask.created_at.desc())
+            select(GenerationTask).where(*filters)
+            .order_by(GenerationTask.created_at.desc(), GenerationTask.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         ).all()
     )
-    items = []
-    for task in rows:
-        assets = task_assets(db, task.id)
-        items.append(task_to_dict(task, assets))
-    count_filters = [GenerationTask.kind == kind] if kind else []
-    if mcp_key_id is not None:
-        count_filters.append(GenerationTask.mcp_key_id == mcp_key_id)
-    counts: dict[str, int] = {}
-    for row in db.execute(select(GenerationTask.status).where(*count_filters)).all():
-        counts[row[0]] = counts.get(row[0], 0) + 1
+    assets_by_task: dict[str, list[GenerationAsset]] = defaultdict(list)
+    if rows:
+        assets = db.scalars(
+            select(GenerationAsset)
+            .where(GenerationAsset.task_id.in_([task.id for task in rows]))
+            .order_by(GenerationAsset.task_id, GenerationAsset.role, GenerationAsset.index_no)
+        )
+        for asset in assets:
+            if asset.task_id is not None:
+                assets_by_task[asset.task_id].append(asset)
+    items = [task_to_dict(task, assets_by_task[task.id]) for task in rows]
     return {"items": items, "total": total, "page": page, "page_size": page_size, "counts": counts}
 
 
