@@ -21,6 +21,10 @@ RUN apt-get update \
 COPY backend/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --index-url ${PIP_INDEX_URL} -r /tmp/requirements.txt
 COPY backend /app
+COPY sdk/python/ /app/sdk/python/
+COPY sdk/nodejs/ /app/sdk/nodejs/
+COPY docs/external-mcp-services.md /app/docs/external-mcp-services.md
+COPY docs/external-mcp/quickstart.md /app/docs/external-mcp/quickstart.md
 COPY --from=frontend /web/dist /app/frontend/dist
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

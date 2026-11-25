@@ -24,7 +24,10 @@ export function Label({
 }
 
 /** 表单字段：标签 + 控件，项目内统一入口（原 Field） */
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
+  if (htmlFor) {
+    return <div className="min-w-0 space-y-1.5"><Label className="block" htmlFor={htmlFor}>{label}</Label>{children}</div>
+  }
   return (
     <LabelPrimitive.Root className="block min-w-0 space-y-1.5">
       <span className="block text-xs uppercase tracking-[0.16em] text-mist">{label}</span>

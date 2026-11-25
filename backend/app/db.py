@@ -175,6 +175,11 @@ def _ensure_columns(engine: Engine) -> None:
         account_columns = {
             row[1] for row in connection.execute(text("PRAGMA table_info(upstream_accounts)"))
         }
+        external_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(external_mcp_services)"))}
+        if "deleted_at" not in external_columns:
+            connection.execute(text("ALTER TABLE external_mcp_services ADD COLUMN deleted_at DATETIME"))
+        if "heartbeat_since" not in external_columns:
+            connection.execute(text("ALTER TABLE external_mcp_services ADD COLUMN heartbeat_since DATETIME"))
         added_header_spoof = "header_spoof" not in account_columns
         for column, statement in account_statements.items():
             if column not in account_columns:

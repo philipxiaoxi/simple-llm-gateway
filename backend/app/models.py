@@ -20,6 +20,16 @@ class ExternalMcpService(Base):
     manifest: Mapped[str] = mapped_column(Text, default="")
     pending_manifest: Mapped[str] = mapped_column(Text, default="")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    heartbeat_since: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class ExternalMcpHeartbeat(Base):
+    __tablename__ = "external_mcp_heartbeats"
+
+    service_id: Mapped[str] = mapped_column(ForeignKey("external_mcp_services.id"), primary_key=True)
+    bucket: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    count: Mapped[int] = mapped_column(Integer)
 
 
 class ExternalMcpCredential(Base):

@@ -1511,14 +1511,17 @@ export const api = {
   mcpCatalog: (scope: 'plaza' | 'all' = 'all') =>
     request<{ items: McpCatalogItem[] }>(`/api/admin/mcp/catalog?scope=${scope}`),
   externalMcpServices: () => request<{ items: ExternalMcpService[] }>('/api/admin/mcp/external-services'),
-  externalMcpCreate: (name: string) => request('/api/admin/mcp/external-services', { method: 'POST', body: JSON.stringify({ name }) }),
+  externalMcpHeartbeats: (id: string, period: '1h' | '24h') => request<ExternalMcpHeartbeatHistory>(`/api/admin/mcp/external-services/${id}/heartbeats?period=${period}`),
+  externalMcpCreate: (name: string) => request<{ id: string; name: string }>('/api/admin/mcp/external-services', { method: 'POST', body: JSON.stringify({ name }) }),
+  externalMcpRename: (id: string, name: string) => request(`/api/admin/mcp/external-services/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  externalMcpDelete: (id: string) => request(`/api/admin/mcp/external-services/${id}`, { method: 'DELETE' }),
   externalMcpRemove: (id: string) => request(`/api/admin/mcp/external-services/${id}/registration`, { method: 'DELETE' }),
   externalMcpApprove: (id: string, revision: string) => request(`/api/admin/mcp/external-services/${id}/manifest/approve`, { method: 'POST', body: JSON.stringify({ revision }) }),
   externalMcpCredentials: (id: string) => request<{ items: ExternalMcpCredential[] }>(`/api/admin/mcp/external-services/${id}/credentials`),
-  externalMcpIssue: (id: string, name: string, days: number, replaces_id?: string) => request<ExternalMcpCredential & { token: string }>(
+  externalMcpIssue: (id: string, name: string, days: number | null, replaces_id?: string) => request<ExternalMcpCredential & { token: string }>(
     `/api/admin/mcp/external-services/${id}/credentials`, { method: 'POST', body: JSON.stringify({ name, days, replaces_id }) },
   ),
-  externalMcpRenew: (id: string, credential: string, days: number) => request(
+  externalMcpRenew: (id: string, credential: string, days: number | null) => request(
     `/api/admin/mcp/external-services/${id}/credentials/${credential}/renew`, { method: 'POST', body: JSON.stringify({ days }) },
   ),
   externalMcpRevoke: (id: string, credential: string) => request(
@@ -2431,6 +2434,14 @@ export type McpKeyItem = {
   key?: string | null
 }
 
+export type ExternalMcpHeartbeatHistory = {
+  period: '1h' | '24h'
+  start: number
+  bucket_seconds: number
+  observed_until: number
+  counts: (number | null)[]
+}
+
 export type ExternalMcpService = {
   id: string
   name: string
@@ -2447,7 +2458,7 @@ export type ExternalMcpCredential = {
   name: string
   prefix: string
   status: 'active' | 'expired' | 'revoked'
-  expires_at: string
+  expires_at: string | null
   created_at: string
   created_by: number
   last_used_at: string | null

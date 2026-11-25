@@ -5,7 +5,7 @@ import hashlib
 import json
 import secrets
 from contextlib import contextmanager
-from datetime import UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -13,14 +13,21 @@ import jwt
 from fastapi import HTTPException
 from jsonschema import Draft202012Validator, SchemaError
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import Integer, delete, func, select, text, update
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from app.capabilities.base import CapabilityError
 from app.clock import utcnow
 from app.config import DEFAULT_RESOURCE_TOKEN_TTL_SECONDS, get_settings
 from app.db import get_session_factory
-from app.models import ExternalMcpCall, ExternalMcpCredential, ExternalMcpInstance, ExternalMcpService
+from app.models import (
+    ExternalMcpCall,
+    ExternalMcpCredential,
+    ExternalMcpHeartbeat,
+    ExternalMcpInstance,
+    ExternalMcpService,
+)
 
 PREFIX = "ext_"
 HEARTBEAT_SECONDS = 15
@@ -30,6 +37,8 @@ QUEUE_LIMIT = 64
 INSTANCE_LIMIT = 16
 PER_INSTANCE_LIMIT = 8
 AUDIENCE = "external-mcp-instance"
+# Reserve a sentinel in the existing NOT NULL column; the public API models it as null.
+NEVER_EXPIRES = datetime.max
 Operation = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,31}$")]
 
 
@@ -92,6 +101,34 @@ def stamp(value) -> str:
     return value.replace(tzinfo=UTC).isoformat()
 
 
+def record_heartbeat(db: Session, service: ExternalMcpService, now: datetime) -> None:
+    if service.heartbeat_since is None:
+        service.heartbeat_since = now
+    # Store one row per service per minute, not one row per instance or heartbeat.
+    bucket = int(now.replace(tzinfo=UTC).timestamp()) // 60 * 60
+    statement = insert(ExternalMcpHeartbeat).values(service_id=service.id, bucket=bucket, count=1)
+    db.execute(statement.on_conflict_do_update(
+        index_elements=[ExternalMcpHeartbeat.service_id, ExternalMcpHeartbeat.bucket],
+        set_={"count": ExternalMcpHeartbeat.count + 1},
+    ))
+
+
+def heartbeat_history(db: Session, service: ExternalMcpService, period: str, now: datetime) -> dict:
+    step, size = (60, 60) if period == "1h" else (900, 96)
+    end = int(now.replace(tzinfo=UTC).timestamp()) // step * step + step
+    start = end - size * step
+    grouped = (ExternalMcpHeartbeat.bucket / step).cast(Integer) * step
+    counts = dict(db.execute(select(grouped, func.sum(ExternalMcpHeartbeat.count)).where(
+        ExternalMcpHeartbeat.service_id == service.id, ExternalMcpHeartbeat.bucket >= start,
+        ExternalMcpHeartbeat.bucket < end,
+    ).group_by(grouped)).all())
+    since = service.heartbeat_since.replace(tzinfo=UTC).timestamp() if service.heartbeat_since else None
+    return {"period": period, "start": start, "bucket_seconds": step,
+            "observed_until": int(now.replace(tzinfo=UTC).timestamp()),
+            "counts": [counts.get(bucket, 0) if since is not None and bucket + step > since else None
+                       for bucket in range(start, end, step)]}
+
+
 @contextmanager
 def write_session():
     with get_session_factory()() as db, db.begin():
@@ -144,6 +181,7 @@ def live_instances(now):
         .join(ExternalMcpService, ExternalMcpService.id == ExternalMcpInstance.service_id)
         .where(
             ExternalMcpCredential.service_id == ExternalMcpInstance.service_id,
+            ExternalMcpService.deleted_at.is_(None),
             ExternalMcpInstance.expires_at > now,
             ExternalMcpCredential.expires_at > now,
             ExternalMcpCredential.revoked_at.is_(None),
@@ -152,7 +190,7 @@ def live_instances(now):
 
 
 def catalog(db: Session, *, include_offline: bool = False, allowed: set[str] | None = None) -> list[dict]:
-    query = select(ExternalMcpService).where(ExternalMcpService.manifest != "").order_by(ExternalMcpService.name)
+    query = select(ExternalMcpService).where(ExternalMcpService.manifest != "", ExternalMcpService.deleted_at.is_(None)).order_by(ExternalMcpService.name)
     if allowed is not None:
         ids = [cid[len(PREFIX):] for cid in allowed if cid.startswith(PREFIX)]
         if not ids:
@@ -216,7 +254,7 @@ def require_lease(db: Session, claims: dict, now) -> ExternalMcpInstance:
     if credential is None or credential.revoked_at or credential.expires_at <= now:
         raise fail(401, "inactive_credential", "注册凭证已过期或撤销")
     service = db.get(ExternalMcpService, instance.service_id)
-    if service is None or instance.revision != digest(service.manifest):
+    if service is None or service.deleted_at or instance.revision != digest(service.manifest):
         raise fail(410, "registration_missing", "实例清单已更新，请重新注册")
     return instance
 
@@ -231,7 +269,7 @@ def enqueue(capability_id: str, operation: str, arguments: dict, call_id: str):
     service_id = capability_id[len(PREFIX):]
     with write_session() as db:
         service = db.get(ExternalMcpService, service_id)
-        if service is None or not service.manifest:
+        if service is None or service.deleted_at or not service.manifest:
             raise CapabilityError("外部能力不存在", 404, "not_found")
         revision = digest(service.manifest)
         tool = next((tool for tool in json.loads(service.manifest)["tools"] if tool["name"] == operation), None)
@@ -324,3 +362,5 @@ def cleanup() -> None:
     with write_session() as db:
         db.execute(delete(ExternalMcpCall).where(ExternalMcpCall.deadline < cutoff))
         db.execute(delete(ExternalMcpInstance).where(ExternalMcpInstance.expires_at < cutoff))
+        retention = int((utcnow() - timedelta(days=7)).replace(tzinfo=UTC).timestamp())
+        db.execute(delete(ExternalMcpHeartbeat).where(ExternalMcpHeartbeat.bucket < retention))

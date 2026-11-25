@@ -21,4 +21,8 @@ backend/tests
 .idea
 .vscode
 .DS_Store
-docs
+docs/*
+!docs/external-mcp-services.md
+!docs/external-mcp/
+docs/external-mcp/*
+!docs/external-mcp/quickstart.md

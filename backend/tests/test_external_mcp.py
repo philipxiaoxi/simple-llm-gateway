@@ -1,9 +1,12 @@
 import asyncio
 import importlib.util
+import json
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import datetime, timedelta
+from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
+from zipfile import ZipFile
 
 import httpx
 from sqlalchemy import update
@@ -16,13 +19,56 @@ ADMIN = "/api/admin/mcp/external-services"
 WORKER = "/v1/external-mcp/instances"
 
 
+def test_external_integration_kit(client, auth_headers):
+    path = ADMIN + "/integration-kit"
+    assert client.get(path).status_code == 401
+    response = client.get(path, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert "external-mcp-sdk.zip" in response.headers["content-disposition"]
+    with ZipFile(BytesIO(response.content)) as archive:
+        assert set(archive.namelist()) == {
+            "README.md", "external-mcp-services.md", "python/external_mcp.py", "python/echo.py", "python/bridge.py",
+            "python/requirements.txt", "nodejs/external-mcp.mjs", "nodejs/echo.mjs", "openapi.json",
+        }
+        assert b"(external-mcp-services.md)" in archive.read("README.md")
+        assert WORKER in json.loads(archive.read("openapi.json"))["paths"]
+
+
+def test_heartbeat_history_buckets(client, auth_headers, monkeypatch):
+    from app.routers import external_mcp as routes
+
+    now = datetime(2026, 11, 25, 10, 14)
+    monkeypatch.setattr(routes, "utcnow", lambda: now)
+    service = client.post(ADMIN, headers=auth_headers, json={"name": "History demo"}).json()["id"]
+    base = f"{ADMIN}/{service}"
+    url = base + "/heartbeats"
+    assert client.get(url).status_code == 401
+    assert client.get(url, headers=auth_headers).json()["counts"] == [None] * 60
+    token = client.post(base + "/credentials", headers=auth_headers, json={"name": "test"}).json()["token"]
+    instance = str(uuid4())
+    registered = client.post(WORKER, headers={"Authorization": "Bearer " + token}, json={
+        "protocol_version": "external-mcp/v1", "instance_id": instance, "version": "1",
+        "tools": [{"name": "echo", "description": "Echo", "input_schema": {"type": "object"}}],
+    })
+    assert registered.status_code == 201
+    now += timedelta(seconds=15)
+    lease = {"Authorization": "Bearer " + registered.json()["lease_token"]}
+    assert client.put(f"{WORKER}/{instance}/lease", headers=lease).status_code == 200
+    now += timedelta(minutes=1)
+    assert client.get(url, headers=auth_headers).json()["counts"] == [None] * 58 + [2, 0]
+    history = client.get(url + "?period=24h", headers=auth_headers).json()
+    assert history["bucket_seconds"] == 900
+    assert history["counts"] == [None] * 94 + [2, 0]
+
+
 def test_external_registration_docs_and_dispatch(client, auth_headers):
     openapi = client.get("/v1/external-mcp/openapi.json").json()
     assert WORKER in openapi["paths"]
     assert "Tool" in openapi["components"]["schemas"]
     service = client.post(ADMIN, headers=auth_headers, json={"name": "Echo"}).json()["id"]
     base = f"{ADMIN}/{service}"
-    credential = client.post(base + "/credentials", headers=auth_headers, json={"name": "local"}).json()
+    credential = client.post(base + "/credentials", headers=auth_headers, json={"name": "local", "days": 30}).json()
     reg_headers = {"Authorization": "Bearer " + credential["token"]}
     instance = str(uuid4())
     manifest = {"protocol_version": "external-mcp/v1", "instance_id": instance, "version": "1", "tools": [{
@@ -53,6 +99,8 @@ def test_external_registration_docs_and_dispatch(client, auth_headers):
 
     entry = next(row for row in docs(key) if row["capability_id"] == cid)
     assert entry["integration"]["rest_endpoints"][0]["example_body"] == {"text": "hello"}
+    assert client.patch(base, headers=auth_headers, json={"name": "Echo renamed"}).json() == {"id": service, "name": "Echo renamed"}
+    assert next(row for row in docs(key) if row["capability_id"] == cid)["name"] == "Echo renamed"
     assert not any(row["capability_id"] == cid for row in docs(other))
 
     def headers(key):
@@ -109,9 +157,21 @@ def test_external_registration_docs_and_dispatch(client, auth_headers):
     assert client.post(base + f"/credentials/{credential['id']}/renew", headers=auth_headers, json={"days": 7}).status_code == 200
     metadata = client.get(base + "/credentials", headers=auth_headers).json()["items"]
     assert metadata[0]["expires_at"] > credential["expires_at"] and "token" not in metadata[0]
+    permanent = client.post(base + f"/credentials/{credential['id']}/renew", headers=auth_headers, json={"days": None})
+    assert permanent.status_code == 200 and permanent.json()["expires_at"] is None
     assert client.delete(base + f"/credentials/{credential['id']}", headers=auth_headers).status_code == 204
     assert client.post(WORKER, headers=reg_headers, json=changed).status_code == 401
     assert client.post(path, headers=headers(key), json={"text": "hello"}).status_code == 503
+    second = client.post(base + "/credentials", headers=auth_headers, json={"name": "second"}).json()
+    second_headers = {"Authorization": "Bearer " + second["token"]}
+    assert client.post(WORKER, headers=second_headers, json=changed).status_code == 201
+    assert client.delete(base, headers=auth_headers).status_code == 204
+    assert client.delete(base, headers=auth_headers).status_code == 204
+    assert client.get(ADMIN, headers=auth_headers).json()["items"] == []
+    assert client.get(base + "/credentials", headers=auth_headers).status_code == 404
+    assert client.post(WORKER, headers=second_headers, json=changed).status_code == 401
+    assert client.post(path, headers=headers(key), json={"text": "hello"}).status_code == 404
+    assert not any(row["capability_id"] == cid for row in docs(key))
 
 
 def test_python_sdk_reregisters_until_credential_revoked(client, auth_headers, monkeypatch):
@@ -125,6 +185,7 @@ def test_python_sdk_reregisters_until_credential_revoked(client, auth_headers, m
     service = client.post(ADMIN, headers=auth_headers, json={"name": "SDK sample"}).json()["id"]
     base = f"{ADMIN}/{service}"
     credential = client.post(base + "/credentials", headers=auth_headers, json={"name": "SDK"}).json()
+    assert credential["expires_at"] is None
     worker = sdk.Worker("http://127.0.0.1:8000", credential["token"])
 
     @worker.tool("echo", "Echo", {"type": "object"})

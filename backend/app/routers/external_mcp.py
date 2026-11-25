@@ -4,8 +4,11 @@ import asyncio
 import json
 import secrets
 from datetime import timedelta
+from io import BytesIO
+from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, Depends, Header, Request, Response
 from fastapi.openapi.utils import get_openapi
@@ -20,6 +23,7 @@ from app.models import (
     ExternalMcpAudit,
     ExternalMcpCall,
     ExternalMcpCredential,
+    ExternalMcpHeartbeat,
     ExternalMcpInstance,
     ExternalMcpService,
 )
@@ -80,6 +84,9 @@ def registration_credential(db, token_digest, now):
     credential = db.scalar(select(ExternalMcpCredential).where(ExternalMcpCredential.digest == token_digest))
     if credential is None or credential.revoked_at or credential.expires_at <= now:
         raise ext.fail(401, "invalid_token", "注册凭证无效或已过期")
+    service = db.get(ExternalMcpService, credential.service_id)
+    if service is None or service.deleted_at:
+        raise ext.fail(401, "invalid_token", "注册凭证无效或已过期")
     return credential
 
 
@@ -120,6 +127,7 @@ def register_instance(token_digest, registration):
             instance.credential_id = credential.id
             instance.revision = revision
             instance.last_seen_at = credential.last_used_at = service.last_seen_at = now
+            ext.record_heartbeat(db, service, now)
             instance.expires_at = now + timedelta(seconds=ext.LEASE_SECONDS)
             payload = lease_payload(instance)
     if pending:
@@ -136,6 +144,7 @@ def renew_lease(instance_id: UUID, response: Response, authorization: Auth = "")
         instance.last_seen_at = now
         service = service_for(db, instance.service_id)
         service.last_seen_at = now
+        ext.record_heartbeat(db, service, now)
         instance.expires_at = now + timedelta(seconds=ext.LEASE_SECONDS)
         payload = lease_payload(instance)
     response.headers["Cache-Control"] = "no-store"
@@ -229,12 +238,12 @@ class ServiceInput(BaseModel):
 
 
 class CredentialInput(ServiceInput):
-    days: Literal[7, 30, 90] = 30
+    days: Literal[7, 30, 90] | None = None
     replaces_id: str | None = Field(default=None, max_length=32)
 
 
 class RenewInput(BaseModel):
-    days: Literal[7, 30, 90] = 30
+    days: Literal[7, 30, 90] | None = 30
 
 
 class ApproveInput(BaseModel):
@@ -243,12 +252,13 @@ class ApproveInput(BaseModel):
 
 def service_for(db, service_id):
     service = db.get(ExternalMcpService, service_id)
-    if service is None:
+    if service is None or service.deleted_at:
         raise ext.fail(404, "not_found", "外部服务不存在")
     return service
 
 
 def credential_for(db, service_id, credential_id):
+    service_for(db, service_id)
     item = db.get(ExternalMcpCredential, credential_id)
     if item is None or item.service_id != service_id:
         raise ext.fail(404, "not_found", "注册凭证不存在")
@@ -259,8 +269,12 @@ def audit(db, actor, service_id, action, **details):
     db.add(ExternalMcpAudit(actor_id=actor.id, service_id=service_id, action=action, details=ext.encode(details)))
 
 
+def credential_expiry(value):
+    return None if value == ext.NEVER_EXPIRES else ext.stamp(value)
+
+
 def credential_info(item):
-    return {"id": item.id, "name": item.name, "prefix": item.prefix, "expires_at": ext.stamp(item.expires_at),
+    return {"id": item.id, "name": item.name, "prefix": item.prefix, "expires_at": credential_expiry(item.expires_at),
             "created_at": ext.stamp(item.created_at), "created_by": item.created_by,
             "last_used_at": ext.stamp(item.last_used_at) if item.last_used_at else None,
             "status": "revoked" if item.revoked_at else "expired" if item.expires_at <= utcnow() else "active"}
@@ -277,7 +291,7 @@ def services():
     with get_session_factory()() as db:
         now = utcnow()
         items = []
-        for service in db.scalars(select(ExternalMcpService).order_by(ExternalMcpService.name)):
+        for service in db.scalars(select(ExternalMcpService).where(ExternalMcpService.deleted_at.is_(None)).order_by(ExternalMcpService.name)):
             online = db.scalars(ext.live_instances(now).where(ExternalMcpInstance.service_id == service.id,
                 ExternalMcpInstance.revision == ext.digest(service.manifest))).all()
             last = service.last_seen_at
@@ -287,6 +301,41 @@ def services():
                 "pending_revision": ext.digest(service.pending_manifest) if service.pending_manifest else None,
                 "pending_manifest": json.loads(service.pending_manifest) if service.pending_manifest else None})
         return {"items": items}
+
+
+@admin_router.get("/integration-kit", dependencies=[view], response_class=Response)
+def download_integration_kit():
+    here = Path(__file__).resolve()
+    root = next((path for path in (here.parents[2], here.parents[3]) if (path / "sdk/python/external_mcp.py").is_file()), None)
+    if root is None:
+        raise ext.fail(503, "kit_unavailable", "部署中缺少外部 MCP 接入包文件")
+    files = {
+        "README.md": "docs/external-mcp/quickstart.md",
+        "external-mcp-services.md": "docs/external-mcp-services.md",
+        "python/external_mcp.py": "sdk/python/external_mcp.py",
+        "python/echo.py": "sdk/python/echo.py",
+        "python/bridge.py": "sdk/python/bridge.py",
+        "nodejs/external-mcp.mjs": "sdk/nodejs/external-mcp.mjs",
+        "nodejs/echo.mjs": "sdk/nodejs/echo.mjs",
+    }
+    output = BytesIO()
+    try:
+        with ZipFile(output, "w", ZIP_DEFLATED) as archive:
+            for name, path in files.items():
+                content = (root / path).read_bytes()
+                if name == "README.md":
+                    content = content.replace(b"../external-mcp-services.md", b"external-mcp-services.md")
+                elif name == "external-mcp-services.md":
+                    content = content.replace(b"external-mcp/quickstart.md", b"README.md")
+                archive.writestr(name, content)
+            archive.writestr("python/requirements.txt", "httpx==0.28.1\n")
+            archive.writestr("openapi.json", json.dumps(worker_openapi(), indent=2, ensure_ascii=False))
+    except OSError:
+        raise ext.fail(503, "kit_unavailable", "部署中缺少外部 MCP 接入包文件") from None
+    return Response(output.getvalue(), media_type="application/zip", headers={
+        "Content-Disposition": 'attachment; filename="external-mcp-sdk.zip"',
+        "X-Content-Type-Options": "nosniff",
+    })
 
 
 @admin_router.post("", status_code=201, dependencies=[manage])
@@ -300,6 +349,43 @@ def create_service(payload: ServiceInput, actor: Actor):
         db.flush()
         audit(db, actor, service_id, "service_created")
     return {"id": service_id, "name": name}
+
+
+@admin_router.get("/{service_id}/heartbeats", dependencies=[view])
+def list_heartbeats(service_id: str, period: Literal["1h", "24h"] = "1h"):
+    with get_session_factory()() as db:
+        return ext.heartbeat_history(db, service_for(db, service_id), period, utcnow())
+
+
+@admin_router.patch("/{service_id}", dependencies=[manage])
+def rename_service(service_id: str, payload: ServiceInput, actor: Actor):
+    name = payload.name.strip()
+    if not name:
+        raise ext.fail(422, "invalid_name", "名称不能为空")
+    with ext.write_session() as db:
+        service = service_for(db, service_id)
+        if service.name != name:
+            audit(db, actor, service_id, "service_renamed", previous_name=service.name, name=name)
+            service.name = name
+    return {"id": service_id, "name": name}
+
+
+@admin_router.delete("/{service_id}", status_code=204, dependencies=[manage])
+def delete_service(service_id: str, actor: Actor):
+    with ext.write_session() as db:
+        service = db.get(ExternalMcpService, service_id)
+        if service is None:
+            raise ext.fail(404, "not_found", "外部服务不存在")
+        if not service.deleted_at:
+            service.deleted_at = utcnow()
+            service.pending_manifest = ""
+            db.execute(update(ExternalMcpCredential).where(ExternalMcpCredential.service_id == service_id,
+                ExternalMcpCredential.revoked_at.is_(None)).values(revoked_at=service.deleted_at))
+            db.execute(delete(ExternalMcpInstance).where(ExternalMcpInstance.service_id == service_id))
+            db.execute(delete(ExternalMcpHeartbeat).where(ExternalMcpHeartbeat.service_id == service_id))
+            cancel_calls(db, service_id)
+            audit(db, actor, service_id, "service_deleted", name=service.name)
+    return Response(status_code=204)
 
 
 @admin_router.delete("/{service_id}/registration", status_code=204, dependencies=[manage])
@@ -341,13 +427,14 @@ def issue(service_id: str, payload: CredentialInput, actor: Actor, response: Res
         if payload.replaces_id:
             credential_for(db, service_id, payload.replaces_id)
         item = ExternalMcpCredential(id=secrets.token_hex(16), service_id=service_id, name=payload.name.strip(),
-            digest=ext.digest(token), prefix=token[:15], created_by=actor.id, expires_at=utcnow() + timedelta(days=payload.days))
+            digest=ext.digest(token), prefix=token[:15], created_by=actor.id,
+            expires_at=ext.NEVER_EXPIRES if payload.days is None else utcnow() + timedelta(days=payload.days))
         if not item.name:
             raise ext.fail(422, "invalid_name", "名称不能为空")
         db.add(item)
         db.flush()
         audit(db, actor, service_id, "credential_rotated" if payload.replaces_id else "credential_issued",
-              credential_id=item.id, replaces_id=payload.replaces_id, expires_at=ext.stamp(item.expires_at))
+              credential_id=item.id, replaces_id=payload.replaces_id, expires_at=credential_expiry(item.expires_at))
         result_data = credential_info(item)
     response.headers["Cache-Control"] = "no-store"
     return {**result_data, "token": token}
@@ -361,11 +448,14 @@ def renew(service_id: str, credential_id: str, payload: RenewInput, actor: Actor
         if item.revoked_at or item.expires_at <= now:
             raise ext.fail(409, "credential_inactive", "已过期或销毁的凭证不能续期")
         old = item.expires_at
-        item.expires_at = min(now + timedelta(days=90), old + timedelta(days=payload.days))
+        if old == ext.NEVER_EXPIRES:
+            raise ext.fail(409, "credential_permanent", "此凭证已永不过期，无需续期")
+        item.expires_at = (ext.NEVER_EXPIRES if payload.days is None else
+                           min(now + timedelta(days=90), old + timedelta(days=payload.days)))
         if item.expires_at <= old:
             raise ext.fail(409, "renewal_limit", "凭证剩余期限已达 90 天")
         audit(db, actor, service_id, "credential_renewed", credential_id=item.id,
-              old_expires_at=ext.stamp(old), expires_at=ext.stamp(item.expires_at))
+              old_expires_at=credential_expiry(old), expires_at=credential_expiry(item.expires_at))
         return credential_info(item)
 
 
