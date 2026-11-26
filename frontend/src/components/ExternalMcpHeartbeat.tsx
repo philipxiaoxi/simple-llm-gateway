@@ -24,9 +24,6 @@ export function ExternalMcpHeartbeat({ serviceId }: { serviceId: string }) {
   })
   const history = query.data
   const bucket = point ?? (history ? history.counts.length - 1 : 0)
-  const start = history ? history.start + bucket * history.bucket_seconds : 0
-  const end = history ? Math.min(start + history.bucket_seconds, history.observed_until) : 0
-  const count = history?.counts[bucket]
 
   return <Card className="min-w-0 space-y-3">
     <div className="flex flex-wrap items-start justify-between gap-3" aria-busy={query.isPlaceholderData}>
@@ -45,7 +42,7 @@ export function ExternalMcpHeartbeat({ serviceId }: { serviceId: string }) {
     {query.isError ? <p role="alert" className="text-sm text-danger">{errorMessage(query.error, '加载心跳历史失败')}</p> : null}
     {history ? <>
       <div className="space-y-2 pt-1">
-        <div role="img" aria-label={`心跳时间轴，每格 ${history.bucket_seconds / 60} 分钟。使用下方滑块查看各时段。`}
+        <div role="img" aria-label={`心跳时间轴，每格 ${history.bucket_seconds / 60} 分钟。`}
           className="grid h-9 min-w-0 items-center gap-px rounded-lg bg-elevate/30 px-2 sm:gap-0.5"
           style={{ gridTemplateColumns: `repeat(${history.counts.length}, minmax(0, 1fr))` }}>
           {history.counts.map((value, index) => <div key={index} aria-hidden="true" onPointerEnter={() => setPoint(index)}
@@ -60,16 +57,6 @@ export function ExternalMcpHeartbeat({ serviceId }: { serviceId: string }) {
           <span key={tone} className="inline-flex items-center gap-1.5"><span aria-hidden="true" className={cn('h-2 w-2 rounded-sm', tones[tone])} />{label}</span>
         ))}
       </div>
-      <div className="grid items-center gap-2 border-t border-line pt-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
-        <p className="truncate text-xs tabular-nums text-mist" title={`${time(start)}–${time(end)} · ${count == null ? '尚未开始记录' : `收到 ${count} 次心跳`}`}><span className="font-medium text-paper">{time(start)}–{time(end)}</span> · {count == null ? '尚未开始记录' : `收到 ${count} 次心跳`}</p>
-        <TimelineRange max={history.counts.length - 1} value={bucket} onChange={setPoint} />
-      </div>
-      <p className="text-xs text-mist">每格 {history.bucket_seconds / 60} 分钟 · 心跳次数不等同于在线时长</p>
     </> : null}
   </Card>
-}
-
-function TimelineRange({ max, value, onChange }: { max: number; value: number; onChange: (index: number) => void }) {
-  return <input type="range" aria-label="查看心跳时段" min={0} max={max} value={value}
-    className="h-8 w-full accent-signal sm:w-40" onChange={(event) => onChange(Number(event.target.value))} />
 }
