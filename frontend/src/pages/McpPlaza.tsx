@@ -10,7 +10,8 @@ import {
 } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
-import { ExternalSdkServiceCard, ExternalSdkServices } from '../components/ExternalSdkServices'
+import { ExternalSdkServices } from '../components/ExternalSdkServices'
+import { McpCatalogCard } from '../components/McpCatalogCard'
 import { cn, errorMessage } from '../lib/utils'
 import { useSession } from '../lib/session'
 import { PageHeader } from '../components/layout-primitives'
@@ -150,40 +151,8 @@ export function McpPlazaCatalogPage() {
         <div className="text-sm text-mist">{items.length} 个能力</div>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {items.map((item) => {
-          if (item.source === 'external') {
-            return <ExternalSdkServiceCard key={item.capability_id} name={item.name} status={item.status === 'enabled' ? '在线' : '离线'}
-              summary={item.description} detail={`v${item.version} · ${item.tools.length} 个工具`} onOpen={() => setExternalId(item.capability_id)} />
-          }
-          const to = item.admin_path || undefined
-          const className = "flex min-h-[11.5rem] flex-col border border-line bg-panel px-5 py-5 transition hover:-translate-y-0.5 hover:border-signal/70 hover:shadow-glow"
-          const category = item.category || '能力'
-          const body = (
-            <>
-              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-signal">
-                MCP / {category} / 能力
-              </div>
-              <div className="mt-3 text-xl font-semibold tracking-tight text-paper">{item.name}</div>
-              <p className="mt-2 line-clamp-3 text-sm leading-6 text-mist">{item.description}</p>
-              <div className="mt-auto pt-4 text-[11px] text-mist-soft">
-                {item.capability_id} · v{item.version} · {item.tools.length} tools
-                {!to ? ' · 协议面' : ''}
-              </div>
-            </>
-          )
-          if (to) {
-            return (
-              <NavLink key={item.capability_id} to={to} className={className}>
-                {body}
-              </NavLink>
-            )
-          }
-          return (
-            <div key={item.capability_id} className={cn(className, item.status === 'offline' && 'opacity-60')}>
-              {body}
-            </div>
-          )
-        })}
+        {items.map((item) => <McpCatalogCard key={item.capability_id} item={item}
+          onOpen={item.source === 'external' ? () => setExternalId(item.capability_id) : undefined} />)}
       </div>
       {external ? <ExternalSdkServices catalogItem={external} onClose={() => setExternalId(null)} /> : null}
       {!items.length && !isFetching ? (
