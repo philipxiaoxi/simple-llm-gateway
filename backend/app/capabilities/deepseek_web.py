@@ -95,6 +95,21 @@ async def call_deepseek(operation: str, credential: str, payload: dict) -> dict:
         raise CapabilityError("DeepSeek 上游响应无效或连接失败", 502, "upstream_error") from None
 
 
+def bound_credential(ctx: CallContext) -> str:
+    settings = ctx.db.get(DeepSeekWebSettings, 1)
+    account = ctx.db.get(UpstreamAccount, settings.account_id) if settings and settings.account_id else None
+    if not eligible_account(account) or account is None:
+        raise CapabilityError("请在 MCP 广场配置可用的 DeepSeek 上游账号", 503, "upstream_not_configured")
+    try:
+        credential = get_upstream_credential(account)
+    except ValueError:
+        credential = None
+    if not credential:
+        raise CapabilityError("无法读取 DeepSeek 上游账号凭证", 503, "upstream_not_configured")
+    ctx.db.commit()
+    return credential
+
+
 class DeepSeekWebProvider:
     spec = CapabilitySpec(
         capability_id=CAPABILITY_ID,
@@ -128,18 +143,7 @@ class DeepSeekWebProvider:
             arguments = model.model_validate(payload).model_dump()
         except ValidationError:
             raise CapabilityError("工具参数无效，请检查搜索词、条数或网页地址", 400, "invalid_request") from None
-        settings = ctx.db.get(DeepSeekWebSettings, 1)
-        account = ctx.db.get(UpstreamAccount, settings.account_id) if settings and settings.account_id else None
-        if not eligible_account(account) or account is None:
-            raise CapabilityError("请在 MCP 广场配置可用的 DeepSeek 上游账号", 503, "upstream_not_configured")
-        try:
-            credential = get_upstream_credential(account)
-        except ValueError:
-            credential = None
-        if not credential:
-            raise CapabilityError("无法读取 DeepSeek 上游账号凭证", 503, "upstream_not_configured")
-        # Do not keep a read transaction open across DNS and a paid upstream request.
-        ctx.db.commit()
+        credential = bound_credential(ctx)
         if operation == "fetch":
             await asyncio.to_thread(validate_fetch_url, arguments["url"])
         else:

@@ -83,6 +83,13 @@ def ensure_defaults() -> None:
         from app.capabilities.deepseek_web import DeepSeekWebProvider
 
         register(DeepSeekWebProvider())
+    if "deepseek_asr" not in _providers:
+        from app.capabilities.deepseek_asr import DeepSeekAsrProvider
+        from app.capabilities.deepseek_media import DeepSeekMediaProvider
+
+        register(DeepSeekAsrProvider())
+        register(DeepSeekMediaProvider("tts"))
+        register(DeepSeekMediaProvider("ocr"))
     if "knowledge" not in _providers:
         from app.capabilities.knowledge.provider import KnowledgeProvider
 

@@ -17,6 +17,7 @@ from starlette.types import Receive, Scope, Send
 
 from app.capabilities import ensure_defaults, invoke_tool, list_tool_defs, resolve_tool
 from app.capabilities.base import CapabilityError
+from app.capabilities.deepseek_media import MEDIA_CAPABILITIES
 from app.db import get_session_factory
 from app.deps import extract_raw_api_key
 from app.services import external_mcp
@@ -96,7 +97,7 @@ def _record_mcp_failure(
         error_message=error.message,
         error_type=error.error_type,
         http_status=error.status_code,
-        request_body=None if capability_id.startswith(external_mcp.PREFIX) else request_body,
+        request_body=None if capability_id.startswith(external_mcp.PREFIX) or capability_id in MEDIA_CAPABILITIES else request_body,
     )
     session.commit()
 
@@ -191,7 +192,8 @@ def _register_tool_from_def(
 
     async def handler(**kwargs: Any) -> str:
         payload = {key: value for key, value in kwargs.items() if value is not None}
-        return await _run_registered_tool(tool_name, payload)
+        resolved = resolve_tool(tool_name)
+        return await _run_registered_tool(tool_name, payload, protocol_error=bool(resolved and resolved[0] in MEDIA_CAPABILITIES))
 
     handler.__name__ = tool_name.replace("-", "_")
     handler.__doc__ = description

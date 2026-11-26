@@ -316,6 +316,9 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
 # MCP 广场按此按功能划分：目录接口按当前账号权限过滤，前端只渲染返回的卡片。
 CAPABILITY_VIEW_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "deepseek_web": ("mcp_deepseek:view",),
+    "deepseek_asr": ("mcp_deepseek:view",),
+    "deepseek_tts": ("mcp_deepseek:view",),
+    "deepseek_ocr": ("mcp_deepseek:view",),
     "knowledge": ("mcp_knowledge:view",),
     "docparse": ("mcp_docparse:view",),
     "site": ("mcp_sites:view",),

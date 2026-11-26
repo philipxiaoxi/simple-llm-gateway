@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.capabilities.base import CallContext, CapabilityError, Provider
+from app.capabilities.deepseek_media import MEDIA_CAPABILITIES
 from app.capabilities.diagram.errors import DiagramError
 from app.capabilities.docparse.errors import DocParseError
 from app.capabilities.douyin.errors import DouyinError
@@ -48,6 +49,7 @@ async def invoke_capability(
     system: bool = False,
 ) -> dict[str, Any]:
     is_external = capability_id.startswith(external_mcp.PREFIX)
+    redact_body = is_external or capability_id in MEDIA_CAPABILITIES
     ensure_provider = get_provider(capability_id)
     if not is_external and (ensure_provider is None or ensure_provider.spec.status != "enabled"):
         raise CapabilityError("能力不存在或已停用", status_code=404, error_type="not_found")
@@ -75,8 +77,8 @@ async def invoke_capability(
             success=True,
             latency_ms=int((time.perf_counter() - started) * 1000),
             http_status=200,
-            request_body=None if is_external else body,
-            response_body=None if is_external else normalized,
+            request_body=None if redact_body else body,
+            response_body=None if redact_body else normalized,
         )
         return normalized
     except Exception as error:
@@ -91,7 +93,7 @@ async def invoke_capability(
             error_message=cap_error.message,
             error_type=cap_error.error_type,
             http_status=cap_error.status_code,
-            request_body=None if is_external else body,
+            request_body=None if redact_body else body,
         )
         raise cap_error from error
 

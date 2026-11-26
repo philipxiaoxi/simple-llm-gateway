@@ -237,6 +237,9 @@ export default function App() {
               <Route path="/mcp-plaza" element={<McpPlazaLayout />}>
                 <Route index element={<McpPlazaCatalogPage />} />
                 <Route path="deepseek-web" element={<RequirePerm code="mcp_deepseek:view"><McpDeepSeekWebPage /></RequirePerm>} />
+                <Route path="deepseek-asr" element={<RequirePerm code="mcp_deepseek:view"><McpDeepSeekWebPage /></RequirePerm>} />
+                <Route path="deepseek-tts" element={<RequirePerm code="mcp_deepseek:view"><McpDeepSeekWebPage /></RequirePerm>} />
+                <Route path="deepseek-ocr" element={<RequirePerm code="mcp_deepseek:view"><McpDeepSeekWebPage /></RequirePerm>} />
                 <Route path="knowledge" element={<McpKnowledgePage />} />
                 <Route path="knowledge/jobs" element={<McpKnowledgeJobsPage />} />
                 <Route path="knowledge/:kbId" element={<McpKnowledgeDetailPage />} />

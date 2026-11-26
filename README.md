@@ -132,6 +132,8 @@ base_url = https://你的站/v1
 
 ## MCP 广场与知识库
 
+内置的 DeepSeek 语音识别（`deepseek_asr`）、语音合成（`deepseek_tts`）和 OCR（`deepseek_ocr`）复用 DeepSeek 网页工具的上游账号绑定，但分别在 MCP Key 中授权。ASR/OCR 通过标准 Base64 传入完整文件，平台上限 8 MiB；TTS 支持整段合成，返回 WAV 或 PCM 的 Base64，不代理 WebSocket 流式合成。详见对应 Key 的接入说明。
+
 「DeepSeek 网页搜索」是内置能力。进入 MCP 广场选择一个已启用、已配置密钥的 DeepSeek 上游账号，再为 MCP Key 授权此能力，即可调用 `deepseek_search` 和 `deepseek_fetch`。工具请求发送到 DeepSeek 官方 API，沿用该账号的密钥，不使用账号自定义的 Base URL；成功且有结果的请求按 DeepSeek 工具 API 规则计费。
 
 独立部署的工具也可以通过 [外部 MCP SDK](docs/external-mcp/quickstart.md) 主动注册。注册后在 MCP Key 中授权，即可共用平台的 MCP、REST 和接入说明。

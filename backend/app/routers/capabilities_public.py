@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.capabilities import ensure_defaults, get_provider, invoke_capability, list_specs
 from app.capabilities.base import CapabilityError
+from app.capabilities.deepseek_asr import MAX_JSON_BYTES
+from app.capabilities.deepseek_media import MEDIA_CAPABILITIES
 from app.capabilities.docparse.errors import DocParseError
 from app.capabilities.docparse.jobs import create_job, get_owned_job, job_payload, run_job
 from app.capabilities.docparse.storage import markdown_path
@@ -95,10 +97,13 @@ async def dispatch_capability(
     """通用能力调用入口。新应用只需实现 Provider.dispatch，无需再加专用 REST 路由。"""
     ensure_defaults()
     payload: dict[str, Any] = {}
-    if capability_id.startswith(external_mcp.PREFIX):
+    if capability_id.startswith(external_mcp.PREFIX) or capability_id in MEDIA_CAPABILITIES:
+        if capability_id not in allowed_capability_ids(mcp_key):
+            return _error(403, "permission_error", "MCP Key 未授权该能力")
+        limit = (64 * 1024 if capability_id == "deepseek_tts" else MAX_JSON_BYTES) if capability_id in MEDIA_CAPABILITIES else external_mcp.MAX_PAYLOAD
         raw = bytearray()
         async for chunk in request.stream():
-            if len(raw) + len(chunk) > external_mcp.MAX_PAYLOAD:
+            if len(raw) + len(chunk) > limit:
                 return _error(413, "payload_too_large", "调用参数过大")
             raw.extend(chunk)
         try:
