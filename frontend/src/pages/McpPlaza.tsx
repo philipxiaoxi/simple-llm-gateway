@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
+import { ExternalSdkServiceCard, ExternalSdkServices } from '../components/ExternalSdkServices'
 import { cn, errorMessage } from '../lib/utils'
 import { useSession } from '../lib/session'
 import { PageHeader } from '../components/layout-primitives'
@@ -20,7 +21,7 @@ const tabs = [
   { to: '/mcp-plaza/keys', label: 'MCP Key', icon: KeyRound, perm: 'mcp_keys:view' },
   { to: '/mcp-plaza/calls', label: '调用记录', icon: ScrollText, perm: 'mcp_calls:view' },
   { to: '/mcp-plaza/docs', label: '接入说明', icon: Layers3, perm: 'mcp_catalog:view' },
-  { to: '/mcp-plaza/external', label: '外部服务', icon: Layers3, perm: 'mcp_external:view' },
+  { to: '/mcp-plaza/external', label: '外部 SDK 服务', icon: Layers3, perm: 'mcp_external:view' },
 ]
 
 const APP_PATH_PERMS: { prefix: string; perm: string }[] = [
@@ -100,6 +101,8 @@ export function McpPlazaCatalogPage() {
     refetchInterval: 15_000,
   })
   const [keyword, setKeyword] = useState('')
+  const [externalId, setExternalId] = useState<string | null>(null)
+  const external = data?.items.find((item) => item.capability_id === externalId)
   const query = keyword.trim().toLowerCase()
   const items = useMemo(() => {
     const visible = (data?.items || []).filter((item) => {
@@ -149,13 +152,17 @@ export function McpPlazaCatalogPage() {
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {items.map((item) => {
+          if (item.source === 'external') {
+            return <ExternalSdkServiceCard key={item.capability_id} name={item.name} status={item.status === 'enabled' ? '在线' : '离线'}
+              summary={item.description} detail={`v${item.version} · ${item.tools.length} 个工具`} onOpen={() => setExternalId(item.capability_id)} />
+          }
           const to = item.admin_path || undefined
           const className = "flex min-h-[11.5rem] flex-col border border-line bg-panel px-5 py-5 transition hover:-translate-y-0.5 hover:border-signal/70 hover:shadow-glow"
           const category = item.category || '能力'
           const body = (
             <>
               <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-signal">
-                MCP / {item.source === 'external' ? `外部服务 · ${item.status === 'enabled' ? '在线' : '离线'}` : `${category} / 能力`}
+                MCP / {category} / 能力
               </div>
               <div className="mt-3 text-xl font-semibold tracking-tight text-paper">{item.name}</div>
               <p className="mt-2 line-clamp-3 text-sm leading-6 text-mist">{item.description}</p>
@@ -179,6 +186,7 @@ export function McpPlazaCatalogPage() {
           )
         })}
       </div>
+      {external ? <ExternalSdkServices catalogItem={external} onClose={() => setExternalId(null)} /> : null}
       {!items.length && !isFetching ? (
         <div className="rounded-xl border border-dashed border-line p-10 text-center text-sm text-mist">
           {query ? `没有匹配「${keyword.trim()}」的应用` : '注册表中暂无启用能力。后端在 capabilities 中 register 新 Provider 后会自动出现。'}
