@@ -29,6 +29,8 @@ const MCP_PLAZA_GRANTS = [
   'mcp_calls:view',
   'mcp_external:view',
   'mcp_external:manage',
+  'mcp_deepseek:view',
+  'mcp_deepseek:configure',
 ] as const
 
 /**

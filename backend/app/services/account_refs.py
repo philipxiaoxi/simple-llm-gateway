@@ -4,13 +4,19 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.clock import utcnow
-from app.models import KnowledgeBase, RequestLog, SkillClassificationSettings, UpstreamAccount, VoiceRoom
+from app.models import DeepSeekWebSettings, KnowledgeBase, RequestLog, SkillClassificationSettings, UpstreamAccount, VoiceRoom
 from app.schemas import AccountUsageItemOut, AccountUsageOut
 from app.services.key_models import bound_accounts
 
 
 def collect_account_usage(db: Session, account: UpstreamAccount) -> AccountUsageOut:
     items: list[AccountUsageItemOut] = []
+    deepseek = db.get(DeepSeekWebSettings, 1)
+    if deepseek and deepseek.account_id == account.id:
+        items.append(AccountUsageItemOut(
+            kind="deepseek_web", id=None, name="DeepSeek 网页搜索", detail="MCP 搜索和抓取上游账号",
+            action="将解除绑定，重新配置前无法搜索或抓取", severity="warning",
+        ))
 
     affected_keys = {link.api_key for link in account.key_links if link.api_key is not None}
     affected_keys.update(key for key in account.api_keys if key is not None)
@@ -185,4 +191,5 @@ def detach_account_refs(db: Session, account_id: int) -> None:
         .where(VoiceRoom.polish_account_id == account_id)
         .values(polish_account_id=None, updated_at=now)
     )
+    db.execute(update(DeepSeekWebSettings).where(DeepSeekWebSettings.account_id == account_id).values(account_id=None))
     db.flush()

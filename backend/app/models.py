@@ -12,6 +12,13 @@ class Base(DeclarativeBase):
     pass
 
 
+class DeepSeekWebSettings(Base):
+    __tablename__ = "deepseek_web_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("upstream_accounts.id", ondelete="SET NULL"))
+
+
 class ExternalMcpService(Base):
     __tablename__ = "external_mcp_services"
 

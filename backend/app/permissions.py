@@ -32,6 +32,8 @@ MCP_PLAZA_GRANTS = (
     "mcp_calls:view",
     "mcp_external:view",
     "mcp_external:manage",
+    "mcp_deepseek:view",
+    "mcp_deepseek:configure",
 )
 
 # 仅用于控制页面入口、没有对应管理接口的权限码（覆盖率测试会放行这些）
@@ -39,6 +41,7 @@ PAGE_ONLY_CODES: frozenset[str] = frozenset({"mcp_catalog:view"})
 
 # 资源 -> (页面名, ((动作, 动作名), ...))
 CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
+    "mcp_deepseek": ("DeepSeek 网页搜索", (("view", "查看配置"), ("configure", "设置上游账号"))),
     "mcp_external": ("MCP 外部服务", (("view", "查看服务和凭证"), ("manage", "管理注册和凭证"))),
     "dashboard": ("概览", (("view", "查看"),)),
     "accounts": (
@@ -312,6 +315,7 @@ CATALOG: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
 # 能力 -> 进入该能力所需的查看权限（任一命中即可）。
 # MCP 广场按此按功能划分：目录接口按当前账号权限过滤，前端只渲染返回的卡片。
 CAPABILITY_VIEW_PERMISSIONS: dict[str, tuple[str, ...]] = {
+    "deepseek_web": ("mcp_deepseek:view",),
     "knowledge": ("mcp_knowledge:view",),
     "docparse": ("mcp_docparse:view",),
     "site": ("mcp_sites:view",),

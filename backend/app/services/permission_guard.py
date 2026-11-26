@@ -202,6 +202,8 @@ ROUTE_OVERRIDES: dict[tuple[str, str], str] = {
     ("POST", "/api/admin/info/sources/batch-interval"): "info:source_update",
     ("POST", "/api/admin/info/sources/{source_id}/collect"): "info:collect",
     ("GET", "/api/admin/mcp/catalog"): "mcp_catalog:view",
+    ("GET", "/api/admin/mcp/deepseek-web/settings"): "mcp_deepseek:view",
+    ("PUT", "/api/admin/mcp/deepseek-web/settings"): "mcp_deepseek:configure",
     ("GET", "/api/admin/mcp/external-services"): "mcp_external:view",
     ("GET", "/api/admin/mcp/external-services/integration-kit"): "mcp_external:view",
     ("GET", "/api/admin/mcp/external-services/{service_id}/credentials"): "mcp_external:view",

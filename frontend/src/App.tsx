@@ -61,6 +61,7 @@ const VoiceJoinPage = lazy(() => import('./pages/VoiceJoin').then((m) => ({ defa
 const VoiceSendPage = lazy(() => import('./pages/VoiceSend').then((m) => ({ default: m.VoiceSendPage })))
 const McpPlazaLayout = lazy(() => import('./pages/McpPlaza').then((m) => ({ default: m.McpPlazaLayout })))
 const McpPlazaCatalogPage = lazy(() => import('./pages/McpPlaza').then((m) => ({ default: m.McpPlazaCatalogPage })))
+const McpDeepSeekWebPage = lazy(() => import('./pages/McpDeepSeekWeb'))
 const McpKnowledgePage = lazy(() => import('./pages/McpKnowledge').then((m) => ({ default: m.McpKnowledgePage })))
 const McpKnowledgeDetailPage = lazy(() =>
   import('./pages/McpKnowledge').then((m) => ({ default: m.McpKnowledgeDetailPage })),
@@ -235,6 +236,7 @@ export default function App() {
               <Route path="/skills/:skillId" element={<SkillDetailPage />} />
               <Route path="/mcp-plaza" element={<McpPlazaLayout />}>
                 <Route index element={<McpPlazaCatalogPage />} />
+                <Route path="deepseek-web" element={<RequirePerm code="mcp_deepseek:view"><McpDeepSeekWebPage /></RequirePerm>} />
                 <Route path="knowledge" element={<McpKnowledgePage />} />
                 <Route path="knowledge/jobs" element={<McpKnowledgeJobsPage />} />
                 <Route path="knowledge/:kbId" element={<McpKnowledgeDetailPage />} />

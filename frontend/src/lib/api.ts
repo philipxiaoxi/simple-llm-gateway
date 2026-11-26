@@ -1510,6 +1510,10 @@ export const api = {
   // ---- MCP 广场 ----
   mcpCatalog: (scope: 'plaza' | 'all' = 'all') =>
     request<{ items: McpCatalogItem[] }>(`/api/admin/mcp/catalog?scope=${scope}`),
+  deepseekWebSettings: () => request<{ account_id: number | null; accounts: { id: number; name: string; available: boolean }[] }>('/api/admin/mcp/deepseek-web/settings'),
+  saveDeepseekWebSettings: (account_id: number | null) => request<{ account_id: number | null }>(
+    '/api/admin/mcp/deepseek-web/settings', { method: 'PUT', body: JSON.stringify({ account_id }) },
+  ),
   externalMcpServices: () => request<{ items: ExternalMcpService[] }>('/api/admin/mcp/external-services'),
   externalMcpHeartbeats: (id: string, period: '1h' | '24h') => request<ExternalMcpHeartbeatHistory>(`/api/admin/mcp/external-services/${id}/heartbeats?period=${period}`),
   externalMcpCreate: (name: string) => request<{ id: string; name: string }>('/api/admin/mcp/external-services', { method: 'POST', body: JSON.stringify({ name }) }),

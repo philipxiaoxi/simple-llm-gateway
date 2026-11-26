@@ -87,6 +87,8 @@ def tool_access(tool_name: str) -> str:
 
 
 def capability_permits(permissions: set[str], capability_id: str) -> bool:
+    if capability_id == "deepseek_web":
+        return False  # Paid provider requires explicit consumer MCP Key authorization.
     codes = CAPABILITY_VIEW_PERMISSIONS.get(capability_id, ())
     return bool(codes) and any(has_permission(permissions, code) for code in codes)
 
