@@ -18,9 +18,9 @@ import { Input } from '../components/ui'
 
 const tabs = [
   { to: '/mcp-plaza', label: '服务目录', icon: Store, end: true, perm: 'mcp_catalog:view' },
+  { to: '/mcp-plaza/external', label: '外部 SDK 服务', icon: Layers3, perm: 'mcp_external:view' },
   { to: '/mcp-plaza/keys', label: 'MCP Key', icon: KeyRound, perm: 'mcp_keys:view' },
   { to: '/mcp-plaza/calls', label: '调用记录', icon: ScrollText, perm: 'mcp_calls:view' },
-  { to: '/mcp-plaza/external', label: '外部 SDK 服务', icon: Layers3, perm: 'mcp_external:view' },
 ]
 
 const APP_PATH_PERMS: { prefix: string; perm: string }[] = [
