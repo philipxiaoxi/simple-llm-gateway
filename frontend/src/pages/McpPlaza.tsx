@@ -20,7 +20,6 @@ const tabs = [
   { to: '/mcp-plaza', label: '服务目录', icon: Store, end: true, perm: 'mcp_catalog:view' },
   { to: '/mcp-plaza/keys', label: 'MCP Key', icon: KeyRound, perm: 'mcp_keys:view' },
   { to: '/mcp-plaza/calls', label: '调用记录', icon: ScrollText, perm: 'mcp_calls:view' },
-  { to: '/mcp-plaza/docs', label: '接入说明', icon: Layers3, perm: 'mcp_catalog:view' },
   { to: '/mcp-plaza/external', label: '外部 SDK 服务', icon: Layers3, perm: 'mcp_external:view' },
 ]
 
@@ -64,7 +63,7 @@ export function McpPlazaLayout() {
         title="MCP 广场"
         description={
           inApp
-            ? '应用管理页。平台入口：服务目录、MCP Key、调用记录、接入说明。'
+            ? '应用管理页。平台入口：服务目录、MCP Key、调用记录。'
             : '提供可接入业务系统的能力服务。从卡片进入应用，MCP Key 与调用审计是平台级能力。'
         }
       />

@@ -120,7 +120,6 @@ export const PLAZA_APP_LINKS: NavLink[] = [
   { to: '/mcp-plaza/diagrams', label: '图表生成', icon: Shapes, keywords: 'mcp diagram 图表 archify', perm: 'mcp_diagrams:view' },
   { to: '/mcp-plaza/generation', label: '图片 / 视频生成配置', icon: Sparkles, keywords: 'mcp generation 生成 供应商 模型', perm: 'generation:settings' },
   { to: '/mcp-plaza/info-report', label: '资讯上报', icon: Newspaper, keywords: 'mcp info 资讯 上报', perm: 'mcp_info:view' },
-  { to: '/mcp-plaza/docs', label: 'MCP 接入说明', icon: ScrollText, keywords: 'mcp docs 接入 文档', perm: 'mcp_catalog:view' },
   { to: '/mcp-plaza/keys', label: 'MCP Key', icon: KeyRound, keywords: 'mcp key 密钥 令牌', perm: 'mcp_keys:view' },
   { to: '/mcp-plaza/calls', label: 'MCP 调用记录', icon: ScrollText, keywords: 'mcp calls 调用 日志', perm: 'mcp_calls:view' },
 ]

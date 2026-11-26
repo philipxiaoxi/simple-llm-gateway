@@ -1,9 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, Copy, KeyRound, RefreshCw } from 'lucide-react'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { ItemPickDialog } from '../components/ItemPickDialog'
-import { Badge, Button, Card, Select } from '../components/ui'
+import { useState, type ReactNode } from 'react'
+import { ItemPickDialog } from './ItemPickDialog'
+import { Badge, Button, Card, Sheet } from './ui'
 import { api, type McpIntegrationCapability } from '../lib/api'
 import { useCan } from '../lib/session'
 import {
@@ -18,7 +17,7 @@ import {
   type ToolParamRow,
 } from '../lib/mcpIntegration'
 import { notifyBad, notifyOk } from '../lib/toast'
-import { cn, copyText, errorMessage, formatTime } from '../lib/utils'
+import { cn, copyText, errorMessage } from '../lib/utils'
 
 const METHODS = [
   { id: 'mcp', label: 'MCP', desc: '支持 MCP 的客户端，直接接入工具' },
@@ -252,50 +251,34 @@ function ConnInfo({ rows }: { rows: [string, string][] }) {
   )
 }
 
-export function McpDocsPage() {
-  const [params, setParams] = useSearchParams()
-  const queryKeyId = params.get('key')
+export function McpKeyIntegrationDialog({ keyId, onClose }: { keyId: number; onClose: () => void }) {
   const [method, setMethod] = useState<MethodId>('mcp')
   const [dialog, setDialog] = useState<null | MethodId>(null)
 
-  const canListKeys = useCan('mcp_keys:view')
   const canReveal = useCan('mcp_keys:reveal')
-  const keys = useQuery({ queryKey: ['mcp-keys'], queryFn: () => api.mcpKeys(), enabled: canListKeys })
-  const keyId = useMemo(() => {
-    if (queryKeyId) return Number(queryKeyId)
-    return keys.data?.[0]?.id
-  }, [queryKeyId, keys.data])
-
-  useEffect(() => {
-    if (!queryKeyId && keys.data?.length) {
-      const next = new URLSearchParams(params)
-      next.set('key', String(keys.data[0].id))
-      setParams(next, { replace: true })
-    }
-  }, [queryKeyId, keys.data, params, setParams])
 
   const integration = useQuery({
     queryKey: ['mcp-key-integration', keyId],
     refetchInterval: 15_000,
-    queryFn: () => api.mcpKeyIntegration(keyId as number),
-    enabled: Boolean(keyId),
+    queryFn: () => api.mcpKeyIntegration(keyId),
   })
   const reveal = useQuery({
     queryKey: ['mcp-key-reveal', keyId],
-    queryFn: () => api.revealMcpKey(keyId as number),
-    enabled: canReveal && Boolean(keyId),
+    queryFn: () => api.revealMcpKey(keyId),
+    enabled: canReveal,
     staleTime: 5 * 60_000,
   })
 
   const data = integration.data
   const capabilities = data?.capabilities ?? []
   const authorized = capabilities.filter((capability) => capability.authorized && capability.status !== 'offline')
-  const keyValue = reveal.data?.key ?? ''
+  const keyValue = canReveal ? reveal.data?.key ?? '' : ''
+  const exampleKey = keyValue || 'YOUR_MCP_KEY'
   const input: IntegrationInput | null =
-    data && keyValue
+    data
       ? {
           keyName: data.key.name,
-          keyValue,
+          keyValue: exampleKey,
           mcpUrl: data.mcp_url,
           restBaseUrl: data.rest_base_url,
           capabilities: authorized,
@@ -313,53 +296,24 @@ export function McpDocsPage() {
     }
   }
 
-  function selectKey(value: string) {
-    const next = new URLSearchParams(params)
-    next.set('key', value)
-    setParams(next, { replace: true })
-  }
-
-  if (keys.isError) {
-    return <div className="text-sm text-danger">{errorMessage(keys.error, '加载 MCP Key 失败')}</div>
-  }
-  if (!keys.isLoading && !keys.data?.length) {
-    return (
-      <div className="rounded-xl border border-dashed border-line px-6 py-12 text-center text-sm text-mist">
-        还没有 MCP Key。请先到「MCP Key」页创建一把，再回来生成接入配置。
-      </div>
-    )
-  }
-
   const active = METHODS.find((item) => item.id === method) ?? METHODS[0]
 
   return (
-    <div className="min-w-0 space-y-4 overflow-x-hidden">
+    <Sheet title={data ? `接入说明 · ${data.key.name}` : '接入说明'} onClose={onClose} size="lg:max-w-4xl" mobileFull bodyClassName="space-y-4">
       <Card className="min-w-0 space-y-3 overflow-hidden p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <h2 className="text-lg font-medium">接入中心</h2>
-            <p className="mt-1 text-sm text-mist">按 Key 生成接入配置与文档，只包含该 Key 已授权的能力。</p>
+            <p className="text-sm text-mist">接入配置和示例仅包含此 Key 已授权且可用的能力。</p>
           </div>
           <div className="flex items-center gap-2">
-            <Select
-              className="min-w-0 flex-1 lg:w-72 lg:flex-none"
-              value={keyId ? String(keyId) : ''}
-              onChange={(event) => selectKey(event.target.value)}
-            >
-              {(keys.data || []).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} · {item.key_prefix} · {item.status}
-                </option>
-              ))}
-            </Select>
             <Button
               type="button"
               variant="ghost"
               className="shrink-0"
-              title="刷新"
+              aria-label="刷新接入说明"
               onClick={() => {
                 void integration.refetch()
-                void reveal.refetch()
+                if (canReveal) void reveal.refetch()
               }}
             >
               <RefreshCw size={15} />
@@ -400,7 +354,7 @@ export function McpDocsPage() {
             </div>
             {!keyValue ? (
               <div className="text-xs text-mist">
-                {reveal.isError ? '密钥读取失败，请确认 APP_SECRET_KEY 未更换。' : '密钥读取中…'}
+                {!canReveal ? '没有查看密钥的权限，配置中使用 YOUR_MCP_KEY 占位。' : reveal.isError ? '密钥读取失败，配置中使用 YOUR_MCP_KEY 占位。' : '密钥读取中，配置暂用 YOUR_MCP_KEY 占位。'}
               </div>
             ) : null}
             {data.key.status !== 'active' ? (
@@ -410,7 +364,7 @@ export function McpDocsPage() {
             ) : null}
           </div>
         ) : (
-          <div className="text-sm text-mist">加载中…</div>
+          integration.isPending ? <div role="status" className="text-sm text-mist">加载中…</div> : null
         )}
       </Card>
 
@@ -418,9 +372,11 @@ export function McpDocsPage() {
         <div className="min-w-0 space-y-4">
           <div className="inline-flex rounded-lg border border-line bg-ink/40 p-1">
             {METHODS.map((item) => (
-              <button
+              <Button
                 key={item.id}
                 type="button"
+                variant="ghost"
+                aria-pressed={method === item.id}
                 onClick={() => setMethod(item.id)}
                 className={cn(
                   'rounded-md px-4 py-2 text-sm font-medium transition',
@@ -428,7 +384,7 @@ export function McpDocsPage() {
                 )}
               >
                 {item.label}
-              </button>
+              </Button>
             ))}
           </div>
 
@@ -549,11 +505,6 @@ export function McpDocsPage() {
       {integration.isError ? (
         <div className="text-sm text-danger">{errorMessage(integration.error, '加载接入信息失败')}</div>
       ) : null}
-      {keys.data?.length ? (
-        <div className="text-xs text-mist">最近更新 {formatTime(keys.data[0].created_at)}</div>
-      ) : null}
-    </div>
+    </Sheet>
   )
 }
-
-export default McpDocsPage

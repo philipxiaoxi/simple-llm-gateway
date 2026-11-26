@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ExternalLink, Eye, KeyRound, MoreHorizontal, Pencil, Plus, Power, PowerOff, Trash2 } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
 import { api, type McpKeyItem } from '../lib/api'
 import { useCan } from '../lib/session'
 import { notifyBad, notifyOk } from '../lib/toast'
 import { errorMessage, formatTime } from '../lib/utils'
+
+const McpKeyIntegrationDialog = lazy(() => import('../components/McpKeyIntegrationDialog').then((module) => ({ default: module.McpKeyIntegrationDialog })))
 
 function CapabilityPicker({
   options,
@@ -195,7 +197,16 @@ export function McpKeysPage() {
   const canReveal = useCan('mcp_keys:reveal')
   // 能力绑定由角色权限单独控制；更高级管理员（*）天然具备
   const canCapabilities = useCan('mcp_keys:capabilities_manage')
-  const canDocs = useCan('mcp_catalog:view')
+  const [params, setParams] = useSearchParams()
+  const integrationId = Number(params.get('integration'))
+  function showIntegration(id?: number) {
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      if (id === undefined) next.delete('integration')
+      else next.set('integration', String(id))
+      return next
+    }, { replace: true })
+  }
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -348,27 +359,19 @@ export function McpKeysPage() {
       <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
         {data.map((item) => {
           const actions = ([
-            canDocs
-              ? {
+            {
                   key: 'docs',
                   inline: (
-                    <Link
-                      to={`/mcp-plaza/docs?key=${item.id}`}
-                      className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-line bg-panel-2 px-3 py-2 text-sm font-medium text-paper transition hover:border-mist/40 md:min-h-9"
-                    >
+                    <Button type="button" variant="line" aria-haspopup="dialog" onClick={() => showIntegration(item.id)}>
                       <ExternalLink size={14} /> 接入
-                    </Link>
+                    </Button>
                   ),
                   menu: (
-                    <Link
-                      to={`/mcp-plaza/docs?key=${item.id}`}
-                      className="inline-flex min-h-11 w-full items-center gap-2 rounded-md border border-line bg-panel-2 px-3 py-2 text-sm font-medium text-paper transition hover:border-mist/40"
-                    >
+                    <Button type="button" variant="line" className="w-full justify-start" aria-haspopup="dialog" onClick={() => showIntegration(item.id)}>
                       <ExternalLink size={15} /> 接入说明
-                    </Link>
+                    </Button>
                   ),
-                }
-              : null,
+                },
             canUpdate
               ? {
                   key: 'edit',
@@ -514,6 +517,11 @@ export function McpKeysPage() {
         </div>
       ) : null}
 
+      {Number.isSafeInteger(integrationId) && integrationId > 0 ? (
+        <Suspense fallback={<Dialog title="接入说明" onClose={() => showIntegration()}><p role="status" className="text-sm text-mist">加载中…</p></Dialog>}>
+          <McpKeyIntegrationDialog key={integrationId} keyId={integrationId} onClose={() => showIntegration()} />
+        </Suspense>
+      ) : null}
       {open ? (
         <Dialog
           title="新建 MCP Key"

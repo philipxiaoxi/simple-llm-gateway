@@ -70,7 +70,10 @@ const McpKnowledgeJobsPage = lazy(() =>
 )
 const McpKeysPage = lazy(() => import('./pages/McpKeys').then((m) => ({ default: m.McpKeysPage })))
 const McpCallsPage = lazy(() => import('./pages/McpCalls').then((m) => ({ default: m.McpCallsPage })))
-const McpDocsPage = lazy(() => import('./pages/McpDocs').then((m) => ({ default: m.McpDocsPage })))
+function LegacyMcpDocsRedirect() {
+  const keyId = new URLSearchParams(useLocation().search).get('key')
+  return <Navigate replace to={keyId && /^[1-9]\d*$/.test(keyId) ? `/mcp-plaza/keys?integration=${keyId}` : '/mcp-plaza/keys'} />
+}
 const McpExternalPage = lazy(() => import('./pages/McpExternal'))
 const McpDocParsePage = lazy(() => import('./pages/McpDocParse').then((m) => ({ default: m.McpDocParsePage })))
 const McpSitesPage = lazy(() => import('./pages/McpSites').then((m) => ({ default: m.McpSitesPage })))
@@ -250,7 +253,7 @@ export default function App() {
                 <Route path="generation" element={<McpGenerationPage />} />
                 <Route path="keys" element={<McpKeysPage />} />
                 <Route path="calls" element={<McpCallsPage />} />
-                <Route path="docs" element={<McpDocsPage />} />
+                <Route path="docs" element={<LegacyMcpDocsRedirect />} />
                 <Route path="external" element={<RequirePerm code="mcp_external:view"><McpExternalPage /></RequirePerm>} />
               </Route>
               <Route path="/tools" element={<ToolsPage />} />
