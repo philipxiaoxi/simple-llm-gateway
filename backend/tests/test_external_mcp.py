@@ -9,10 +9,13 @@ from uuid import uuid4
 from zipfile import ZipFile
 
 import httpx
+import pytest
 from sqlalchemy import update
 
 from app.clock import utcnow
+from app.config import get_settings
 from app.models import ExternalMcpInstance
+from app.services import external_mcp_artifacts as files
 from app.services.external_mcp import write_session
 
 ADMIN = "/api/admin/mcp/external-services"
@@ -32,7 +35,9 @@ def test_external_integration_kit(client, auth_headers):
             "python/requirements.txt", "nodejs/external-mcp.mjs", "nodejs/echo.mjs", "openapi.json",
         }
         assert b"(external-mcp-services.md)" in archive.read("README.md")
-        assert WORKER in json.loads(archive.read("openapi.json"))["paths"]
+        paths = json.loads(archive.read("openapi.json"))["paths"]
+        assert WORKER in paths
+        assert "/v1/external-mcp/artifacts/{artifact_id}/upload" in paths
 
 
 def test_heartbeat_history_buckets(client, auth_headers, monkeypatch):
@@ -174,7 +179,7 @@ def test_external_registration_docs_and_dispatch(client, auth_headers):
     assert not any(row["capability_id"] == cid for row in docs(key))
 
 
-def test_python_sdk_reregisters_until_credential_revoked(client, auth_headers, monkeypatch):
+def test_python_sdk_reregisters_until_credential_revoked(client, auth_headers, monkeypatch, tmp_path):
     from app.routers import external_mcp as routes
 
     spec = importlib.util.spec_from_file_location("worker_sdk", Path(__file__).parents[2] / "sdk/python/external_mcp.py")
@@ -187,9 +192,14 @@ def test_python_sdk_reregisters_until_credential_revoked(client, auth_headers, m
     credential = client.post(base + "/credentials", headers=auth_headers, json={"name": "SDK"}).json()
     assert credential["expires_at"] is None
     worker = sdk.Worker("http://127.0.0.1:8000", credential["token"])
+    monkeypatch.setattr(get_settings(), "app_base_url", "http://127.0.0.1:8000")
+    fixture = tmp_path / "example.pptx"
+    fixture.write_bytes(b"test binary\x00")
 
     @worker.tool("echo", "Echo", {"type": "object"})
     async def echo(**data):
+        if data.get("file"):
+            await worker.upload_file(fixture)
         return data
 
     registrations = asyncio.Queue()
@@ -199,7 +209,7 @@ def test_python_sdk_reregisters_until_credential_revoked(client, auth_headers, m
         if path.endswith("/claims"):
             path += "?wait=0"
             await asyncio.sleep(0.02)
-        response = await asyncio.to_thread(client.request, req.method, path, headers=dict(req.headers), content=req.content)
+        response = await asyncio.to_thread(client.request, req.method, path, headers=dict(req.headers), content=await req.aread())
         if path == WORKER and response.is_success:
             registrations.put_nowait(response.json()["lease_epoch"])
         return httpx.Response(response.status_code, content=response.content)
@@ -222,6 +232,14 @@ def test_python_sdk_reregisters_until_credential_revoked(client, auth_headers, m
                 await asyncio.gather(event, return_exceptions=True)
         try:
             first = await registered()
+            cid = f"ext_{service}"
+            key = (await asyncio.to_thread(client.post, "/api/admin/mcp/keys", headers=auth_headers,
+                                           json={"name": "SDK test", "capability_ids": [cid]})).json()["key"]
+            delivered = await asyncio.to_thread(client.post, f"/v1/capabilities/{cid}/echo",
+                                                headers={"Authorization": "Bearer " + key}, json={"file": True})
+            assert delivered.status_code == 200, delivered.text
+            url = delivered.json()["artifacts"][0]["download_url"]
+            assert (await asyncio.to_thread(client.get, url)).content == fixture.read_bytes()
             response = await asyncio.to_thread(client.delete, base + "/registration", headers=auth_headers)
             assert response.status_code == 204
             second = await registered()
@@ -240,3 +258,93 @@ def test_python_sdk_reregisters_until_credential_revoked(client, auth_headers, m
                 await asyncio.gather(task, return_exceptions=True)
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("transport", ["rest", "mcp"])
+def test_artifact_delivery(client, auth_headers, monkeypatch, transport):
+    monkeypatch.setattr(get_settings(), "app_base_url", "https://testserver")
+    service = client.post(ADMIN, headers=auth_headers, json={"name": "Slide deck"}).json()["id"]
+    credential = client.post(f"{ADMIN}/{service}/credentials", headers=auth_headers, json={"name": "SDK"}).json()["token"]
+    instance = str(uuid4())
+    registration = client.post(WORKER, headers={"Authorization": "Bearer " + credential}, json={
+        "protocol_version": "external-mcp/v1", "instance_id": instance, "version": "1",
+        "tools": [{"name": "deck", "description": "Make a slide deck", "input_schema": {"type": "object"},
+                   "output_schema": {"type": "object", "additionalProperties": False}}],
+    })
+    worker = {"Authorization": "Bearer " + registration.json()["lease_token"]}
+    cap = f"ext_{service}"
+    key = client.post("/api/admin/mcp/keys", headers=auth_headers, json={"name": "Slides", "capability_ids": [cap]}).json()["key"]
+    consumer = {"Authorization": "Bearer " + key, "Accept": "application/json, text/event-stream"}
+    root = f"{WORKER}/{instance}"
+    pptx = b"PK\x03\x04example binary\x00\xff"
+    mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+    def invoke():
+        if transport == "rest":
+            return client.post(f"/v1/capabilities/{cap}/deck", headers=consumer, json={})
+        return client.post("/mcp", headers=consumer, json={"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                                                            "params": {"name": f"{cap}_deck", "arguments": {}}})
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        output = pool.submit(invoke)
+        call = client.post(root + "/claims?wait=4", headers=worker).json()
+        call_path = root + f"/calls/{call['call_id']}"
+        spec = {"dispatch_id": call["dispatch_id"], "filename": "演示.pptx", "content_type": mime, "size_bytes": len(pptx)}
+        assert client.post(call_path + "/artifacts", headers=worker, json={**spec, "dispatch_id": "0" * 32}).status_code == 404
+        assert client.post(call_path + "/artifacts", headers=worker, json={**spec, "filename": "../test"}).status_code == 422
+        assert client.post(call_path + "/artifacts", headers=worker, json={**spec, "size_bytes": files.MAX_SIZE + 1}).status_code == 422
+        created = client.post(call_path + "/artifacts", headers=worker, json=spec)
+        assert created.status_code == 201, created.text
+        slot = created.json()
+        artifact_id = slot["artifact_id"]
+        upload = slot["upload_url"]
+        report = {"dispatch_id": call["dispatch_id"], "ok": True, "result": {}, "artifact_ids": [artifact_id]}
+        assert client.put(call_path + "/result", headers=worker, json=report).status_code == 422
+        upload_headers = {"Authorization": "Bearer " + slot["upload_token"]}
+        assert client.put(upload, content=pptx, headers=worker).status_code == 404
+        assert client.put(upload, content=pptx[:-1], headers=upload_headers).status_code == 422
+        assert client.put(upload, content=iter([pptx, b"overflow"]), headers=upload_headers).status_code == 413
+        assert client.put(upload, content=pptx, headers=upload_headers).status_code == 204
+        assert client.put(upload, content=pptx, headers=upload_headers).status_code == 409
+
+        other_output = pool.submit(invoke)
+        other = client.post(root + "/claims?wait=4", headers=worker).json()
+        other_path = root + f"/calls/{other['call_id']}/result"
+        assert client.put(other_path, headers=worker, json={**report, "dispatch_id": other["dispatch_id"]}).status_code == 422
+        assert client.put(other_path, headers=worker, json={"dispatch_id": other["dispatch_id"], "ok": True, "result": {}}).status_code == 204
+        assert other_output.result(timeout=5).status_code == 200
+        assert client.put(call_path + "/result", headers=worker, json=report).status_code == 204
+        assert client.put(call_path + "/result", headers=worker, json=report).status_code == 204
+        response = output.result(timeout=5)
+        assert response.status_code == 200, response.text
+
+    if transport == "mcp":
+        result = response.json()["result"]
+        envelope = result["structuredContent"]
+        url = envelope["artifacts"][0]["download_url"]
+        assert any(item["type"] == "resource_link" and item["uri"] == url for item in result["content"])
+        assert any(item["type"] == "text" and url in item["text"] for item in result["content"])
+    else:
+        envelope = response.json()
+    artifact = envelope["artifacts"][0]
+    assert envelope["result"] == {}
+    assert artifact["filename"] == "演示.pptx" and artifact["content_type"] == mime
+    url = artifact["download_url"]
+    assert url.startswith("https://testserver/") and slot["upload_token"] not in url
+    assert client.get(url.split("?")[0]).status_code == 404
+    assert client.get(url.replace(artifact_id, "0" * 32)).status_code == 404
+    downloaded = client.get(url)
+    assert downloaded.content == pptx
+    assert downloaded.headers["content-disposition"].startswith("attachment;")
+    assert downloaded.headers["cache-control"] == "no-store"
+    assert downloaded.headers["content-type"] == "application/octet-stream"
+    assert client.head(url).headers["content-length"] == str(len(pptx))
+
+    expiry = datetime.fromisoformat(artifact["expires_at"]).replace(tzinfo=None)
+    from app.routers import external_mcp as routes
+
+    monkeypatch.setattr(routes, "utcnow", lambda: expiry + timedelta(seconds=1))
+    assert client.get(url).status_code == 404
+    with write_session() as db:
+        files.cleanup_expired(db, expiry + timedelta(seconds=1))
+    assert not files.file_path(artifact_id).exists()

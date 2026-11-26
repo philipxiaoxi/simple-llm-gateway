@@ -82,6 +82,21 @@ class ExternalMcpCall(Base):
     result: Mapped[str | None] = mapped_column(Text)
 
 
+class ExternalMcpArtifact(Base):
+    __tablename__ = "external_mcp_artifacts"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    # Artifacts can remain downloadable after the short-lived call row is pruned.
+    call_id: Mapped[str] = mapped_column(String(32), index=True)
+    dispatch_id: Mapped[str] = mapped_column(String(32))
+    filename: Mapped[str] = mapped_column(String(200))
+    content_type: Mapped[str] = mapped_column(String(128))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    upload_digest: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(16), default="pending")
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
 class ExternalMcpAudit(Base):
     __tablename__ = "external_mcp_audit"
 

@@ -22,12 +22,14 @@ from app.clock import utcnow
 from app.config import DEFAULT_RESOURCE_TOKEN_TTL_SECONDS, get_settings
 from app.db import get_session_factory
 from app.models import (
+    ExternalMcpArtifact,
     ExternalMcpCall,
     ExternalMcpCredential,
     ExternalMcpHeartbeat,
     ExternalMcpInstance,
     ExternalMcpService,
 )
+from app.services import external_mcp_artifacts as files
 
 PREFIX = "ext_"
 HEARTBEAT_SECONDS = 15
@@ -73,6 +75,7 @@ class Result(BaseModel):
     ok: bool
     result: dict[str, Any] | None = None
     error: dict[str, str] | None = None
+    artifact_ids: list[files.ArtifactId] = Field(default_factory=list, max_length=files.MAX_FILES)
 
 
 def fail(status: int, code: str, message: str) -> HTTPException:
@@ -305,7 +308,18 @@ def poll_result(call_id: str, service_id: str, revision: str, deadline) -> dict 
                 error = result["error"]
                 http_status = {"invalid_request": 422, "not_found": 404, "timeout": 504}.get(error["type"], 502)
                 raise CapabilityError(error["message"], http_status, error["type"])
-            return result["result"]
+            ids = result.get("artifact_ids", [])
+            if not ids:
+                return result["result"]
+            base = files.public_base()
+            artifacts = []
+            for identifier in ids:
+                artifact = db.get(ExternalMcpArtifact, identifier)
+                if (artifact is None or artifact.call_id != call.id or artifact.dispatch_id != call.dispatch_id
+                        or artifact.state != "published" or artifact.expires_at <= utcnow()):
+                    raise CapabilityError("外部工具文件不可用", 502, "external_error")
+                artifacts.append(files.delivery_metadata(artifact, base))
+            return files.ArtifactResult(result["result"], artifacts)
         now = utcnow()
         if now >= deadline:
             raise CapabilityError("外部工具调用超时", 504, "timeout")
@@ -358,8 +372,10 @@ async def cleanup_loop() -> None:
 
 
 def cleanup() -> None:
-    cutoff = utcnow() - timedelta(minutes=5)
+    now = utcnow()
+    cutoff = now - timedelta(minutes=5)
     with write_session() as db:
+        files.cleanup_expired(db, now)
         db.execute(delete(ExternalMcpCall).where(ExternalMcpCall.deadline < cutoff))
         db.execute(delete(ExternalMcpInstance).where(ExternalMcpInstance.expires_at < cutoff))
         retention = int((utcnow() - timedelta(days=7)).replace(tzinfo=UTC).timestamp())

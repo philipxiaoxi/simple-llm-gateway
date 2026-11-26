@@ -340,7 +340,7 @@ def redact_secret_query(query: bytes) -> bytes:
 
 
 class RedactMcpQueryMiddleware:
-    """MCP 只认 Header 鉴权；query 里的密钥不该进 access log。
+    """MCP 查询参数和文件下载令牌不进入 access log。
 
     原地改写 ``scope["query_string"]``：uvicorn access log 在响应时读取同一个 scope。
     """
@@ -356,6 +356,11 @@ class RedactMcpQueryMiddleware:
                 redacted = redact_secret_query(query)
                 if redacted is not query:
                     scope["query_string"] = redacted
+            elif path.startswith("/v1/external-mcp/artifacts/") and path.endswith("/download"):
+                # Keep the original query for authentication, but not for Uvicorn's log.
+                original = scope
+                scope = dict(scope)
+                original["query_string"] = b""
         await self.app(scope, receive, send)
 
 

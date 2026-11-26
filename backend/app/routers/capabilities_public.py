@@ -17,6 +17,7 @@ from app.capabilities.docparse.storage import markdown_path
 from app.db import get_db
 from app.schemas import KnowledgeSearchRequest, KnowledgeSearchResponse, McpCapabilityOut
 from app.services import external_mcp
+from app.services.external_mcp_artifacts import ArtifactResult
 from app.services.mcp_auth import allowed_capability_ids, get_mcp_key_from_headers
 from app.services.mcp_logs import begin_mcp_call
 
@@ -121,13 +122,16 @@ async def dispatch_capability(
         except Exception:
             payload = {}
     try:
-        return await invoke_capability(
+        result = await invoke_capability(
             db,
             mcp_key=mcp_key,
             capability_id=capability_id,
             operation=operation,
             payload=payload,
         )
+        if isinstance(result, ArtifactResult):
+            return JSONResponse(result.envelope(), headers={"Cache-Control": "no-store"})
+        return result
     except CapabilityError as error:
         return _error(error.status_code, error.error_type, error.message, error.diagnostics)
 

@@ -6,7 +6,9 @@ import inspect
 import logging
 import random
 import uuid
+from contextvars import ContextVar
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -28,6 +30,7 @@ class Worker:
         self.version, self.description = version, description
         self.tools: dict[str, tuple[dict, Any]] = {}
         self.lease: dict = {}
+        self._upload_context: ContextVar = ContextVar("external_mcp_upload", default=None)
 
     def tool(self, name: str, description: str, input_schema: dict, **metadata: Any):
         def register(handler):
@@ -42,6 +45,32 @@ class Worker:
         response = await client.request(method, self.url + path, headers={"Authorization": "Bearer " + token}, **kwargs)
         response.raise_for_status()
         return response.json() if response.status_code != 204 else None
+
+    async def upload_file(self, path: str | Path, *, filename: str | None = None,
+                          content_type: str = "application/octet-stream") -> str:
+        """Upload a local file and attach it to the current successful tool result."""
+        context = self._upload_context.get()
+        if context is None:
+            raise RuntimeError("Upload files from an async tool handler")
+        client, root, call, artifacts = context
+        source = Path(path)
+        size = source.stat().st_size
+        slot = await self._request(client, "POST", root + f"/calls/{call['call_id']}/artifacts", json={
+            "dispatch_id": call["dispatch_id"], "filename": filename or source.name,
+            "content_type": content_type, "size_bytes": size,
+        })
+        with source.open("rb") as stream:
+            async def chunks():
+                while chunk := await asyncio.to_thread(stream.read, 64 * 1024):
+                    yield chunk
+
+            response = await client.put(slot["upload_url"], content=chunks(), headers={
+                "Authorization": "Bearer " + slot["upload_token"], "Content-Length": str(size),
+                "Content-Type": "application/octet-stream",
+            })
+            response.raise_for_status()
+        artifacts.append(slot["artifact_id"])
+        return slot["artifact_id"]
 
     async def _heartbeat(self, client, root):
         while True:
@@ -60,10 +89,20 @@ class Worker:
                     raise TimeoutError
                 async with asyncio.timeout(remaining):
                     handler = self.tools[call["operation"]][1]
-                    value = await handler(**call["arguments"]) if inspect.iscoroutinefunction(handler) else await asyncio.to_thread(handler, **call["arguments"])
+                    artifacts: list[str] = []
+                    if inspect.iscoroutinefunction(handler):
+                        token = self._upload_context.set((client, root, call, artifacts))
+                        try:
+                            value = await handler(**call["arguments"])
+                        finally:
+                            self._upload_context.reset(token)
+                    else:
+                        value = await asyncio.to_thread(handler, **call["arguments"])
                     if not isinstance(value, dict):
                         raise TypeError("Tool must return a JSON object")
                     report.update(ok=True, result=value)
+                    if artifacts:
+                        report["artifact_ids"] = artifacts
             except TimeoutError:
                 report.update(ok=False, error={"type": "timeout"})
             except Exception:

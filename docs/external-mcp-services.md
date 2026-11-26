@@ -53,7 +53,7 @@
 
 ## 4. REST 协议
 
-所有请求走 HTTPS、JSON。控制面路由与用户消费 API 分开。注册与实例凭证均放 `Authorization: Bearer …`，从日志脱敏。服务端签发的调用参数不接受调用者指定服务地址、转发头或任意代理目标。
+所有请求走 HTTPS；控制面使用 JSON，文件上传使用二进制请求体。控制面路由与用户消费 API 分开。注册与实例凭证均放 `Authorization: Bearer …`，从日志脱敏。服务端签发的调用参数不接受调用者指定服务地址、转发头或任意代理目标。
 
 | 路由 | 鉴权 | 行为 |
 | --- | --- | --- |
@@ -70,7 +70,18 @@
 
 工具结果契约：成功返回 `{"dispatch_id":"…","ok":true,"result":{…}}`；失败返回 `{"dispatch_id":"…","ok":false,"error":{"type":"invalid_request","message":"…"}}`。平台校验响应并适配现有 Capability/MCP 错误格式；公共接口不暴露外部堆栈、原始凭证或部署地址。内部 `401` 表示凭证无效，`403` 表示无权限，`410` 区分租约已过期、注册记录不存在（`registration_missing`）和调用已结束，`429` 表示限流或队列上限。消费侧超时返回 `504`，外部执行异常归一为合适的 `4xx`、`502` 或 `504`。
 
-单次同步调用默认 **20 秒**，首版只转发 JSON；返回大文件、长任务时，工具另声明 `submit` / `status` / `result` 等应用级操作。平台设置每服务并发与积压上限、过期清理及请求体上限；外部执行开始后不自动重试，开发者可按 `call_id` 做幂等保护。外部服务仅收到所需参数和追踪 ID；需要区分调用方时，平台提供不可跨服务关联的匿名调用方标识，而不是下游密钥。
+单次同步调用默认 **20 秒**，可配置至 **60 秒**；长任务仍由工具声明 `submit` / `status` / `result` 等应用级操作。平台设置每服务并发与积压上限、过期清理及请求体上限；外部执行开始后不自动重试，开发者可按 `call_id` 做幂等保护。外部服务仅收到所需参数和追踪 ID；需要区分调用方时，平台提供不可跨服务关联的匿名调用方标识，而不是下游密钥。
+
+### 可选：交付文件（PPTX、PDF 等）
+
+1. 领取调用后，worker 用实例租约令牌 `POST /v1/external-mcp/instances/{instance_id}/calls/{call_id}/artifacts`，提交 `{"dispatch_id":"…","filename":"slides.pptx","content_type":"application/vnd.openxmlformats-officedocument.presentationml.presentation","size_bytes":12345}`。网关校验实例、派发 ID 和调用截止时间，返回 `artifact_id`、`upload_url`、`upload_token` 和 `expires_at`。
+2. worker 向 `upload_url` 发 `PUT`，使用 `Authorization: Bearer <upload_token>`，请求体是完整文件原始字节，不是 JSON、Base64 或 multipart。必须与申报大小一致，成功返回 `204`。上传 URL 和凭证仅允许写这一个文件，并在本次调用截止时失效；成功后不可覆盖。
+3. worker 在截止前回传 `{"dispatch_id":"…","ok":true,"result":{…},"artifact_ids":["…"]}`。网关独立校验 `result` 的输出 schema，只发布本次派发已上传的文件。没用 `artifact_ids` 的旧 worker 和现有分块接口不变。
+
+带文件的 REST 调用返回 `{"result":{…},"artifacts":[{"artifact_id":"…","filename":"slides.pptx","content_type":"…","size_bytes":12345,"download_url":"https://…","expires_at":"…"}]}`；MCP 的 `structuredContent` 使用同一结构，`content` 保留原 JSON 文本，并额外返回标准 `resource_link` 和纯文本下载 URL。是否显示为原生附件取决于 MCP 客户端。下载链接自发布起有效 **15 分钟**，持有者可直接访问，无需 MCP Key；不要公开转发或记录完整链接。网关以附件形式返回文件，不在同源页面内联展示。
+
+- 部署时将 `APP_BASE_URL` 设为 worker 和下载方均可访问的公网 HTTPS 网关根地址。仅本地开发支持回环 HTTP。反代需要允许相应的 `PUT` 请求体大小，并避免在访问日志记录下载路径的查询参数。worker 不需要入站端口，网关也不访问 worker 提供的 URL。
+- 首版流式写入数据库同级的 `external_mcp_artifacts/` 目录，网关的进程须共享同一数据卷及数据库。单文件最多 **32 MiB**，单调用最多 **4 个**，共享临时存储配额 **512 MiB**。未发布文件在调用截止后定期清理，已发布文件在链接过期后定期清理。生成较久的 PPT 可在异步任务完成后，由现有 `result` 工具上传本地成品并交付链接。
 
 ## 5. 平台接入点
 

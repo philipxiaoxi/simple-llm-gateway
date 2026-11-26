@@ -10,8 +10,11 @@ from typing import Annotated, Literal
 from uuid import UUID
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+import anyio
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
+from fastapi import Path as PathParam
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import delete, func, select, update
 
@@ -20,6 +23,7 @@ from app.db import get_session_factory
 from app.deps import get_current_admin
 from app.models import (
     Admin,
+    ExternalMcpArtifact,
     ExternalMcpAudit,
     ExternalMcpCall,
     ExternalMcpCredential,
@@ -28,6 +32,7 @@ from app.models import (
     ExternalMcpService,
 )
 from app.services import external_mcp as ext
+from app.services import external_mcp_artifacts as files
 from app.services.permission_guard import require_permission
 
 router = APIRouter(prefix="/v1/external-mcp", tags=["external-mcp"])
@@ -36,6 +41,8 @@ view = Depends(require_permission("mcp_external:view"))
 manage = Depends(require_permission("mcp_external:manage"))
 Actor = Annotated[Admin, Depends(get_current_admin)]
 Auth = Annotated[str, Header(alias="Authorization", max_length=2048)]
+ArtifactPath = Annotated[str, PathParam(pattern=files.ID_PATTERN)]
+NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
 def bearer(header: str) -> str:
@@ -198,6 +205,141 @@ def claim_once(claims):
     return None
 
 
+def assigned_call(db, claims, call_id, dispatch_id, now):
+    instance = ext.require_lease(db, claims, now)
+    call = db.get(ExternalMcpCall, call_id)
+    if call is None or call.service_id != instance.service_id or call.epoch != instance.epoch or call.dispatch_id != dispatch_id:
+        raise ext.fail(404, "call_not_found", "没有匹配的调用")
+    return call
+
+
+def require_open_call(call, now):
+    if call is None or call.state != "claimed" or call.deadline <= now:
+        raise ext.fail(410, "call_finished", "调用已结束")
+
+
+@router.post("/instances/{instance_id}/calls/{call_id}/artifacts", status_code=201, openapi_extra={
+    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateArtifact"}}}},
+})
+async def create_artifact(instance_id: UUID, call_id: ArtifactPath, request: Request, authorization: Auth = ""):
+    claims = ext.lease_claims(bearer(authorization), str(instance_id))
+    spec = await body(request, files.CreateArtifact)
+    payload = await asyncio.to_thread(reserve_artifact, claims, call_id, spec)
+    return Response(ext.encode(payload), status_code=201, media_type="application/json", headers=NO_STORE)
+
+
+def reserve_artifact(claims, call_id, spec):
+    try:
+        base = files.public_base()
+    except ValueError:
+        raise ext.fail(503, "artifact_unavailable", "网关未配置可用的 APP_BASE_URL") from None
+    with ext.write_session() as db:
+        now = utcnow()
+        call = assigned_call(db, claims, call_id, spec.dispatch_id, now)
+        require_open_call(call, now)
+        count = db.scalar(select(func.count()).select_from(ExternalMcpArtifact).where(ExternalMcpArtifact.call_id == call.id))
+        if count >= files.MAX_FILES:
+            raise ext.fail(429, "artifact_limit", "单次调用的文件数量已达上限")
+        used = db.scalar(select(func.coalesce(func.sum(ExternalMcpArtifact.size_bytes), 0)))
+        if used + spec.size_bytes > files.STORAGE_QUOTA:
+            raise ext.fail(429, "artifact_storage_limit", "临时文件存储已达上限")
+        identifier, token = secrets.token_hex(16), secrets.token_urlsafe(32)
+        db.add(ExternalMcpArtifact(id=identifier, call_id=call.id, dispatch_id=spec.dispatch_id,
+                                  filename=spec.filename, content_type=spec.content_type, size_bytes=spec.size_bytes,
+                                  upload_digest=ext.digest(token), expires_at=call.deadline))
+        return {"artifact_id": identifier, "upload_url": f"{base}{files.DOWNLOAD_PATH}{identifier}/upload",
+                "upload_token": token, "expires_at": ext.stamp(call.deadline)}
+
+
+def upload_slot(db, artifact_id, token_digest, now):
+    artifact = db.get(ExternalMcpArtifact, artifact_id)
+    if artifact is None or not secrets.compare_digest(artifact.upload_digest, token_digest):
+        raise ext.fail(404, "artifact_not_found", "文件不存在或上传凭证无效")
+    if artifact.state != "pending":
+        raise ext.fail(409, "artifact_uploaded", "文件已上传")
+    call = db.get(ExternalMcpCall, artifact.call_id)
+    require_open_call(call, now)
+    if call.dispatch_id != artifact.dispatch_id:
+        raise ext.fail(410, "call_finished", "调用已结束")
+    if db.scalar(ext.live_instances(now).where(
+        ExternalMcpInstance.service_id == call.service_id, ExternalMcpInstance.epoch == call.epoch,
+        ExternalMcpInstance.revision == call.revision,
+    )) is None:
+        raise ext.fail(410, "lease_expired", "实例租约已结束")
+    return artifact
+
+
+def upload_spec(artifact_id, token_digest):
+    with get_session_factory()() as db:
+        now = utcnow()
+        artifact = upload_slot(db, artifact_id, token_digest, now)
+        return artifact.size_bytes, (artifact.expires_at - now).total_seconds()
+
+
+def complete_upload(artifact_id, token_digest, partial):
+    with ext.write_session() as db:
+        artifact = upload_slot(db, artifact_id, token_digest, utcnow())
+        final = files.file_path(artifact_id)
+        final.unlink(missing_ok=True)
+        final.hardlink_to(partial)
+        artifact.state = "ready"
+
+
+@router.put("/artifacts/{artifact_id}/upload", status_code=204, openapi_extra={
+    "requestBody": {"required": True, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}},
+})
+async def upload_artifact(artifact_id: ArtifactPath, request: Request, authorization: Auth = ""):
+    token_digest = ext.digest(bearer(authorization))
+    size, remaining = await asyncio.to_thread(upload_spec, artifact_id, token_digest)
+    length = request.headers.get("content-length")
+    if length is not None and length != str(size):
+        raise ext.fail(422, "invalid_artifact_size", "文件大小与申报不一致")
+    partial = files.file_path(artifact_id, partial=True)
+    partial.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        stream = partial.open("xb")
+    except FileExistsError:
+        raise ext.fail(409, "upload_in_progress", "文件正在上传") from None
+    try:
+        written = 0
+        # A previous request may have finished between the initial check and opening the file.
+        _, remaining = await asyncio.to_thread(upload_spec, artifact_id, token_digest)
+        async with asyncio.timeout(remaining):
+            async for chunk in request.stream():
+                written += len(chunk)
+                if written > size:
+                    raise ext.fail(413, "invalid_artifact_size", "上传内容超过申报大小")
+                await anyio.to_thread.run_sync(stream.write, chunk)
+        if written != size:
+            raise ext.fail(422, "invalid_artifact_size", "文件大小与申报不一致")
+        await anyio.to_thread.run_sync(stream.close)
+        # Do not abandon completion: the staging file must not be removed mid-publish.
+        await anyio.to_thread.run_sync(complete_upload, artifact_id, token_digest, partial)
+    except TimeoutError:
+        raise ext.fail(410, "call_finished", "调用已结束") from None
+    finally:
+        stream.close()
+        partial.unlink(missing_ok=True)
+    return Response(status_code=204, headers=NO_STORE)
+
+
+@router.get("/artifacts/{artifact_id}/download", response_class=FileResponse, openapi_extra={"security": []})
+@router.head("/artifacts/{artifact_id}/download", response_class=FileResponse, openapi_extra={"security": []})
+def download_artifact(artifact_id: ArtifactPath, token: Annotated[str, Query(max_length=1024)] = ""):
+    if files.valid_download_token(artifact_id, token):
+        with get_session_factory()() as db:
+            artifact = db.get(ExternalMcpArtifact, artifact_id)
+            if artifact is not None and artifact.state == "published" and artifact.expires_at > utcnow():
+                path = files.file_path(artifact.id)
+                if path.is_file():
+                    # Serve untrusted bytes as a download, never as active content on the gateway origin.
+                    return FileResponse(path, filename=artifact.filename, media_type="application/octet-stream",
+                                        headers={**NO_STORE, "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox"})
+    error = ext.fail(404, "artifact_not_found", "文件不可用或下载链接已失效")
+    error.headers = NO_STORE
+    raise error
+
+
 @router.put("/instances/{instance_id}/calls/{call_id}/result", status_code=204, openapi_extra={
     "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Result"}}}},
 })
@@ -206,29 +348,34 @@ async def result(instance_id: UUID, call_id: str, request: Request, authorizatio
     report = await body(request, ext.Result)
     if report.ok != (report.result is not None) or report.ok == (report.error is not None):
         raise ext.fail(422, "invalid_result", "结果或错误必须且只能提供一种")
+    if report.artifact_ids and (not report.ok or len(set(report.artifact_ids)) != len(report.artifact_ids)):
+        raise ext.fail(422, "invalid_artifacts", "成功结果才能引用文件，且文件不能重复")
     if report.error is not None:
         code = report.error.get("type", "")
         report.error = {"type": code if code in {"invalid_request", "not_found", "timeout"} else "external_error",
                         "message": {"invalid_request": "外部工具拒绝了参数", "not_found": "外部资源不存在",
                                     "timeout": "外部工具执行超时"}.get(code, "外部工具执行失败")}
-    encoded = ext.bounded_json(report.model_dump())
+    encoded = ext.bounded_json(report.model_dump(exclude={"artifact_ids"} if not report.artifact_ids else set()))
     with ext.write_session() as db:
         now = utcnow()
-        instance = ext.require_lease(db, claims, now)
-        call = db.get(ExternalMcpCall, call_id)
-        if call is None or call.service_id != instance.service_id or call.epoch != instance.epoch or call.dispatch_id != report.dispatch_id:
-            raise ext.fail(404, "call_not_found", "没有匹配的调用")
-        service = db.get(ExternalMcpService, instance.service_id)
+        call = assigned_call(db, claims, call_id, report.dispatch_id, now)
+        service = db.get(ExternalMcpService, call.service_id)
         assert service is not None
         schema = next(tool["output_schema"] for tool in json.loads(service.manifest)["tools"] if tool["name"] == call.operation)
-        if report.ok and schema is not None and not ext.Draft202012Validator(schema).is_valid(report.result):
+        valid_result = report.ok and (schema is None or ext.Draft202012Validator(schema).is_valid(report.result))
+        if report.ok and not valid_result:
             encoded = ext.encode({"ok": False, "error": {"type": "external_error", "message": "外部工具结果不符合 schema"}})
         if call.state == "done":
             if call.result != encoded:
                 raise ext.fail(409, "result_conflict", "调用已收到不同的结果")
-        elif call.state != "claimed" or call.deadline <= now:
-            raise ext.fail(410, "call_finished", "调用已结束")
         else:
+            require_open_call(call, now)
+            for identifier in report.artifact_ids if valid_result else []:
+                artifact = db.get(ExternalMcpArtifact, identifier)
+                if (artifact is None or artifact.call_id != call.id or artifact.dispatch_id != call.dispatch_id
+                        or artifact.state != "ready" or not files.file_path(identifier).is_file()):
+                    raise ext.fail(422, "invalid_artifacts", "文件尚未上传或不属于本次调用")
+                artifact.state, artifact.expires_at = "published", now + files.DOWNLOAD_TTL
             call.state, call.result, call.arguments = "done", encoded, "{}"
     return Response(status_code=204)
 
@@ -476,7 +623,7 @@ def worker_openapi():
     document = get_openapi(title="External MCP Worker API", version="1.0.0", routes=router.routes)
     components = document.setdefault("components", {})
     schemas = components.setdefault("schemas", {})
-    for model in (ext.Registration, ext.Result):
+    for model in (ext.Registration, ext.Result, files.CreateArtifact):
         schema = model.model_json_schema(ref_template="#/components/schemas/{model}")
         schemas.update(schema.pop("$defs", {}))
         schemas[model.__name__] = schema

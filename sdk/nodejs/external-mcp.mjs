@@ -56,12 +56,26 @@ export class Worker {
     }
   }
 
-  async #execute(call, signal) {
+  async #uploadFile(root, call, signal, data, { filename, contentType = 'application/octet-stream' }) {
+    if (!(data instanceof Blob) && !(data instanceof Uint8Array)) throw new TypeError('Use a Blob or Uint8Array for file uploads')
+    const slot = await this.#request('POST', `${root}/calls/${call.call_id}/artifacts`, signal, {
+      body: { dispatch_id: call.dispatch_id, filename, content_type: contentType, size_bytes: data.size ?? data.byteLength },
+    })
+    const response = await fetch(slot.upload_url, {
+      method: 'PUT', redirect: 'error', signal,
+      headers: { Authorization: `Bearer ${slot.upload_token}`, 'Content-Type': 'application/octet-stream' }, body: data,
+    })
+    if (!response.ok) throw new PlatformError(response.status, 'upload_failed')
+    return slot.artifact_id
+  }
+
+  async #execute(root, call, signal) {
     const remaining = Date.parse(call.deadline_at) - Date.now()
     if (!(remaining > 0)) return { ok: false, error: { type: 'timeout' } }
     const deadline = AbortSignal.timeout(Math.ceil(remaining))
     const abort = AbortSignal.any([signal, deadline])
     let onAbort
+    const files = []
     try {
       const stopped = new Promise((_, reject) => {
         onAbort = () => reject(abort.reason)
@@ -72,12 +86,17 @@ export class Worker {
         abort.throwIfAborted()
         return this.#tools.get(call.operation).handler(call.arguments, {
           signal: abort, callId: call.call_id, deadlineAt: call.deadline_at,
+          uploadFile: async (data, options) => {
+            const id = await this.#uploadFile(root, call, abort, data, options)
+            files.push(id)
+            return id
+          },
         })
       })])
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new TypeError('Return a JSON object')
       const normalized = JSON.parse(JSON.stringify(result))
       if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) throw new TypeError('Return a JSON object')
-      return { ok: true, result: normalized }
+      return { ok: true, result: normalized, ...(files.length ? { artifact_ids: [...files] } : {}) }
     } catch {
       signal.throwIfAborted()
       return { ok: false, error: { type: deadline.aborted ? 'timeout' : 'external_error' } }
@@ -90,7 +109,7 @@ export class Worker {
     while (!signal.aborted) {
       const call = await this.#request('POST', `${root}/claims`, signal)
       if (!call) continue
-      const report = { dispatch_id: call.dispatch_id, ...await this.#execute(call, signal) }
+      const report = { dispatch_id: call.dispatch_id, ...await this.#execute(root, call, signal) }
       const path = `${root}/calls/${call.call_id}/result`
       for (let attempt = 0; attempt < 2; attempt++) {
         try {

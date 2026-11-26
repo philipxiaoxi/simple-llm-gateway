@@ -19,6 +19,8 @@ export MCP_PLATFORM_URL=https://gateway.example.com
 
 **Node.js 22+**：执行 `node nodejs/echo.mjs`，无需安装 npm 依赖。直接使用源码仓库时，入口是 `sdk/nodejs/echo.mjs`。用 `worker.tool(definition, handler)` 声明工具；处理器收到 `arguments` 和 `{ signal, callId, deadlineAt }`，返回 JSON 对象。对可取消的耗时操作应传递 `signal`；不要在事件循环中运行长时间的同步代码，以免阻塞心跳。
 
+**交付文件**：在 Python 的 `async def` 工具处理器中调用 `await worker.upload_file(pptx_path, content_type="application/vnd.openxmlformats-officedocument.presentationml.presentation")`。在 Node.js 处理器中，从第二个参数取 `uploadFile`，调用 `await uploadFile(await openAsBlob(pptxPath), { filename: 'slides.pptx', contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' })`（`openAsBlob` 从 `node:fs` 导入）。然后照常返回业务 JSON；SDK 会自动随成功结果上报文件 ID，网关再生成下载链接。具体限制见[文件交付协议](../external-mcp-services.md#可选交付文件pptxpdf-等)。
+
 `MCP_PLATFORM_URL` 是平台基地址，不带 `/mcp` 或 `/v1` 后缀；本机开发允许 `http://127.0.0.1:8000`。Caddy/Nginx 等生产代理需保留 `Authorization` 请求头、将 `/v1/external-mcp/` 转发至后端，并允许至少 25 秒读取超时。开发预览若带有 VS Code 登录门禁，不是外部无人值守部署入口。
 
 `@worker.tool(...)` 声明操作名、说明及对象类型 JSON Schema；函数接收 schema 描述的命名参数，返回 JSON 对象。可加 `example` 和 `returns` 自动生成接入说明。可声明 `timeout_seconds`（默认 20 秒）和 `side_effects`；SDK 不会自动重跑已领取的操作。建议把长任务拆成提交、状态、结果三个操作。优先使用异步处理器；同步处理器超时后其后台线程不能被强制停止。

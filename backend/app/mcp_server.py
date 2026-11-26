@@ -7,7 +7,7 @@ from contextvars import ContextVar
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
-from mcp.types import TextContent, Tool
+from mcp.types import ResourceLink, TextContent, Tool
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -21,6 +21,7 @@ from app.capabilities.deepseek_media import MEDIA_CAPABILITIES
 from app.db import get_session_factory
 from app.deps import extract_raw_api_key
 from app.services import external_mcp
+from app.services.external_mcp_artifacts import ArtifactResult
 from app.services.mcp_auth import allowed_capability_ids, resolve_mcp_key
 from app.services.mcp_logs import record_mcp_call
 
@@ -61,7 +62,9 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
         finally:
             session.close()
         try:
-            return await call_next(request)
+            response = await call_next(request)
+            response.headers["Cache-Control"] = "no-store"
+            return response
         finally:
             if token is not None:
                 _current_mcp_key_id.reset(token)
@@ -102,7 +105,7 @@ def _record_mcp_failure(
     session.commit()
 
 
-async def _run_registered_tool(tool_name: str, arguments: dict[str, Any], *, protocol_error: bool = False) -> str:
+async def _run_registered_tool(tool_name: str, arguments: dict[str, Any], *, protocol_error: bool = False) -> dict:
     ensure_defaults()
     key_id = _current_mcp_key_id.get()
     session = get_session_factory()()
@@ -112,28 +115,24 @@ async def _run_registered_tool(tool_name: str, arguments: dict[str, Any], *, pro
         if mcp_key is None or mcp_key.status != "active":
             if protocol_error:
                 raise CapabilityError("无效的 MCP Key", 401, "authentication_error")
-            return json.dumps(
-                {"error": {"type": "authentication_error", "message": "无效的 MCP Key"}},
-                ensure_ascii=False,
-            )
+            return {"error": {"type": "authentication_error", "message": "无效的 MCP Key"}}
         result = await invoke_tool(session, mcp_key=mcp_key, tool_name=tool_name, payload=arguments)
         session.commit()
-        return json.dumps(result, ensure_ascii=False, default=str)
+        return result
     except CapabilityError as error:
         session.rollback()
         _record_mcp_failure(session, tool_name, error, int((time.perf_counter() - started) * 1000), arguments)
         payload: dict[str, Any] = {"error": {"type": error.error_type, "message": error.message}}
         if error.diagnostics:
             payload["error"]["diagnostics"] = error.diagnostics
-        encoded = json.dumps(payload, ensure_ascii=False)
         if protocol_error:
-            raise ValueError(encoded) from None
-        return encoded
+            raise ValueError(json.dumps(payload, ensure_ascii=False)) from None
+        return payload
     except Exception as error:
         session.rollback()
         if protocol_error:
             raise ValueError('{"error":{"type":"internal_error","message":"外部工具调用失败"}}') from None
-        return json.dumps({"error": {"type": "internal_error", "message": str(error)}}, ensure_ascii=False)
+        return {"error": {"type": "internal_error", "message": str(error)}}
     finally:
         session.close()
 
@@ -193,7 +192,8 @@ def _register_tool_from_def(
     async def handler(**kwargs: Any) -> str:
         payload = {key: value for key, value in kwargs.items() if value is not None}
         resolved = resolve_tool(tool_name)
-        return await _run_registered_tool(tool_name, payload, protocol_error=bool(resolved and resolved[0] in MEDIA_CAPABILITIES))
+        result = await _run_registered_tool(tool_name, payload, protocol_error=bool(resolved and resolved[0] in MEDIA_CAPABILITIES))
+        return json.dumps(result, ensure_ascii=False, default=str)
 
     handler.__name__ = tool_name.replace("-", "_")
     handler.__doc__ = description
@@ -244,7 +244,18 @@ def register_all_tools() -> None:
 
     async def call_tool_dynamic(name: str, arguments: dict[str, Any]):
         if external_mcp.split_tool(name) is not None:
-            return [TextContent(type="text", text=await _run_registered_tool(name, arguments, protocol_error=True))]
+            result = await _run_registered_tool(name, arguments, protocol_error=True)
+            content = [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, default=str))]
+            if isinstance(result, ArtifactResult):
+                for artifact in result.artifacts:
+                    url = artifact["download_url"]
+                    content.extend([
+                        TextContent(type="text", text=f"下载 {artifact['filename']}：\n{url}"),
+                        ResourceLink(type="resource_link", uri=url, name=artifact["filename"],
+                                     mimeType=artifact["content_type"], size=artifact["size_bytes"]),
+                    ])
+                return content, result.envelope()
+            return content
         return await mcp.call_tool(name, arguments)
 
     # FastMCP captures the methods when registering low-level handlers; replacing the
