@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ExternalLink, Eye, KeyRound, MoreHorizontal, Pencil, Plus, Power, PowerOff, Trash2 } from 'lucide-react'
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Badge, Button, Card, Dialog, Field, Input } from '../components/ui'
+import { Checkbox } from '../components/ui/checkbox'
 import { api, type McpKeyItem } from '../lib/api'
 import { useCan } from '../lib/session'
 import { notifyBad, notifyOk } from '../lib/toast'
@@ -20,23 +21,18 @@ function CapabilityPicker({
   onChange: (next: string[]) => void
 }) {
   return (
-    <div className="space-y-2">
+    <fieldset className="min-w-0">
+      <legend className="mb-1 text-xs tracking-[0.16em] text-mist">授权能力</legend>
       {options.map((cap) => (
-        <label key={cap.id} className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={selected.includes(cap.id)}
-            onChange={(event) => {
-              onChange(
-                event.target.checked ? [...selected, cap.id] : selected.filter((id) => id !== cap.id),
-              )
-            }}
-          />
-          {cap.label}
-        </label>
+        <Checkbox key={cap.id}
+          checked={selected.includes(cap.id)}
+          onChange={(event) => onChange(
+            event.target.checked ? [...selected, cap.id] : selected.filter((id) => id !== cap.id),
+          )}
+        >{cap.label}</Checkbox>
       ))}
       {!options.length ? <div className="text-xs text-mist">暂无启用能力，请先在后端注册 Provider</div> : null}
-    </div>
+    </fieldset>
   )
 }
 
@@ -229,12 +225,6 @@ export function McpKeysPage() {
     .filter((item) => item.status === 'enabled' || item.source === 'external')
     .map((item) => ({ id: item.capability_id, label: `${item.capability_id} · ${item.name}` }))
 
-  useEffect(() => {
-    if (!selected.length && capabilityOptions.length) {
-      setSelected([capabilityOptions[0].id])
-    }
-  }, [capabilityOptions, selected.length])
-
   const { data = [], refetch, isError, error } = useQuery({
     queryKey: ['mcp-keys'],
     queryFn: () => api.mcpKeys(),
@@ -348,6 +338,7 @@ export function McpKeysPage() {
           type="button"
           onClick={() => {
             setCreatedKey(null)
+            setSelected([])
             setOpen(true)
           }}
         >
@@ -544,9 +535,7 @@ export function McpKeysPage() {
                 <Field label="名称">
                   <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="agent-prod" />
                 </Field>
-                <Field label="授权能力（来自服务目录注册表）">
-                  <CapabilityPicker options={capabilityOptions} selected={selected} onChange={setSelected} />
-                </Field>
+                <CapabilityPicker options={capabilityOptions} selected={selected} onChange={setSelected} />
                 <RateLimitFields
                   rpm={rpm}
                   concurrency={concurrency}
@@ -583,9 +572,7 @@ export function McpKeysPage() {
             </Field>
             {canCapabilities ? (
               <>
-                <Field label="授权能力">
-                  <CapabilityPicker options={capabilityOptions} selected={editSelected} onChange={setEditSelected} />
-                </Field>
+                <CapabilityPicker options={capabilityOptions} selected={editSelected} onChange={setEditSelected} />
                 <p className="text-xs text-mist">取消勾选即收回该能力授权；至少保留一项。</p>
               </>
             ) : null}
