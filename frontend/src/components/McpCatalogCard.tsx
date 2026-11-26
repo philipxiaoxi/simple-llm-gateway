@@ -7,8 +7,10 @@ export function McpCatalogCard({ item, onOpen }: { item: McpCatalogItem; onOpen?
   const external = item.source === 'external'
   const to = item.admin_path || undefined
   const className = cn(
-    'flex min-h-[11.5rem] min-w-0 flex-col items-stretch justify-start gap-0 rounded-none border border-line bg-panel px-5 py-5 text-left font-normal transition hover:-translate-y-0.5 hover:border-signal/70 hover:bg-panel hover:shadow-glow active:scale-100 md:min-h-[11.5rem]',
-    item.status === 'offline' && 'opacity-60 hover:opacity-100',
+    'flex min-h-[11.5rem] min-w-0 flex-col items-stretch justify-start gap-0 rounded-none border border-line bg-panel px-5 py-5 text-left font-normal md:min-h-[11.5rem]',
+    (onOpen || to) && 'cursor-pointer transition hover:-translate-y-0.5 hover:border-signal/70 hover:bg-panel hover:shadow-glow active:scale-100',
+    item.status === 'offline' && 'opacity-60',
+    item.status === 'offline' && (onOpen || to) && 'hover:opacity-100',
   )
   const body = (
     <>
