@@ -1,9 +1,25 @@
 import base64
 import json
+import struct
 import wave
 from io import BytesIO
 
 import httpx
+import pytest
+
+from app.capabilities.base import CapabilityError
+from app.capabilities.deepseek_media import finalize_wav
+
+
+def test_finalize_wav_rejects_truncated_fixed_length_audio():
+    buffer = BytesIO()
+    with wave.open(buffer, "wb") as source:
+        source.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
+        source.writeframes(bytes(48))
+    audio = buffer.getvalue()
+    assert finalize_wav(audio) == audio
+    with pytest.raises(CapabilityError, match="无效或不完整"):
+        finalize_wav(audio[:-2])
 
 
 def test_deepseek_media_tools(client, auth_headers, monkeypatch):
@@ -33,7 +49,10 @@ def test_deepseek_media_tools(client, auth_headers, monkeypatch):
             return httpx.Response(200, json={"request_id": "demo", "text": "hello", "duration_ms": 10})
         if operation == "tts":
             assert json.loads(request.content)["voice_id"] == "stella"
-            return httpx.Response(200, content=wav)
+            streaming_wav = bytearray(wav)
+            struct.pack_into("<I", streaming_wav, 4, 0xFFFFFFFF)
+            struct.pack_into("<I", streaming_wav, 40, 0xFFFFFFFF)
+            return httpx.Response(200, content=bytes(streaming_wav))
         assert b'name="purpose"' in request.content and b"text_recognition" in request.content
         if b"bad.pdf" in request.content:
             return httpx.Response(200, json={"error": {"code": "gateway_timeout_error"}})

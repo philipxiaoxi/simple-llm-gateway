@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import struct
 from pathlib import PurePosixPath
 from typing import Annotated, Literal
 
@@ -15,6 +16,49 @@ from app.capabilities.deepseek_web import BASE_URL, bound_credential
 
 MEDIA_CAPABILITIES = frozenset({"deepseek_asr", "deepseek_tts", "deepseek_ocr"})
 DOCUMENT_SUFFIXES = {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
+STREAMING_WAV_SIZE = 0xFFFFFFFF
+
+
+def finalize_wav(audio: bytes) -> bytes:
+    """Resolve RIFF/data size sentinels after a successful, complete HTTP response."""
+    invalid = CapabilityError("DeepSeek 返回的 WAV 文件无效或不完整", 502, "upstream_error")
+    if not audio.startswith(b"RIFF") or audio[8:12] != b"WAVE":
+        raise invalid
+    riff_size = struct.unpack_from("<I", audio, 4)[0]
+    if riff_size not in {len(audio) - 8, STREAMING_WAV_SIZE}:
+        raise invalid
+    cursor = 12
+    found_data = False
+    found_format = False
+    patched_data = None
+    while cursor + 8 <= len(audio):
+        chunk = audio[cursor:cursor + 4]
+        size = struct.unpack_from("<I", audio, cursor + 4)[0]
+        remaining = len(audio) - cursor - 8
+        if chunk == b"data":
+            if found_data or not found_format or not size:
+                raise invalid
+            found_data = True
+            if size == STREAMING_WAV_SIZE:
+                # DeepSeek streams 16-bit PCM as the final chunk, with no trailing metadata.
+                if not remaining or remaining % 2:
+                    raise invalid
+                size = remaining
+                patched_data = (cursor + 4, size)
+        if size + size % 2 > remaining:
+            raise invalid
+        if chunk == b"fmt " and size >= 16:
+            found_format = True
+        cursor += 8 + size + size % 2
+    if not found_data or cursor != len(audio):
+        raise invalid
+    if riff_size != STREAMING_WAV_SIZE and patched_data is None:
+        return audio
+    output = bytearray(audio)
+    struct.pack_into("<I", output, 4, len(audio) - 8)
+    if patched_data is not None:
+        struct.pack_into("<I", output, *patched_data)
+    return bytes(output)
 
 
 class TtsInput(BaseModel):
@@ -106,8 +150,9 @@ class DeepSeekMediaProvider:
             if len(json.dumps(body, ensure_ascii=False).encode()) > 65536:
                 raise CapabilityError("文字请求体不能超过 64 KiB", 413, "invalid_request")
             audio = await upstream(operation, bound_credential(ctx), MAX_AUDIO_BYTES, 90, json=body)
-            is_wav = audio.startswith(b"RIFF") and audio[8:12] == b"WAVE"
-            if not audio or (args.format == "wav" and not is_wav) or (args.format == "pcm" and len(audio) % 2):
+            if args.format == "wav":
+                audio = finalize_wav(audio)
+            elif not audio or len(audio) % 2:
                 raise CapabilityError("DeepSeek 返回的音频无效", 502, "upstream_error")
             return {"audio_base64": base64.b64encode(audio).decode("ascii"), "format": args.format,
                     "content_type": "audio/wav" if args.format == "wav" else "application/octet-stream"}
