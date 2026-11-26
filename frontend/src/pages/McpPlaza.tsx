@@ -25,6 +25,7 @@ const tabs = [
 ]
 
 const APP_PATH_PERMS: { prefix: string; perm: string }[] = [
+  { prefix: '/mcp-plaza/pexafy', perm: 'mcp_pexafy:view' },
   { prefix: '/mcp-plaza/knowledge', perm: 'mcp_knowledge:view' },
   { prefix: '/mcp-plaza/docparse', perm: 'mcp_docparse:view' },
   { prefix: '/mcp-plaza/sites', perm: 'mcp_sites:view' },

@@ -49,7 +49,7 @@ async def invoke_capability(
     system: bool = False,
 ) -> dict[str, Any]:
     is_external = capability_id.startswith(external_mcp.PREFIX)
-    redact_body = is_external or capability_id in MEDIA_CAPABILITIES
+    redact_body = is_external or capability_id in MEDIA_CAPABILITIES or capability_id == "pexafy"
     ensure_provider = get_provider(capability_id)
     if not is_external and (ensure_provider is None or ensure_provider.spec.status != "enabled"):
         raise CapabilityError("能力不存在或已停用", status_code=404, error_type="not_found")

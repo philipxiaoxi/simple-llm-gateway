@@ -1123,6 +1123,13 @@ class DouyinSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
+class PexafySettings(Base):
+    __tablename__ = "pexafy_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class TikHubSettings(Base):
     """TikHub 凭据的全局单例设置，抖音下载与资讯收集共享。"""
 

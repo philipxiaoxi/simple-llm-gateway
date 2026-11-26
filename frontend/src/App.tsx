@@ -61,6 +61,7 @@ const VoiceJoinPage = lazy(() => import('./pages/VoiceJoin').then((m) => ({ defa
 const VoiceSendPage = lazy(() => import('./pages/VoiceSend').then((m) => ({ default: m.VoiceSendPage })))
 const McpPlazaLayout = lazy(() => import('./pages/McpPlaza').then((m) => ({ default: m.McpPlazaLayout })))
 const McpPlazaCatalogPage = lazy(() => import('./pages/McpPlaza').then((m) => ({ default: m.McpPlazaCatalogPage })))
+const McpPexafyPage = lazy(() => import('./pages/McpPexafy'))
 const McpDeepSeekWebPage = lazy(() => import('./pages/McpDeepSeekWeb'))
 const McpKnowledgePage = lazy(() => import('./pages/McpKnowledge').then((m) => ({ default: m.McpKnowledgePage })))
 const McpKnowledgeDetailPage = lazy(() =>
@@ -119,6 +120,7 @@ const PAGE_PERMS: { pattern: string; perm: string }[] = [
   { pattern: '/offline', perm: 'offline:view' },
   { pattern: '/skills/bundles', perm: 'skill_bundles:view' },
   { pattern: '/skills', perm: 'skills:view' },
+  { pattern: '/mcp-plaza/pexafy', perm: 'mcp_pexafy:view' },
   { pattern: '/mcp-plaza/knowledge', perm: 'mcp_knowledge:view' },
   { pattern: '/mcp-plaza/docparse', perm: 'mcp_docparse:view' },
   { pattern: '/mcp-plaza/sites', perm: 'mcp_sites:view' },
@@ -236,6 +238,7 @@ export default function App() {
               <Route path="/skills/:skillId" element={<SkillDetailPage />} />
               <Route path="/mcp-plaza" element={<McpPlazaLayout />}>
                 <Route index element={<McpPlazaCatalogPage />} />
+                <Route path="pexafy" element={<RequirePerm code="mcp_pexafy:view"><McpPexafyPage /></RequirePerm>} />
                 <Route path="deepseek-web" element={<RequirePerm code="mcp_deepseek:view"><McpDeepSeekWebPage /></RequirePerm>} />
                 <Route path="deepseek-asr" element={<RequirePerm code="mcp_deepseek:view"><McpDeepSeekWebPage /></RequirePerm>} />
                 <Route path="deepseek-tts" element={<RequirePerm code="mcp_deepseek:view"><McpDeepSeekWebPage /></RequirePerm>} />

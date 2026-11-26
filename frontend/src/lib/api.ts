@@ -1510,6 +1510,9 @@ export const api = {
   // ---- MCP 广场 ----
   mcpCatalog: (scope: 'plaza' | 'all' = 'all') =>
     request<{ items: McpCatalogItem[] }>(`/api/admin/mcp/catalog?scope=${scope}`),
+  pexafySettings: () => request<{ configured: boolean }>('/api/admin/mcp/pexafy/settings'),
+  savePexafySettings: (api_key: string | null) => request<{ configured: boolean }>('/api/admin/mcp/pexafy/settings', { method: 'PUT', body: JSON.stringify({ api_key }) }),
+  pexafyUsage: () => request<{ data: { period: string; requests: { used: number; limit: number; remaining: number } } }>('/api/admin/mcp/pexafy/usage'),
   deepseekWebSettings: () => request<{ account_id: number | null; accounts: { id: number; name: string; available: boolean }[] }>('/api/admin/mcp/deepseek-web/settings'),
   saveDeepseekWebSettings: (account_id: number | null) => request<{ account_id: number | null }>(
     '/api/admin/mcp/deepseek-web/settings', { method: 'PUT', body: JSON.stringify({ account_id }) },

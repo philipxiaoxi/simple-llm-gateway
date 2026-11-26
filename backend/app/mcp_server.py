@@ -100,7 +100,7 @@ def _record_mcp_failure(
         error_message=error.message,
         error_type=error.error_type,
         http_status=error.status_code,
-        request_body=None if capability_id.startswith(external_mcp.PREFIX) or capability_id in MEDIA_CAPABILITIES else request_body,
+        request_body=None if capability_id.startswith(external_mcp.PREFIX) or capability_id in MEDIA_CAPABILITIES or capability_id == "pexafy" else request_body,
     )
     session.commit()
 
@@ -214,6 +214,7 @@ def register_all_tools() -> None:
 
     # tools/list 按当前请求 MCP Key 白名单过滤
     _original_list_tools = mcp.list_tools
+    pexafy_tools = {tool.name: tool for capability_id, tool in list_tool_defs() if capability_id == "pexafy"}
 
     async def list_tools_filtered():
         tools = await _original_list_tools()
@@ -239,10 +240,14 @@ def register_all_tools() -> None:
                 continue
             capability_id, _operation = resolved
             if capability_id in allowed:
-                filtered.append(tool)
+                spec = pexafy_tools.get(tool.name)
+                filtered.append(tool.model_copy(update={"inputSchema": spec.input_schema}) if spec else tool)
         return filtered + external_tools
 
     async def call_tool_dynamic(name: str, arguments: dict[str, Any]):
+        if name in pexafy_tools:
+            result = await _run_registered_tool(name, arguments, protocol_error=True)
+            return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
         if external_mcp.split_tool(name) is not None:
             result = await _run_registered_tool(name, arguments, protocol_error=True)
             content = [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, default=str))]

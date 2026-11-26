@@ -79,6 +79,10 @@ def catalog_payload(*, only_enabled: bool = True) -> list[dict]:
 
 def ensure_defaults() -> None:
     """注册内置应用。后续新应用在此追加一行 register(XxxProvider()) 即可。"""
+    if "pexafy" not in _providers:
+        from app.capabilities.pexafy import PexafyProvider
+
+        register(PexafyProvider())
     if "deepseek_web" not in _providers:
         from app.capabilities.deepseek_web import DeepSeekWebProvider
 

@@ -14,6 +14,7 @@ from app.capabilities.deepseek_media import MEDIA_CAPABILITIES
 from app.capabilities.docparse.errors import DocParseError
 from app.capabilities.docparse.jobs import create_job, get_owned_job, job_payload, run_job
 from app.capabilities.docparse.storage import markdown_path
+from app.capabilities.pexafy import MAX_JSON as PEXAFY_MAX_JSON
 from app.db import get_db
 from app.schemas import KnowledgeSearchRequest, KnowledgeSearchResponse, McpCapabilityOut
 from app.services import external_mcp
@@ -98,10 +99,12 @@ async def dispatch_capability(
     """通用能力调用入口。新应用只需实现 Provider.dispatch，无需再加专用 REST 路由。"""
     ensure_defaults()
     payload: dict[str, Any] = {}
-    if capability_id.startswith(external_mcp.PREFIX) or capability_id in MEDIA_CAPABILITIES:
+    if capability_id.startswith(external_mcp.PREFIX) or capability_id in MEDIA_CAPABILITIES or capability_id == "pexafy":
         if capability_id not in allowed_capability_ids(mcp_key):
             return _error(403, "permission_error", "MCP Key 未授权该能力")
         limit = (64 * 1024 if capability_id == "deepseek_tts" else MAX_JSON_BYTES) if capability_id in MEDIA_CAPABILITIES else external_mcp.MAX_PAYLOAD
+        if capability_id == "pexafy":
+            limit = PEXAFY_MAX_JSON
         raw = bytearray()
         async for chunk in request.stream():
             if len(raw) + len(chunk) > limit:
